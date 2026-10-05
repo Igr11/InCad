@@ -50,7 +50,10 @@ def edit_open():
             return False
         import FreeCADGui as Gui
         gdoc = Gui.ActiveDocument
-        return bool(Gui.Control.activeDialog()) or (gdoc is not None and gdoc.getInEdit() is not None)
+        vp = gdoc.getInEdit() if gdoc is not None else None
+        if vp is not None and getattr(getattr(vp, "Object", None), "TypeId", "") == "Sketcher::SketchObject":
+            return False  # InCad's own sketch editing: Sketcher commits each tool step itself
+        return bool(Gui.Control.activeDialog()) or vp is not None
     except Exception:
         return False
 
