@@ -96,3 +96,15 @@ class BrowserTest(unittest.TestCase):
         self.b.set_theme("dark")
         self.assertEqual(self.b.item_by_label("Broken").foreground(0).color(),
                          QtGui.QColor(theme.PALETTES["dark"]["error"]))
+
+
+class ParametersFitTest(unittest.TestCase):
+    def test_columns_fit_the_panel_without_horizontal_scrolling(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_parameters([("HoleD", "Width / 8", "10 mm"), ("Width", "", "80 mm")])
+        b.resize(230, 600)
+        b.show()
+        qtapp.app().processEvents()
+        self.assertEqual(b.params.horizontalScrollBar().maximum(), 0)
+        b.hide()

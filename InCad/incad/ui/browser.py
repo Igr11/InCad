@@ -80,7 +80,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.params.setObjectName("InCadParams")
         self.params.setHorizontalHeaderLabels(["Name", "Value", "Result"])
         self.params.verticalHeader().hide()
-        self.params.horizontalHeader().setStretchLastSection(True)
+        self.params.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)  # fit the panel
         self.params.itemChanged.connect(self._on_param_changed)
         col.addWidget(self.params, 1)
 
