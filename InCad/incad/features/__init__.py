@@ -1,11 +1,20 @@
-"""Feature kinds: pure model modules (FIELDS, defaults, create, read, update) that the feature dialog drives."""
-from incad.features import extrude, revolve
+"""Feature kinds: pure model modules (FIELDS, defaults, create, read, update) that the feature dialog drives.
+Loaded on first use, so widget code can import incad.features.common without FreeCAD."""
 
-KINDS = [extrude, revolve]
+
+def kinds():
+    from incad.features import extrude, revolve
+    return [extrude, revolve]
 
 
 def kind_for(feature):
-    for kind in KINDS:
+    for kind in kinds():
         if feature is not None and feature.TypeId in kind.TYPES:
             return kind
     return None
+
+
+def __getattr__(name):
+    if name == "KINDS":
+        return kinds()
+    raise AttributeError(name)

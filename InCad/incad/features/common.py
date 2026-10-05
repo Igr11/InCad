@@ -1,7 +1,6 @@
 """Helpers shared by feature kinds."""
 from dataclasses import dataclass
 
-from incad.core import model, sketch
 
 
 @dataclass(frozen=True)
@@ -33,11 +32,13 @@ def _profile(feature):
 
 
 def unconsumed_closed_sketches(body):
+    from incad.core import sketch
     return [o for o in body.Group if sketch.is_sketch(o) and closed_profile(o) and not consumers(o)]
 
 
 def value_param(doc, feature, prop, text, unit_kind):
     """Bind feature.prop to a model parameter holding `text` (create one if the property has none yet)."""
+    from incad.core import model
     name = model.bound_parameter(feature, prop)
     if name is None:
         name = model.new_feature_parameter(doc, text, unit_kind)
@@ -48,6 +49,7 @@ def value_param(doc, feature, prop, text, unit_kind):
 
 
 def value_text(doc, feature, prop):
+    from incad.core import model
     name = model.bound_parameter(feature, prop)
     return model.parameter_text(doc, name) if name else ""
 
