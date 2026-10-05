@@ -1,0 +1,118 @@
+"""InCad preferences, stored in FreeCAD's parameters (User parameter:BaseApp/Preferences/Mod/InCad).
+Falls back to an in-memory store when FreeCAD is not importable (widget tests)."""
+
+GROUP = "User parameter:BaseApp/Preferences/Mod/InCad"
+
+THEMES = ("auto", "light", "dark")
+RIBBON_SIZES = ("small", "medium", "large")
+UNITS = ("mm", "in")
+
+
+class _MemoryStore:
+    def __init__(self):
+        self.data = {}
+
+    def get(self, kind, key, default):
+        return self.data.get((kind, key), default)
+
+    def set(self, kind, key, value):
+        self.data[(kind, key)] = value
+
+    def remove(self, kind, key):
+        self.data.pop((kind, key), None)
+
+
+class _ParamStore:
+    def __init__(self):
+        import FreeCAD
+        self.p = FreeCAD.ParamGet(GROUP)
+
+    def get(self, kind, key, default):
+        return {"str": self.p.GetString, "bool": self.p.GetBool}[kind](key, default)
+
+    def set(self, kind, key, value):
+        {"str": self.p.SetString, "bool": self.p.SetBool}[kind](key, value)
+
+    def remove(self, kind, key):
+        {"str": self.p.RemString, "bool": self.p.RemBool}[kind](key)
+
+
+_store = None
+
+
+def _s():
+    global _store
+    if _store is None:
+        try:
+            _store = _ParamStore()
+        except ImportError:
+            _store = _MemoryStore()
+    return _store
+
+
+def use_memory_backend():
+    global _store
+    _store = _MemoryStore()
+
+
+def _choice(key, allowed, default):
+    value = _s().get("str", key, default)
+    return value if value in allowed else default
+
+
+def _set_choice(key, allowed, value):
+    if value not in allowed:
+        raise ValueError("%s must be one of %s, got %r" % (key, ", ".join(allowed), value))
+    _s().set("str", key, value)
+
+
+def theme():
+    return _choice("Theme", THEMES, "auto")
+
+
+def set_theme(value):
+    _set_choice("Theme", THEMES, value)
+
+
+def ribbon_size():
+    return _choice("RibbonSize", RIBBON_SIZES, "large")
+
+
+def set_ribbon_size(value):
+    _set_choice("RibbonSize", RIBBON_SIZES, value)
+
+
+def default_units():
+    return _choice("DefaultUnits", UNITS, "mm")
+
+
+def set_default_units(value):
+    _set_choice("DefaultUnits", UNITS, value)
+
+
+def remember_new_choice():
+    return bool(_s().get("bool", "RememberNewChoice", False))
+
+
+def set_remember_new_choice(value):
+    _s().set("bool", "RememberNewChoice", bool(value))
+
+
+def last_workbench():
+    return _s().get("str", "LastWorkbench", "") or "PartDesignWorkbench"
+
+
+def set_last_workbench(name):
+    _s().set("str", "LastWorkbench", name)
+
+
+def takeover_snapshot():
+    return _s().get("str", "TakeoverSnapshot", "")
+
+
+def set_takeover_snapshot(text):
+    _s().set("str", "TakeoverSnapshot", text)
+
+
+def clear_takeover_snapshot():
+    _s().remove("str", "TakeoverSnapshot")
