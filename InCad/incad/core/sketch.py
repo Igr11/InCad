@@ -81,14 +81,27 @@ def _used_names(doc):
     return model.used_names(doc)
 
 
+NEXT_KEY = "InCadNextDimension"
+
+
+def _next_number(doc):
+    """Never reuse a dN: a counter in the file (doc.Meta), so a deleted d5 does not come back for a new dimension."""
+    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in _used_names(doc)) if m]
+    try:
+        stored = int(doc.Meta.get(NEXT_KEY, "0"))
+    except ValueError:
+        stored = 0
+    return max([stored] + [n + 1 for n in numbers])
+
+
 def name_new_dimensions(doc):
-    """Give every unnamed driving dimension the next free dN name; returns the names given."""
+    """Give every unnamed driving dimension the next dN (never reused; see model.claim_name)."""
     from incad.core import model
     added = []
     for sk in _sketches(doc):
         for i, c in enumerate(sk.Constraints):
             if c.Type in DIMENSIONAL and not c.Name and c.Driving:
-                name = model.next_name(doc, added)
+                name = model.claim_name(doc)
                 sk.renameConstraint(i, name)
                 added.append(name)
     return added

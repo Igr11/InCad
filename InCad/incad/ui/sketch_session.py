@@ -4,9 +4,12 @@ from incad.qt import QtCore
 
 
 class SketchSession:
-    def __init__(self, on_change=None):
+    def __init__(self, on_change=None, on_edit=None):
         self.picking = False
         self._on_change = on_change
+        self._on_edit = on_edit      # called with the sketch when editing starts (baseline for the value-box rule)
+        self._saved_vp = {}          # (doc, sketch) -> view-provider settings InCad changed, restored when done
+        self._last_edited = None
         self._origin = None  # (view object, was visible) while picking
 
     def _changed(self):
@@ -101,11 +104,52 @@ class SketchSession:
     def edit(self, sk):
         import FreeCADGui as Gui
         vo = sk.ViewObject
-        vo.EditingWorkbench = ""  # stay in InCad while sketching
+        key = (sk.Document.Name, sk.Name)
+        if key not in self._saved_vp:
+            self._saved_vp[key] = (vo.EditingWorkbench,
+                                   vo.Autoconstraints if "Autoconstraints" in vo.PropertiesList else None)
+        vo.EditingWorkbench = ""  # stay in InCad while sketching (restored when the sketch is finished)
         if "Autoconstraints" in vo.PropertiesList:
             vo.Autoconstraints = True
+        if self._on_edit is not None:
+            self._on_edit(sk)
         Gui.getDocument(sk.Document.Name).setEdit(sk.Name)
+        self._last_edited = key
         self._changed()
+
+    def restore(self, key):
+        """Put back the view-provider settings of a sketch InCad edited (they are saved in the user's file)."""
+        import FreeCAD as App
+        saved = self._saved_vp.pop(key, None)
+        if saved is None:
+            return
+        try:
+            obj = App.getDocument(key[0]).getObject(key[1])
+        except Exception:
+            obj = None
+        if obj is None:
+            return
+        vo = obj.ViewObject
+        vo.EditingWorkbench = saved[0]
+        if saved[1] is not None and "Autoconstraints" in vo.PropertiesList:
+            vo.Autoconstraints = saved[1]
+
+    def sync(self):
+        """Called on every refresh: a sketch left by any route (✓, Esc, undo) gets its settings back."""
+        editing = self.editing()
+        key = (editing.Document.Name, editing.Name) if editing is not None else None
+        for done in [k for k in self._saved_vp if k != key]:
+            self.restore(done)
+
+    def close_all(self):
+        """Leaving InCad: finish any sketch edit and restore every sketch's settings."""
+        import FreeCADGui as Gui
+        self.cancel_pick()
+        gdoc = Gui.ActiveDocument
+        if self.editing() is not None and gdoc is not None:
+            gdoc.resetEdit()
+        for key in list(self._saved_vp):
+            self.restore(key)
 
     def finish(self):
         import FreeCAD as App

@@ -39,8 +39,19 @@ def used_names(doc):
 
 
 def next_name(doc, taken=()):
-    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in used_names(doc) | set(taken)) if m]
-    return "d%d" % (max(numbers) + 1 if numbers else 0)
+    from incad.core import sketch
+    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in set(taken)) if m]
+    return "d%d" % max([sketch._next_number(doc)] + [n + 1 for n in numbers])
+
+
+def claim_name(doc):
+    """The next dN for a dimension or a feature value; never handed out again (counter kept in the file)."""
+    from incad.core import sketch
+    name = next_name(doc)
+    meta = dict(doc.Meta)
+    meta[sketch.NEXT_KEY] = str(int(name[1:]) + 1)
+    doc.Meta = meta
+    return name
 
 
 def refs(doc):
@@ -100,7 +111,7 @@ def _with_unit(doc, text, unit_kind):
 
 def new_feature_parameter(doc, text, unit_kind="length"):
     obj = _model_obj(doc, create=True)
-    name = next_name(doc)
+    name = claim_name(doc)
     obj.addProperty("App::PropertyQuantity", name, _GROUP)
     try:
         obj.setExpression(name, to_expression(doc, _with_unit(doc, text, unit_kind)))
