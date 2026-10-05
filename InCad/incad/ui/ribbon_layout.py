@@ -4,7 +4,7 @@ Modes: 'part' (an InCad Part is active), 'empty' (no document, or a file not mad
 
 LAYOUT = {
     "part": [
-        ["3D Model", [["Sketch", ["sketch.start"]]]],
+        ["3D Model", [["Sketch", ["sketch.start"]], ["Create", ["feature.extrude", "feature.revolve"]]]],
         ["Sketch", []],
         ["Inspect", []],
         ["Tools", [["Options", ["view.freecad"]]]],

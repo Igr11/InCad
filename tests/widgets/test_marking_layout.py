@@ -31,3 +31,5 @@ class MarkingLayoutTest(unittest.TestCase):
         self.assertEqual(marking_layout.LAYOUT["sketch"]["N"], "sketch.finish")
         self.assertEqual(marking_layout.LAYOUT["sketch"]["S"], "sketch.dimension")
         self.assertEqual(marking_layout.LAYOUT["part"]["N"], "sketch.start")
+        self.assertEqual(marking_layout.LAYOUT["part"]["S"], "feature.extrude")
+        self.assertEqual(marking_layout.LAYOUT["face"]["S"], "feature.extrude")

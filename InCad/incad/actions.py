@@ -152,7 +152,12 @@ def edit_feature():
         from incad.ui import shell
         shell.sketch_session().edit(obj)
     else:
-        log.report("info", "Editing features arrives with the feature tools (plan 1d)")
+        from incad import features
+        from incad.ui import shell
+        if features.kind_for(obj) is None:
+            log.report("info", "Editing this feature arrives with the next feature tools (plan 1d-2)")
+        else:
+            shell.edit_feature(obj)
 
 
 def toggle_nav_mode(mode):
@@ -173,6 +178,13 @@ def start_sketch():
 def finish_sketch():
     from incad.ui import shell
     shell.sketch_session().finish()
+
+
+def start_feature(kind_name):
+    from incad import features
+    from incad.ui import shell
+    kind = {k.__name__.rsplit(".", 1)[-1]: k for k in features.kinds()}[kind_name]
+    shell.start_feature(kind)
 
 
 def _std(cmd_id, label, icon):
@@ -216,6 +228,10 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Pick a plane or a flat face to sketch on"),
         Command(id="sketch.finish", label="Finish Sketch", icon="finish", handler=finish_sketch,
                 contexts=frozenset({"sketch"}), tooltip="Back to the 3D model (Esc)"),
+        Command(id="feature.extrude", label="Extrude", icon="extrude", handler=lambda: start_feature("extrude"),
+                shortcut="E", contexts=frozenset({"part"}), tooltip="Extrude a sketch profile"),
+        Command(id="feature.revolve", label="Revolve", icon="revolve", handler=lambda: start_feature("revolve"),
+                shortcut="R", contexts=frozenset({"part"}), tooltip="Revolve a sketch profile around an axis"),
     ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd: run_std(n)), shortcut=sc,
                  contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, sc) in SKETCHER.items()]
 

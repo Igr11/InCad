@@ -161,6 +161,13 @@ ICONS = {
                      '<path d="M25 4 V12 M21 8 H29" stroke="{A}" stroke-width="2.4" stroke-linecap="round"/>'),
     "slice": ('<path d="M4 21 L14 26 L28 18 L18 13 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
               '<path d="M3 15 H29" stroke="{R}" stroke-width="2" stroke-dasharray="4 2"/>'),
+    "extrude": ('<path d="M6 22 L6 12 L16 8 L26 11 L26 21 L14 25 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M6 12 L14 15 L26 11 M14 15 L14 25" fill="none" stroke="{S}" stroke-width="1.2"/>'
+                '<path d="M20 9 V2" stroke="{A}" stroke-width="2.2"/><path d="M17 5 L20 1 L23 5" fill="none" '
+                'stroke="{A}" stroke-width="2.2" stroke-linejoin="round"/>'),
+    "revolve": ('<ellipse cx="16" cy="9" rx="10" ry="3.5" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M6 9 V23 A10 3.5 0 0 0 26 23 V9" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M16 3 V29" stroke="{A}" stroke-width="1.6" stroke-dasharray="3 2"/>'),
 }
 
 PER_THEME = {"theme_toggle": {"light": MOON, "dark": SUN}}  # shows what a click switches to

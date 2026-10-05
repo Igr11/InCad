@@ -7,11 +7,11 @@ _EDGE = {"N": "view.look_at", "S": "view.zoom_selection", "E": "view.style_shade
 
 LAYOUT = {
     "part": {"N": "sketch.start", "NE": "edit.redo", "E": "view.style_shaded", "SE": "view.parameters",
-             "S": "view.zoom_all", "SW": "view.theme_toggle", "W": "view.style_wireframe", "NW": "edit.undo",
-             "list": ["view.home", "view.freecad"]},
+             "S": "feature.extrude", "SW": "view.theme_toggle", "W": "view.style_wireframe", "NW": "edit.undo",
+             "list": ["view.zoom_all", "view.home", "view.freecad"]},
     "face": {"N": "sketch.start", "NE": "view.look_at", "E": "view.style_shaded", "SE": "view.home",
-             "S": "view.zoom_selection", "SW": "view.zoom_all", "W": "view.style_wireframe", "NW": "edit.undo",
-             "list": []},
+             "S": "feature.extrude", "SW": "view.zoom_all", "W": "view.style_wireframe", "NW": "edit.undo",
+             "list": ["view.zoom_selection"]},
     "edge": dict(_EDGE),
     "vertex": dict(_EDGE),
     "sketch": {"N": "sketch.finish", "NE": "sketch.line", "E": "sketch.circle", "SE": "sketch.rectangle",
