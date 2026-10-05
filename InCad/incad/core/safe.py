@@ -40,6 +40,19 @@ def _broken(obj, check_shape):
     return ""
 
 
+def edit_open():
+    """True while FreeCAD has a sketch or feature task dialog open (GUI only)."""
+    try:
+        import FreeCAD as App
+        if not App.GuiUp:
+            return False
+        import FreeCADGui as Gui
+        gdoc = Gui.ActiveDocument
+        return bool(Gui.Control.activeDialog()) or (gdoc is not None and gdoc.getInEdit() is not None)
+    except Exception:
+        return False
+
+
 def run_safely(label, fn, doc=None):
     """Run fn() as one undo step named `label`. Never raises at the outermost level."""
     global _depth
@@ -54,6 +67,12 @@ def run_safely(label, fn, doc=None):
             msg = "%s failed: %s" % (label, e)
             log.report("error", msg, traceback.format_exc())
             return SafeResult(False, error=msg)
+    if edit_open():  # the open edit owns the pending transaction and its OK/Cancel
+        msg = "Finish or cancel the current edit before %s" % label
+        log.report("warning", msg)
+        return SafeResult(False, error=msg)
+    if doc.HasPendingTransaction:  # a stray (implicit) change: keep it as its own undo step, apart from ours
+        doc.commitTransaction()
     if not doc.UndoMode:
         doc.UndoMode = 1
     broken_before = {o.Name for o in doc.Objects if _broken(o, False)}

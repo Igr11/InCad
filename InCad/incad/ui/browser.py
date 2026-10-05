@@ -46,6 +46,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self._theme = theme
         self._nodes = []
         self._loading = False
+        self._params_enabled = True
         col = QtWidgets.QVBoxLayout(self)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
@@ -160,7 +161,8 @@ class ModelBrowser(QtWidgets.QWidget):
         return None
 
     def _top_feature(self, item):
-        while item.parent() is not None and item.parent().data(0, KIND_ROLE) != "part":
+        """The feature row an item belongs to: a direct child of the part row or of a solid-body row."""
+        while item.parent() is not None and item.parent().data(0, KIND_ROLE) not in ("part", "body"):
             item = item.parent()
         return item
 
@@ -223,7 +225,17 @@ class ModelBrowser(QtWidgets.QWidget):
             return item.text() if item else ""
         return [(text(r, 0), text(r, 1), text(r, 2)) for r in range(self.params.rowCount())]
 
+    def set_parameters_enabled(self, enabled):
+        """Parameters can only be edited in an InCad part (never add objects to a plain FreeCAD file)."""
+        self._params_enabled = enabled
+        self.add_button.setEnabled(enabled)
+        self.remove_button.setEnabled(enabled)
+        self.params.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed
+                                    if enabled else QtWidgets.QAbstractItemView.NoEditTriggers)
+
     def add_parameter_row(self):
+        if not self._params_enabled:
+            return -1
         self._loading = True
         try:
             r = self.params.rowCount()
@@ -237,7 +249,7 @@ class ModelBrowser(QtWidgets.QWidget):
         return r
 
     def _on_param_changed(self, item):
-        if self._loading:
+        if self._loading or not self._params_enabled:
             return
         r = item.row()
         name_item, value_item = self.params.item(r, 0), self.params.item(r, 1)
@@ -247,6 +259,8 @@ class ModelBrowser(QtWidgets.QWidget):
             self.parameterSet.emit(name, value)
 
     def remove_selected_parameter(self):
+        if not self._params_enabled:
+            return
         r = self.params.currentRow()
         if r < 0:
             return

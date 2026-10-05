@@ -83,6 +83,21 @@ class SafeTest(unittest.TestCase):
         r = safe.run_safely("Add body", lambda: self.doc.addObject("PartDesign::Body", "Body001"), self.doc)
         self.assertTrue(r.ok)
 
+    def test_stray_pending_transaction_is_kept_apart(self):
+        self.doc.openTransaction("User change")
+        self.doc.addObject("PartDesign::Body", "Edited")
+
+        def boom():
+            self.doc.addObject("PartDesign::Body", "Body")
+            raise RuntimeError("boom")
+
+        r = safe.run_safely("Boom", boom, self.doc)
+        self.assertFalse(r.ok)
+        self.assertIsNone(self.doc.getObject("Body"))
+        self.assertIsNotNone(self.doc.getObject("Edited"), "our rollback must not undo the user's change")
+        self.assertIn("User change", self.doc.UndoNames)
+        self.assertFalse(self.doc.HasPendingTransaction)
+
     def test_no_document_still_catches(self):
         for name in list(App.listDocuments()):
             App.closeDocument(name)

@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
 import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
-from incad.qt import QtGui, QtWidgets  # noqa: E402
+from incad.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from incad.core import commands, params, prefs  # noqa: E402
 from incad.ui import shell, theme  # noqa: E402
 
@@ -177,7 +177,48 @@ def test_8_activation_failure_restores():
         harness.pump(800)
 
 
+def test_9_no_reactivation_while_a_dialog_is_open():
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    s = shell.instance()
+    assert s.active
+    box = QtWidgets.QMessageBox(mw)
+    box.setText("Save changes?")
+    box.setWindowModality(QtCore.Qt.ApplicationModal)
+    box.open()
+    harness.pump(300)
+    s.eventFilter(mw, QtGui.QCloseEvent())  # what quitting with unsaved changes does first
+    harness.pump(800)
+    assert not s.active, "InCad came back behind the dialog"
+    box.reject()
+    harness.pump(1000)
+    assert s.active, "InCad should come back once the dialog is gone"
+
+
+def test_10_takeover_waits_for_an_open_edit():
+    Gui.activateWorkbench("PartDesignWorkbench")
+    harness.pump(800)
+    doc = App.newDocument("Edit")
+    body = doc.addObject("PartDesign::Body", "Body")
+    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+    doc.recompute()
+    Gui.ActiveDocument.setEdit(sketch.Name)
+    harness.pump(1000)
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(800)
+    s = shell.instance()
+    assert not s.active, "took over while a sketch was being edited"
+    assert mw.findChild(QtWidgets.QToolBar, "InCadTop") is None
+    Gui.ActiveDocument.resetEdit()
+    harness.pump(1500)
+    assert s.active, "InCad should open once the edit is finished"
+    App.closeDocument(doc.Name)
+    Gui.activateWorkbench("PartDesignWorkbench")
+    harness.pump(800)
+
+
 harness.run([test_0_baseline_in_partdesign, test_1_activate_takes_over, test_2_new_shortcut_moves_to_incad,
              test_3_reshown_toolbar_is_hidden_again, test_4_return_to_freecad_restores_everything,
              test_5_quit_path_restores_then_reactivates, test_6_restore_from_saved_snapshot_when_memory_lost,
-             test_7_recover_after_crash_at_startup, test_8_activation_failure_restores])
+             test_7_recover_after_crash_at_startup, test_8_activation_failure_restores,
+             test_9_no_reactivation_while_a_dialog_is_open, test_10_takeover_waits_for_an_open_edit])

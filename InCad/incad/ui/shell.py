@@ -76,6 +76,7 @@ class Shell(QtCore.QObject):
         self._menus = []
         self._observer = None
         self._refresh_pending = False
+        self._pending = False
 
     # ----- FreeCAD's own UI -----
     def _mdi(self):
@@ -160,9 +161,33 @@ class Shell(QtCore.QObject):
         self._hidden_by_us = set()
 
     # ----- activate / deactivate -----
+    @staticmethod
+    def _edit_open():
+        from incad.core import safe
+        return safe.edit_open()
+
+    def _activate_when_edit_done(self):
+        import FreeCADGui as Gui
+        if not self._pending:
+            return
+        wb = Gui.activeWorkbench()
+        if wb is None or wb.name() != "InCadWorkbench":
+            self._pending = False
+        elif self._edit_open():
+            QtCore.QTimer.singleShot(500, self._activate_when_edit_done)
+        else:
+            self._pending = False
+            self.activate()
+
     def activate(self):
         if self.active:
             return True
+        if self._edit_open():  # its OK/Cancel and its open transaction belong to FreeCAD: wait until it is finished
+            if not self._pending:
+                self._pending = True
+                self.mw.statusBar().showMessage("InCad opens when you finish or cancel the current edit")
+                QtCore.QTimer.singleShot(500, self._activate_when_edit_done)
+            return False
         stale = prefs.takeover_snapshot()
         try:
             self._snapshot = json.loads(stale) if stale else self._capture()
@@ -187,6 +212,7 @@ class Shell(QtCore.QObject):
         return True
 
     def deactivate(self):
+        self._pending = False
         if not self.active:
             return
         self.active = False
@@ -202,6 +228,9 @@ class Shell(QtCore.QObject):
 
     def _reactivate_if_still_open(self):
         import FreeCADGui as Gui
+        if QtWidgets.QApplication.activeModalWidget() is not None:  # e.g. "Save changes?" while quitting
+            QtCore.QTimer.singleShot(300, self._reactivate_if_still_open)
+            return
         wb = Gui.activeWorkbench()
         if self.mw.isVisible() and wb is not None and wb.name() == "InCadWorkbench":
             self.activate()
@@ -443,6 +472,7 @@ class Shell(QtCore.QObject):
         self.title.set_document_name(doc.Label if doc is not None else "")
         self.browser.set_nodes(tree.build(doc))
         self.browser.set_parameters(document.list_parameters(doc) if is_part else [])
+        self.browser.set_parameters_enabled(is_part)
         self.status.set_units(document.part_units(doc) if is_part else None)
         if is_part:
             bodies = document.bodies(doc)

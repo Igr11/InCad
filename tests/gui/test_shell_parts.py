@@ -78,9 +78,11 @@ def test_4_plain_file():
     harness.pump(800)
     labels = [r[1] for r in s().browser.tree_rows()]
     assert labels[:2] == ["Not an InCad part", "Convert to InCad Part"], labels
+    assert not s().browser.add_button.isEnabled(), "parameters must be locked in a plain FreeCAD file"
     s().browser.actionTriggered.emit("convert")
     harness.pump(800)
     assert document.is_incad_part(d)
+    assert s().browser.add_button.isEnabled()
     assert "Origin" in [r[1] for r in s().browser.tree_rows()]
 
 

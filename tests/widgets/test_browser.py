@@ -108,3 +108,40 @@ class ParametersFitTest(unittest.TestCase):
         qtapp.app().processEvents()
         self.assertEqual(b.params.horizontalScrollBar().maximum(), 0)
         b.hide()
+
+
+class MultiSolidTest(unittest.TestCase):
+    def test_end_of_part_on_second_solid_feature_names_that_feature(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_nodes([Node("part", "Bracket", children=[
+            Node("solids", "Solid Bodies (2)", children=[
+                Node("body", "Solid1", "Body"),
+                Node("body", "Solid2", "Body001", children=[
+                    Node("feature", "Pad001", "Pad001", children=[Node("sketch", "Sketch001", "Sketch001")]),
+                    Node("end_of_part", "End of Part")])]),
+            Node("feature", "Pad", "Pad")])])
+        seen = []
+        b.endOfPartMoved.connect(seen.append)
+        b.drop_end_of_part_on(b.item_by_label("Pad001"))
+        b.drop_end_of_part_on(b.item_by_label("Sketch001"))
+        dict(b.context_actions(b.item_by_label("Pad001")))["Move End of Part Here"]()
+        self.assertEqual(seen, ["Pad001", "Pad001", "Pad001"])
+
+
+class ParametersLockTest(unittest.TestCase):
+    def test_editing_disabled_outside_incad_parts(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        seen = []
+        b.parameterSet.connect(lambda n, t: seen.append(n))
+        b.set_parameters_enabled(False)
+        self.assertFalse(b.add_button.isEnabled())
+        self.assertFalse(b.remove_button.isEnabled())
+        self.assertEqual(b.add_parameter_row(), -1)
+        self.assertEqual(b.params.rowCount(), 0)
+        b.set_parameters_enabled(True)
+        r = b.add_parameter_row()
+        b.params.item(r, 0).setText("Gap")
+        b.params.item(r, 1).setText("1 mm")
+        self.assertEqual(seen, ["Gap"])
