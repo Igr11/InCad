@@ -40,3 +40,14 @@ class NavStripTest(unittest.TestCase):
         self.strip.place(QtCore.QRect(0, 0, 1000, 700))
         self.assertEqual(self.strip.x() + self.strip.width(), 1000 - 14)
         self.assertGreaterEqual(self.strip.y(), 140)
+
+
+class StripLooksTest(unittest.TestCase):
+    def test_buttons_have_an_explicit_background(self):
+        """macOS draws native (dark-mode) tool-button backgrounds unless the stylesheet sets one; offscreen tests
+        cannot show that, so pin the rule and check the real look with a screenshot."""
+        qtapp.app()
+        reg = Registry()
+        reg.register(Command(id="view.zoom_all", label="Zoom All", icon="zoom_all", handler=lambda: None))
+        qss = NavStrip(reg, "light").styleSheet().replace(" ", "")
+        self.assertIn("QToolButton{background:transparent;", qss)

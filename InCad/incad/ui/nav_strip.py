@@ -48,7 +48,7 @@ class NavStrip(QtWidgets.QFrame):
             b.setIcon(themes.icon(self._registry.get(cmd_id).icon, theme))
         self.setStyleSheet(
             "QFrame#InCadNavStrip {{ background: {panel}; border: 1px solid {border}; border-radius: 8px; }}"
-            " QToolButton {{ border: none; border-radius: 5px; padding: 3px; }}"
+            " QToolButton {{ background: transparent; border: none; border-radius: 5px; padding: 3px; }}"
             " QToolButton:hover, QToolButton:checked {{ background: {accent_soft}; }}".format(**p))
 
     def place(self, area_rect):

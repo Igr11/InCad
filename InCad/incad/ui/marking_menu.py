@@ -6,8 +6,9 @@ from incad.qt import QtCore, QtGui, QtWidgets, Signal
 from incad.ui import theme as themes
 from incad.ui.marking_layout import DIRECTIONS
 
-RADIUS = 92
+RADIUS = 70
 DEAD_ZONE = 18
+GAP = 6
 
 
 def direction_for(dx, dy, dead_zone=DEAD_ZONE):
@@ -16,6 +17,19 @@ def direction_for(dx, dy, dead_zone=DEAD_ZONE):
         return None
     angle = math.degrees(math.atan2(dx, -dy)) % 360
     return DIRECTIONS[int((angle + 22.5) // 45) % 8]
+
+
+def ring_rect(direction, w, h, radius=RADIUS):
+    """Rect of a w x h slot button relative to the centre: each button grows away from the centre (Inventor
+    style) and N/S sit clear of the diagonal buttons, so long labels never overlap."""
+    if direction in ("N", "S"):
+        dist = radius * math.sqrt(0.5) + h + GAP
+        return QtCore.QRect(int(-w / 2), int(-dist - h if direction == "N" else dist), w, h)
+    a = math.radians(DIRECTIONS.index(direction) * 45)
+    x, y = radius * math.sin(a), -radius * math.cos(a)
+    left = x if math.sin(a) > 0 else x - w
+    top = y - h if math.cos(a) > 0.3 else y if math.cos(a) < -0.3 else y - h / 2
+    return QtCore.QRect(int(left), int(top), w, h)
 
 
 class MarkingMenu(QtWidgets.QWidget):
@@ -29,30 +43,39 @@ class MarkingMenu(QtWidgets.QWidget):
         self._registry, self._theme = registry, theme
         self._buttons, self._slot_ids, self._list = {}, {}, []
         self._flick, self._flick_to, self._hot = False, None, None
-        width = 2 * RADIUS + 220
-        self._center = QtCore.QPoint(width // 2, RADIUS + 40)
-        self.resize(width, self._center.y() + RADIUS + 50 + 30 * len(items))
         p = themes.PALETTES[theme]
         self.setStyleSheet(
             "QToolButton {{ background: {panel}; color: {text}; border: 1px solid {border}; border-radius: 8px;"
             " padding: 4px 10px; }} QToolButton:hover, QToolButton[hot=\"true\"] {{ background: {accent};"
             " color: {selection_text}; }}".format(**p))
+        placed = []
         for direction, cmd in slots:
             b = self._make_button(cmd)
-            a = math.radians(DIRECTIONS.index(direction) * 45)
-            x = self._center.x() + RADIUS * math.sin(a)
-            y = self._center.y() - RADIUS * math.cos(a)
-            b.move(int(x - b.width() / 2), int(y - b.height() / 2))
+            placed.append((b, ring_rect(direction, b.width(), b.height())))
             self._buttons[direction] = b
             self._slot_ids[direction] = cmd.id
-        y = self._center.y() + RADIUS + 34
         for cmd in items:
             b = self._make_button(cmd)
             b.setMinimumWidth(170)
             b.adjustSize()
-            b.move(self._center.x() - b.width() // 2, y)
-            y += b.height() + 2
             self._list.append(b)
+        # lay everything out around the centre (0, 0), then shift it into the widget
+        boxes = [r for _, r in placed] + [QtCore.QRect(-DEAD_ZONE, -DEAD_ZONE, 2 * DEAD_ZONE, 2 * DEAD_ZONE)]
+        left = min(r.left() for r in boxes)
+        right = max(r.right() for r in boxes)
+        top = min(r.top() for r in boxes)
+        bottom = max(r.bottom() for r in boxes)
+        list_width = max([b.width() for b in self._list], default=0)
+        left, right = min(left, -list_width // 2), max(right, list_width // 2)
+        pad = 12
+        self._center = QtCore.QPoint(-left + pad, -top + pad)
+        for b, r in placed:
+            b.move(r.topLeft() + self._center)
+        y = bottom + 16
+        for b in self._list:
+            b.move(self._center.x() - b.width() // 2, self._center.y() + y)
+            y += b.height() + 2
+        self.resize(right - left + 2 * pad, (y if self._list else bottom) - top + 2 * pad)
 
     def _make_button(self, cmd):
         b = QtWidgets.QToolButton(self)

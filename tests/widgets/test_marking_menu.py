@@ -71,3 +71,22 @@ class MarkingMenuTest(unittest.TestCase):
         QTest.keyClick(self.menu, QtCore.Qt.Key_Escape)
         self.assertFalse(self.menu.isVisible())
         self.assertEqual(self.ran, [])
+
+
+class RingSpacingTest(unittest.TestCase):
+    def test_eight_long_labels_never_overlap(self):
+        qtapp.app()
+        reg = Registry()
+        from incad.ui.marking_layout import DIRECTIONS
+        slots = []
+        for d in DIRECTIONS:
+            cmd = reg.register(Command(id=d, label="Zoom Selection " + d, icon="incad", handler=lambda: None))
+            slots.append((d, cmd))
+        menu = MarkingMenu(reg, slots, [], "light")
+        menu.show_at(QtCore.QPoint(600, 500))
+        rects = {d: menu.button(d).geometry() for d in DIRECTIONS}
+        clashes = [(a, b) for i, a in enumerate(DIRECTIONS) for b in DIRECTIONS[i + 1:] if rects[a].intersects(rects[b])]
+        menu.close()
+        self.assertEqual(clashes, [])
+        for d, r in rects.items():
+            self.assertTrue(menu.rect().contains(r), d)
