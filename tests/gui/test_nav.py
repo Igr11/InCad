@@ -139,7 +139,8 @@ def test_5_right_click_on_empty_space():
     close_menu()
 
 
-def test_6_flick_north_runs_home_view():
+def test_6_flick_north_starts_a_sketch():
+    Gui.Selection.clearSelection()  # with a face selected, New Sketch would sketch on it (as in Inventor)
     ran = []
     original = commands.REGISTRY.run
     commands.REGISTRY.run = lambda i: (ran.append(i), original(i))[1]
@@ -156,7 +157,9 @@ def test_6_flick_north_runs_home_view():
         harness.pump(300)
     finally:
         commands.REGISTRY.run = original
-    assert ran == ["view.home"], ran
+    assert ran == ["sketch.start"], ran
+    shell.sketch_session().cancel_pick()
+    assert shell.sketch_session().editing() is None
 
 
 def test_7_browser_marking_menu_suppress():
@@ -260,7 +263,7 @@ def test_11_leaving_incad_restores_navigation():
 
 harness.run([test_0_setup, test_1_navigation_installed, test_2_left_click_still_selects,
              test_3_left_right_drag_orbits_without_selecting, test_4_right_click_on_face,
-             test_5_right_click_on_empty_space, test_6_flick_north_runs_home_view, test_7_browser_marking_menu_suppress,
+             test_5_right_click_on_empty_space, test_6_flick_north_starts_a_sketch, test_7_browser_marking_menu_suppress,
              test_8_strip_orbit_tool, test_9_navicube_follows_theme, test_10_navigation_off_and_on,
              test_12_minimize_and_restore_keeps_the_3d_view, test_13_cmd_click_adds_to_selection,
              test_14_strip_stays_on_top_with_two_documents, test_11_leaving_incad_restores_navigation])

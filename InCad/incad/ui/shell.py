@@ -5,13 +5,15 @@ import json
 import traceback
 
 from incad.core import commands, log, prefs
-from incad.qt import QtCore, QtGui, QtWidgets
+from incad.qt import QAction, QtCore, QtGui, QtWidgets
 from incad.ui import ribbon_layout
 from incad.ui import theme as themes
 from incad.ui.browser import ModelBrowser
 from incad.ui.ribbon import Ribbon
 from incad.ui.statusbar import StatusBar
 from incad.ui.titlebar import TitleStrip
+from incad.ui.sketch_session import SketchSession
+from incad.ui.value_box import ValueBox
 from incad.ui import marking_layout
 from incad.ui.marking_menu import MarkingMenu
 from incad.ui.nav import Navigator, to_coin
@@ -41,8 +43,9 @@ def _std_new_actions():
 class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
-    def __init__(self, callback):
+    def __init__(self, callback, sketch_callback=None):
         self.callback = callback
+        self.sketch_callback = sketch_callback
 
     def slotCreatedDocument(self, doc):
         self.callback()
@@ -64,6 +67,9 @@ class _DocObserver:
 
     def slotChangedObject(self, obj, prop):
         self.callback()
+        if prop in ("Constraints", "Geometry") and getattr(obj, "TypeId", "") == "Sketcher::SketchObject" \
+                and self.sketch_callback is not None:
+            self.sketch_callback(obj)
 
     def slotRecomputedDocument(self, doc):
         self.callback()
@@ -85,6 +91,10 @@ class Shell(QtCore.QObject):
         self._pending = False
         self.navigator = None
         self.strip = None
+        self.sketches = SketchSession(on_change=self.schedule_refresh)
+        self.value_box = None
+        self._shortcuts = {}
+        self._geometry_counts = {}
         self.marking_menu = None
         self.menu_kind = None
 
@@ -117,6 +127,7 @@ class Shell(QtCore.QObject):
             "toolbar_params": params.snapshot_group(TOOLBAR_GROUP),
             "nav": params.snapshot(themes.VIEW_GROUP, NAV_KEYS),
             "navicube": params.snapshot(themes.NAVICUBE_GROUP, themes.NAVICUBE_KEYS),
+            "sketch": {g: params.snapshot(g, keys) for g, keys in themes.SKETCH_KEYS.items()},
             "std_new": new[0].shortcut().toString() if new else "",
             "mdi": [mdi.viewMode().name, mdi.tabPosition().name] if mdi is not None else None,
         }
@@ -164,6 +175,7 @@ class Shell(QtCore.QObject):
             ("navigation", lambda: params.restore(themes.VIEW_GROUP, snap["nav"]) if "nav" in snap else None),
             ("ViewCube colors", lambda: params.restore(themes.NAVICUBE_GROUP, snap["navicube"])
              if "navicube" in snap else None),
+            ("Sketcher settings", lambda: [params.restore(g, v) for g, v in snap.get("sketch", {}).items()]),
             ("New shortcut", lambda: [a.setShortcut(QtGui.QKeySequence(snap.get("std_new") or "Ctrl+N"))
                                       for a in _std_new_actions()]),
             ("document tabs", lambda: self._restore_mdi(snap.get("mdi"))),
@@ -178,8 +190,15 @@ class Shell(QtCore.QObject):
     # ----- activate / deactivate -----
     @staticmethod
     def _edit_open():
-        from incad.core import safe
-        return safe.edit_open()
+        """An edit InCad cannot take over: anything but a sketch in an InCad part (InCad's sketch mode handles those)."""
+        import FreeCADGui as Gui
+        from incad.core import document, safe, sketch
+        gdoc = Gui.ActiveDocument
+        vp = gdoc.getInEdit() if gdoc is not None else None
+        obj = getattr(vp, "Object", None)
+        if sketch.is_sketch(obj) and document.is_incad_part(obj.Document):
+            return False
+        return vp is not None or safe.edit_open()
 
     def _activate_when_edit_done(self):
         import FreeCADGui as Gui
@@ -306,6 +325,12 @@ class Shell(QtCore.QObject):
             self.strip = NavStrip(self.registry, self.theme, mdi.viewport())
             self.strip.place(mdi.viewport().rect())
             self.strip.show()
+        self.browser.parameterRenamed.connect(self._on_parameter_renamed)
+        self.browser.parameterClicked.connect(self._on_parameter_clicked)
+        self.status.dofClicked.connect(lambda: self.registry.run("sketch.show_dof"))
+        self.navigator.click_hook = self._click_hook
+        self.navigator.dblclick_hook = self._dblclick_hook
+        self._build_shortcuts()
 
     def _build_menus(self):
         bar = self.mw.menuBar()
@@ -335,6 +360,15 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
+        self.sketches.cancel_pick()
+        self._close_value_box()
+        for act in self._shortcuts.values():
+            try:
+                self.mw.removeAction(act)
+                act.deleteLater()
+            except RuntimeError:
+                pass
+        self._shortcuts = {}
         self._remove_hooks()
         self._remove_menus()
         for w in self._widgets:
@@ -380,6 +414,12 @@ class Shell(QtCore.QObject):
             act.setCheckable(True)
             act.setChecked(current == value)
             act.triggered.connect(lambda _=False, v=value: self._set_new_units(v))
+        dims = menu.addMenu("Dimension Display")
+        for value, label in (("value", "Value (40)"), ("name", "Name (d3)"), ("expression", "Expression (d3 = 40)")):
+            act = dims.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(prefs.dimension_display() == value)
+            act.triggered.connect(lambda _=False, v=value: (prefs.set_dimension_display(v), self.apply_theme()))
         nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
         nav_act.setCheckable(True)
         nav_act.setChecked(prefs.navigation_enabled())
@@ -415,6 +455,8 @@ class Shell(QtCore.QObject):
         if self.strip is not None:
             self.strip.set_theme(self.theme)
         params.write(themes.NAVICUBE_GROUP, themes.navicube_params(self.theme))
+        for group, values in themes.sketch_params(self.theme, prefs.dimension_display()).items():
+            params.write(group, values)
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
 
     def set_navigation(self, enabled):
@@ -466,6 +508,8 @@ class Shell(QtCore.QObject):
         import FreeCAD as App
         import FreeCADGui as Gui
         from incad.core import context, document
+        if self.sketches.editing() is not None:
+            return self._show_marking_menu("sketch", global_pos, flick)
         doc = App.ActiveDocument
         info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
         context.set_target(None)
@@ -483,6 +527,125 @@ class Shell(QtCore.QObject):
         context.set_target(name)
         self._show_marking_menu("browser", global_pos)
 
+    # ----- sketching -----
+    def _build_shortcuts(self):
+        """Single-key shortcuts (Inventor defaults) for registry commands; enabled per mode in _refresh."""
+        menu_owned = {"file.new"}
+        for cmd_id in self.registry.ids():
+            cmd = self.registry.get(cmd_id)
+            if not cmd.shortcut or cmd_id in menu_owned:
+                continue
+            act = QAction(cmd.label, self.mw)
+            act.setShortcut(QtGui.QKeySequence(cmd.shortcut))
+            act.setShortcutContext(QtCore.Qt.WindowShortcut)
+            act.triggered.connect(lambda _=False, i=cmd_id: self.registry.run(i))
+            self.mw.addAction(act)
+            self._shortcuts[cmd_id] = act
+        self._esc = QAction("Cancel", self.mw)
+        self._esc.setShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape))
+        self._esc.setEnabled(False)
+        self._esc.triggered.connect(self.sketches.cancel_pick)
+        self.mw.addAction(self._esc)
+        self._shortcuts["_esc"] = self._esc
+
+    def shortcut_action(self, cmd_id):
+        return self._shortcuts.get(cmd_id)
+
+    def _sketch_changed(self, sk):
+        """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
+        QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
+
+    def _name_dimensions(self, sk):
+        from incad.core import document
+        from incad.core import sketch as sketches
+        try:
+            doc = sk.Document
+            if not document.is_incad_part(doc):
+                return
+            count = sk.GeometryCount
+            drawn = count != self._geometry_counts.get(sk.Name, count)
+            self._geometry_counts[sk.Name] = count
+            added = sketches.name_new_dimensions(doc)
+        except Exception as e:
+            log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
+            return
+        if len(added) == 1 and not drawn and self.sketches.editing() is sk:
+            self.open_value_box(sk, added[0])
+
+    def open_value_box(self, sk, name):
+        from incad.core import sketch as sketches
+        self._close_value_box()
+        expr = sketches._expression_of(sk, "Constraints." + name)
+        text = sketches.to_display(sk.Document, expr) if expr else \
+            sketches.document._format(sk.getDatum(name))
+        box = ValueBox(name, text, self.theme, self.mw)
+        box.applied.connect(self._on_value_applied)
+        box.closed.connect(lambda: self._value_box_closed(box))
+        self.value_box = box
+        box.show_near(QtGui.QCursor.pos())
+
+    def _close_value_box(self):
+        if self.value_box is not None:
+            try:
+                self.value_box.close()
+            except RuntimeError:
+                pass
+            self.value_box = None
+
+    def _value_box_closed(self, box):
+        if self.value_box is box:
+            self.value_box = None
+
+    def _on_value_applied(self, name, text):
+        self._on_parameter_set(name, text)
+
+    def _on_parameter_renamed(self, old, new):
+        from incad.core import safe
+        from incad.core import sketch as sketches
+        doc = self._doc()
+        if doc is not None:
+            safe.run_safely("Rename %s" % old, lambda: sketches.rename_dimension(doc, old, new), doc)
+        self.schedule_refresh()
+
+    def _on_parameter_clicked(self, name):
+        if self.value_box is not None:
+            self.value_box.insert(name)
+
+    @staticmethod
+    def _preselected_dimension():
+        """(sketch, name) of the dimension under the cursor, or (None, None)."""
+        import FreeCADGui as Gui
+        pre = Gui.Selection.getPreselection()
+        obj = getattr(pre, "Object", None)
+        subs = getattr(pre, "SubElementNames", ()) or ()
+        if obj is None or obj.TypeId != "Sketcher::SketchObject":
+            return None, None
+        for sub in subs:
+            if sub.startswith("Constraint"):
+                try:
+                    c = obj.Constraints[int(sub[len("Constraint"):]) - 1]
+                except (ValueError, IndexError):
+                    continue
+                if c.Name:
+                    return obj, c.Name
+        return None, None
+
+    def _click_hook(self, view, viewport, x, y):
+        if self.value_box is None:
+            return False
+        sk, name = self._preselected_dimension()
+        if name is None:
+            return False
+        self.value_box.insert(name)
+        return True
+
+    def _dblclick_hook(self, view, viewport, x, y):
+        sk, name = self._preselected_dimension()
+        if name is None or self.sketches.editing() is None:
+            return False
+        self.open_value_box(sk, name)
+        return True
+
     # ----- hooks -----
     def _install_hooks(self):
         import FreeCAD as App
@@ -490,7 +653,7 @@ class Shell(QtCore.QObject):
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
-        self._observer = _DocObserver(self.schedule_refresh)
+        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
@@ -601,20 +764,36 @@ class Shell(QtCore.QObject):
         from incad.core import document, tree
         doc = App.ActiveDocument
         is_part = document.is_incad_part(doc)
-        self.ribbon.set_mode("part" if is_part else "empty")
+        editing = self.sketches.editing() if is_part else None
+        mode = "sketch" if editing is not None else "part" if is_part else "empty"
+        self.ribbon.set_mode(mode)
         self.title.set_document_name(doc.Label if doc is not None else "")
         self.browser.set_nodes(tree.build(doc))
-        self.browser.set_parameters(document.list_parameters(doc) if is_part else [])
+        from incad.core import sketch as sketches
+        self.browser.set_parameters(document.list_parameters(doc) if is_part else [],
+                                    sketches.model_parameters(doc) if is_part else [])
         self.browser.set_parameters_enabled(is_part)
         self.status.set_units(document.part_units(doc) if is_part else None)
+        self.status.set_dof(editing.DoF if editing is not None else None)
         if is_part:
             bodies = document.bodies(doc)
             features = sum(1 for b in bodies for o in b.Group if o.TypeId != "Sketcher::SketchObject")
             self.status.set_stats(len(bodies), features)
-            self.status.set_prompt("Ready")
+            if editing is not None:
+                self.status.set_prompt("Sketch: draw and dimension, then Finish Sketch (Esc)")
+            elif self.sketches.picking:
+                self.status.set_prompt("Pick a plane or a flat face for the new sketch (Esc cancels)")
+            else:
+                self.status.set_prompt("Ready")
         else:
             self.status.set_stats(None, None)
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
+        for cmd_id, act in self._shortcuts.items():
+            if cmd_id == "_esc":
+                act.setEnabled(self.sketches.picking)
+                continue
+            ctx = self.registry.get(cmd_id).contexts
+            act.setEnabled(commands.ANY in ctx or mode in ctx)
         if self.navigator is not None and prefs.navigation_enabled():
             self.navigator.attach_all()
         if self.strip is not None:
@@ -628,7 +807,9 @@ class Shell(QtCore.QObject):
         return App.ActiveDocument
 
     def _on_feature_activated(self, name):
-        self.status.show_message("info", "Editing features arrives with the feature tools (next InCad stage).")
+        from incad.core import context
+        context.set_target(name)
+        self.registry.run("browser.edit")
 
     def _on_end_of_part_moved(self, name):
         from incad.core import document, safe
@@ -654,9 +835,13 @@ class Shell(QtCore.QObject):
 
     def _on_parameter_set(self, name, text):
         from incad.core import document, safe
+        from incad.core import sketch as sketches
         doc = self._doc()
         if doc is not None:
-            safe.run_safely("Set %s" % name, lambda: document.set_parameter(doc, name, text), doc)
+            if sketches.find_dimension(doc, name)[0] is not None:
+                safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text), doc)
+            else:
+                safe.run_safely("Set %s" % name, lambda: document.set_parameter(doc, name, text), doc)
         self.schedule_refresh()
 
     def _on_parameter_removed(self, name):
@@ -723,3 +908,9 @@ def nav_mode():
     if _shell is not None and _shell.active and _shell.navigator is not None:
         return _shell.navigator.mode
     return None
+
+
+def sketch_session():
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    return _shell.sketches
