@@ -62,7 +62,20 @@ def _features(body):
         out.append(node)
         if obj is tip or (prof is not None and prof is tip):
             out.append(Node("end_of_part", "End of Part"))
-    return out
+    return _work_in_progress_above_end(out)
+
+
+def _work_in_progress_above_end(nodes):
+    """Sketches right after End of Part that no feature uses yet are work in progress: Inventor shows them above
+    the marker (FreeCAD never makes a sketch the Tip)."""
+    marker = next((i for i, n in enumerate(nodes) if n.kind == "end_of_part"), None)
+    if marker is None:
+        return nodes
+    j = marker + 1
+    while j < len(nodes) and nodes[j].kind == "sketch" and nodes[j].state in ("", "rolled_back"):
+        nodes[j].state = ""
+        j += 1
+    return nodes[:marker] + nodes[marker + 1:j] + [nodes[marker]] + nodes[j:]
 
 
 def _origin(body):

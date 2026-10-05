@@ -32,10 +32,11 @@ class TreeTest(unittest.TestCase):
         self.assertEqual(r[0], (0, "part", self.doc.Label, ""))
         self.assertEqual(r[1][:3], (1, "origin", "Origin"))
         self.assertIn("XY Plane", [x[2] for x in r])
+        # a sketch no feature uses yet, right after the Tip, is work in progress: shown above End of Part (Inventor)
         self.assertEqual([x[:3] for x in body_rows(self.doc)],
-                         [(1, "feature", "Pad"), (2, "sketch", "Sketch"), (1, "end_of_part", "End of Part"),
-                          (1, "sketch", "Loose")])
-        self.assertEqual(body_rows(self.doc)[-1][3], "rolled_back")
+                         [(1, "feature", "Pad"), (2, "sketch", "Sketch"), (1, "sketch", "Loose"),
+                          (1, "end_of_part", "End of Part")])
+        self.assertEqual(body_rows(self.doc)[2][3], "")
 
     def test_end_of_part_at_top(self):
         body, pad = util.padded_part(self.doc, 10, incad=True)
@@ -85,3 +86,10 @@ class TreeTest(unittest.TestCase):
         sk = self.doc.getObject("Sketch")
         node = [n for d, n in nodes.flatten(tree.build(self.doc)) if n.label == "Sketch"][0]
         self.assertEqual(node.detail, "✓" if sk.FullyConstrained else "%d DOF" % sk.DoF)
+
+    def test_new_sketch_in_an_empty_part_is_above_end_of_part(self):
+        body = document.make_part(self.doc)
+        util.add_rect_sketch(body, name="First")
+        self.doc.recompute()
+        self.assertEqual([x[:4] for x in body_rows(self.doc)],
+                         [(1, "sketch", "First", ""), (1, "end_of_part", "End of Part", "")])
