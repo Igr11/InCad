@@ -42,6 +42,7 @@ class ModelBrowser(QtWidgets.QWidget):
     actionTriggered = Signal(str)
     parameterSet = Signal(str, str)
     parameterRemoved = Signal(str)
+    markingMenuRequested = Signal(str, QtCore.QPoint)  # object name, global position
 
     def __init__(self, theme="light", parent=None):
         super().__init__(parent)
@@ -180,23 +181,12 @@ class ModelBrowser(QtWidgets.QWidget):
         elif kind in ("origin", "solids", "part"):
             self.endOfPartMoved.emit("")
 
-    def context_actions(self, item):
-        kind = item.data(0, KIND_ROLE)
-        if kind not in ("feature", "sketch"):
-            return []
-        name = item.data(0, NAME_ROLE)
-        return [("Edit", lambda: self.featureActivated.emit(name)),
-                ("Move End of Part Here", lambda: self.drop_end_of_part_on(item))]
-
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
-        actions = self.context_actions(item) if item is not None else []
-        if not actions:
+        if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch"):
             return
-        menu = QtWidgets.QMenu(self)
-        for text, fn in actions:
-            menu.addAction(text).triggered.connect(lambda _=False, f=fn: f())
-        menu.exec(self.tree.viewport().mapToGlobal(pos))
+        self.tree.setCurrentItem(item)
+        self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
 
     def _on_double_click(self, item, _column=0):
         kind = item.data(0, KIND_ROLE)

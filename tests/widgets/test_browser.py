@@ -53,12 +53,18 @@ class BrowserTest(unittest.TestCase):
         self.assertEqual(self.events, [("endOfPartMoved", "Fillet"), ("endOfPartMoved", "Pad"),
                                        ("endOfPartMoved", "")])
 
-    def test_context_actions(self):
-        texts = [t for t, _ in self.b.context_actions(self.b.item_by_label("Fillet1"))]
-        self.assertEqual(texts, ["Edit", "Move End of Part Here"])
-        dict(self.b.context_actions(self.b.item_by_label("Fillet1")))["Move End of Part Here"]()
-        self.assertEqual(self.events, [("endOfPartMoved", "Fillet")])
-        self.assertEqual(self.b.context_actions(self.b.item_by_label("Origin")), [])
+    def test_right_click_requests_marking_menu(self):
+        seen = []
+        self.b.markingMenuRequested.connect(lambda name, pos: seen.append(name))
+        self.b.resize(260, 500)
+        self.b.show()
+        qtapp.app().processEvents()
+        for label in ("Fillet1", "Origin"):
+            rect = self.b.tree.visualItemRect(self.b.item_by_label(label))
+            self.b._on_context_menu(rect.center())
+        self.b.hide()
+        self.assertEqual(seen, ["Fillet"])
+        self.assertEqual(self.b.tree.currentItem().text(0), "Fillet1")
 
     def test_actions_for_plain_file(self):
         self.b.set_nodes([Node("message", "Not an InCad part"), Node("action", "Convert to InCad Part", "convert")])
@@ -125,8 +131,7 @@ class MultiSolidTest(unittest.TestCase):
         b.endOfPartMoved.connect(seen.append)
         b.drop_end_of_part_on(b.item_by_label("Pad001"))
         b.drop_end_of_part_on(b.item_by_label("Sketch001"))
-        dict(b.context_actions(b.item_by_label("Pad001")))["Move End of Part Here"]()
-        self.assertEqual(seen, ["Pad001", "Pad001", "Pad001"])
+        self.assertEqual(seen, ["Pad001", "Pad001"])
 
 
 class ParametersLockTest(unittest.TestCase):
