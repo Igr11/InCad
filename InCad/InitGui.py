@@ -13,16 +13,40 @@ class InCadWorkbench(Gui.Workbench):
         self.__class__.Icon = os.path.join(os.path.dirname(incad.__file__), "resources", "icons", "light", "incad.svg")
 
     def Initialize(self):
-        pass
+        from incad import actions
+        actions.register_all()
 
     def Activated(self):
-        pass
+        from incad import actions
+        from incad.ui import shell
+        actions.register_all()
+        shell.activate()
 
     def Deactivated(self):
-        pass
+        from incad.ui import shell
+        shell.deactivate()
 
     def GetClassName(self):
         return "Gui::PythonWorkbench"
 
 
+def _incad_startup():
+    """Remember the last non-InCad workbench (for ⇄ FreeCAD) and repair FreeCAD's UI after a crash."""
+    try:
+        from incad.core import prefs
+        from incad.qt import QtCore
+        from incad.ui import shell
+
+        def remember(name):
+            if name != "InCadWorkbench":
+                prefs.set_last_workbench(name)
+
+        Gui.getMainWindow().workbenchActivated.connect(remember)
+        QtCore.QTimer.singleShot(1500, shell.recover_after_crash)
+    except Exception as e:
+        import FreeCAD
+        FreeCAD.Console.PrintWarning("InCad startup hooks failed: %s\n" % e)
+
+
 Gui.addWorkbench(InCadWorkbench())
+_incad_startup()

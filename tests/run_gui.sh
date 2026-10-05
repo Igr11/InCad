@@ -12,7 +12,13 @@ for f in $files; do
   INCAD_REPO="$REPO" INCAD_GUI_OUT="$OUT" INCAD_LOG="$TMP/incad.log" PYTHONDONTWRITEBYTECODE=1 \
     "$FC" -u "$TMP/user.cfg" "${f:A}" >"$TMP/fc.log" 2>&1 &
   pid=$!
-  for i in {1..180}; do kill -0 $pid 2>/dev/null || break; sleep 1; done
+  for i in {1..180}; do
+    kill -0 $pid 2>/dev/null || break
+    if grep -q "Exception while processing file" "$TMP/fc.log"; then  # the test script itself failed to load
+      kill $pid; pkill -f "$TMP/user.cfg"; grep "Exception while processing file" "$TMP/fc.log"; echo "SCRIPT ERROR"; rc=1; continue 2
+    fi
+    sleep 1
+  done
   if kill -0 $pid 2>/dev/null; then
     kill $pid; pkill -f "$TMP/user.cfg"; echo "TIMEOUT — log: $TMP/fc.log"; rc=1; continue
   fi

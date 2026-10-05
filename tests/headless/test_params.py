@@ -21,3 +21,19 @@ class ParamsTest(unittest.TestCase):
         self.assertEqual(p.GetUnsigned("Color", 0), 0x112233FF)
         names = {c[1] for c in (p.GetContents() or [])}
         self.assertNotIn("New", names)
+
+
+class GroupSnapshotTest(unittest.TestCase):
+    def test_whole_group_bools_restored(self):
+        group = GROUP + "/Toolbars"
+        p = App.ParamGet(group)
+        p.SetBool("File", True)
+        p.SetBool("Edit", False)
+        snap = params.snapshot_group(group)
+        p.SetBool("File", False)
+        p.SetBool("Edit", True)
+        p.SetBool("Added", False)
+        params.restore(group, snap)
+        self.assertTrue(p.GetBool("File", False))
+        self.assertFalse(p.GetBool("Edit", True))
+        self.assertFalse(p.GetBool("Added", True))  # entries created later are left alone

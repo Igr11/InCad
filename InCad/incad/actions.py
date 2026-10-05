@@ -7,8 +7,9 @@ STD_COMMANDS = {
     "file.open": "Std_Open", "file.save": "Std_Save", "file.save_as": "Std_SaveAs",
     "file.close": "Std_CloseActiveWindow", "edit.undo": "Std_Undo", "edit.redo": "Std_Redo",
     "view.zoom_all": "Std_ViewFitAll", "view.home": "Std_ViewHome",
-    "view.style_shaded": "Std_DrawStyleFlatLines", "view.style_wireframe": "Std_DrawStyleWireframe",
+    "view.style_shaded": "Std_DrawStyle", "view.style_wireframe": "Std_DrawStyle",
 }
+STD_INDEX = {"view.style_shaded": 6, "view.style_wireframe": 2}  # Std_DrawStyle items: 6 Flat lines, 2 Wireframe
 
 
 def _gui():
@@ -16,8 +17,8 @@ def _gui():
     return FreeCADGui
 
 
-def run_std(name):
-    _gui().runCommand(name, 0)
+def run_std(name, index=0):
+    _gui().runCommand(name, index)
 
 
 def ask_new():
@@ -72,8 +73,8 @@ def focus_parameters():
 
 
 def _std(cmd_id, label, icon):
-    name = STD_COMMANDS[cmd_id]
-    return Command(id=cmd_id, label=label, icon=icon, handler=lambda: run_std(name))
+    name, index = STD_COMMANDS[cmd_id], STD_INDEX.get(cmd_id, 0)
+    return Command(id=cmd_id, label=label, icon=icon, handler=lambda: run_std(name, index))
 
 
 def commands():

@@ -28,3 +28,15 @@ def restore(group, snap):
             getattr(p, "Set" + kind)(name, value)
         else:
             getattr(p, "Rem" + kind)(name)
+
+
+_KINDS = {"Boolean": "Bool", "Unsigned Long": "Unsigned", "Integer": "Int", "Float": "Float", "String": "String"}
+
+
+def snapshot_group(group):
+    """Every value currently in `group`, in the same form as snapshot()."""
+    out = {}
+    for kind, name, value in App.ParamGet(group).GetContents() or []:
+        if kind in _KINDS:
+            out[name] = [_KINDS[kind], True, value]
+    return out
