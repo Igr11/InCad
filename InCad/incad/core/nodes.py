@@ -9,6 +9,7 @@ class Node:
     name: str = ""     # FreeCAD object name; for 'action' nodes the action id
     state: str = ""    # '' | 'error' | 'suppressed' | 'rolled_back'
     tooltip: str = ""
+    detail: str = ""   # shown after the label (e.g. a sketch's DOF)
     children: list = field(default_factory=list)
 
 

@@ -35,7 +35,13 @@ def _tooltip(obj, state):
 def _obj_node(obj, rolled_back):
     state = _state(obj, rolled_back)
     kind = "sketch" if obj.TypeId == "Sketcher::SketchObject" else "feature"
-    return Node(kind, obj.Label, obj.Name, state, _tooltip(obj, state))
+    node = Node(kind, obj.Label, obj.Name, state, _tooltip(obj, state))
+    if kind == "sketch":
+        try:
+            node.detail = "✓" if obj.FullyConstrained else "%d DOF" % obj.DoF
+        except Exception:
+            node.detail = ""
+    return node
 
 
 def _features(body):

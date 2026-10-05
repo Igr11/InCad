@@ -79,3 +79,9 @@ class TreeTest(unittest.TestCase):
 
     def test_plain_empty_file(self):
         self.assertEqual([n.kind for n in tree.build(self.doc)], ["message", "action"])
+
+    def test_sketch_detail(self):
+        body, pad = util.padded_part(self.doc, 10, incad=True)
+        sk = self.doc.getObject("Sketch")
+        node = [n for d, n in nodes.flatten(tree.build(self.doc)) if n.label == "Sketch"][0]
+        self.assertEqual(node.detail, "✓" if sk.FullyConstrained else "%d DOF" % sk.DoF)

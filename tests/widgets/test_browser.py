@@ -203,3 +203,47 @@ class ParametersTypingTest(unittest.TestCase):
         self.assertIn("InCad part", b.add_button.toolTip())
         b.set_parameters_enabled(True)
         self.assertEqual(b.add_button.toolTip(), "Add parameter")
+
+
+class ModelParametersTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.b = ModelBrowser("light")
+        self.b.set_parameters([("Width", "", "80 mm")], [("d0", "", "40 mm"), ("d1", "d0 * 2", "80 mm")])
+        self.events = []
+        self.b.parameterSet.connect(lambda n, t: self.events.append(("set", n, t)))
+        self.b.parameterRenamed.connect(lambda o, n: self.events.append(("rename", o, n)))
+        self.b.parameterClicked.connect(lambda n: self.events.append(("click", n)))
+        self.b.parameterRemoved.connect(lambda n: self.events.append(("remove", n)))
+
+    def test_model_rows_first(self):
+        self.assertEqual(self.b.parameter_rows(),
+                         [("d0", "40 mm", "40 mm"), ("d1", "d0 * 2", "80 mm"), ("Width", "80 mm", "80 mm")])
+
+    def test_rename_model_parameter(self):
+        self.b.params.item(0, 0).setText("Len")
+        self.assertEqual(self.events, [("rename", "d0", "Len")])
+
+    def test_edit_model_value(self):
+        self.b.params.item(1, 1).setText("d0 * 3")
+        self.assertEqual(self.events, [("set", "d1", "d0 * 3")])
+
+    def test_model_rows_cannot_be_removed(self):
+        self.b.params.setCurrentCell(0, 0)
+        self.b.remove_selected_parameter()
+        self.assertEqual(self.events, [])
+
+    def test_click_on_name_reports_it(self):
+        self.b.params.cellClicked.emit(2, 0)
+        self.b.params.cellClicked.emit(2, 1)
+        self.assertEqual(self.events, [("click", "Width")])
+
+
+class DetailTest(unittest.TestCase):
+    def test_detail_is_shown_but_label_stays(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_nodes([Node("part", "P", children=[Node("sketch", "Sketch1", "Sketch", detail="3 DOF")])])
+        item = b.item_by_label("Sketch1")
+        self.assertIn("3 DOF", item.text(0))
+        self.assertEqual([r[1] for r in b.tree_rows()], ["P", "Sketch1"])

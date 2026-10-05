@@ -5,6 +5,8 @@ from incad.ui import theme as themes
 NAME_ROLE = QtCore.Qt.UserRole
 KIND_ROLE = QtCore.Qt.UserRole + 1
 STATE_ROLE = QtCore.Qt.UserRole + 2
+LABEL_ROLE = QtCore.Qt.UserRole + 3
+PARAM_KIND_ROLE = QtCore.Qt.UserRole + 4
 
 # double-click, Enter/F2, or simply start typing on a selected cell
 EDIT_TRIGGERS = (QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed
@@ -42,6 +44,8 @@ class ModelBrowser(QtWidgets.QWidget):
     actionTriggered = Signal(str)
     parameterSet = Signal(str, str)
     parameterRemoved = Signal(str)
+    parameterRenamed = Signal(str, str)
+    parameterClicked = Signal(str)
     markingMenuRequested = Signal(str, QtCore.QPoint)  # object name, global position
 
     def __init__(self, theme="light", parent=None):
@@ -89,6 +93,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.params.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)  # fit the panel
         self.params.setEditTriggers(EDIT_TRIGGERS)
         self.params.itemChanged.connect(self._on_param_changed)
+        self.params.cellClicked.connect(self._on_param_clicked)
         col.addWidget(self.params, 1)
 
     # ----- tree -----
@@ -103,7 +108,8 @@ class ModelBrowser(QtWidgets.QWidget):
                 item.setExpanded(False)
 
     def _item(self, node):
-        item = QtWidgets.QTreeWidgetItem([node.label])
+        item = QtWidgets.QTreeWidgetItem([node.label + ("    " + node.detail if node.detail else "")])
+        item.setData(0, LABEL_ROLE, node.label)
         item.setData(0, NAME_ROLE, node.name)
         item.setData(0, KIND_ROLE, node.kind)
         item.setData(0, STATE_ROLE, node.state)
@@ -158,11 +164,11 @@ class ModelBrowser(QtWidgets.QWidget):
         return d
 
     def tree_rows(self):
-        return [(self._depth(i), i.text(0), i.data(0, KIND_ROLE), i.data(0, STATE_ROLE)) for i in self._items()]
+        return [(self._depth(i), i.data(0, LABEL_ROLE), i.data(0, KIND_ROLE), i.data(0, STATE_ROLE)) for i in self._items()]
 
     def item_by_label(self, label):
         for item in self._items():
-            if item.text(0) == label:
+            if item.data(0, LABEL_ROLE) == label:
                 return item
         return None
 
@@ -201,16 +207,25 @@ class ModelBrowser(QtWidgets.QWidget):
         item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
         return item
 
-    def set_parameters(self, rows):
+    def set_parameters(self, rows, model_rows=()):
+        """Model parameters (named sketch dimensions; renamable) first, then user parameters."""
+        accent = QtGui.QColor(themes.PALETTES[self._theme]["accent"])
         self._loading = True
         try:
             self.params.setRowCount(0)
-            for name, formula, value in rows:
-                r = self.params.rowCount()
-                self.params.insertRow(r)
-                self.params.setItem(r, 0, self._readonly(name))
-                self.params.setItem(r, 1, QtWidgets.QTableWidgetItem(formula or value))
-                self.params.setItem(r, 2, self._readonly(value))
+            for kind, entries in (("model", model_rows), ("user", rows)):
+                for name, formula, value in entries:
+                    r = self.params.rowCount()
+                    self.params.insertRow(r)
+                    name_item = QtWidgets.QTableWidgetItem(name) if kind == "model" else self._readonly(name)
+                    name_item.setData(PARAM_KIND_ROLE, kind)
+                    name_item.setData(NAME_ROLE, name)
+                    if kind == "model":
+                        name_item.setForeground(QtGui.QBrush(accent))
+                        name_item.setToolTip("Model parameter (a sketch dimension) — type a new name to rename it")
+                    self.params.setItem(r, 0, name_item)
+                    self.params.setItem(r, 1, QtWidgets.QTableWidgetItem(formula or value))
+                    self.params.setItem(r, 2, self._readonly(value))
         finally:
             self._loading = False
 
@@ -250,7 +265,12 @@ class ModelBrowser(QtWidgets.QWidget):
             return
         r = item.row()
         name_item, value_item = self.params.item(r, 0), self.params.item(r, 1)
-        name = name_item.text().strip() if name_item else ""
+        if name_item is not None and name_item.data(PARAM_KIND_ROLE) == "model" and item.column() == 0:
+            old, new = name_item.data(NAME_ROLE), name_item.text().strip()
+            if new and new != old:
+                self.parameterRenamed.emit(old, new)
+            return
+        name = name_item.data(NAME_ROLE) or name_item.text().strip() if name_item else ""
         value = value_item.text().strip() if value_item else ""
         if name and value:
             self.parameterSet.emit(name, value)
@@ -262,11 +282,18 @@ class ModelBrowser(QtWidgets.QWidget):
         if r < 0:
             return
         item = self.params.item(r, 0)
+        if item is not None and item.data(PARAM_KIND_ROLE) == "model":
+            return  # dimensions live in their sketch
         saved = item is not None and not bool(item.flags() & QtCore.Qt.ItemIsEditable)
         if saved:
             self.parameterRemoved.emit(item.text())
         else:
             self.params.removeRow(r)
+
+    def _on_param_clicked(self, row, column):
+        item = self.params.item(row, 0)
+        if column == 0 and item is not None and (item.data(NAME_ROLE) or item.text()):
+            self.parameterClicked.emit(item.data(NAME_ROLE) or item.text())
 
     def focus_parameters(self):
         self.params.setFocus()

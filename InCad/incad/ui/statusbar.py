@@ -1,5 +1,5 @@
 """InCad status bar: next-step prompt, messages, units, sketch DOF, part statistics."""
-from incad.qt import QtCore, QtWidgets
+from incad.qt import QtCore, QtWidgets, Signal
 from incad.ui import theme as themes
 
 UNIT_TEXT = {"mm": "mm · deg", "in": "in · deg"}
@@ -10,6 +10,8 @@ def _plural(n, word):
 
 
 class StatusBar(QtWidgets.QWidget):
+    dofClicked = Signal()
+
     def __init__(self, theme="light", parent=None):
         super().__init__(parent)
         self.setObjectName("InCadStatus")
@@ -32,6 +34,9 @@ class StatusBar(QtWidgets.QWidget):
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.clear_message)
+        self._dof.installEventFilter(self)
+        self._dof.setCursor(QtCore.Qt.PointingHandCursor)
+        self._dof.setToolTip("Show the geometry that is still free")
 
     def set_prompt(self, text):
         self._prompt.setText(text)
@@ -71,3 +76,9 @@ class StatusBar(QtWidgets.QWidget):
             return "" if label.isHidden() else label.text()
         return {"prompt": self._prompt.text(), "message": t(self._message), "units": t(self._units),
                 "dof": t(self._dof), "stats": t(self._stats)}
+
+    def eventFilter(self, obj, event):
+        if obj is self._dof and event.type() == QtCore.QEvent.MouseButtonPress:
+            self.dofClicked.emit()
+            return True
+        return False

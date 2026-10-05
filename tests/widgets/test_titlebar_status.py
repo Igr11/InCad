@@ -75,3 +75,14 @@ class StatusBarTest(unittest.TestCase):
         self.assertEqual(self.sb.texts()["message"], "Fillet failed")
         self.sb.clear_message()
         self.assertEqual(self.sb.texts()["message"], "")
+
+    def test_dof_click(self):
+        from PySide6.QtTest import QTest
+        from incad.qt import QtCore
+        seen = []
+        self.sb.dofClicked.connect(lambda: seen.append(1))
+        self.sb.set_dof(3)
+        self.sb.show()
+        QTest.mouseClick(self.sb._dof, QtCore.Qt.LeftButton)
+        self.sb.hide()
+        self.assertEqual(seen, [1])
