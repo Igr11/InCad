@@ -117,3 +117,33 @@ class SketchTest(unittest.TestCase):
         expr = sketch.to_expression(self.doc, "Width + d0*2 + sin(30)")
         self.assertEqual(expr, "InCadParameters.Width + %s.Constraints.d0*2 + sin(30)" % sk.Name)
         self.assertEqual(sketch.to_display(self.doc, expr), "Width + d0*2 + sin(30)")
+
+
+class NamesAreNeverReusedTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("NR")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_a_deleted_name_is_not_given_again(self):
+        sk = sketch.make_sketch(self.body, plane(self.body, "XY_Plane"))
+        sk.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(20, 0, 0)))
+        sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+        sk.addConstraint(Sketcher.Constraint("DistanceY", 0, 1, 0, 2, 0))
+        self.doc.recompute()
+        self.assertEqual(sketch.name_new_dimensions(self.doc), ["d0", "d1"])
+        sk.delConstraint(1)
+        sk.addConstraint(Sketcher.Constraint("DistanceY", 0, 1, 0, 2, 0))
+        self.doc.recompute()
+        self.assertEqual(sketch.name_new_dimensions(self.doc), ["d2"])
+
+    def test_user_parameter_cannot_take_a_dimension_name(self):
+        sk = sketch.make_sketch(self.body, plane(self.body, "XY_Plane"))
+        sk.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(20, 0, 0)))
+        sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+        self.doc.recompute()
+        sketch.name_new_dimensions(self.doc)
+        with self.assertRaises(ValueError):
+            document.set_parameter(self.doc, "d0", "5 mm")

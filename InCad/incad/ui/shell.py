@@ -91,7 +91,8 @@ class Shell(QtCore.QObject):
         self._pending = False
         self.navigator = None
         self.strip = None
-        self.sketches = SketchSession(on_change=self.schedule_refresh)
+        self.sketches = SketchSession(on_change=self.schedule_refresh, on_edit=self._seed_geometry)
+        self._box_owner = None
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
@@ -360,7 +361,7 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
-        self.sketches.cancel_pick()
+        self.sketches.close_all()
         self._close_value_box()
         for act in self._shortcuts.values():
             try:
@@ -562,9 +563,10 @@ class Shell(QtCore.QObject):
             doc = sk.Document
             if not document.is_incad_part(doc):
                 return
+            key = (doc.Name, sk.Name)
             count = sk.GeometryCount
-            drawn = count != self._geometry_counts.get(sk.Name, count)
-            self._geometry_counts[sk.Name] = count
+            drawn = count != self._geometry_counts.get(key, count)
+            self._geometry_counts[key] = count
             added = sketches.name_new_dimensions(doc)
         except Exception as e:
             log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
@@ -572,14 +574,32 @@ class Shell(QtCore.QObject):
         if len(added) == 1 and not drawn and self.sketches.editing() is sk:
             self.open_value_box(sk, added[0])
 
+    def _seed_geometry(self, sk):
+        """Baseline for the 'drawn or dimensioned?' rule when a sketch is opened."""
+        self._geometry_counts[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+
+    def _apply_from_box(self, name, text):
+        """The value box applies to its own sketch's document; returns (ok, error) so the box can stay red."""
+        import FreeCAD as App
+        from incad.core import safe
+        from incad.core import sketch as sketches
+        doc_name, _ = self._box_owner or (None, None)
+        try:
+            doc = App.getDocument(doc_name)
+        except Exception:
+            return False, "The sketch's document is closed"
+        r = safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text), doc)
+        self.schedule_refresh()
+        return r.ok, r.error
+
     def open_value_box(self, sk, name):
         from incad.core import sketch as sketches
         self._close_value_box()
         expr = sketches._expression_of(sk, "Constraints." + name)
         text = sketches.to_display(sk.Document, expr) if expr else \
             sketches.document._format(sk.getDatum(name))
-        box = ValueBox(name, text, self.theme, self.mw)
-        box.applied.connect(self._on_value_applied)
+        box = ValueBox(name, text, self.theme, self.mw, apply=self._apply_from_box)
+        self._box_owner = (sk.Document.Name, sk.Name)
         box.closed.connect(lambda: self._value_box_closed(box))
         self.value_box = box
         box.show_near(QtGui.QCursor.pos())
@@ -765,6 +785,10 @@ class Shell(QtCore.QObject):
         doc = App.ActiveDocument
         is_part = document.is_incad_part(doc)
         editing = self.sketches.editing() if is_part else None
+        self.sketches.sync()
+        if self.value_box is not None and (editing is None or
+                                           (editing.Document.Name, editing.Name) != self._box_owner):
+            self._close_value_box()
         mode = "sketch" if editing is not None else "part" if is_part else "empty"
         self.ribbon.set_mode(mode)
         self.title.set_document_name(doc.Label if doc is not None else "")

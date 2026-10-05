@@ -247,3 +247,21 @@ class DetailTest(unittest.TestCase):
         item = b.item_by_label("Sketch1")
         self.assertIn("3 DOF", item.text(0))
         self.assertEqual([r[1] for r in b.tree_rows()], ["P", "Sketch1"])
+
+
+class TypingBeatsShortcutsTest(unittest.TestCase):
+    def _override(self, widget, key, text, mods):
+        ev = QtGui.QKeyEvent(QtCore.QEvent.ShortcutOverride, key, mods, text)
+        ev.ignore()
+        qtapp.app().sendEvent(widget, ev)
+        return ev.isAccepted()
+
+    def test_plain_keys_go_to_the_table_and_tree(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        N = QtCore.Qt.NoModifier
+        self.assertTrue(self._override(b.params, QtCore.Qt.Key_S, "s", N))
+        self.assertTrue(self._override(b.params, QtCore.Qt.Key_D, "D", QtCore.Qt.ShiftModifier))
+        self.assertTrue(self._override(b.tree, QtCore.Qt.Key_L, "l", N))
+        self.assertFalse(self._override(b.params, QtCore.Qt.Key_N, "n", QtCore.Qt.ControlModifier))  # ⌘N still works
+        self.assertFalse(self._override(b.params, QtCore.Qt.Key_F7, "", N))

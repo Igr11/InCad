@@ -211,6 +211,46 @@ def test_12_sketch_on_a_face():
     harness.pump(600)
 
 
+def test_12b_value_box_follows_its_sketch():
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, plane("YZ_Plane").Name)
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(1000)
+    k = sk()
+    ST["fresh"] = k.Name
+    # the first thing drawn: a circle with its size typed while drawing (geometry and dimension in one go)
+    k.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5))
+    k.addConstraint(Sketcher.Constraint("Diameter", 0, 10))
+    harness.pump(600)
+    assert s().value_box is None, "values typed while drawing must not open the value box"
+    name = k.Constraints[-1].Name
+    s().open_value_box(k, name)
+    harness.pump(200)
+    box = s().value_box
+    box.edit.setText("Nope*2")
+    QTest.keyClick(box.edit, QtCore.Qt.Key_Return)
+    harness.pump(400)
+    assert s().value_box is box and box.isVisible() and box.edit.text() == "Nope*2", "rejected text must stay"
+    assert box.error_text(), "the reason must be shown"
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+    assert s().value_box is None, "the box must close with its sketch"
+    assert doc().getObject(ST["fresh"]).ViewObject.EditingWorkbench == "SketcherWorkbench", \
+        doc().getObject(ST["fresh"]).ViewObject.EditingWorkbench
+
+
+def test_12c_leaving_incad_mid_sketch_closes_the_sketch():
+    s().sketches.edit(doc().getObject(ST["fresh"]))
+    harness.pump(800)
+    assert sk() is not None
+    Gui.activateWorkbench("PartDesignWorkbench")
+    harness.pump(1000)
+    assert Gui.ActiveDocument.getInEdit() is None
+    assert doc().getObject(ST["fresh"]).ViewObject.EditingWorkbench == "SketcherWorkbench"
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+
+
 def test_13_leaving_incad_restores_sketch_settings():
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(1000)
@@ -222,4 +262,5 @@ harness.run([test_0_setup, test_1_sketcher_commands_exist, test_2_start_on_selec
              test_5_click_a_dimension_inserts_its_name, test_6_parameter_click_and_rename,
              test_7_shortcuts_follow_the_mode, test_8_right_click_in_a_sketch,
              test_9_typing_never_triggers_sketch_shortcuts, test_10_finish, test_11_pick_mode,
-             test_12_sketch_on_a_face, test_13_leaving_incad_restores_sketch_settings])
+             test_12_sketch_on_a_face, test_12b_value_box_follows_its_sketch,
+             test_12c_leaving_incad_mid_sketch_closes_the_sketch, test_13_leaving_incad_restores_sketch_settings])

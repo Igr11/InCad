@@ -151,6 +151,9 @@ def set_parameter(doc, name, text):
     obj = parameters(doc)
     if name in obj.PropertiesList and not _is_param(obj, name):
         raise ValueError("%r is a reserved name" % name)
+    from incad.core import sketch as _sketch  # names are unique across user parameters and dimensions
+    if name not in obj.PropertiesList and _sketch.find_dimension(doc, name)[0] is not None:
+        raise ValueError("%r is already a dimension name" % name)
     created = name not in obj.PropertiesList
     if created:
         obj.addProperty("App::PropertyQuantity", name, _GROUP)

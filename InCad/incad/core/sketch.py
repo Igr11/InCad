@@ -81,10 +81,22 @@ def _used_names(doc):
     return names | {n for n, _, _ in document.list_parameters(doc)}
 
 
+NEXT_KEY = "InCadNextDimension"
+
+
+def _next_number(doc):
+    """Never reuse a dN: a counter in the file (doc.Meta), so a deleted d5 does not come back for a new dimension."""
+    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in _used_names(doc)) if m]
+    try:
+        stored = int(doc.Meta.get(NEXT_KEY, "0"))
+    except ValueError:
+        stored = 0
+    return max([stored] + [n + 1 for n in numbers])
+
+
 def name_new_dimensions(doc):
     """Give every unnamed driving dimension the next free dN name; returns the names given."""
-    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in _used_names(doc)) if m]
-    nxt = max(numbers) + 1 if numbers else 0
+    nxt = _next_number(doc)
     added = []
     for sk in _sketches(doc):
         for i, c in enumerate(sk.Constraints):
@@ -93,6 +105,10 @@ def name_new_dimensions(doc):
                 nxt += 1
                 sk.renameConstraint(i, name)
                 added.append(name)
+    if added:
+        meta = dict(doc.Meta)
+        meta[NEXT_KEY] = str(nxt)
+        doc.Meta = meta
     return added
 
 

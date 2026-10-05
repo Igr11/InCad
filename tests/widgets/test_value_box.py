@@ -41,3 +41,38 @@ class ValueBoxTest(unittest.TestCase):
         self.box.edit.setText("  ")
         QTest.keyClick(self.box.edit, QtCore.Qt.Key_Return)
         self.assertEqual(self.seen, [])
+
+
+class ValueBoxApplyTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+
+    def test_rejected_formula_keeps_the_box_open_and_red(self):
+        from PySide6.QtTest import QTest
+        box = ValueBox("d1", "20 mm", "light", apply=lambda n, t: (False, "Nope is not a parameter"))
+        box.show_near(QtCore.QPoint(300, 300))
+        box.edit.setText("Nope*2")
+        QTest.keyClick(box.edit, QtCore.Qt.Key_Return)
+        self.assertTrue(box.isVisible())
+        self.assertEqual(box.edit.text(), "Nope*2")
+        self.assertIn("Nope", box.error_text())
+        box.close()
+
+    def test_accepted_value_closes(self):
+        from PySide6.QtTest import QTest
+        seen = []
+        box = ValueBox("d1", "20 mm", "light", apply=lambda n, t: (seen.append((n, t)), (True, ""))[1])
+        box.show_near(QtCore.QPoint(300, 300))
+        QTest.keyClick(box.edit, QtCore.Qt.Key_Return)
+        self.assertEqual(seen, [("d1", "20 mm")])
+        self.assertFalse(box.isVisible())
+
+    def test_insert_brings_keyboard_focus_back(self):
+        box = ValueBox("d1", "20 mm", "light")
+        calls = []
+        box.activateWindow = lambda: calls.append("activate")
+        box.show_near(QtCore.QPoint(300, 300))
+        calls.clear()
+        box.insert("d0")
+        self.assertEqual(calls, ["activate"])
+        box.close()

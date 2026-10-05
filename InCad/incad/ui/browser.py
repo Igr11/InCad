@@ -16,6 +16,18 @@ KIND_ICONS = {"part": "part", "origin": "origin", "feature": "feature", "sketch"
               "end_of_part": "end_of_part", "solids": "solids", "body": "part"}
 
 
+class _TypingFirst(QtCore.QObject):
+    """Plain typed keys belong to the widget (table cell, tree search), never to InCad's single-key shortcuts."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.ShortcutOverride:
+            mods = event.modifiers() & ~QtCore.Qt.ShiftModifier & ~QtCore.Qt.KeypadModifier
+            if mods == QtCore.Qt.NoModifier and event.text() and event.text().isprintable():
+                event.accept()
+                return True
+        return False
+
+
 class _Tree(QtWidgets.QTreeWidget):
     """Tree that lets the user drag the End of Part marker onto another row."""
 
@@ -94,6 +106,9 @@ class ModelBrowser(QtWidgets.QWidget):
         self.params.setEditTriggers(EDIT_TRIGGERS)
         self.params.itemChanged.connect(self._on_param_changed)
         self.params.cellClicked.connect(self._on_param_clicked)
+        self._typing_first = _TypingFirst(self)
+        for w in (self.params, self.tree):
+            w.installEventFilter(self._typing_first)
         col.addWidget(self.params, 1)
 
     # ----- tree -----
