@@ -162,10 +162,12 @@ def set_parameter(doc, name, text):
     except Exception as e:
         if created:
             obj.removeProperty(name)
-        raise ValueError("Invalid formula for %s: %s" % (name, e))
+        from incad.core import model as _m
+        raise ValueError("%s: %s" % (name, _m.friendly(str(e))))
     doc.recompute()
     if "Invalid" in obj.State or "Error" in obj.State:
-        raise ValueError("Formula for %s cannot be evaluated: %s" % (name, obj.getStatusString()))
+        from incad.core import model as _m
+        raise ValueError("%s: %s" % (name, _m.friendly(obj.getStatusString())))
 
 
 def remove_parameter(doc, name):

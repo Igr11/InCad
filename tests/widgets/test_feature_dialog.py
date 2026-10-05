@@ -82,3 +82,25 @@ class FeatureDialogTest(unittest.TestCase):
         self.d.pickRequested.connect(picks.append)
         self.d.field("to_face").click()
         self.assertEqual(picks, ["to_face"])
+
+
+class DialogLooksTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Extrude", "incad", FIELDS,
+                               {"operation": "join", "extent": "distance", "to_face": "", "distance": "10 mm",
+                                "flip": False})
+        self.d.show()
+
+    def tearDown(self):
+        self.d.close()
+
+    def test_dialog_grows_to_fit_an_error(self):
+        self.d.set_error("A long reason that wraps over more than one line in the dialog, to make sure it fits")
+        qtapp.app().processEvents()
+        self.assertGreaterEqual(self.d.height(), self.d.sizeHint().height())
+
+    def test_buttons_have_explicit_colors(self):
+        """macOS draws native buttons in the system appearance unless the stylesheet sets them (seen live)."""
+        qss = self.d.styleSheet().replace(" ", "")
+        self.assertIn("QPushButton{background:", qss)

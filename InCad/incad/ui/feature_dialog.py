@@ -103,7 +103,10 @@ class FeatureDialog(QtWidgets.QFrame):
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
             " padding: 2px 4px; }} QToolButton#InCadSegment {{ background: {panel_alt}; color: {text};"
             " border: 1px solid {border}; padding: 2px 8px; }} QToolButton#InCadSegment:checked {{"
-            " background: {accent}; color: {selection_text}; }}".format(**p))
+            " background: {accent}; color: {selection_text}; }}"
+            " QPushButton {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 6px;"
+            " padding: 4px 14px; }} QPushButton:default {{ background: {accent}; color: {selection_text}; }}"
+            " QPushButton:disabled {{ color: {text_dim}; background: {panel}; }}".format(**p))
         self.set_values(values)
 
     # ----- building -----
@@ -218,6 +221,7 @@ class FeatureDialog(QtWidgets.QFrame):
         self._error.setVisible(bool(text))
         self.ok_button.setEnabled(not text)
         self.apply_button.setEnabled(not text)
+        self.adjustSize()  # grow (or shrink back) so the reason never squeezes the fields
 
     def error_text(self):
         return self._error.text()

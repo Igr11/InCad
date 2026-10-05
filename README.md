@@ -26,3 +26,9 @@ Logs: ~/Library/Logs/InCad.log
 - While drawing, type lengths and angles directly (Tab moves between fields).
 - Every dimension gets a name (d0, d1 …) shown under Parameters; rename it there. In a value box, click another
   dimension or a parameter to use its name in a formula (d0/2, Width - 2*d3).
+
+## Features
+- E Extrude, R Revolve (also on the ribbon and the right-click menu). The only finished sketch is picked
+  automatically; otherwise select one. The preview updates as you type; OK, Apply + (one more), Cancel/Esc.
+- Values accept units, names and formulas (Width/2, d3*2); click a dimension or a parameter to insert its name.
+- Every value becomes a named parameter (d0, d1 …) in the Parameters panel. Double-click a feature to edit it.

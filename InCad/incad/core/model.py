@@ -13,6 +13,16 @@ _DNAME = re.compile(r"^d(\d+)$")
 _TOKEN = re.compile(r"(?<![\w.<>])([A-Za-z_][A-Za-z0-9_]*)(?![\w(.])")
 
 
+def friendly(message):
+    """FreeCAD's expression errors in plain words (no internal paths)."""
+    m = re.search(r"Property '([^']+)' not found", message)
+    if m:
+        return "Unknown name '%s' (not a parameter or dimension)" % m.group(1)
+    if "cyclic" in message.lower():
+        return "This formula refers back to itself (a loop)"
+    return message.split("\n")[0]
+
+
 def _model_obj(doc, create=False):
     obj = doc.getObject(MODEL_NAME)
     if obj is None and create:
@@ -172,10 +182,10 @@ def set_model_parameter(doc, name, text):
     try:
         obj.setExpression(name, to_expression(doc, _with_unit(doc, text, _unit_kind(obj, name))))
     except Exception as e:
-        raise ValueError("Invalid formula for %s: %s" % (name, e))
+        raise ValueError("%s: %s" % (name, friendly(str(e))))
     doc.recompute()
     if "Invalid" in obj.State or "Error" in obj.State:
-        raise ValueError("%s cannot be evaluated: %s" % (name, obj.getStatusString()))
+        raise ValueError("%s: %s" % (name, friendly(obj.getStatusString())))
 
 
 def rename_model_parameter(doc, old, new):

@@ -108,3 +108,36 @@ class UserParameterNamesTest(unittest.TestCase):
                 document.set_parameter(doc, name, "1 mm")
         finally:
             App.closeDocument(doc.Name)
+
+
+class FriendlyErrorTest(unittest.TestCase):
+    def test_unknown_name_is_said_plainly(self):
+        doc = util.new_doc("FE")
+        try:
+            document.make_part(doc)
+            name = model.new_feature_parameter(doc, "5 mm")
+            with self.assertRaises(ValueError) as ctx:
+                model.set_model_parameter(doc, name, "Nope * 2")
+            self.assertIn("Unknown name 'Nope'", str(ctx.exception))
+            self.assertNotIn("property binding", str(ctx.exception))
+        finally:
+            App.closeDocument(doc.Name)
+
+
+class FriendlyEverywhereTest(unittest.TestCase):
+    def test_dimensions_and_user_parameters_say_it_plainly(self):
+        import Sketcher
+        doc = util.new_doc("FE2")
+        try:
+            body = document.make_part(doc)
+            sk = util.add_rect_sketch(body)
+            sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+            doc.recompute()
+            name = sketch.name_new_dimensions(doc)[0]
+            for fn in (lambda: sketch.set_dimension(doc, name, "Nope * 2"),
+                       lambda: document.set_parameter(doc, "Gap", "Nope * 2")):
+                with self.assertRaises(ValueError) as ctx:
+                    fn()
+                self.assertIn("Unknown name 'Nope'", str(ctx.exception))
+        finally:
+            App.closeDocument(doc.Name)

@@ -160,10 +160,12 @@ def set_dimension(doc, name, text):
         try:
             sk.setExpression(path, to_expression(doc, text))
         except Exception as e:
-            raise ValueError("Invalid formula for %s: %s" % (name, e))
+            from incad.core import model
+            raise ValueError("%s: %s" % (name, model.friendly(str(e))))
     doc.recompute()
     if "Invalid" in sk.State or status(sk)["conflicting"]:
-        raise ValueError("%s = %s cannot be satisfied: %s" % (name, text, sk.getStatusString()))
+        from incad.core import model
+        raise ValueError("%s = %s cannot be satisfied: %s" % (name, text, model.friendly(sk.getStatusString())))
 
 
 def rename_dimension(doc, old, new):
