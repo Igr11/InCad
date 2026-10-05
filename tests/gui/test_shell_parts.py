@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
 import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
-from incad.qt import QtWidgets  # noqa: E402
+from incad.qt import QtCore, QtWidgets  # noqa: E402
 from incad import actions  # noqa: E402
 from incad.core import commands, document, prefs, safe  # noqa: E402
 from incad.ui import shell, theme  # noqa: E402
@@ -150,6 +150,20 @@ def test_8_failed_command_then_undo():
     assert "Gap" not in [p[0] for p in document.list_parameters(doc)]
 
 
+def test_8b_real_cmd_z_undoes():
+    from PySide6.QtTest import QTest
+    doc = App.ActiveDocument
+    safe.run_safely("Set Keys", lambda: document.set_parameter(doc, "Keys", "2 mm"), doc)
+    harness.pump(300)
+    mw.raise_()
+    mw.activateWindow()
+    harness.pump(500)
+    target = QtWidgets.QApplication.focusWidget() or mw
+    QTest.keyClick(target, QtCore.Qt.Key_Z, QtCore.Qt.ControlModifier)
+    harness.pump(600)
+    assert "Keys" not in [p[0] for p in document.list_parameters(doc)], "⌘Z did not undo"
+
+
 def test_9_close_all_documents():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -163,4 +177,4 @@ def test_9_close_all_documents():
 
 harness.run([test_0_activate, test_1_new_part, test_2_switching_documents_updates_panels, test_3_parameters, test_3b_typing_a_parameter_like_a_user,
              test_4_plain_file, test_5_theme_toggle, test_6_ribbon_size_persists, test_7_std_commands_exist,
-             test_8_failed_command_then_undo, test_9_close_all_documents])
+             test_8_failed_command_then_undo, test_8b_real_cmd_z_undoes, test_9_close_all_documents])

@@ -79,6 +79,14 @@ def problems(doc, broken_before, touched):
     return [p for p in found if p]
 
 
+def _relink(doc):
+    try:
+        from incad.core import model
+        model.relink(doc)  # objects restored by the abort lose their formula links (FreeCAD quirk)
+    except Exception as e:
+        log.report("warning", "Could not repair formula links: %s" % e, traceback.format_exc())
+
+
 def run_safely(label, fn, doc=None):
     """Run fn() as one undo step named `label`. Never raises at the outermost level."""
     global _depth
@@ -119,6 +127,7 @@ def run_safely(label, fn, doc=None):
     except Exception as e:
         doc.abortTransaction()
         doc.recompute()
+        _relink(doc)
         invalid = isinstance(e, _InvalidResult)
         msg = str(e) if invalid else "%s failed: %s" % (label, e)
         log.report("error", msg, "" if invalid else traceback.format_exc())

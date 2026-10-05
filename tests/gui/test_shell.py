@@ -34,13 +34,22 @@ def view_params():
     return params.snapshot(theme.VIEW_GROUP, theme.VIEW_KEYS)
 
 
+TAKEN = {"Std_New": "Ctrl+N", "Std_Open": "Ctrl+O", "Std_Save": "Ctrl+S", "Std_SaveAs": "Ctrl+Shift+S",
+         "Std_CloseActiveWindow": "Ctrl+W", "Std_Undo": "Ctrl+Z", "Std_Redo": "Ctrl+Shift+Z"}
+
+
 def std_new_shortcut():
     return Gui.Command.get("Std_New").getAction()[0].shortcut().toString()
+
+
+def std_shortcuts():
+    return {c: Gui.Command.get(c).getAction()[0].shortcut().toString() for c in TAKEN}
 
 
 def assert_common_restored():
     assert view_params() == BASE["view"], (view_params(), BASE["view"])
     assert std_new_shortcut() == BASE["new"], std_new_shortcut()
+    assert std_shortcuts() == BASE["shortcuts"], (std_shortcuts(), BASE["shortcuts"])
     assert not prefs.takeover_snapshot()
 
 
@@ -68,7 +77,7 @@ def assert_reshown(before):
 def test_0_baseline_in_partdesign():
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(1000)
-    BASE.update(state=state(), tb=toolbar_params(), view=view_params(), new=std_new_shortcut())
+    BASE.update(state=state(), tb=toolbar_params(), view=view_params(), new=std_new_shortcut(), shortcuts=std_shortcuts())
     assert any(BASE["state"]["toolbars"].values()), "expected visible FreeCAD toolbars"
     assert BASE["new"], "Std_New should have a shortcut"
 
@@ -94,6 +103,12 @@ def test_1_activate_takes_over():
 
 def test_2_new_shortcut_moves_to_incad():
     assert std_new_shortcut() == "", std_new_shortcut()
+    assert all(v == "" for v in std_shortcuts().values()), std_shortcuts()
+    incad = {a.text(): a.shortcut().toString() for a in mw.menuBar().actions() if a.menu()
+             and a.menu().objectName().startswith("InCadMenu_") for a in a.menu().actions()}
+    for label, seq in (("Open", "Ctrl+O"), ("Save", "Ctrl+S"), ("Save As", "Ctrl+Shift+S"), ("Close", "Ctrl+W"),
+                       ("Undo", "Ctrl+Z"), ("Redo", "Ctrl+Shift+Z")):
+        assert incad.get(label) == seq, (label, incad)
     file_menu = [a.menu() for a in mw.menuBar().actions()
                  if a.menu() and a.menu().objectName() == "InCadMenu_File"][0]
     new = [a for a in file_menu.actions() if a.text() == "New"][0]

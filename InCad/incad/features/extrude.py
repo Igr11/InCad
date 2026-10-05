@@ -8,6 +8,7 @@ from incad.features.common import Field, profile_of, value_param, value_text
 TITLE = "Extrude"
 ICON = "extrude"
 TYPES = ("PartDesign::Pad", "PartDesign::Pocket")
+PROPS = {"distance": "Length", "distance2": "Length2", "taper": "TaperAngle"}
 FIELDS = (
     Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut"), ("intersect", "Intersect"),
                                                ("new_solid", "New Solid")), "join"),

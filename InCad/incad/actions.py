@@ -187,21 +187,43 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
-def _std(cmd_id, label, icon):
+def _std(cmd_id, label, icon, shortcut=""):
     name, index = STD_COMMANDS[cmd_id], STD_INDEX.get(cmd_id, 0)
-    return Command(id=cmd_id, label=label, icon=icon, handler=lambda: run_std(name, index))
+    return Command(id=cmd_id, label=label, icon=icon, handler=lambda: run_std(name, index), shortcut=shortcut)
+
+
+def _undo_redo(redo):
+    """Undo/Redo the active document. Sketcher's own command while a sketch is edited; otherwise straight on the
+    document, so it works whatever tab is active (FreeCAD's Std_Undo talks to the active view)."""
+    import FreeCAD as App
+    gdoc = _gui().ActiveDocument
+    if gdoc is not None and gdoc.getInEdit() is not None:
+        run_std("Std_Redo" if redo else "Std_Undo")
+        return
+    doc = App.ActiveDocument
+    if doc is None:
+        return
+    if redo and doc.RedoNames:
+        doc.redo()
+    elif not redo and doc.UndoNames:
+        doc.undo()
+    doc.recompute()
+    from incad.core import model
+    repaired = model.relink(doc)  # objects brought back by undo lose their formula links (FreeCAD quirk)
+    from incad.core import log
+    log.logger().info("undo/redo relinked %s", repaired)
 
 
 def commands():
     return [
         Command(id="file.new", label="New", icon="new", handler=new_part, shortcut="Ctrl+N",
                 tooltip="New part (asks for mm or inch)"),
-        _std("file.open", "Open", "open"),
-        _std("file.save", "Save", "save"),
-        _std("file.save_as", "Save As", "save"),
-        _std("file.close", "Close", "close"),
-        _std("edit.undo", "Undo", "undo"),
-        _std("edit.redo", "Redo", "redo"),
+        _std("file.open", "Open", "open", "Ctrl+O"),
+        _std("file.save", "Save", "save", "Ctrl+S"),
+        _std("file.save_as", "Save As", "save", "Ctrl+Shift+S"),
+        _std("file.close", "Close", "close", "Ctrl+W"),
+        Command(id="edit.undo", label="Undo", icon="undo", handler=lambda: _undo_redo(False), shortcut="Ctrl+Z"),
+        Command(id="edit.redo", label="Redo", icon="redo", handler=lambda: _undo_redo(True), shortcut="Ctrl+Shift+Z"),
         Command(id="view.theme_toggle", label="Light / Dark", icon="theme_toggle", handler=toggle_theme,
                 tooltip="Switch between light and dark"),
         Command(id="view.freecad", label="Return to FreeCAD", icon="freecad", handler=return_to_freecad,

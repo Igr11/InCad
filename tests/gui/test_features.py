@@ -1,0 +1,228 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
+import harness  # noqa: E402
+import FreeCAD as App  # noqa: E402
+import FreeCADGui as Gui  # noqa: E402
+import Part  # noqa: E402
+from pivy import coin  # noqa: E402,F401
+from PySide6.QtTest import QTest  # noqa: E402
+from incad.qt import QtCore  # noqa: E402
+from incad.core import commands, document, model, prefs, safe  # noqa: E402
+from incad.ui import shell  # noqa: E402
+import headless.util as util  # noqa: E402
+
+ST = {}
+
+
+def s():
+    return shell.instance()
+
+
+def doc():
+    return App.ActiveDocument
+
+
+def body():
+    return document.primary_body(doc())
+
+
+def dialog():
+    fs = s().feature_session
+    return fs.dialog if fs is not None else None
+
+
+def type_into(key, text):
+    w = dialog().field(key)
+    w.setText(text)
+    w.editingFinished.emit()
+    harness.pump(500)
+
+
+def test_0_setup():
+    prefs.set_remember_new_choice(True)
+    prefs.set_default_units("mm")
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    ST["sk"] = util.add_rect_sketch(body())
+    doc().recompute()
+    harness.pump(300)
+
+
+def test_1_extrude_picks_the_only_profile_and_previews():
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    assert dialog() is not None and dialog().isVisible()
+    f = s().feature_session.feature
+    assert f is not None and f.TypeId == "PartDesign::Pad" and abs(f.Shape.Volume - 2000) < 1e-6
+    assert safe.busy() == "Extrude"
+
+
+def test_2_ok_commits_one_undo_step():
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert s().feature_session is None and safe.busy() is None
+    assert "Extrude" in doc().UndoNames[:1], doc().UndoNames
+    pad = body().Tip
+    ST["pad"] = pad.Name
+    assert model.bound_parameter(pad, "Length") is not None
+
+
+def test_3_edit_feature_changes_the_distance():
+    pad = doc().getObject(ST["pad"])
+    shell.edit_feature(pad)
+    harness.pump(600)
+    type_into("distance", "25 mm")
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 25) < 1e-6
+
+
+def test_4_cancel_restores_after_previews():
+    names = list(doc().UndoNames)
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+    type_into("distance", "50 mm")
+    dialog().field("operation").button("cut").click()
+    harness.pump(600)
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    pad = doc().getObject(ST["pad"])
+    assert pad is not None and pad.TypeId == "PartDesign::Pad" and abs(pad.Length.Value - 25) < 1e-6
+    assert list(doc().UndoNames) == names, (doc().UndoNames, names)
+
+
+def test_5_invalid_value_disables_ok():
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+    type_into("distance", "Nope * 2")
+    assert not dialog().ok_button.isEnabled() and dialog().error_text()
+    type_into("distance", "0")
+    assert not dialog().ok_button.isEnabled()
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
+def test_6_cut_through_all_on_top():
+    pad = doc().getObject(ST["pad"])
+    top = [i + 1 for i, fc in enumerate(pad.Shape.Faces) if abs(fc.CenterOfMass.z - 25) < 1e-6][0]
+    sk = body().newObject("Sketcher::SketchObject", "Cutter")
+    sk.AttachmentSupport = [(pad, "Face%d" % top)]
+    sk.MapMode = "FlatFace"
+    sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    dialog().field("operation").button("cut").click()
+    dialog().field("extent").button("through_all").click()
+    harness.pump(600)
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    tip = body().Tip
+    assert tip.TypeId == "PartDesign::Pocket", tip.TypeId
+    assert body().Shape.Volume < 20 * 10 * 25 - 1
+
+
+def test_7_new_solid_and_cancel_moves_sketch_back():
+    sk = util.add_rect_sketch(body(), w=5, h=5, name="Other")
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    dialog().field("operation").button("new_solid").click()
+    harness.pump(600)
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert len(document.bodies(doc())) == 1
+    assert doc().getObject(sk.Name).getParentGeoFeatureGroup() is body()
+
+
+def test_8_revolve():
+    sk = body().newObject("Sketcher::SketchObject", "RevProfile")
+    sk.AttachmentSupport = [(util.xy_plane(body()), "")]
+    sk.MapMode = "FlatFace"
+    pts = [(30, 0), (34, 0), (34, 4), (30, 4)]
+    for i in range(4):
+        a, b = pts[i], pts[(i + 1) % 4]
+        sk.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(b[0], b[1], 0)))
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.revolve")
+    harness.pump(800)
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert body().Tip.TypeId == "PartDesign::Revolution"
+
+
+def test_9_parameter_click_inserts_into_the_focused_field():
+    document.set_parameter(doc(), "Width", "30 mm")
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+    f = dialog().field("distance")
+    f.setFocus()
+    f.selectAll()
+    harness.pump(100)
+    s().browser.parameterClicked.emit("Width")
+    harness.pump(100)
+    assert f.text() == "Width", f.text()
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
+def test_10_busy_blocks_other_changes_and_is_cleared():
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+    s().browser.parameterSet.emit("Gap", "1 mm")
+    harness.pump(400)
+    assert "Gap" not in [p[0] for p in document.list_parameters(doc())]
+    assert "dialog" in s().status.texts()["message"].lower(), s().status.texts()
+    QTest.keyClick(dialog().field("distance"), QtCore.Qt.Key_Escape)
+    harness.pump(600)
+    assert safe.busy() is None and s().feature_session is None
+
+
+def test_11_leaving_incad_closes_the_dialog():
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+    Gui.activateWorkbench("PartDesignWorkbench")
+    harness.pump(1000)
+    assert safe.busy() is None
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 25) < 1e-6
+
+
+def test_12_user_undo_keeps_features_following_their_parameters():
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    pad = doc().getObject(ST["pad"])
+    shell.edit_feature(pad)
+    harness.pump(600)
+    dialog().field("operation").button("cut").click()
+    harness.pump(600)
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    before = list(doc().UndoNames)[:4]
+    commands.REGISTRY.run("edit.undo")  # brings the Pad back (FreeCAD drops its formula link; InCad repairs it)
+    harness.pump(800)
+    pad = doc().getObject(ST["pad"])
+    assert pad is not None and pad.TypeId == "PartDesign::Pad", (pad, before, list(doc().UndoNames)[:4])
+    name = model.bound_parameter(pad, "Length")
+    s().browser.parameterSet.emit(name, "13 mm")
+    harness.pump(600)
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 13) < 1e-6, doc().getObject(ST["pad"]).Length
+
+
+harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, test_2_ok_commits_one_undo_step,
+             test_3_edit_feature_changes_the_distance, test_4_cancel_restores_after_previews,
+             test_5_invalid_value_disables_ok, test_6_cut_through_all_on_top,
+             test_7_new_solid_and_cancel_moves_sketch_back, test_8_revolve,
+             test_9_parameter_click_inserts_into_the_focused_field, test_10_busy_blocks_other_changes_and_is_cleared,
+             test_11_leaving_incad_closes_the_dialog,
+             test_12_user_undo_keeps_features_following_their_parameters])

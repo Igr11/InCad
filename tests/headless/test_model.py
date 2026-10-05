@@ -56,3 +56,55 @@ class ModelTest(unittest.TestCase):
         model.new_feature_parameter(self.doc, "1 mm")
         from incad.core import nodes, tree
         self.assertNotIn("InCadModel", [n.label for _, n in nodes.flatten(tree.build(self.doc))])
+
+
+class RelinkAfterUndoTest(unittest.TestCase):
+    """FreeCAD quirk (probed): an object restored by undo/abort loses its formula dependency links."""
+
+    def setUp(self):
+        from incad.features import extrude
+        self.extrude = extrude
+        self.doc = util.new_doc("RL")
+        self.body = document.make_part(self.doc)
+        sk = util.add_rect_sketch(self.body)
+        self.doc.recompute()
+        self.doc.openTransaction("create")
+        self.f = extrude.create(self.doc, self.body, sk, extrude.defaults(self.doc, self.body, sk))
+        self.doc.recompute()
+        self.doc.commitTransaction()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_relink_restores_live_formulas(self):
+        self.doc.openTransaction("edit")
+        self.extrude.update(self.doc, self.f, dict(self.extrude.read(self.doc, self.f), operation="cut"))
+        self.doc.recompute()
+        self.doc.abortTransaction()
+        self.doc.recompute()
+        self.assertEqual(model.relink(self.doc), ["Extrude"])
+        model.set_model_parameter(self.doc, "d0", "4 mm")
+        self.assertAlmostEqual(self.body.Tip.Length.Value, 4)
+
+    def test_rollback_relinks_by_itself(self):
+        from incad.core import safe
+
+        def replace_then_fail():
+            self.extrude.update(self.doc, self.f, dict(self.extrude.read(self.doc, self.f), operation="cut"))
+            raise RuntimeError("boom")
+
+        self.assertFalse(safe.run_safely("Bad", replace_then_fail, self.doc).ok)
+        model.set_model_parameter(self.doc, "d0", "6 mm")
+        self.assertAlmostEqual(self.body.Tip.Length.Value, 6)
+
+
+class UserParameterNamesTest(unittest.TestCase):
+    def test_user_parameter_cannot_take_a_feature_parameter_name(self):
+        doc = util.new_doc("UP")
+        try:
+            document.make_part(doc)
+            name = model.new_feature_parameter(doc, "5 mm")
+            with self.assertRaises(ValueError):
+                document.set_parameter(doc, name, "1 mm")
+        finally:
+            App.closeDocument(doc.Name)

@@ -4,6 +4,7 @@ from incad.features.common import Field, profile_of, value_param, value_text
 TITLE = "Revolve"
 ICON = "revolve"
 TYPES = ("PartDesign::Revolution", "PartDesign::Groove")
+PROPS = {"angle": "Angle", "angle2": "Angle2"}
 FIELDS = (
     Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join"),
     Field("axis", "Axis", "choice", (("V_Axis", "Sketch vertical"), ("H_Axis", "Sketch horizontal")), "V_Axis"),
@@ -55,4 +56,8 @@ def update(doc, f, values):
         from incad.features import extrude
         f = extrude._replace(doc, f, _type(values.get("operation", "join")))
     _apply(doc, f, values)
+    return f
+
+
+def _pad_of(f):
     return f

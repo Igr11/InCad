@@ -14,6 +14,7 @@ from incad.ui.statusbar import StatusBar
 from incad.ui.titlebar import TitleStrip
 from incad.ui.sketch_session import SketchSession
 from incad.ui.value_box import ValueBox
+from incad.ui.feature_session import FeatureSession
 from incad.ui import marking_layout
 from incad.ui.marking_menu import MarkingMenu
 from incad.ui.nav import Navigator, to_coin
@@ -32,20 +33,30 @@ MENUS = [("File", ["file.new", "file.open", "file.save", "file.save_as", "file.c
 _shell = None
 
 
-def _std_new_actions():
+# FreeCAD commands whose shortcuts InCad's own menus take over while active: FreeCAD's actions sit in its hidden
+# menus, where they no longer answer keys (probed: ⌘Z did nothing), so InCad owns the keys and gives them back.
+TAKEN_SHORTCUTS = ("Std_New", "Std_Open", "Std_Save", "Std_SaveAs", "Std_CloseActiveWindow", "Std_Undo", "Std_Redo")
+
+
+def _std_actions(name):
     import FreeCADGui as Gui
     try:
-        return list(Gui.Command.get("Std_New").getAction())
+        return list(Gui.Command.get(name).getAction())
     except Exception:
         return []
+
+
+def _std_new_actions():
+    return _std_actions("Std_New")
 
 
 class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
-    def __init__(self, callback, sketch_callback=None):
+    def __init__(self, callback, sketch_callback=None, undo_callback=None):
         self.callback = callback
         self.sketch_callback = sketch_callback
+        self.undo_callback = undo_callback
 
     def slotCreatedDocument(self, doc):
         self.callback()
@@ -71,8 +82,32 @@ class _DocObserver:
                 and self.sketch_callback is not None:
             self.sketch_callback(obj)
 
+    def slotUndoDocument(self, doc):
+        self.callback()
+        if self.undo_callback is not None:
+            self.undo_callback(doc)
+
+    def slotRedoDocument(self, doc):
+        self.slotUndoDocument(doc)
+
     def slotRecomputedDocument(self, doc):
         self.callback()
+
+
+class _ProfilePicker:
+    """Waits for the user to pick a sketch with a closed profile, then starts the feature."""
+
+    def __init__(self, shell, kind):
+        self.shell, self.kind = shell, kind
+
+    def addSelection(self, doc_name, obj_name, sub, pnt):
+        import FreeCAD as App
+        from incad.core import sketch
+        from incad.features.common import closed_profile
+        obj = App.getDocument(doc_name).getObject(obj_name)
+        if sketch.is_sketch(obj) and closed_profile(obj):
+            shell, kind = self.shell, self.kind
+            QtCore.QTimer.singleShot(0, lambda: (shell._cancel_profile_pick(), shell.start_feature(kind)))
 
 
 class Shell(QtCore.QObject):
@@ -93,6 +128,8 @@ class Shell(QtCore.QObject):
         self.strip = None
         self.sketches = SketchSession(on_change=self.schedule_refresh, on_edit=self._seed_geometry)
         self._box_owner = None
+        self.feature_session = None
+        self._profile_pick = None
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
@@ -130,6 +167,8 @@ class Shell(QtCore.QObject):
             "navicube": params.snapshot(themes.NAVICUBE_GROUP, themes.NAVICUBE_KEYS),
             "sketch": {g: params.snapshot(g, keys) for g, keys in themes.SKETCH_KEYS.items()},
             "std_new": new[0].shortcut().toString() if new else "",
+            "std_shortcuts": {c: (_std_actions(c)[0].shortcut().toString() if _std_actions(c) else "")
+                              for c in TAKEN_SHORTCUTS},
             "mdi": [mdi.viewMode().name, mdi.tabPosition().name] if mdi is not None else None,
         }
 
@@ -141,8 +180,9 @@ class Shell(QtCore.QObject):
         for a in self._freecad_menu_actions():
             a.setVisible(False)
         self.mw.statusBar().hide()
-        for a in _std_new_actions():
-            a.setShortcut(QtGui.QKeySequence())
+        for name in TAKEN_SHORTCUTS:
+            for a in _std_actions(name):
+                a.setShortcut(QtGui.QKeySequence())
         mdi = self._mdi()
         if mdi is not None:
             mdi.setViewMode(QtWidgets.QMdiArea.TabbedView)
@@ -154,6 +194,13 @@ class Shell(QtCore.QObject):
             name = w.objectName()
             if saved.get(name) or name in self._hidden_by_us:
                 w.show()
+
+    @staticmethod
+    def _restore_shortcuts(snap):
+        saved = snap.get("std_shortcuts") or {"Std_New": snap.get("std_new") or "Ctrl+N"}  # older snapshots
+        for name, seq in saved.items():
+            for a in _std_actions(name):
+                a.setShortcut(QtGui.QKeySequence(seq))
 
     def _restore_mdi(self, saved):
         mdi = self._mdi()
@@ -177,8 +224,7 @@ class Shell(QtCore.QObject):
             ("ViewCube colors", lambda: params.restore(themes.NAVICUBE_GROUP, snap["navicube"])
              if "navicube" in snap else None),
             ("Sketcher settings", lambda: [params.restore(g, v) for g, v in snap.get("sketch", {}).items()]),
-            ("New shortcut", lambda: [a.setShortcut(QtGui.QKeySequence(snap.get("std_new") or "Ctrl+N"))
-                                      for a in _std_new_actions()]),
+            ("shortcuts", lambda: self._restore_shortcuts(snap)),
             ("document tabs", lambda: self._restore_mdi(snap.get("mdi"))),
         ]
         for name, step in steps:
@@ -361,6 +407,8 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
+        self._close_feature_session(cancel=True)
+        self._cancel_profile_pick()
         self.sketches.close_all()
         self._close_value_box()
         for act in self._shortcuts.values():
@@ -531,7 +579,7 @@ class Shell(QtCore.QObject):
     # ----- sketching -----
     def _build_shortcuts(self):
         """Single-key shortcuts (Inventor defaults) for registry commands; enabled per mode in _refresh."""
-        menu_owned = {"file.new"}
+        menu_owned = {i for _, ids in MENUS for i in ids if i}
         for cmd_id in self.registry.ids():
             cmd = self.registry.get(cmd_id)
             if not cmd.shortcut or cmd_id in menu_owned:
@@ -545,9 +593,13 @@ class Shell(QtCore.QObject):
         self._esc = QAction("Cancel", self.mw)
         self._esc.setShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape))
         self._esc.setEnabled(False)
-        self._esc.triggered.connect(self.sketches.cancel_pick)
+        self._esc.triggered.connect(self._on_escape)
         self.mw.addAction(self._esc)
         self._shortcuts["_esc"] = self._esc
+
+    def _on_escape(self):
+        self.sketches.cancel_pick()
+        self._cancel_profile_pick()
 
     def shortcut_action(self, cmd_id):
         return self._shortcuts.get(cmd_id)
@@ -573,6 +625,16 @@ class Shell(QtCore.QObject):
             return
         if len(added) == 1 and not drawn and self.sketches.editing() is sk:
             self.open_value_box(sk, added[0])
+
+    def _after_undo(self, doc):
+        """Undo/redo can bring objects back without their formula links (FreeCAD quirk): repair them."""
+        def repair():
+            from incad.core import model
+            try:
+                model.relink(doc)
+            except Exception as e:
+                log.report("warning", "Could not repair formula links: %s" % e, traceback.format_exc())
+        QtCore.QTimer.singleShot(0, repair)
 
     def _seed_geometry(self, sk):
         """Baseline for the 'drawn or dimensioned?' rule when a sketch is opened."""
@@ -624,12 +686,15 @@ class Shell(QtCore.QObject):
         from incad.core import sketch as sketches
         doc = self._doc()
         if doc is not None:
-            safe.run_safely("Rename %s" % old, lambda: sketches.rename_dimension(doc, old, new), doc)
+            from incad.core import model
+            safe.run_safely("Rename %s" % old, lambda: model.rename_model_parameter(doc, old, new), doc)
         self.schedule_refresh()
 
     def _on_parameter_clicked(self, name):
         if self.value_box is not None:
             self.value_box.insert(name)
+        elif self.feature_session is not None:
+            self.feature_session.insert(name)
 
     @staticmethod
     def _preselected_dimension():
@@ -651,12 +716,15 @@ class Shell(QtCore.QObject):
         return None, None
 
     def _click_hook(self, view, viewport, x, y):
-        if self.value_box is None:
+        if self.value_box is None and self.feature_session is None:
             return False
         sk, name = self._preselected_dimension()
         if name is None:
             return False
-        self.value_box.insert(name)
+        if self.value_box is not None:
+            self.value_box.insert(name)
+        elif not self.feature_session.insert(name):
+            return False
         return True
 
     def _dblclick_hook(self, view, viewport, x, y):
@@ -666,6 +734,83 @@ class Shell(QtCore.QObject):
         self.open_value_box(sk, name)
         return True
 
+    # ----- features -----
+    def _close_feature_session(self, cancel):
+        fs = self.feature_session
+        if fs is not None:
+            fs.cancel() if cancel else fs.ok()
+        self.feature_session = None
+
+    def _session_closed(self, fs):
+        if self.feature_session is fs:
+            self.feature_session = None
+        self.schedule_refresh()
+
+    def _profile_for(self, doc, body):
+        import FreeCADGui as Gui
+        from incad.core import sketch
+        from incad.features.common import closed_profile, unconsumed_closed_sketches
+        for sel in Gui.Selection.getSelectionEx(doc.Name):
+            if sketch.is_sketch(sel.Object) and closed_profile(sel.Object):
+                return sel.Object
+        editing = self.sketches.editing()
+        if editing is not None and closed_profile(editing):
+            self.sketches.finish()
+            return editing
+        candidates = unconsumed_closed_sketches(body)
+        return candidates[0] if len(candidates) == 1 else None
+
+    def start_feature(self, kind):
+        from incad.core import document
+        doc = self._doc()
+        if not document.is_incad_part(doc):
+            raise ValueError("Create or open an InCad part first")
+        if self.feature_session is not None:
+            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+        body = document.primary_body(doc)
+        profile = self._profile_for(doc, body)
+        if profile is None:
+            self._begin_profile_pick(kind)
+            return
+        self._open_session(kind, doc, body, profile=profile)
+
+    def edit_feature(self, feature):
+        from incad import features
+        kind = features.kind_for(feature)
+        if kind is None:
+            raise ValueError("%s cannot be edited yet" % feature.Label)
+        if self.feature_session is not None:
+            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+        self._open_session(kind, feature.Document, feature.getParentGeoFeatureGroup(), feature=feature)
+
+    def _open_session(self, kind, doc, body, profile=None, feature=None):
+        parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+        fs = FeatureSession(kind, doc, body, profile=profile, feature=feature, theme=self.theme, parent=parent,
+                            on_close=self._session_closed)
+        self.feature_session = fs
+        if not fs.start():
+            self.feature_session = None
+        self.schedule_refresh()
+
+    def _begin_profile_pick(self, kind):
+        import FreeCADGui as Gui
+        self._cancel_profile_pick()
+        self._profile_pick = _ProfilePicker(self, kind)
+        Gui.Selection.clearSelection()
+        Gui.Selection.addObserver(self._profile_pick)
+        self.status.set_prompt("Select a sketch to %s (Esc cancels)" % kind.TITLE.lower())
+        log.report("info", "Select a sketch with a closed profile")
+
+    def _cancel_profile_pick(self):
+        import FreeCADGui as Gui
+        if self._profile_pick is not None:
+            try:
+                Gui.Selection.removeObserver(self._profile_pick)
+            except Exception:
+                pass
+            self._profile_pick = None
+            self.schedule_refresh()
+
     # ----- hooks -----
     def _install_hooks(self):
         import FreeCAD as App
@@ -673,7 +818,7 @@ class Shell(QtCore.QObject):
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
-        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed)
+        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
@@ -814,7 +959,7 @@ class Shell(QtCore.QObject):
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
-                act.setEnabled(self.sketches.picking)
+                act.setEnabled(self.sketches.picking or self._profile_pick is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -862,8 +1007,9 @@ class Shell(QtCore.QObject):
         from incad.core import sketch as sketches
         doc = self._doc()
         if doc is not None:
-            if sketches.find_dimension(doc, name)[0] is not None:
-                safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text), doc)
+            from incad.core import model
+            if model.is_model_parameter(doc, name):
+                safe.run_safely("Set %s" % name, lambda: model.set_model_parameter(doc, name, text), doc)
             else:
                 safe.run_safely("Set %s" % name, lambda: document.set_parameter(doc, name, text), doc)
         self.schedule_refresh()
@@ -938,3 +1084,15 @@ def sketch_session():
     if _shell is None or not _shell.active:
         raise ValueError("InCad is not active")
     return _shell.sketches
+
+
+def start_feature(kind):
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    _shell.start_feature(kind)
+
+
+def edit_feature(feature):
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    _shell.edit_feature(feature)
