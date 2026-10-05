@@ -156,6 +156,22 @@ Cancel aborts it.
 - **Finish**: ✓ Finish Sketch, ↑ flick, or Esc with no active tool. If the sketch has exactly one closed
   profile, the next Extrude/Revolve picks it automatically.
 
+## 5a. Named dimensions and click-to-insert (added 2026-10-05)
+
+- Every driving sketch dimension and every feature value (extrude distance, fillet radius, …) gets an automatic
+  name `d0`, `d1`, `d2`, … (Inventor model parameters). Under the hood: named Sketcher constraints and feature
+  properties, linked with FreeCAD's expression engine, so links keep working in plain FreeCAD.
+- The Parameters panel shows **Model parameters** (the `dN` names) above **User parameters**; any name can be
+  renamed (`d3` → `WallThick`) and every reference follows.
+- While any value box is open (new dimension, dimension edit, feature dialog field), clicking an existing
+  dimension in the sketch or 3D view, or a row in the Parameters panel, inserts its name at the cursor. Enter keeps
+  it as is; typing more builds a formula (`d3*2`, `d3/2 + 1 mm`, `Width - 2*d5`).
+- A linked dimension shows an `fx:` prefix in the sketch. ⚙ → Dimension display: Value / Name / Expression.
+- A formula that would create a loop, or that names something unknown, is refused on Enter: the box turns red,
+  says why, and keeps the text for fixing.
+- Plans: 1c (sketch dimensions, naming, click-to-insert, fx display, display modes, model/user split of the
+  Parameters panel), 1d (click-to-insert in every feature dialog field). Plan 1a is unchanged.
+
 ## 6. Part features
 
 Common dialog behavior: floating dialog in the 3D view + drag handles (arrows for distance, rings for
