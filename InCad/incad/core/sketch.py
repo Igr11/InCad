@@ -77,42 +77,31 @@ def find_dimension(doc, name):
 
 
 def _used_names(doc):
-    names = {c.Name for sk in _sketches(doc) for c in sk.Constraints if c.Name}
-    return names | {n for n, _, _ in document.list_parameters(doc)}
+    from incad.core import model
+    return model.used_names(doc)
 
 
 def name_new_dimensions(doc):
     """Give every unnamed driving dimension the next free dN name; returns the names given."""
-    numbers = [int(m.group(1)) for m in (_DNAME.match(n) for n in _used_names(doc)) if m]
-    nxt = max(numbers) + 1 if numbers else 0
+    from incad.core import model
     added = []
     for sk in _sketches(doc):
         for i, c in enumerate(sk.Constraints):
             if c.Type in DIMENSIONAL and not c.Name and c.Driving:
-                name = "d%d" % nxt
-                nxt += 1
+                name = model.next_name(doc, added)
                 sk.renameConstraint(i, name)
                 added.append(name)
     return added
 
 
-def _refs(doc):
-    """plain name -> FreeCAD expression path, for user parameters and named dimensions."""
-    refs = {n: "%s.%s" % (document.PARAMS_NAME, n) for n, _, _ in document.list_parameters(doc)}
-    for name, sk, _ in dimensions(doc):
-        refs[name] = "%s.Constraints.%s" % (sk.Name, name)
-    return refs
-
-
 def to_expression(doc, text):
-    refs = _refs(doc)
-    return _TOKEN.sub(lambda m: refs.get(m.group(1), m.group(1)), text)
+    from incad.core import model
+    return model.to_expression(doc, text)
 
 
 def to_display(doc, expr):
-    for path, name in sorted(((p, n) for n, p in _refs(doc).items()), key=lambda pn: -len(pn[0])):
-        expr = expr.replace(path, name)
-    return re.sub(r"(?<![\w])\.Constraints\.([A-Za-z_]\w*)", r"\1", expr)
+    from incad.core import model
+    return model.to_display(doc, expr)
 
 
 def _expression_of(obj, path):
@@ -122,7 +111,7 @@ def _expression_of(obj, path):
     return ""
 
 
-def model_parameters(doc):
+def dimension_parameters(doc):
     """[(name, formula with plain names or '', value text)] for every named dimension."""
     rows = []
     for name, sk, _ in dimensions(doc):
@@ -176,3 +165,9 @@ def rename_dimension(doc, old, new):
         raise ValueError("%r is already used" % new)
     sk.renameConstraint(index, new)
     doc.recompute()
+
+
+def model_parameters(doc):
+    """Dimensions and feature values (see incad.core.model)."""
+    from incad.core import model
+    return model.model_parameters(doc)

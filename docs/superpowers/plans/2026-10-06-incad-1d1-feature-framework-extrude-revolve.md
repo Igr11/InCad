@@ -114,7 +114,7 @@ class ModelTest(unittest.TestCase):
         a = model.new_feature_parameter(self.doc, "12")
         b = model.new_feature_parameter(self.doc, "30", unit_kind="angle")
         self.assertEqual(model.parameter_text(self.doc, a), "12 mm")
-        self.assertEqual(model.parameter_text(self.doc, b), "30 °")
+        self.assertEqual(model.parameter_text(self.doc, b), "30°")
 
     def test_names_shared_with_dimensions_and_user_parameters(self):
         document.set_parameter(self.doc, "d2", "1 mm")
@@ -516,7 +516,7 @@ class ExtrudeTest(unittest.TestCase):
     def test_read_back(self):
         f = self.make(distance="25 mm", direction="symmetric", taper="5")
         v = extrude.read(self.doc, f)
-        self.assertEqual((v["distance"], v["direction"], v["taper"], v["operation"]), ("25 mm", "symmetric", "5 °", "join"))
+        self.assertEqual((v["distance"], v["direction"], v["taper"], v["operation"]), ("25 mm", "symmetric", "5°", "join"))
 
     def test_update_values_and_formulas(self):
         f = self.make()
@@ -629,7 +629,7 @@ class RevolveTest(unittest.TestCase):
                            dict(revolve.defaults(self.doc, self.body, self.sk), extent="angle", angle="90"))
         self.doc.recompute()
         self.assertAlmostEqual(f.Angle.Value, 90)
-        self.assertEqual(revolve.read(self.doc, f)["angle"], "90 °")
+        self.assertEqual(revolve.read(self.doc, f)["angle"], "90°")
         name = model.bound_parameter(f, "Angle")
         self.assertIsNotNone(name)
         f = revolve.update(self.doc, f, dict(revolve.read(self.doc, f), angle="180"))
