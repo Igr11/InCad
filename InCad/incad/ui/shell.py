@@ -12,10 +12,16 @@ from incad.ui.browser import ModelBrowser
 from incad.ui.ribbon import Ribbon
 from incad.ui.statusbar import StatusBar
 from incad.ui.titlebar import TitleStrip
+from incad.ui import marking_layout
+from incad.ui.marking_menu import MarkingMenu
+from incad.ui.nav import Navigator, to_coin
+from incad.ui.nav_strip import NavStrip
 
 OURS = ("InCadTop", "InCadBrowserDock", "InCadStatusBar")
 MENU_PREFIX = "InCadMenu_"
 TOOLBAR_GROUP = "User parameter:BaseApp/MainWindow/Toolbars"
+NAV_KEYS = {"NavigationStyle": "String", "ZoomAtCursor": "Bool"}
+NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtCursor": ("Bool", True)}
 MENUS = [("File", ["file.new", "file.open", "file.save", "file.save_as", "file.close"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
@@ -77,6 +83,10 @@ class Shell(QtCore.QObject):
         self._observer = None
         self._refresh_pending = False
         self._pending = False
+        self.navigator = None
+        self.strip = None
+        self.marking_menu = None
+        self.menu_kind = None
 
     # ----- FreeCAD's own UI -----
     def _mdi(self):
@@ -105,6 +115,8 @@ class Shell(QtCore.QObject):
             "statusbar": not self.mw.statusBar().isHidden(),
             "view": params.snapshot(themes.VIEW_GROUP, themes.VIEW_KEYS),
             "toolbar_params": params.snapshot_group(TOOLBAR_GROUP),
+            "nav": params.snapshot(themes.VIEW_GROUP, NAV_KEYS),
+            "navicube": params.snapshot(themes.NAVICUBE_GROUP, themes.NAVICUBE_KEYS),
             "std_new": new[0].shortcut().toString() if new else "",
             "mdi": [mdi.viewMode().name, mdi.tabPosition().name] if mdi is not None else None,
         }
@@ -149,6 +161,9 @@ class Shell(QtCore.QObject):
             # later, so its saved values must be put back too
             ("toolbar settings", lambda: params.restore(TOOLBAR_GROUP, snap.get("toolbar_params", {}))),
             ("3D view colors", lambda: params.restore(themes.VIEW_GROUP, snap["view"]) if "view" in snap else None),
+            ("navigation", lambda: params.restore(themes.VIEW_GROUP, snap["nav"]) if "nav" in snap else None),
+            ("ViewCube colors", lambda: params.restore(themes.NAVICUBE_GROUP, snap["navicube"])
+             if "navicube" in snap else None),
             ("New shortcut", lambda: [a.setShortcut(QtGui.QKeySequence(snap.get("std_new") or "Ctrl+N"))
                                       for a in _std_new_actions()]),
             ("document tabs", lambda: self._restore_mdi(snap.get("mdi"))),
@@ -284,6 +299,13 @@ class Shell(QtCore.QObject):
         self.browser.actionTriggered.connect(self._on_browser_action)
         self.browser.parameterSet.connect(self._on_parameter_set)
         self.browser.parameterRemoved.connect(self._on_parameter_removed)
+        self.navigator = Navigator(self._open_marking_menu, self._on_nav_mode_changed, self)
+        self.browser.markingMenuRequested.connect(self._on_browser_marking_menu)
+        mdi = self._mdi()
+        if mdi is not None:
+            self.strip = NavStrip(self.registry, self.theme, mdi.viewport())
+            self.strip.place(mdi.viewport().rect())
+            self.strip.show()
 
     def _build_menus(self):
         bar = self.mw.menuBar()
@@ -324,6 +346,21 @@ class Shell(QtCore.QObject):
                 w.deleteLater()
             except RuntimeError:
                 pass
+        if self.marking_menu is not None:
+            try:
+                self.marking_menu.close()
+            except RuntimeError:
+                pass
+            self.marking_menu = None
+        if self.navigator is not None:
+            self.navigator.detach_all()
+            self.navigator = None
+        if self.strip is not None:
+            try:
+                self.strip.deleteLater()
+            except RuntimeError:
+                pass
+            self.strip = None
         self._widgets = []
         self.ribbon = self.title = self.browser = self.status = None
 
@@ -343,6 +380,10 @@ class Shell(QtCore.QObject):
             act.setCheckable(True)
             act.setChecked(current == value)
             act.triggered.connect(lambda _=False, v=value: self._set_new_units(v))
+        nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
+        nav_act.setCheckable(True)
+        nav_act.setChecked(prefs.navigation_enabled())
+        nav_act.triggered.connect(lambda checked: self.set_navigation(checked))
         return menu
 
     def _set_theme_pref(self, value):
@@ -371,7 +412,66 @@ class Shell(QtCore.QObject):
         self.status.set_theme(self.theme)
         self._remove_menus()
         self._build_menus()
+        if self.strip is not None:
+            self.strip.set_theme(self.theme)
+        params.write(themes.NAVICUBE_GROUP, themes.navicube_params(self.theme))
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
+
+    def set_navigation(self, enabled):
+        prefs.set_navigation_enabled(enabled)
+        if self.navigator is None:
+            return
+        if enabled:
+            self.navigator.attach_all()
+        else:
+            self.navigator.set_mode(None)
+            self.navigator.detach_all()
+
+    def _on_nav_mode_changed(self, mode):
+        if self.strip is not None:
+            self.strip.refresh_checks()
+        if self.status is not None:
+            hints = {"orbit": "Orbit: drag with the left button (click Orbit again to stop)",
+                     "pan": "Pan: drag with the left button (click Pan again to stop)"}
+            self.status.set_prompt(hints.get(mode, "Ready"))
+
+    def _show_marking_menu(self, kind, global_pos, flick=False):
+        slots, items = marking_layout.resolve(kind, self.registry)
+        if not slots and not items:
+            return None
+        if self.marking_menu is not None:
+            try:
+                self.marking_menu.close()
+            except RuntimeError:
+                pass
+        menu = MarkingMenu(self.registry, slots, items, self.theme, self.mw)
+        menu.destroyed.connect(lambda _=None: setattr(self, "marking_menu", None))
+        self.marking_menu, self.menu_kind = menu, kind
+        menu.show_at(global_pos)
+        if flick:
+            menu.start_flick()
+        return menu
+
+    def _open_marking_menu(self, view, viewport, local, global_pos, flick):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import context, document
+        doc = App.ActiveDocument
+        info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
+        context.set_target(None)
+        if info:
+            comp = info.get("Component", "")
+            kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
+            Gui.Selection.clearSelection()
+            Gui.Selection.addSelection(info["Document"], info["Object"], comp)
+        else:
+            kind = "part" if document.is_incad_part(doc) else "empty"
+        return self._show_marking_menu(kind, global_pos, flick)
+
+    def _on_browser_marking_menu(self, name, global_pos):
+        from incad.core import context
+        context.set_target(name)
+        self._show_marking_menu("browser", global_pos)
 
     # ----- hooks -----
     def _install_hooks(self):
@@ -383,9 +483,24 @@ class Shell(QtCore.QObject):
         self._observer = _DocObserver(self.schedule_refresh)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
+        from incad.core import params
+        params.write(themes.VIEW_GROUP, NAV_VALUES)
+        mdi = self._mdi()
+        if mdi is not None:
+            mdi.viewport().installEventFilter(self)
+        if prefs.navigation_enabled():
+            self.navigator.attach_all()
 
     def _remove_hooks(self):
         import FreeCAD as App
+        mdi = self._mdi()
+        if mdi is not None:
+            try:
+                mdi.viewport().removeEventFilter(self)
+            except RuntimeError:
+                pass
+        if self.navigator is not None:
+            self.navigator.detach_all()
         log.set_reporter(None)
         for w in [self.mw] + self._freecad_toolbars() + self._freecad_docks():
             try:
@@ -405,6 +520,11 @@ class Shell(QtCore.QObject):
 
     def eventFilter(self, obj, event):
         try:
+            mdi = self._mdi()
+            if self.strip is not None and mdi is not None and obj is mdi.viewport() \
+                    and event.type() == QtCore.QEvent.Resize:
+                self.strip.place(mdi.viewport().rect())
+                return False
             etype = event.type()
             if obj is self.mw:
                 if etype == QtCore.QEvent.Close and self.active:
@@ -482,6 +602,10 @@ class Shell(QtCore.QObject):
         else:
             self.status.set_stats(None, None)
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
+        if self.navigator is not None and prefs.navigation_enabled():
+            self.navigator.attach_all()
+        if self.strip is not None:
+            self.strip.refresh_checks()
 
     # ----- browser actions -----
     @staticmethod
@@ -574,3 +698,14 @@ def recover_after_crash():
         log.report("warning", "InCad could not restore FreeCAD's interface: %s" % e, traceback.format_exc())
     finally:
         prefs.clear_takeover_snapshot()
+
+
+def toggle_nav_mode(mode):
+    if _shell is not None and _shell.active and _shell.navigator is not None:
+        _shell.navigator.set_mode(None if _shell.navigator.mode == mode else mode)
+
+
+def nav_mode():
+    if _shell is not None and _shell.active and _shell.navigator is not None:
+        return _shell.navigator.mode
+    return None
