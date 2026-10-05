@@ -28,7 +28,15 @@ class Gestures:
         return math.hypot(x - a[0], y - a[1]) > DRAG_PX
 
     def feed(self, kind, button, buttons, x, y):
-        return getattr(self, "_" + self.state)(kind, button, buttons, x, y)
+        if kind == "move" and buttons == 0 and self.state != "idle":
+            # a release got lost (Cmd-Tab, Mission Control, a dialog): end whatever was going on
+            ended = [("orbit_end",)] if self.state == "orbit" else [(self.mode + "_end",)] if self.state == "tool" else []
+            self.reset()
+            return ended + [PASS]
+        actions = getattr(self, "_" + self.state)(kind, button, buttons, x, y)
+        if button == RIGHT and PASS in actions:  # InCad owns the right button: FreeCAD would open its own menu
+            actions = [a for a in actions if a != PASS]
+        return actions
 
     def _idle(self, kind, button, buttons, x, y):
         if kind == "press" and button == LEFT and buttons == LEFT:

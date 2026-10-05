@@ -418,14 +418,24 @@ class Shell(QtCore.QObject):
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
 
     def set_navigation(self, enabled):
+        """Off gives FreeCAD's own navigation back exactly (the user's style and zoom setting)."""
+        from incad.core import params
         prefs.set_navigation_enabled(enabled)
         if self.navigator is None:
             return
         if enabled:
+            params.write(themes.VIEW_GROUP, NAV_VALUES)
             self.navigator.attach_all()
         else:
             self.navigator.set_mode(None)
             self.navigator.detach_all()
+            snap = self._snapshot or json.loads(prefs.takeover_snapshot() or "{}")
+            if "nav" in snap:
+                params.restore(themes.VIEW_GROUP, snap["nav"])
+
+    def _raise_strip(self, *_):
+        """QMdiArea raises a sub-window when it is added or activated; keep the strip above the 3D view."""
+        QtCore.QTimer.singleShot(0, lambda: self.strip.raise_() if self.strip is not None else None)
 
     def _on_nav_mode_changed(self, mode):
         if self.strip is not None:
@@ -484,11 +494,12 @@ class Shell(QtCore.QObject):
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
-        params.write(themes.VIEW_GROUP, NAV_VALUES)
         mdi = self._mdi()
         if mdi is not None:
             mdi.viewport().installEventFilter(self)
+            mdi.subWindowActivated.connect(self._raise_strip)
         if prefs.navigation_enabled():
+            params.write(themes.VIEW_GROUP, NAV_VALUES)
             self.navigator.attach_all()
 
     def _remove_hooks(self):
@@ -497,7 +508,8 @@ class Shell(QtCore.QObject):
         if mdi is not None:
             try:
                 mdi.viewport().removeEventFilter(self)
-            except RuntimeError:
+                mdi.subWindowActivated.disconnect(self._raise_strip)
+            except (RuntimeError, TypeError):
                 pass
         if self.navigator is not None:
             self.navigator.detach_all()
@@ -534,7 +546,8 @@ class Shell(QtCore.QObject):
                     child = event.child()
                     if isinstance(child, (QtWidgets.QToolBar, QtWidgets.QDockWidget)):
                         QtCore.QTimer.singleShot(0, lambda c=child: self._adopt(c))
-            elif etype == QtCore.QEvent.Show and self.active and obj.objectName() not in OURS:
+            elif etype == QtCore.QEvent.Show and self.active and obj.objectName() not in OURS \
+                    and isinstance(obj, (QtWidgets.QToolBar, QtWidgets.QDockWidget)):
                 QtCore.QTimer.singleShot(0, lambda o=obj: self._rehide(o))
         except Exception:
             log.logger().exception("InCad event filter")
@@ -606,6 +619,7 @@ class Shell(QtCore.QObject):
             self.navigator.attach_all()
         if self.strip is not None:
             self.strip.refresh_checks()
+            self.strip.raise_()
 
     # ----- browser actions -----
     @staticmethod

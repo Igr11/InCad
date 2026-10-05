@@ -67,3 +67,50 @@ class GesturesTest(unittest.TestCase):
         self.assertEqual((a, b, c), ([("pan_start", 0, 0)], [("pan", 4, 2)], [("pan_end",)]))
         self.g.mode = "orbit"
         self.assertEqual(self.g.feed("press", LEFT, LEFT, 0, 0), [("orbit_start", 0, 0)])
+
+
+class LostReleaseTest(unittest.TestCase):
+    """A release can get lost (Cmd-Tab, Mission Control, a dialog popping up): the next event shows no buttons held."""
+
+    def test_orbit_ends_when_buttons_are_no_longer_held(self):
+        g = Gestures()
+        g.feed("press", LEFT, LEFT, 10, 10)
+        g.feed("press", RIGHT, LEFT | RIGHT, 10, 10)
+        self.assertEqual(g.feed("move", 0, 0, 30, 10), [("orbit_end",), PASS])
+        self.assertEqual(g.state, "idle")
+        self.assertEqual(g.feed("move", 0, 0, 40, 10), [PASS])
+
+    def test_held_left_without_buttons_is_dropped(self):
+        g = Gestures()
+        g.feed("press", LEFT, LEFT, 10, 10)
+        self.assertEqual(g.feed("move", 0, 0, 11, 10), [PASS])
+        self.assertEqual(g.state, "idle")
+
+    def test_held_right_without_buttons_is_dropped(self):
+        g = Gestures()
+        g.feed("press", RIGHT, RIGHT, 10, 10)
+        self.assertEqual(g.feed("move", 0, 0, 11, 10), [PASS])
+        self.assertEqual(g.feed("press", LEFT, LEFT, 12, 10), [])  # a fresh left press, not an orbit
+        self.assertEqual(g.state, "left_held")
+
+    def test_tool_drag_ends_without_buttons(self):
+        g = Gestures()
+        g.mode = "pan"
+        g.feed("press", LEFT, LEFT, 0, 0)
+        self.assertEqual(g.feed("move", 0, 0, 5, 5), [("pan_end",), PASS])
+
+
+class RightButtonNeverReachesFreeCADTest(unittest.TestCase):
+    def test_right_during_a_left_drag(self):
+        g = Gestures()
+        g.feed("press", LEFT, LEFT, 10, 10)
+        g.feed("move", 0, LEFT, 30, 10)  # handed to FreeCAD as a left drag
+        self.assertEqual(g.feed("press", RIGHT, LEFT | RIGHT, 30, 10), [])
+        self.assertEqual(g.feed("release", RIGHT, LEFT, 30, 10), [])
+        self.assertEqual(g.feed("release", LEFT, 0, 30, 10), [PASS])
+
+    def test_right_with_middle_held(self):
+        g = Gestures()
+        self.assertEqual(g.feed("press", MIDDLE, MIDDLE, 5, 5), [PASS])
+        self.assertEqual(g.feed("press", RIGHT, MIDDLE | RIGHT, 5, 5), [])
+        self.assertEqual(g.feed("release", RIGHT, MIDDLE, 5, 5), [])

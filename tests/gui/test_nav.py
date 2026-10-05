@@ -40,12 +40,12 @@ def empty_pos():
     return QtCore.QPointF(vp().width() * 0.2, vp().height() * 0.8)
 
 
-def send(kind, pos, button, buttons, target=None):
+def send(kind, pos, button, buttons, target=None, modifiers=QtCore.Qt.NoModifier):
     target = target or vp()
     types = {"press": QtCore.QEvent.MouseButtonPress, "release": QtCore.QEvent.MouseButtonRelease,
              "move": QtCore.QEvent.MouseMove}
     glob = QtCore.QPointF(target.mapToGlobal(pos.toPoint()))
-    ev = QtGui.QMouseEvent(types[kind], pos, glob, button, buttons, QtCore.Qt.NoModifier)
+    ev = QtGui.QMouseEvent(types[kind], pos, glob, button, buttons, modifiers)
     QtWidgets.QApplication.sendEvent(target, ev)
     harness.pump(40)
 
@@ -64,6 +64,7 @@ def nav_params():
 def test_0_setup():
     prefs.set_remember_new_choice(True)
     prefs.set_default_units("mm")
+    App.ParamGet(theme.VIEW_GROUP).SetString("NavigationStyle", "Gui::BlenderNavigationStyle")  # the user's own
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(800)
     BASE["params"] = nav_params()
@@ -72,7 +73,10 @@ def test_0_setup():
     commands.REGISTRY.run("file.new")
     harness.pump(800)
     box = App.ActiveDocument.addObject("Part::Box", "Box")
+    box2 = App.ActiveDocument.addObject("Part::Box", "Box2")
+    box2.Placement.Base = App.Vector(20, 0, 0)
     App.ActiveDocument.recompute()
+    BASE["doc"] = App.ActiveDocument.Name
     Gui.SendMsgToActiveView("ViewFit")
     harness.pump(800)
     assert box.Shape.isValid()
@@ -198,15 +202,59 @@ def test_9_navicube_follows_theme():
 
 def test_10_navigation_off_and_on():
     s().set_navigation(False)
+    harness.pump(300)
     assert s().navigator.attached() == [] and not prefs.navigation_enabled()
+    assert view().getNavigationType() == "Gui::BlenderNavigationStyle", view().getNavigationType()
+    assert nav_params()[0] == BASE["params"][0]
     s().set_navigation(True)
+    harness.pump(300)
     assert vp() in s().navigator.attached()
+    assert view().getNavigationType() == "Gui::CADNavigationStyle", view().getNavigationType()
+
+
+def test_12_minimize_and_restore_keeps_the_3d_view():
+    mdi = mw.findChild(QtWidgets.QMdiArea)
+    QtWidgets.QApplication.sendEvent(mdi.viewport(), QtGui.QShowEvent())  # what Qt sends on restore
+    harness.pump(300)
+    assert not mdi.viewport().isHidden(), "the 3D view area was hidden"
+    assert not s().strip.isHidden()
+
+
+def test_13_cmd_click_adds_to_selection():
+    Gui.Selection.clearSelection()
+    p1, p2 = qt_pos_of((5, 5, 10)), qt_pos_of((25, 5, 10))
+    send("press", p1, L, L)
+    send("release", p1, L, QtCore.Qt.NoButton)
+    # FreeCAD reads the modifier at the release (probed in plain FreeCAD), so Cmd is held through the click
+    send("press", p2, L, L, modifiers=QtCore.Qt.ControlModifier)
+    send("release", p2, L, QtCore.Qt.NoButton, modifiers=QtCore.Qt.ControlModifier)
+    names = sorted(o.ObjectName for o in Gui.Selection.getSelectionEx())
+    assert names == ["Box", "Box2"], names
+
+
+def _strip_on_top():
+    mdi = mw.findChild(QtWidgets.QMdiArea)
+    strip = s().strip
+    hit = mdi.viewport().childAt(strip.geometry().center())
+    return hit is strip or (hit is not None and strip.isAncestorOf(hit))
+
+
+def test_14_strip_stays_on_top_with_two_documents():
+    commands.REGISTRY.run("file.new")
+    harness.pump(1000)
+    assert _strip_on_top(), "strip covered after a second document"
+    mdi = mw.findChild(QtWidgets.QMdiArea)
+    for w in mdi.subWindowList():
+        mdi.setActiveSubWindow(w)
+        harness.pump(300)
+        assert _strip_on_top(), "strip covered after switching to %s" % w.windowTitle()
 
 
 def test_11_leaving_incad_restores_navigation():
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(1000)
     assert nav_params() == BASE["params"], (nav_params(), BASE["params"])
+    assert view().getNavigationType() == "Gui::BlenderNavigationStyle", view().getNavigationType()
     assert s().navigator is None or s().navigator.attached() == []
 
 
@@ -214,4 +262,5 @@ harness.run([test_0_setup, test_1_navigation_installed, test_2_left_click_still_
              test_3_left_right_drag_orbits_without_selecting, test_4_right_click_on_face,
              test_5_right_click_on_empty_space, test_6_flick_north_runs_home_view, test_7_browser_marking_menu_suppress,
              test_8_strip_orbit_tool, test_9_navicube_follows_theme, test_10_navigation_off_and_on,
-             test_11_leaving_incad_restores_navigation])
+             test_12_minimize_and_restore_keeps_the_3d_view, test_13_cmd_click_adds_to_selection,
+             test_14_strip_stays_on_top_with_two_documents, test_11_leaving_incad_restores_navigation])

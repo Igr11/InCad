@@ -60,7 +60,7 @@ class Navigator(QtCore.QObject):
                     continue
                 machine = gestures.Gestures()
                 machine.mode = self.mode
-                self._attached[viewport] = [view, machine]
+                self._attached[viewport] = [view, machine, QtCore.Qt.NoModifier]  # + modifiers at the last press
                 viewport.installEventFilter(self)
                 viewport.destroyed.connect(lambda _=None, v=viewport: self._attached.pop(v, None))
 
@@ -87,22 +87,24 @@ class Navigator(QtCore.QObject):
         kind = KINDS.get(event.type())
         if entry is None or kind is None:
             return False
-        view, machine = entry
+        view, machine = entry[0], entry[1]
         try:
+            if kind == "press":
+                entry[2] = event.modifiers()
             pos = event.position()
             actions = machine.feed(kind, _button(event.button()), _held(event.buttons()), pos.x(), pos.y())
             for action in actions:
-                self._do(obj, view, action, event)
+                self._do(obj, view, action, entry[2])
             return gestures.PASS not in actions
         except Exception:
             log.logger().exception("InCad navigation")
             machine.reset()
             return False
 
-    def _do(self, viewport, view, action, event):
+    def _do(self, viewport, view, action, press_modifiers):
         name = action[0]
         if name == "replay_press":
-            self._replay(viewport, action[1], action[2], event)
+            self._replay(viewport, action[1], action[2], press_modifiers)
         elif name == "orbit_start":
             self._pivot = self._pivot_at(view, viewport, action[1], action[2])
         elif name == "orbit":
@@ -116,11 +118,11 @@ class Navigator(QtCore.QObject):
             local = QtCore.QPointF(action[1], action[2])
             self._open_menu(view, viewport, local, viewport.mapToGlobal(local.toPoint()), name == "flick_start")
 
-    def _replay(self, viewport, x, y, event):
+    def _replay(self, viewport, x, y, modifiers):
         local = QtCore.QPointF(x, y)
         press = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, local,
                                   QtCore.QPointF(viewport.mapToGlobal(local.toPoint())),
-                                  QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, event.modifiers())
+                                  QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, modifiers)
         self._replaying = True
         try:
             QtWidgets.QApplication.sendEvent(viewport, press)
