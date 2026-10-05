@@ -11,3 +11,6 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   new documents have `UndoMode == 0` — `incad.core.safe` turns it on; a failed feature has `'Invalid'` in
   `obj.State` and the reason in `obj.getStatusString()`.
 - UI text English. Chat with the user in any language.
+- 1b facts: `view.getCameraNode()` needs `from pivy import coin` first; Coin pixel positions are device px with a
+  bottom-left origin (`incad.ui.nav.to_coin`); FreeCAD opens its 3D context menu on the right-button release, so
+  InCad's gesture rules never pass a lone right release.

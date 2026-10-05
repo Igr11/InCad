@@ -12,3 +12,9 @@ Then pick **InCad** in FreeCAD's workbench list.
 
 Your FreeCAD settings are never used by the tests (each run gets a throwaway user.cfg).
 Logs: ~/Library/Logs/InCad.log
+
+## Mouse
+- Left click: select. Left + right button drag: orbit around the point under the cursor.
+- Middle drag: pan. Wheel: zoom at the cursor.
+- Right click: marking menu (also in the Model Browser). Right drag: flick a marking-menu command.
+- ⚙ → Mouse Navigation switches InCad's mouse handling off (FreeCAD's own navigation then applies).
