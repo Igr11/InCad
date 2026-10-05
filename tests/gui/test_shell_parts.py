@@ -71,6 +71,30 @@ def test_3_parameters():
     assert "parameter name" in s().status.texts()["message"].lower(), s().status.texts()
 
 
+def _editor():
+    """The open cell editor (the window may not have keyboard focus while tests run)."""
+    b = s().browser
+    return QtWidgets.QApplication.focusWidget() if isinstance(QtWidgets.QApplication.focusWidget(), QtWidgets.QLineEdit) \
+        else b.params.findChild(QtWidgets.QLineEdit)
+
+
+def test_3b_typing_a_parameter_like_a_user():
+    from PySide6.QtTest import QTest
+    from incad.qt import QtCore
+    b = s().browser
+    QTest.mouseClick(b.add_button, QtCore.Qt.LeftButton)
+    harness.pump(300)
+    assert _editor() is not None, "+ must open the name cell for typing"
+    QTest.keyClicks(_editor(), "Depth")
+    QTest.keyClick(_editor(), QtCore.Qt.Key_Tab)
+    harness.pump(300)
+    QTest.keyClicks(_editor(), "5 mm")
+    QTest.keyClick(_editor(), QtCore.Qt.Key_Return)
+    harness.pump(800)
+    assert ("Depth", "", "5 mm") in document.list_parameters(App.ActiveDocument), document.list_parameters(App.ActiveDocument)
+    assert ("Depth", "5 mm", "5 mm") in b.parameter_rows(), b.parameter_rows()
+
+
 def test_4_plain_file():
     d = App.newDocument("Plain")
     d.addObject("PartDesign::Body", "Body")
@@ -137,6 +161,6 @@ def test_9_close_all_documents():
         assert "could not update its panels" not in f.read()
 
 
-harness.run([test_0_activate, test_1_new_part, test_2_switching_documents_updates_panels, test_3_parameters,
+harness.run([test_0_activate, test_1_new_part, test_2_switching_documents_updates_panels, test_3_parameters, test_3b_typing_a_parameter_like_a_user,
              test_4_plain_file, test_5_theme_toggle, test_6_ribbon_size_persists, test_7_std_commands_exist,
              test_8_failed_command_then_undo, test_9_close_all_documents])

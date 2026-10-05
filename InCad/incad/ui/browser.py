@@ -6,6 +6,10 @@ NAME_ROLE = QtCore.Qt.UserRole
 KIND_ROLE = QtCore.Qt.UserRole + 1
 STATE_ROLE = QtCore.Qt.UserRole + 2
 
+# double-click, Enter/F2, or simply start typing on a selected cell
+EDIT_TRIGGERS = (QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed
+                 | QtWidgets.QAbstractItemView.AnyKeyPressed | QtWidgets.QAbstractItemView.SelectedClicked)
+
 KIND_ICONS = {"part": "part", "origin": "origin", "feature": "feature", "sketch": "sketch",
               "end_of_part": "end_of_part", "solids": "solids", "body": "part"}
 
@@ -82,6 +86,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.params.setHorizontalHeaderLabels(["Name", "Value", "Result"])
         self.params.verticalHeader().hide()
         self.params.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)  # fit the panel
+        self.params.setEditTriggers(EDIT_TRIGGERS)
         self.params.itemChanged.connect(self._on_param_changed)
         col.addWidget(self.params, 1)
 
@@ -230,8 +235,8 @@ class ModelBrowser(QtWidgets.QWidget):
         self._params_enabled = enabled
         self.add_button.setEnabled(enabled)
         self.remove_button.setEnabled(enabled)
-        self.params.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed
-                                    if enabled else QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.add_button.setToolTip("Add parameter" if enabled else "Open or create an InCad part to add parameters")
+        self.params.setEditTriggers(EDIT_TRIGGERS if enabled else QtWidgets.QAbstractItemView.NoEditTriggers)
 
     def add_parameter_row(self):
         if not self._params_enabled:
@@ -246,6 +251,8 @@ class ModelBrowser(QtWidgets.QWidget):
         finally:
             self._loading = False
         self.params.setCurrentCell(r, 0)
+        self.params.setFocus()
+        self.params.editItem(self.params.item(r, 0))  # start typing the name right away; Tab moves to Value
         return r
 
     def _on_param_changed(self, item):

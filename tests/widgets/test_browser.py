@@ -145,3 +145,56 @@ class ParametersLockTest(unittest.TestCase):
         b.params.item(r, 0).setText("Gap")
         b.params.item(r, 1).setText("1 mm")
         self.assertEqual(seen, ["Gap"])
+
+
+class ParametersTypingTest(unittest.TestCase):
+    """What a user does: click +, type a name, Tab, type a value, Enter."""
+
+    def test_plus_then_typing_creates_the_parameter(self):
+        from incad.qt import QtCore
+        from PySide6.QtTest import QTest
+        qtapp.app()
+        b = ModelBrowser("light")
+        seen = []
+        b.parameterSet.connect(lambda n, t: seen.append((n, t)))
+        b.resize(260, 600)
+        b.show()
+        b.activateWindow()
+        QTest.mouseClick(b.add_button, QtCore.Qt.LeftButton)
+        qtapp.app().processEvents()
+        QTest.keyClicks(qtapp.app().focusWidget(), "Width")
+        QTest.keyClick(qtapp.app().focusWidget(), QtCore.Qt.Key_Tab)
+        qtapp.app().processEvents()
+        QTest.keyClicks(qtapp.app().focusWidget(), "80 mm")
+        QTest.keyClick(qtapp.app().focusWidget(), QtCore.Qt.Key_Return)
+        qtapp.app().processEvents()
+        b.hide()
+        self.assertEqual(seen, [("Width", "80 mm")])
+
+    def test_typing_on_an_existing_value_edits_it(self):
+        from incad.qt import QtCore
+        from PySide6.QtTest import QTest
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_parameters([("Width", "", "80 mm")])
+        seen = []
+        b.parameterSet.connect(lambda n, t: seen.append((n, t)))
+        b.resize(260, 600)
+        b.show()
+        b.params.setFocus()
+        b.params.setCurrentCell(0, 1)
+        QTest.keyClicks(b.params, "9")  # typing on a selected cell opens its editor with that key
+        qtapp.app().processEvents()
+        QTest.keyClicks(qtapp.app().focusWidget(), "0 mm")
+        QTest.keyClick(qtapp.app().focusWidget(), QtCore.Qt.Key_Return)
+        qtapp.app().processEvents()
+        b.hide()
+        self.assertEqual(seen, [("Width", "90 mm")])
+
+    def test_disabled_plus_explains_why(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_parameters_enabled(False)
+        self.assertIn("InCad part", b.add_button.toolTip())
+        b.set_parameters_enabled(True)
+        self.assertEqual(b.add_button.toolTip(), "Add parameter")
