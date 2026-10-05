@@ -104,6 +104,25 @@ class SafeTest(unittest.TestCase):
         self.assertTrue(r.ok, r.error)
         self.assertTrue(pad.Suppressed)
 
+    def test_busy_refuses_new_changes(self):
+        safe.set_busy("Extrude")
+        try:
+            r = safe.run_safely("Add", lambda: self.doc.addObject("PartDesign::Body", "Body"), self.doc)
+            self.assertFalse(r.ok)
+            self.assertIn("Extrude", r.error)
+            self.assertIsNone(self.doc.getObject("Body"))
+        finally:
+            safe.set_busy(None)
+        self.assertIsNone(safe.busy())
+
+    def test_problems_reports_invalid_features(self):
+        body, pad = util.padded_part(self.doc, length=10)
+        before = safe.snapshot_broken(self.doc)
+        pad.Length = 0
+        self.doc.recompute()
+        found = safe.problems(self.doc, before, {pad.Name})
+        self.assertTrue(any("Pad" in p for p in found), found)
+
     def test_no_document_still_catches(self):
         for name in list(App.listDocuments()):
             App.closeDocument(name)

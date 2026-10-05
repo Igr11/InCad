@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from incad.core import log
 
 _depth = 0
+_busy = None
 
 
 @dataclass
@@ -58,11 +59,35 @@ def edit_open():
         return False
 
 
+def set_busy(label):
+    """A feature dialog is open (label) or closed (None): no other model change may start meanwhile."""
+    global _busy
+    _busy = label
+
+
+def busy():
+    return _busy
+
+
+def snapshot_broken(doc):
+    return {o.Name for o in doc.Objects if _broken(o, False)}
+
+
+def problems(doc, broken_before, touched):
+    """Reasons why objects that were fine (not in broken_before) are now broken; shapes checked for `touched`."""
+    found = [_broken(o, o.Name in touched) for o in doc.Objects if o.Name not in broken_before]
+    return [p for p in found if p]
+
+
 def run_safely(label, fn, doc=None):
     """Run fn() as one undo step named `label`. Never raises at the outermost level."""
     global _depth
     if _depth > 0:
         return SafeResult(True, fn())  # nested: the outer guard owns the transaction and catches errors
+    if _busy:
+        msg = "Finish the %s dialog first" % _busy
+        log.report("warning", msg)
+        return SafeResult(False, error=msg)
     import FreeCAD as App
     doc = doc or App.ActiveDocument
     if doc is None:
@@ -80,7 +105,7 @@ def run_safely(label, fn, doc=None):
         doc.commitTransaction()
     if not doc.UndoMode:
         doc.UndoMode = 1
-    broken_before = {o.Name for o in doc.Objects if _broken(o, False)}
+    broken_before = snapshot_broken(doc)
     names_before = {o.Name for o in doc.Objects}
     _depth += 1
     doc.openTransaction(label)
@@ -88,10 +113,9 @@ def run_safely(label, fn, doc=None):
         value = fn()
         touched = {o.Name for o in doc.Objects if "Touched" in o.State or o.Name not in names_before}
         doc.recompute()
-        problems = [_broken(o, o.Name in touched) for o in doc.Objects if o.Name not in broken_before]
-        problems = [p for p in problems if p]
-        if problems:
-            raise _InvalidResult("; ".join(problems))
+        found = problems(doc, broken_before, touched)
+        if found:
+            raise _InvalidResult("; ".join(found))
     except Exception as e:
         doc.abortTransaction()
         doc.recompute()
