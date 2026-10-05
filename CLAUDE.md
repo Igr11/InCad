@@ -1,0 +1,13 @@
+# InCad
+
+Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpowers/specs/, plans: docs/superpowers/plans/.
+
+- Module: `InCad/` (package `incad`), installed by `scripts/install.sh` as a symlink in
+  `~/Library/Application Support/FreeCAD/v1-1/Mod/InCad`. Restart FreeCAD to load code changes.
+- Tests: `tests/run_widgets.sh` (offscreen PySide6), `tests/run_headless.sh` (freecadcmd),
+  `tests/run_gui.sh` (real FreeCAD window — tell the user to keep hands off), `tests/run_all.sh`.
+  Every FreeCAD run uses `-u <temp>/user.cfg`, so the user's settings are never touched.
+- FreeCAD facts: bundled Python has no pytest (use unittest); `PySide` is FreeCAD's shim (PySide6 outside);
+  new documents have `UndoMode == 0` — `incad.core.safe` turns it on; a failed feature has `'Invalid'` in
+  `obj.State` and the reason in `obj.getStatusString()`.
+- UI text English. Chat with the user in any language.
