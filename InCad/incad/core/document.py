@@ -87,3 +87,88 @@ def set_end_of_part(body, feature):
         raise ValueError("%s is not part of %s" % (feature.Label, body.Label))
     body.Tip = feature
     body.Document.recompute()
+
+
+_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_GROUP = "Parameters"
+
+
+def parameters(doc, create=True):
+    obj = doc.getObject(PARAMS_NAME)
+    if obj is None and create:
+        obj = doc.addObject("App::VarSet", PARAMS_NAME)
+        obj.Label = "Parameters"
+    return obj
+
+
+def _is_param(obj, name):
+    return name in obj.PropertiesList and obj.getGroupOfProperty(name) == _GROUP
+
+
+def list_parameters(doc):
+    """[(name, formula or '', value as text)] in the order FreeCAD lists the properties."""
+    obj = parameters(doc, create=False) if doc is not None else None
+    if obj is None:
+        return []
+    formulas = {path.lstrip("."): expr for path, expr in obj.ExpressionEngine}
+    return [(name, "" if _is_literal(formulas.get(name, "")) else formulas[name], _format(getattr(obj, name)))
+            for name in obj.PropertiesList if obj.getGroupOfProperty(name) == _GROUP]
+
+
+def _is_literal(text):
+    """True for a plain value like '80 mm' (stored as an expression so any unit is accepted)."""
+    if not text:
+        return True
+    try:
+        App.Units.Quantity(text)
+        return True
+    except Exception:
+        return False
+
+
+def _format(quantity):
+    """'80.00 mm' -> '80 mm', '0.20 mm' -> '0.2 mm' (FreeCAD pads to the decimals setting)."""
+    m = re.match(r"^(-?[\d.,]+)(.*)$", quantity.UserString)
+    if not m:
+        return quantity.UserString
+    number, unit = m.groups()
+    sep = "." if "." in number else "," if "," in number else ""
+    if sep:
+        number = number.rstrip("0").rstrip(sep)
+    return number + unit
+
+
+def set_parameter(doc, name, text):
+    """Create or update a parameter: a quantity ('80 mm', '12') or a formula ('Width/8').
+    Call inside safe.run_safely: a formula that fails to evaluate raises and must be rolled back."""
+    if not _NAME_RE.match(name or ""):
+        raise ValueError("A parameter name starts with a letter or _ and has only letters, digits and _ (got %r)" % name)
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Parameter %s needs a value" % name)
+    if _is_literal(name):  # 'mm', 'A', 'deg'… are read as units inside formulas
+        raise ValueError("%r is a unit symbol; choose another parameter name" % name)
+    obj = parameters(doc)
+    if name in obj.PropertiesList and not _is_param(obj, name):
+        raise ValueError("%r is a reserved name" % name)
+    created = name not in obj.PropertiesList
+    if created:
+        obj.addProperty("App::PropertyQuantity", name, _GROUP)
+    try:  # plain values go through the expression engine too: a unitless PropertyQuantity refuses '80 mm'
+        obj.setExpression(name, text)
+    except Exception as e:
+        if created:
+            obj.removeProperty(name)
+        raise ValueError("Invalid formula for %s: %s" % (name, e))
+    doc.recompute()
+    if "Invalid" in obj.State or "Error" in obj.State:
+        raise ValueError("Formula for %s cannot be evaluated: %s" % (name, obj.getStatusString()))
+
+
+def remove_parameter(doc, name):
+    obj = parameters(doc, create=False)
+    if obj is None or not _is_param(obj, name):
+        raise ValueError("No parameter named %r" % name)
+    obj.setExpression(name, None)
+    obj.removeProperty(name)
+    doc.recompute()
