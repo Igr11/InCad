@@ -91,6 +91,76 @@ ICONS = {
     "pan": ('<path d="M16 4 V28 M4 16 H28" stroke="{S}" stroke-width="2.2"/>'
             '<path d="M12 8 L16 4 L20 8 M12 24 L16 28 L20 24 M8 12 L4 16 L8 20 M24 12 L28 16 L24 20" fill="none" '
             'stroke="{S}" stroke-width="2.2" stroke-linejoin="round"/>'),
+    "line": ('<path d="M5 26 L27 6" stroke="{S}" stroke-width="2.4" stroke-linecap="round"/>'
+             '<circle cx="5" cy="26" r="2.6" fill="{A}"/><circle cx="27" cy="6" r="2.6" fill="{A}"/>'),
+    "circle": '<circle cx="16" cy="16" r="10" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="16" r="2.2" fill="{A}"/>',
+    "arc": ('<path d="M5 24 A13 13 0 0 1 27 24" fill="none" stroke="{S}" stroke-width="2.4"/>'
+            '<circle cx="5" cy="24" r="2.4" fill="{A}"/><circle cx="16" cy="11.5" r="2.4" fill="{A}"/>'
+            '<circle cx="27" cy="24" r="2.4" fill="{A}"/>'),
+    "rectangle": ('<rect x="5" y="8" width="22" height="16" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                  '<circle cx="5" cy="24" r="2.4" fill="{A}"/><circle cx="27" cy="8" r="2.4" fill="{A}"/>'),
+    "slot": ('<rect x="4" y="10" width="24" height="12" rx="6" fill="none" stroke="{S}" stroke-width="2.4"/>'
+             '<circle cx="10" cy="16" r="1.8" fill="{A}"/><circle cx="22" cy="16" r="1.8" fill="{A}"/>'),
+    "polygon": ('<path d="M16 4 L26.4 10 L26.4 22 L16 28 L5.6 22 L5.6 10 Z" fill="none" stroke="{S}" stroke-width="2.4" '
+                'stroke-linejoin="round"/><circle cx="16" cy="16" r="2" fill="{A}"/>'),
+    "spline": ('<path d="M4 24 C10 4 18 30 28 8" fill="none" stroke="{S}" stroke-width="2.4"/>'
+               '<circle cx="4" cy="24" r="2.2" fill="{A}"/><circle cx="16" cy="17" r="2.2" fill="{A}"/>'
+               '<circle cx="28" cy="8" r="2.2" fill="{A}"/>'),
+    "sk_point": '<path d="M16 8 V24 M8 16 H24" stroke="{N}" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="{A}"/>',
+    "sk_fillet": ('<path d="M6 6 V18 A8 8 0 0 0 14 26 H26" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                  '<path d="M6 6 V26 H26" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "sk_chamfer": ('<path d="M6 6 V18 L14 26 H26" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                   '<path d="M6 18 V26 H14" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "trim": ('<path d="M4 16 H14" stroke="{S}" stroke-width="2.4"/><path d="M14 16 H28" stroke="{N}" stroke-width="1.6" '
+             'stroke-dasharray="2 2"/><path d="M20 6 V26" stroke="{S}" stroke-width="2.4"/>'
+             '<path d="M11 9 L17 15 M17 9 L11 15" stroke="{R}" stroke-width="2" stroke-linecap="round"/>'),
+    "extend": ('<path d="M4 16 H14" stroke="{S}" stroke-width="2.4"/><path d="M14 16 H22" stroke="{A}" stroke-width="2.4" '
+               'stroke-dasharray="3 2"/><path d="M24 6 V26" stroke="{S}" stroke-width="2.4"/>'),
+    "offset": ('<path d="M6 26 V12 Q6 6 12 6 H26" fill="none" stroke="{S}" stroke-width="2.4"/>'
+               '<path d="M12 26 V16 Q12 12 16 12 H26" fill="none" stroke="{A}" stroke-width="2" stroke-dasharray="3 2"/>'),
+    "project": ('<path d="M4 20 L14 25 L28 18 L18 13 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M16 3 V15" stroke="{A}" stroke-width="2.2"/>'
+                '<path d="M12 11 L16 16 L20 11" fill="none" stroke="{A}" stroke-width="2.2" stroke-linejoin="round"/>'),
+    "construction": ('<path d="M5 26 L27 6" stroke="{S}" stroke-width="2.4" stroke-dasharray="4 3"/>'
+                     '<circle cx="16" cy="16" r="9" fill="none" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 3"/>'),
+    "mirror": ('<path d="M16 3 V29" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
+               '<path d="M4 9 H12 V23 H4 Z" fill="{F}" stroke="{S}" stroke-width="1.8"/>'
+               '<path d="M28 9 H20 V23 H28 Z" fill="none" stroke="{A}" stroke-width="1.8"/>'),
+    "rect_pattern": ('<g fill="{F}" stroke="{S}" stroke-width="1.6"><rect x="4" y="4" width="9" height="9"/>'
+                     '<rect x="19" y="4" width="9" height="9"/><rect x="4" y="19" width="9" height="9"/>'
+                     '<rect x="19" y="19" width="9" height="9"/></g>'),
+    "dimension": ('<path d="M5 22 H27" stroke="{S}" stroke-width="1.8"/><path d="M5 16 V28 M27 16 V28" stroke="{S}" '
+                  'stroke-width="1.6"/><path d="M9 19 L5 22 L9 25 M23 19 L27 22 L23 25" fill="none" stroke="{S}" '
+                  'stroke-width="1.8"/><text x="16" y="15" font-family="Helvetica" font-size="10" text-anchor="middle" '
+                  'fill="{A}">40</text>'),
+    "coincident": ('<path d="M4 26 L16 16 L28 22" fill="none" stroke="{S}" stroke-width="2.2"/>'
+                   '<circle cx="16" cy="16" r="4" fill="{A}"/>'),
+    "horizontal": ('<path d="M4 18 H28" stroke="{S}" stroke-width="2.6"/><text x="16" y="13" font-family="Helvetica" '
+                   'font-size="10" font-weight="bold" text-anchor="middle" fill="{A}">H</text>'),
+    "vertical": ('<path d="M14 4 V28" stroke="{S}" stroke-width="2.6"/><text x="19" y="19" font-family="Helvetica" '
+                 'font-size="10" font-weight="bold" fill="{A}">V</text>'),
+    "parallel": '<path d="M6 24 L20 6 M13 26 L27 8" stroke="{S}" stroke-width="2.4"/>',
+    "perpendicular": ('<path d="M6 26 H26 M16 26 V6" stroke="{S}" stroke-width="2.4"/>'
+                      '<path d="M16 20 H22 V26" fill="none" stroke="{A}" stroke-width="1.6"/>'),
+    "tangent": '<circle cx="14" cy="18" r="8" fill="none" stroke="{S}" stroke-width="2.2"/><path d="M4 10 H28" stroke="{A}" stroke-width="2.2"/>',
+    "equal": '<path d="M7 12 H25 M7 20 H25" stroke="{S}" stroke-width="2.6"/>',
+    "symmetric": ('<path d="M16 4 V28" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
+                  '<circle cx="7" cy="16" r="3" fill="{A}"/><circle cx="25" cy="16" r="3" fill="{A}"/>'
+                  '<path d="M10 16 H13 M19 16 H22" stroke="{S}" stroke-width="1.6"/>'),
+    "fix": ('<rect x="8" y="14" width="16" height="13" rx="2" fill="{F}" stroke="{S}" stroke-width="1.8"/>'
+            '<path d="M11 14 V10 A5 5 0 0 1 21 10 V14" fill="none" stroke="{S}" stroke-width="2.2"/>'),
+    "show_dof": ('<path d="M5 26 L16 10 L27 26" fill="none" stroke="{S}" stroke-width="2"/>'
+                 '<circle cx="16" cy="10" r="3.5" fill="{R}"/><path d="M16 4 V1 M21 6 L23 4 M11 6 L9 4" stroke="{R}" '
+                 'stroke-width="1.6"/>'),
+    "stop": ('<circle cx="16" cy="16" r="11" fill="none" stroke="{N}" stroke-width="2"/>'
+             '<path d="M11 11 L21 21 M21 11 L11 21" stroke="{N}" stroke-width="2.4" stroke-linecap="round"/>'),
+    "finish": ('<circle cx="16" cy="16" r="12" fill="#2ea043"/><path d="M10 16.5 L14.5 21 L23 11.5" fill="none" '
+               'stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'),
+    "start_sketch": ('<rect x="4" y="9" width="18" height="15" fill="none" stroke="{S}" stroke-width="1.6"/>'
+                     '<path d="M4 24 L22 9" stroke="{S}" stroke-width="1.2"/>'
+                     '<path d="M25 4 V12 M21 8 H29" stroke="{A}" stroke-width="2.4" stroke-linecap="round"/>'),
+    "slice": ('<path d="M4 21 L14 26 L28 18 L18 13 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<path d="M3 15 H29" stroke="{R}" stroke-width="2" stroke-dasharray="4 2"/>'),
 }
 
 PER_THEME = {"theme_toggle": {"light": MOON, "dark": SUN}}  # shows what a click switches to

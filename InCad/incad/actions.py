@@ -11,6 +11,38 @@ STD_COMMANDS = {
     "view.look_at": "Std_AlignToSelection", "view.zoom_selection": "Std_ViewFitSelection",
 }
 STD_INDEX = {"view.style_shaded": 6, "view.style_wireframe": 2}  # Std_DrawStyle items: 6 Flat lines, 2 Wireframe
+SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
+    "sketch.line": ("Line", "line", "Sketcher_CreatePolyline", "L"),
+    "sketch.circle": ("Circle", "circle", "Sketcher_CreateCircle", "C"),
+    "sketch.arc": ("Arc", "arc", "Sketcher_Create3PointArc", "A"),
+    "sketch.rectangle": ("Rectangle", "rectangle", "Sketcher_CreateRectangle", "R"),
+    "sketch.slot": ("Slot", "slot", "Sketcher_CreateSlot", ""),
+    "sketch.polygon": ("Polygon", "polygon", "Sketcher_CreateHexagon", ""),
+    "sketch.spline": ("Spline", "spline", "Sketcher_CreateBSplineByInterpolation", ""),
+    "sketch.point": ("Point", "sk_point", "Sketcher_CreatePoint", ""),
+    "sketch.fillet": ("Fillet", "sk_fillet", "Sketcher_CreateFillet", ""),
+    "sketch.chamfer": ("Chamfer", "sk_chamfer", "Sketcher_CreateChamfer", ""),
+    "sketch.trim": ("Trim", "trim", "Sketcher_Trimming", "X"),
+    "sketch.extend": ("Extend", "extend", "Sketcher_Extend", ""),
+    "sketch.offset": ("Offset", "offset", "Sketcher_Offset", ""),
+    "sketch.project": ("Project Geometry", "project", "Sketcher_Projection", ""),
+    "sketch.construction": ("Construction", "construction", "Sketcher_ToggleConstruction", ""),
+    "sketch.mirror": ("Mirror", "mirror", "Sketcher_Symmetry", ""),
+    "sketch.rect_pattern": ("Rectangular Pattern", "rect_pattern", "Sketcher_RectangularArray", ""),
+    "sketch.dimension": ("Dimension", "dimension", "Sketcher_Dimension", "D"),
+    "sketch.coincident": ("Coincident", "coincident", "Sketcher_ConstrainCoincidentUnified", ""),
+    "sketch.horizontal": ("Horizontal", "horizontal", "Sketcher_ConstrainHorizontal", ""),
+    "sketch.vertical": ("Vertical", "vertical", "Sketcher_ConstrainVertical", ""),
+    "sketch.parallel": ("Parallel", "parallel", "Sketcher_ConstrainParallel", ""),
+    "sketch.perpendicular": ("Perpendicular", "perpendicular", "Sketcher_ConstrainPerpendicular", ""),
+    "sketch.tangent": ("Tangent", "tangent", "Sketcher_ConstrainTangent", ""),
+    "sketch.equal": ("Equal", "equal", "Sketcher_ConstrainEqual", ""),
+    "sketch.symmetric": ("Symmetric", "symmetric", "Sketcher_ConstrainSymmetric", ""),
+    "sketch.fix": ("Fix", "fix", "Sketcher_ConstrainLock", ""),
+    "sketch.show_dof": ("Show Free Geometry", "show_dof", "Sketcher_SelectElementsWithDoFs", ""),
+    "sketch.stop": ("Stop Tool", "stop", "Sketcher_StopOperation", ""),
+    "sketch.slice": ("Slice Graphics", "slice", "Sketcher_ViewSection", "F7"),
+}
 
 
 def _gui():
@@ -114,8 +146,13 @@ def move_end_of_part_here():
 
 
 def edit_feature():
-    from incad.core import log
-    log.report("info", "Editing features arrives with the feature tools (plan 1d)")
+    from incad.core import log, sketch
+    obj = _target_object()
+    if sketch.is_sketch(obj):
+        from incad.ui import shell
+        shell.sketch_session().edit(obj)
+    else:
+        log.report("info", "Editing features arrives with the feature tools (plan 1d)")
 
 
 def toggle_nav_mode(mode):
@@ -126,6 +163,16 @@ def toggle_nav_mode(mode):
 def nav_mode_is(mode):
     from incad.ui import shell
     return shell.nav_mode() == mode
+
+
+def start_sketch():
+    from incad.ui import shell
+    return shell.sketch_session().start()
+
+
+def finish_sketch():
+    from incad.ui import shell
+    shell.sketch_session().finish()
 
 
 def _std(cmd_id, label, icon):
@@ -165,7 +212,12 @@ def commands():
                 checkable=True, is_checked=lambda: nav_mode_is("orbit"), tooltip="Left-drag orbits; click again to stop"),
         Command(id="nav.pan", label="Pan", icon="pan", handler=lambda: toggle_nav_mode("pan"),
                 checkable=True, is_checked=lambda: nav_mode_is("pan"), tooltip="Left-drag pans; click again to stop"),
-    ]
+        Command(id="sketch.start", label="Start 2D Sketch", icon="start_sketch", handler=start_sketch, shortcut="S",
+                contexts=frozenset({"part"}), tooltip="Pick a plane or a flat face to sketch on"),
+        Command(id="sketch.finish", label="Finish Sketch", icon="finish", handler=finish_sketch,
+                contexts=frozenset({"sketch"}), tooltip="Back to the 3D model (Esc)"),
+    ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd: run_std(n)), shortcut=sc,
+                 contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, sc) in SKETCHER.items()]
 
 
 def register_all(registry=REGISTRY):

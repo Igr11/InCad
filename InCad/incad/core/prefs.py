@@ -124,3 +124,14 @@ def navigation_enabled():
 
 def set_navigation_enabled(value):
     _s().set("bool", "NavigationEnabled", bool(value))
+
+
+DISPLAYS = ("value", "name", "expression")
+
+
+def dimension_display():
+    return _choice("DimensionDisplay", DISPLAYS, "value")
+
+
+def set_dimension_display(value):
+    _set_choice("DimensionDisplay", DISPLAYS, value)

@@ -26,4 +26,8 @@ class MarkingLayoutTest(unittest.TestCase):
             self.assertTrue(set(spec) <= set(marking_layout.DIRECTIONS) | {"list"}, ctx)
 
     def test_contexts(self):
-        self.assertEqual(set(marking_layout.LAYOUT), {"part", "face", "edge", "vertex", "empty", "browser"})
+        self.assertEqual(set(marking_layout.LAYOUT),
+                         {"part", "face", "edge", "vertex", "empty", "browser", "sketch"})
+        self.assertEqual(marking_layout.LAYOUT["sketch"]["N"], "sketch.finish")
+        self.assertEqual(marking_layout.LAYOUT["sketch"]["S"], "sketch.dimension")
+        self.assertEqual(marking_layout.LAYOUT["part"]["N"], "sketch.start")

@@ -8,7 +8,8 @@ from incad.ui import theme
 EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", "edit.undo", "edit.redo",
             "view.theme_toggle", "view.freecad", "view.zoom_all", "view.home", "view.style_shaded",
             "view.style_wireframe", "view.parameters", "view.look_at", "view.zoom_selection", "browser.edit",
-            "browser.move_end_of_part", "browser.suppress", "browser.rename", "nav.orbit", "nav.pan"}
+            "browser.move_end_of_part", "browser.suppress", "browser.rename", "nav.orbit", "nav.pan",
+            "sketch.start", "sketch.finish"} | set(actions.SKETCHER)
 
 
 class ActionsTest(unittest.TestCase):
@@ -26,3 +27,13 @@ class ActionsTest(unittest.TestCase):
 
     def test_std_commands_cover_wrappers(self):
         self.assertTrue(set(actions.STD_COMMANDS) <= EXPECTED)
+
+    def test_sketch_shortcuts(self):
+        r = Registry()
+        actions.register_all(r)
+        self.assertEqual(r.get("sketch.start").shortcut, "S")
+        self.assertEqual({i: r.get(i).shortcut for i in ("sketch.line", "sketch.circle", "sketch.arc",
+                          "sketch.rectangle", "sketch.dimension", "sketch.trim")},
+                         {"sketch.line": "L", "sketch.circle": "C", "sketch.arc": "A", "sketch.rectangle": "R",
+                          "sketch.dimension": "D", "sketch.trim": "X"})
+        self.assertEqual(r.get("sketch.line").contexts, frozenset({"sketch"}))

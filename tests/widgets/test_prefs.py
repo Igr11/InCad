@@ -38,3 +38,10 @@ class PrefsMemoryTest(unittest.TestCase):
         self.assertTrue(prefs.navigation_enabled())
         prefs.set_navigation_enabled(False)
         self.assertFalse(prefs.navigation_enabled())
+
+    def test_dimension_display(self):
+        self.assertEqual(prefs.dimension_display(), "value")
+        prefs.set_dimension_display("expression")
+        self.assertEqual(prefs.dimension_display(), "expression")
+        with self.assertRaises(ValueError):
+            prefs.set_dimension_display("fancy")

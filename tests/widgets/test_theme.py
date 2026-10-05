@@ -44,3 +44,13 @@ class ThemeTest(unittest.TestCase):
     def test_navicube_params(self):
         self.assertEqual(theme.navicube_params("dark"), {"BaseColor": ("Unsigned", 0x3D4450FF)})
         self.assertEqual(set(theme.navicube_params("light")), set(theme.NAVICUBE_KEYS))
+
+    def test_sketch_params(self):
+        p = theme.sketch_params("dark", "expression")
+        self.assertEqual(p[theme.SKETCH_ROOT]["ShowDialogOnDistanceConstraint"], ("Bool", False))
+        self.assertEqual(p[theme.SKETCH_ROOT]["DimensionalStringFormat"], ("String", "%N = %V"))
+        self.assertEqual(p[theme.SKETCH_TOOLS]["OnViewParameterVisibility"], ("Int", 1))
+        self.assertEqual(p[theme.VIEW_GROUP]["EditedEdgeColor"], ("Unsigned", 0xF2F2F2FF))
+        self.assertEqual(theme.sketch_params("light", "value")[theme.SKETCH_ROOT]["ShowDimensionalName"], ("Bool", False))
+        for group, values in p.items():
+            self.assertEqual(set(values), set(theme.SKETCH_KEYS[group]), group)

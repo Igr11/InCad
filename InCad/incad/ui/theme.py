@@ -102,3 +102,36 @@ NAVICUBE_KEYS = {"BaseColor": "Unsigned"}
 def navicube_params(theme):
     """FreeCAD NaviCube (ViewCube) settings for InCad's look."""
     return {"BaseColor": ("Unsigned", _rgba(PALETTES[theme]["cube"]))}
+
+
+SKETCH_ROOT = "User parameter:BaseApp/Preferences/Mod/Sketcher"
+SKETCH_TOOLS = "User parameter:BaseApp/Preferences/Mod/Sketcher/Tools"
+DISPLAY_FORMAT = {"value": (False, "%V"), "name": (True, "%N"), "expression": (True, "%N = %V")}
+SKETCH_COLORS = {
+    "light": dict(EditedEdgeColor="#1d1d1f", SketchEdgeColor="#1d1d1f", SketchVertexColor="#1d1d1f",
+                  FullyConstrainedColor="#1a8a2e", ConstructionColor="#0a64d6", ConstrainedDimColor="#b00020",
+                  ExprBasedConstrDimColor="#c75a00", NonDrivingConstrDimColor="#5b6b80", CursorTextColor="#1d1d1f",
+                  CreateLineColor="#e67e22"),
+    "dark": dict(EditedEdgeColor="#f2f2f2", SketchEdgeColor="#f2f2f2", SketchVertexColor="#f2f2f2",
+                 FullyConstrainedColor="#5ad16b", ConstructionColor="#5aa2ff", ConstrainedDimColor="#ff8a80",
+                 ExprBasedConstrDimColor="#f39c4a", NonDrivingConstrDimColor="#9aa7b8", CursorTextColor="#f2f2f2",
+                 CreateLineColor="#f39c4a"),
+}
+SKETCH_KEYS = {
+    SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": "Bool", "ShowDimensionalName": "Bool",
+                  "DimensionalStringFormat": "String", "LeaveSketchWithEscape": "Bool"},
+    SKETCH_TOOLS: {"OnViewParameterVisibility": "Int", "ContinuousCreationMode": "Bool"},
+    VIEW_GROUP: {k: "Unsigned" for k in SKETCH_COLORS["light"]},
+}
+
+
+def sketch_params(theme, display="value"):
+    """Sketcher settings InCad uses: no modal dimension dialog (InCad's value box instead), dimensional on-view
+    parameters (dynamic input), continuous tools, Esc leaves the sketch, names shown per display mode, colors."""
+    show, fmt = DISPLAY_FORMAT[display]
+    return {
+        SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": ("Bool", False), "ShowDimensionalName": ("Bool", show),
+                      "DimensionalStringFormat": ("String", fmt), "LeaveSketchWithEscape": ("Bool", True)},
+        SKETCH_TOOLS: {"OnViewParameterVisibility": ("Int", 1), "ContinuousCreationMode": ("Bool", True)},
+        VIEW_GROUP: {k: ("Unsigned", _rgba(v)) for k, v in SKETCH_COLORS[theme].items()},
+    }
