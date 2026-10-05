@@ -40,6 +40,9 @@ class Navigator(QtCore.QObject):
         self._replaying = False
         self._pivot = None
         self.mode = None
+        self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click
+        self.dblclick_hook = None   # same for left double-clicks
+        self._swallow_release = False
 
     def attached(self):
         return list(self._attached)
@@ -92,6 +95,17 @@ class Navigator(QtCore.QObject):
             if kind == "press":
                 entry[2] = event.modifiers()
             pos = event.position()
+            if event.button() == QtCore.Qt.LeftButton:
+                if kind == "press" and machine.state == "idle" and self.click_hook is not None \
+                        and self.click_hook(view, obj, pos.x(), pos.y()):
+                    self._swallow_release = True
+                    return True
+                if kind == "release" and self._swallow_release:
+                    self._swallow_release = False
+                    return True
+                if kind == "dblclick" and self.dblclick_hook is not None \
+                        and self.dblclick_hook(view, obj, pos.x(), pos.y()):
+                    return True
             actions = machine.feed(kind, _button(event.button()), _held(event.buttons()), pos.x(), pos.y())
             for action in actions:
                 self._do(obj, view, action, entry[2])
