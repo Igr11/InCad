@@ -172,3 +172,14 @@ def remove_parameter(doc, name):
     obj.setExpression(name, None)
     obj.removeProperty(name)
     doc.recompute()
+
+
+def owning_feature(obj):
+    """The feature that uses `obj` as its profile (a sketch's Extrude); obj itself otherwise."""
+    for user in obj.InList:
+        prof = getattr(user, "Profile", None)
+        if isinstance(prof, (tuple, list)):
+            prof = prof[0] if prof else None
+        if prof is obj:
+            return user
+    return obj

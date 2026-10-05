@@ -98,6 +98,12 @@ class SafeTest(unittest.TestCase):
         self.assertIn("User change", self.doc.UndoNames)
         self.assertFalse(self.doc.HasPendingTransaction)
 
+    def test_an_empty_part_is_not_broken(self):
+        body, pad = util.padded_part(self.doc, length=10)
+        r = safe.run_safely("Suppress", lambda: setattr(pad, "Suppressed", True), self.doc)
+        self.assertTrue(r.ok, r.error)
+        self.assertTrue(pad.Suppressed)
+
     def test_no_document_still_catches(self):
         for name in list(App.listDocuments()):
             App.closeDocument(name)

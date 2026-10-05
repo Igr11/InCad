@@ -33,3 +33,8 @@ class PrefsMemoryTest(unittest.TestCase):
         for setter, bad in ((prefs.set_theme, "blue"), (prefs.set_ribbon_size, "huge"), (prefs.set_default_units, "cm")):
             with self.assertRaises(ValueError):
                 setter(bad)
+
+    def test_navigation_flag(self):
+        self.assertTrue(prefs.navigation_enabled())
+        prefs.set_navigation_enabled(False)
+        self.assertFalse(prefs.navigation_enabled())

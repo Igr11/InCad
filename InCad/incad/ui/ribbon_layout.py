@@ -9,7 +9,7 @@ LAYOUT = {
         ["Inspect", []],
         ["Tools", [["Options", ["view.freecad"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
-                  ["Navigate", ["view.zoom_all", "view.home"]],
+                  ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
                   ["Windows", ["view.parameters"]]]],
     ],

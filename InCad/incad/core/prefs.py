@@ -116,3 +116,11 @@ def set_takeover_snapshot(text):
 
 def clear_takeover_snapshot():
     _s().remove("str", "TakeoverSnapshot")
+
+
+def navigation_enabled():
+    return bool(_s().get("bool", "NavigationEnabled", True))
+
+
+def set_navigation_enabled(value):
+    _s().set("bool", "NavigationEnabled", bool(value))

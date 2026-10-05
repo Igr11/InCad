@@ -21,6 +21,9 @@ SUN = ('<circle cx="16" cy="16" r="6" fill="{A}"/><path d="M16 3 V6 M16 26 V29 M
        'stroke-linecap="round"/>')
 MOON = '<path d="M20 4 A12 12 0 1 0 28 20 A9 9 0 0 1 20 4 Z" fill="{S}"/>'
 
+FEATURE = ('<path d="M6 22 L6 12 L16 8 L26 11 L26 21 L14 25 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+           '<path d="M6 12 L14 15 L26 11 M14 15 L14 25" fill="none" stroke="{S}" stroke-width="1.2"/>')
+
 ICONS = {
     "incad": BLOCK + '<ellipse cx="16" cy="11" rx="4" ry="2" fill="{N}"/>',
     "part": BLOCK,
@@ -65,10 +68,29 @@ ICONS = {
     "point": '<circle cx="16" cy="16" r="4.5" fill="{D}"/>',
     "sketch": ('<rect x="5" y="9" width="20" height="16" fill="none" stroke="{S}" stroke-width="1.6"/>'
                '<path d="M5 25 L25 9" stroke="{S}" stroke-width="1.2"/><circle cx="25" cy="9" r="3" fill="{A}"/>'),
-    "feature": ('<path d="M6 22 L6 12 L16 8 L26 11 L26 21 L14 25 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
-                '<path d="M6 12 L14 15 L26 11 M14 15 L14 25" fill="none" stroke="{S}" stroke-width="1.2"/>'),
+    "feature": FEATURE,
     "end_of_part": '<rect x="6" y="6" width="20" height="20" rx="2" fill="{R}"/><rect x="11" y="11" width="10" height="10" fill="#ffffff"/>',
     "solids": '<path d="M3 9 H12 L14 11 H29 V26 H3 Z" fill="{F}" stroke="{S}" stroke-width="1.6"/>',
+    "look_at": ('<path d="M4 22 L14 27 L28 19 L18 14 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M16 4 V18" stroke="{A}" stroke-width="2.4" stroke-linecap="round"/>'
+                '<path d="M11 13 L16 19 L21 13" fill="none" stroke="{A}" stroke-width="2.4" stroke-linecap="round" '
+                'stroke-linejoin="round"/>'),
+    "zoom_selection": ('<circle cx="13" cy="13" r="8" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                       '<path d="M19 19 L27 27" stroke="{S}" stroke-width="3" stroke-linecap="round"/>'
+                       '<rect x="9.5" y="9.5" width="7" height="7" fill="{A}"/>'),
+    "edit": ('<path d="M6 26 L8 19 L21 6 L26 11 L13 24 Z" fill="{F}" stroke="{S}" stroke-width="1.6" '
+             'stroke-linejoin="round"/><path d="M18 9 L23 14" stroke="{S}" stroke-width="1.6"/>'
+             '<path d="M6 26 L8 19 L13 24 Z" fill="{A}"/>'),
+    "suppress": FEATURE + '<path d="M5 27 L27 5" stroke="{R}" stroke-width="2.6" stroke-linecap="round"/>',
+    "rename": ('<rect x="4" y="10" width="24" height="12" rx="2" fill="none" stroke="{N}" stroke-width="1.6"/>'
+               '<path d="M9 16 H17" stroke="{S}" stroke-width="2.2" stroke-linecap="round"/>'
+               '<path d="M21 7 V25 M19 7 H23 M19 25 H23" stroke="{A}" stroke-width="1.8"/>'),
+    "orbit": ('<ellipse cx="16" cy="16" rx="12" ry="5" fill="none" stroke="{S}" stroke-width="2"/>'
+              '<path d="M24 9 L28 12 L23 14" fill="none" stroke="{S}" stroke-width="2" stroke-linejoin="round"/>'
+              '<circle cx="16" cy="16" r="3.5" fill="{A}"/>'),
+    "pan": ('<path d="M16 4 V28 M4 16 H28" stroke="{S}" stroke-width="2.2"/>'
+            '<path d="M12 8 L16 4 L20 8 M12 24 L16 28 L20 24 M8 12 L4 16 L8 20 M24 12 L28 16 L24 20" fill="none" '
+            'stroke="{S}" stroke-width="2.2" stroke-linejoin="round"/>'),
 }
 
 PER_THEME = {"theme_toggle": {"light": MOON, "dark": SUN}}  # shows what a click switches to

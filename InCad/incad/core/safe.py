@@ -31,6 +31,8 @@ def _broken(obj, check_shape):
     state = getattr(obj, "State", [])
     if "Invalid" in state or "Error" in state:
         status = _status(obj)
+        if obj.TypeId == "PartDesign::Body" and status == "Tip shape is empty":
+            return ""  # an empty part (everything suppressed / rolled back) is a normal state
         return "%s: %s" % (obj.Label, status) if status and status not in ("Valid", "Touched") \
             else "%s failed to compute" % obj.Label
     if check_shape and obj.TypeId.startswith("PartDesign::"):
