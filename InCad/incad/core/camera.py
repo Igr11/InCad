@@ -46,10 +46,16 @@ def pan_pixels(cam, dx, dy, viewport_height_px):
 def frame_origin(cam, size=40.0, distance=250.0):
     """Look at the origin from the camera's current direction with about `size` model units in view
     (a new, empty part: FreeCAD's fit-all on nothing leaves the view a few mm or kilometres across)."""
+    frame(cam, (0, 0, 0), size, distance)
+
+
+def frame(cam, center, size, distance=250.0):
+    """Look at `center` from the camera's current direction with about `size` model units in view."""
     direction = cam.orientation.getValue().multVec(coin.SbVec3f(0, 0, -1))
     if isinstance(cam, coin.SoOrthographicCamera):
         cam.height.setValue(size)
+        distance = max(distance, size * 2.0)
     else:
         distance = (size / 2.0) / math.tan(cam.heightAngle.getValue() / 2.0)
-    cam.position.setValue(direction * -distance)
+    cam.position.setValue(_v(center) - direction * distance)
     cam.focalDistance.setValue(distance)

@@ -11,6 +11,7 @@ class SketchSession:
         self._saved_vp = {}          # (doc, sketch) -> view-provider settings InCad changed, restored when done
         self._last_edited = None
         self._origin = None  # (view object, was visible) while picking
+        self._datum_scale = None  # FreeCAD's DatumScale before the pick enlarged the planes (None: not changed)
 
     def _changed(self):
         if self._on_change is not None:
@@ -50,9 +51,8 @@ class SketchSession:
             vo = body.Origin.ViewObject
             self._origin = (vo, vo.Visibility)
             vo.Visibility = True
-            if body.Shape.isNull() and Gui.ActiveDocument is not None:  # nothing yet: show the origin planes
-                from incad.core import camera
-                camera.frame_origin(Gui.ActiveDocument.ActiveView.getCameraNode())
+            if Gui.ActiveDocument is not None:
+                self._datum_scale = _frame_planes(body, Gui.ActiveDocument.ActiveView)
         self.picking = True
         Gui.Selection.clearSelection()
         Gui.Selection.addObserver(self)
@@ -75,6 +75,9 @@ class SketchSession:
             except Exception:
                 pass
             self._origin = None
+        if self._datum_scale is not None:
+            _restore_datums(self._datum_scale)
+            self._datum_scale = None
         self._changed()
 
     def addSelection(self, doc_name, obj_name, sub, pnt):
@@ -186,3 +189,68 @@ class SketchSession:
         vp = gdoc.getInEdit() if gdoc is not None else None
         obj = getattr(vp, "Object", None)
         return obj if sketch.is_sketch(obj) else None
+
+
+
+PICK_DATUM_SCALE = 350.0  # percent; FreeCAD's 100 draws the origin planes a few mm on a new part
+_VIEW = "User parameter:BaseApp/Preferences/View"
+
+
+def _set_datum_scale(scale):
+    """Draw datums (the origin planes) at `scale` percent, never smaller than the user's own setting; returns
+    the user's value to restore ("" when they had none)."""
+    import FreeCAD as App
+    g = App.ParamGet(_VIEW)
+    old = g.GetFloat("DatumScale", -1.0)
+    g.SetFloat("DatumScale", max(scale, old))
+    return "" if old < 0 else old
+
+
+def _restore_datums(old):
+    import FreeCAD as App
+    g = App.ParamGet(_VIEW)
+    if old == "":
+        g.RemFloat("DatumScale")
+    else:
+        g.SetFloat("DatumScale", old)
+
+
+def screen_box(view, view_objects):
+    """World bounding box of view objects as drawn now (origin planes keep a fixed size on screen, so their
+    ViewObject.getBoundingBox, taken without the real viewport, is wrong)."""
+    import FreeCAD as App
+    from pivy import coin
+    viewer = view.getViewer()
+    manager = viewer.getSoRenderManager()
+    box = App.BoundBox()
+    for vo in view_objects:
+        sa = coin.SoSearchAction()
+        sa.setNode(vo.RootNode)
+        sa.setInterest(coin.SoSearchAction.FIRST)
+        sa.apply(manager.getSceneGraph())
+        if sa.getPath() is None:
+            continue
+        ba = coin.SoGetBoundingBoxAction(manager.getViewportRegion())
+        ba.apply(sa.getPath())
+        bb = ba.getBoundingBox()
+        if not bb.isEmpty():
+            box.add(App.BoundBox(App.Vector(*bb.getMin().getValue()), App.Vector(*bb.getMax().getValue())))
+    return box
+
+
+def _frame_planes(body, view):
+    """Origin in the middle of the view, the origin planes big enough to see and click and the whole part in view;
+    returns the user's DatumScale to restore after the pick.
+
+    FreeCAD draws datums a fixed share of the view whatever the zoom (at PICK_DATUM_SCALE they reach about half
+    the view height from the origin, measured on 1.1), so the zoom only has to fit the part."""
+    import FreeCAD as App
+    from incad.core import camera
+    radius = 0.0
+    if not body.Shape.isNull():
+        bb = body.Shape.BoundBox
+        radius = max(App.Vector(x, y, z).Length for x in (bb.XMin, bb.XMax) for y in (bb.YMin, bb.YMax)
+                     for z in (bb.ZMin, bb.ZMax))
+    old = _set_datum_scale(PICK_DATUM_SCALE)
+    camera.frame(view.getCameraNode(), (0, 0, 0), max(40.0, radius * 2.3))
+    return old
