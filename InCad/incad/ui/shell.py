@@ -457,6 +457,7 @@ class Shell(QtCore.QObject):
         self.browser.parameterRemoved.connect(self._on_parameter_removed)
         self.navigator = Navigator(self._open_marking_menu, self._on_nav_mode_changed, self)
         self.browser.markingMenuRequested.connect(self._on_browser_marking_menu)
+        self.browser.featureSelected.connect(self._on_browser_select)
         mdi = self._mdi()
         if mdi is not None:
             self.strip = NavStrip(self.registry, self.theme, mdi.viewport())
@@ -686,6 +687,17 @@ class Shell(QtCore.QObject):
         if assembly.is_assembly(doc):
             kind = {"face": "asm_face", "edge": "asm_edge", "vertex": "asm_edge"}.get(kind, "assembly")
         return self._show_marking_menu(kind, global_pos, flick)
+
+    def _on_browser_select(self, name):
+        """A click in the model tree selects the object in the model too, so a dialog waiting for a sketch or a
+        feature takes it (Inventor picks from the browser)."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        doc = App.ActiveDocument
+        if doc is None or doc.getObject(name) is None:
+            return
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(doc.Name, name)
 
     def _on_browser_marking_menu(self, name, global_pos):
         from incad.core import context

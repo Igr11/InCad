@@ -319,10 +319,16 @@ def test_18_closing_the_document_ends_the_dialog():
 def test_19_rmb_edit_in_the_model_tree_opens_sketch_and_feature():
     from incad.core import context
     pad = doc().getObject(ST["pad"])
+    before = (s().feature_session and s().feature_session.feature and s().feature_session.feature.Name,
+              [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx()],
+              getattr(s(), "_profile_pick", None) is not None)
     context.set_target(pad.Name)
     commands.REGISTRY.run("browser.edit")
     harness.pump(800)
-    assert dialog() is not None and s().feature_session.feature is pad, "the feature's dialog opens"
+    fs = s().feature_session
+    assert dialog() is not None and fs.feature is pad, ("the feature's dialog opens", fs and fs.kind.TITLE,
+                                                         fs and fs.feature and fs.feature.Name, pad.Name,
+                                                         before, open(os.environ["INCAD_LOG"]).read()[-600:])
     QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
     harness.pump(600)
     sk = pad.Profile[0]

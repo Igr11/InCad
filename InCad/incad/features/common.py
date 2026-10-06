@@ -89,6 +89,13 @@ def resolve(obj, sub):
     return obj, sub
 
 
+WHOLE_OBJECT = ("sketch",)  # picks that mean the object, whatever element of it was clicked
+
+
+def whole(kind, pairs):
+    return [(o, "") for o, _ in pairs] if kind in WHOLE_OBJECT else pairs
+
+
 def format_picks(pairs):
     return ",".join(o.Name if not s else "%s:%s" % (o.Name, s) for o, s in pairs)
 
@@ -119,8 +126,8 @@ def accepts(kind, obj, sub):
     tid = obj.TypeId
     if kind == "feature":
         return not sub and tid.startswith("PartDesign::") and tid not in ("PartDesign::Body",)
-    if kind == "sketch":
-        return not sub and tid == "Sketcher::SketchObject"
+    if kind == "sketch":  # the sketch itself, or any point/line of it clicked in the view
+        return tid == "Sketcher::SketchObject"
     if kind == "body":
         if tid == "PartDesign::Body":
             return True

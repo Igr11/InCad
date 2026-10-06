@@ -53,6 +53,7 @@ class _Tree(QtWidgets.QTreeWidget):
 
 class ModelBrowser(QtWidgets.QWidget):
     featureActivated = Signal(str)
+    featureSelected = Signal(str)  # a single click on a row: selects it in the model (picks for dialogs)
     endOfPartMoved = Signal(str)
     actionTriggered = Signal(str)
     parameterSet = Signal(str, str)
@@ -79,6 +80,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.tree.setObjectName("InCadTree")
         self.tree.setHeaderHidden(True)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
+        self.tree.itemClicked.connect(self._on_click)
         self.tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
         col.addWidget(self.tree, 3)
@@ -209,6 +211,19 @@ class ModelBrowser(QtWidgets.QWidget):
             return
         self.tree.setCurrentItem(item)
         self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
+
+    def _on_click(self, item, _column=0):
+        if item.data(0, KIND_ROLE) in ("feature", "sketch", "origin_item"):
+            self.featureSelected.emit(item.data(0, NAME_ROLE))
+
+    def select_row(self, name):
+        """Click the row of object `name` (as a user would)."""
+        for item in self._items():
+            if item.data(0, NAME_ROLE) == name:
+                self.tree.setCurrentItem(item)
+                self._on_click(item)
+                return True
+        return False
 
     def _on_double_click(self, item, _column=0):
         kind = item.data(0, KIND_ROLE)

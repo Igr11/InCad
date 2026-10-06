@@ -132,7 +132,7 @@ class FeatureSession(QtCore.QObject):
             return
         pairs = self._selection()
         for key, pick in wanted.items():
-            ok = [p for p in pairs if common.accepts(pick, *p)]
+            ok = common.whole(pick, [p for p in pairs if common.accepts(pick, *p)])
             if ok:
                 field = self.dialog.field_def(key)
                 self.dialog.set_pick(key, common.format_picks(ok[-1:] if field.kind == "pick" else ok))
@@ -184,7 +184,7 @@ class FeatureSession(QtCore.QObject):
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return
-        ok = [p for p in pairs if common.accepts(f.pick, *p)]
+        ok = common.whole(f.pick, [p for p in pairs if common.accepts(f.pick, *p)])
         if pairs and not ok:
             self.dialog.set_error("Select %s for %s" % (f.pick.replace("_", " "), f.label))
             return
