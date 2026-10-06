@@ -1127,9 +1127,10 @@ class Shell(QtCore.QObject):
         if self.value_box is None and self.feature_session is None:
             return False
         sk, name = self._preselected_dimension()
-        if name is None and self.value_box is not None:
+        if name is None and self.value_box is not None and not self._geometry_under_cursor():
             # FreeCAD doesn't preselect dimensions while a Sketcher tool runs (the Dimension tool keeps running
-            # after placing one): find the label under the click ourselves
+            # after placing one): find the label under the click ourselves — but a point or line FreeCAD offers
+            # under the cursor is what the user is aiming at (the Sketcher's own snapping must get that click)
             sk, name = self._dimension_near(view, viewport, x, y)
         if name is None:
             return False
@@ -1141,7 +1142,17 @@ class Shell(QtCore.QObject):
             return False
         return True
 
-    LABEL_PICK_PX = 24  # logical pixels around a dimension's text
+    LABEL_PICK_PX = 12  # logical pixels around a dimension's text: on the text, not near it
+
+    @staticmethod
+    def _geometry_under_cursor():
+        import FreeCADGui as Gui
+        try:
+            pre = Gui.Selection.getPreselection()
+            subs = getattr(pre, "SubElementNames", ()) or ()
+            return any(s.startswith(("Vertex", "Edge", "RootPoint", "H_Axis", "V_Axis")) for s in subs if s)
+        except Exception:
+            return False
 
     def _dimension_near(self, view, viewport, x, y):
         from incad.core import sketch as sketches
