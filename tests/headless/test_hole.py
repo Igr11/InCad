@@ -31,6 +31,7 @@ class HoleTest(unittest.TestCase):
         f = hole.create(self.doc, self.body, None, v)
         self.doc.recompute()
         self.assertEqual(f.TypeId, "PartDesign::Hole")
+        self.assertIs(self.body.Tip, f)
         self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 10, places=2)
         self.assertIs(kind_for(f), hole)
         self.assertEqual(hole.read(self.doc, f)["diameter"], "4 mm")

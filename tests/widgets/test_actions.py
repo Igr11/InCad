@@ -9,7 +9,9 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "view.theme_toggle", "view.freecad", "view.zoom_all", "view.home", "view.style_shaded",
             "view.style_wireframe", "view.parameters", "view.look_at", "view.zoom_selection", "browser.edit",
             "browser.move_end_of_part", "browser.suppress", "browser.rename", "nav.orbit", "nav.pan",
-            "sketch.start", "sketch.finish", "feature.extrude", "feature.revolve"} | set(actions.SKETCHER)
+            "sketch.start", "sketch.finish", "feature.extrude", "feature.revolve", "feature.hole", "feature.fillet",
+            "feature.chamfer", "feature.shell", "feature.rect_pattern", "feature.circ_pattern", "feature.mirror",
+            "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass"} | set(actions.SKETCHER)
 
 
 class ActionsTest(unittest.TestCase):
@@ -43,3 +45,8 @@ class ActionsTest(unittest.TestCase):
         actions.register_all(r)
         self.assertEqual((r.get("feature.extrude").shortcut, r.get("feature.revolve").shortcut), ("E", "R"))
         self.assertEqual(r.get("feature.extrude").contexts, frozenset({"part"}))
+
+    def test_hole_and_fillet_shortcuts(self):
+        r = Registry()
+        actions.register_all(r)
+        self.assertEqual((r.get("feature.hole").shortcut, r.get("feature.fillet").shortcut), ("H", "F"))

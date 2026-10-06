@@ -172,11 +172,42 @@ ICONS = {
 
 PER_THEME = {"theme_toggle": {"light": MOON, "dark": SUN}}  # shows what a click switches to
 
-ALL_NAMES = sorted(list(ICONS) + list(PER_THEME))
 
 
 def render(body, theme):
     return SVG % body.format(**PALETTE[theme])
+
+
+ICONS.update({
+    "hole": ('<path d="M5 12 L16 6 L27 12 L27 22 L16 28 L5 22 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+             '<ellipse cx="16" cy="12" rx="5" ry="2.6" fill="{N}"/><path d="M11 12 V19 M21 12 V19" stroke="{N}" '
+             'stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "fillet": ('<path d="M5 27 V14 Q5 6 13 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
+               '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "chamfer": ('<path d="M5 27 V13 L12 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "shell": ('<path d="M5 10 V26 H27 V10" fill="none" stroke="{S}" stroke-width="3"/>'
+              '<path d="M9 10 V22 H23 V10" fill="{F}" stroke="{S}" stroke-width="1"/>'),
+    "rect_pattern3d": ('<g fill="{F}" stroke="{S}" stroke-width="1.3"><path d="M3 9 L9 6 L15 9 L9 12 Z"/>'
+                       '<path d="M17 9 L23 6 L29 9 L23 12 Z"/><path d="M3 21 L9 18 L15 21 L9 24 Z"/>'
+                       '<path d="M17 21 L23 18 L29 21 L23 24 Z"/></g>'),
+    "circ_pattern": ('<circle cx="16" cy="16" r="10" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="3 2"/>'
+                     '<g fill="{F}" stroke="{S}" stroke-width="1.3"><circle cx="16" cy="6" r="3"/>'
+                     '<circle cx="26" cy="16" r="3"/><circle cx="16" cy="26" r="3"/><circle cx="6" cy="16" r="3"/></g>'),
+    "mirror3d": ('<path d="M16 3 V29" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
+                 '<path d="M4 10 L10 7 L13 9 V22 L7 25 L4 23 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                 '<path d="M28 10 L22 7 L19 9 V22 L25 25 L28 23 Z" fill="none" stroke="{A}" stroke-width="1.4"/>'),
+    "work_plane": '<path d="M3 20 L13 26 L29 17 L19 11 Z" fill="{D}" fill-opacity=".45" stroke="{D}" stroke-width="1.6"/><path d="M24 4 V12 M20 8 H28" stroke="{A}" stroke-width="2.2"/>',
+    "work_axis": '<path d="M5 27 L23 9" stroke="{D}" stroke-width="2.4" stroke-linecap="round"/><path d="M24 2 V10 M20 6 H28" stroke="{A}" stroke-width="2.2"/>',
+    "work_point": '<circle cx="14" cy="18" r="4.5" fill="{D}"/><path d="M24 4 V12 M20 8 H28" stroke="{A}" stroke-width="2.2"/>',
+    "measure": ('<path d="M4 22 L22 4 L28 10 L10 28 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M9 17 L12 20 M12 14 L14 16 M15 11 L18 14 M18 8 L20 10" stroke="{S}" stroke-width="1.4"/>'),
+    "mass": ('<path d="M8 12 H24 L28 28 H4 Z" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+             '<circle cx="16" cy="8" r="3.5" fill="none" stroke="{S}" stroke-width="1.8"/>'
+             '<text x="16" y="25" font-family="Helvetica" font-size="9" font-weight="bold" text-anchor="middle" '
+             'fill="{A}">kg</text>'),
+})
+ALL_NAMES = sorted(list(ICONS) + list(PER_THEME))
 
 
 def main():

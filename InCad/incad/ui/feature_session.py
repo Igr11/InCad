@@ -207,12 +207,24 @@ class FeatureSession(QtCore.QObject):
                 self.feature = self.kind.update(self.doc, self.feature, values)
             self.doc.recompute()
         except Exception as e:
+            if self.creating and self.feature is None:
+                self._drop_partial()
             self.dialog.set_error(str(e))
             return
         self._check()
         self._label_params()
         self._base_shown = None  # re-apply: the recompute may have shown the (new) preview again
         self._sync_pick_view()
+
+    def _drop_partial(self):
+        """A create that failed half-way may have left objects behind: roll them back, keep the step open."""
+        try:
+            self.doc.abortTransaction()
+            self.doc.recompute()
+            model.relink(self.doc)
+            self.doc.openTransaction(self.kind.TITLE)
+        except Exception as e:
+            log.report("warning", "Could not roll back the unfinished %s: %s" % (self.kind.TITLE, e))
 
     def _needs_recreate(self, values):
         """While creating, Join/Cut switch in place; New Solid and Intersect build a different structure."""

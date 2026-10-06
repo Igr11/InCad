@@ -189,6 +189,16 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def inspect_measure():
+    from incad.ui import shell
+    shell.inspect("measure")
+
+
+def inspect_mass():
+    from incad.ui import shell
+    shell.inspect("mass")
+
+
 def _refuse_while_busy():
     """An open feature dialog owns the model: undo, save, close or sketch editing would break its Cancel."""
     from incad.core import safe
@@ -272,6 +282,30 @@ def commands():
                 shortcut="E", contexts=frozenset({"part"}), tooltip="Extrude a sketch profile"),
         Command(id="feature.revolve", label="Revolve", icon="revolve", handler=lambda: start_feature("revolve"),
                 shortcut="R", contexts=frozenset({"part"}), tooltip="Revolve a sketch profile around an axis"),
+        Command(id="feature.hole", label="Hole", icon="hole", handler=lambda: start_feature("hole"), shortcut="H",
+                contexts=frozenset({"part"})),
+        Command(id="feature.fillet", label="Fillet", icon="fillet", handler=lambda: start_feature("fillet"),
+                shortcut="F", contexts=frozenset({"part"})),
+        Command(id="feature.chamfer", label="Chamfer", icon="chamfer", handler=lambda: start_feature("chamfer"),
+                contexts=frozenset({"part"})),
+        Command(id="feature.shell", label="Shell", icon="shell", handler=lambda: start_feature("shell"),
+                contexts=frozenset({"part"})),
+        Command(id="feature.rect_pattern", label="Rectangular", icon="rect_pattern3d",
+                handler=lambda: start_feature("rect_pattern"), contexts=frozenset({"part"})),
+        Command(id="feature.circ_pattern", label="Circular", icon="circ_pattern",
+                handler=lambda: start_feature("circ_pattern"), contexts=frozenset({"part"})),
+        Command(id="feature.mirror", label="Mirror", icon="mirror3d", handler=lambda: start_feature("mirror"),
+                contexts=frozenset({"part"})),
+        Command(id="work.plane", label="Plane", icon="work_plane", handler=lambda: start_feature("work_plane"),
+                contexts=frozenset({"part"})),
+        Command(id="work.axis", label="Axis", icon="work_axis", handler=lambda: start_feature("work_axis"),
+                contexts=frozenset({"part"})),
+        Command(id="work.point", label="Point", icon="work_point", handler=lambda: start_feature("work_point"),
+                contexts=frozenset({"part"})),
+        Command(id="inspect.measure", label="Measure", icon="measure", handler=inspect_measure,
+                contexts=frozenset({"part"}), tooltip="Select a face, an edge, or two items"),
+        Command(id="inspect.mass", label="Mass Properties", icon="mass", handler=inspect_mass,
+                contexts=frozenset({"part"})),
     ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd: run_std(n)), shortcut=sc,
                  contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, sc) in SKETCHER.items()]
 

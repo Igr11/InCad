@@ -4,9 +4,13 @@ Modes: 'part' (an InCad Part is active), 'empty' (no document, or a file not mad
 
 LAYOUT = {
     "part": [
-        ["3D Model", [["Sketch", ["sketch.start"]], ["Create", ["feature.extrude", "feature.revolve"]]]],
+        ["3D Model", [["Sketch", ["sketch.start"]],
+                      ["Create", ["feature.extrude", "feature.revolve", "feature.hole"]],
+                      ["Modify", ["feature.fillet", "feature.chamfer", "feature.shell"]],
+                      ["Pattern", ["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"]],
+                      ["Work Features", ["work.plane", "work.axis", "work.point"]]]],
         ["Sketch", []],
-        ["Inspect", []],
+        ["Inspect", [["Measure", ["inspect.measure", "inspect.mass"]]]],
         ["Tools", [["Options", ["view.freecad"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],

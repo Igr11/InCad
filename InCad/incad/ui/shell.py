@@ -15,6 +15,7 @@ from incad.ui.titlebar import TitleStrip
 from incad.ui.sketch_session import SketchSession
 from incad.ui.value_box import ValueBox
 from incad.ui.feature_session import FeatureSession
+from incad.ui.info_panel import InfoPanel
 from incad.ui import marking_layout
 from incad.ui.marking_menu import MarkingMenu
 from incad.ui.nav import Navigator, to_coin
@@ -129,6 +130,7 @@ class Shell(QtCore.QObject):
         self.sketches = SketchSession(on_change=self.schedule_refresh, on_edit=self._seed_geometry)
         self._box_owner = None
         self.feature_session = None
+        self.info_panel = None
         self._profile_pick = None
         self.value_box = None
         self._shortcuts = {}
@@ -408,6 +410,7 @@ class Shell(QtCore.QObject):
 
     def _teardown(self):
         self._close_feature_session(cancel=True)
+        self._close_info_panel()
         self._cancel_profile_pick()
         self.sketches.close_all()
         self._close_value_box()
@@ -975,6 +978,35 @@ class Shell(QtCore.QObject):
             self.strip.refresh_checks()
             self.strip.raise_()
 
+    def inspect(self, what):
+        import FreeCADGui as Gui
+        from incad.core import document, inspect
+        from incad.features import common
+        doc = self._doc()
+        if not document.is_incad_part(doc):
+            raise ValueError("Open an InCad part first")
+        if what == "measure":
+            pairs = [common.resolve(sel.Object, sub) for sel in Gui.Selection.getSelectionEx(doc.Name)
+                     for sub in (sel.SubElementNames or ("",))]
+            rows, title = inspect.measure(pairs), "Measure"
+        else:
+            rows, title = inspect.mass_properties(document.primary_body(doc)), "Mass Properties (PLA 1.24 g/cm³)"
+        self._close_info_panel()
+        parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+        self.info_panel = InfoPanel(title, rows, self.theme, parent)
+        self.info_panel.adjustSize()
+        self.info_panel.move(16, parent.height() - self.info_panel.height() - 16)
+        self.info_panel.show()
+
+    def _close_info_panel(self):
+        if self.info_panel is not None:
+            try:
+                self.info_panel.close()
+                self.info_panel.deleteLater()
+            except RuntimeError:
+                pass
+            self.info_panel = None
+
     # ----- browser actions -----
     @staticmethod
     def _doc():
@@ -1098,6 +1130,12 @@ def start_feature(kind):
     if _shell is None or not _shell.active:
         raise ValueError("InCad is not active")
     _shell.start_feature(kind)
+
+
+def inspect(what):
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    _shell.inspect(what)
 
 
 def edit_feature(feature):

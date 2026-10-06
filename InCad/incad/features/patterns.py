@@ -76,6 +76,7 @@ def _rect_apply(doc, body, f, values):
 def _rect_create(doc, body, profile, values):
     f = body.newObject("PartDesign::LinearPattern", "RectangularPattern")
     _rect_apply(doc, body, f, values)
+    body.Tip = f  # probed: newObject leaves the Tip on the previous feature for transformed features
     return f
 
 
@@ -124,6 +125,7 @@ def _circ_apply(doc, body, f, values):
 def _circ_create(doc, body, profile, values):
     f = body.newObject("PartDesign::PolarPattern", "CircularPattern")
     _circ_apply(doc, body, f, values)
+    body.Tip = f  # probed: newObject leaves the Tip on the previous feature for transformed features
     return f
 
 
@@ -157,6 +159,7 @@ def _mirror_apply(doc, body, f, values):
 def _mirror_create(doc, body, profile, values):
     f = body.newObject("PartDesign::Mirrored", "Mirror")
     _mirror_apply(doc, body, f, values)
+    body.Tip = f  # probed: newObject leaves the Tip on the previous feature for transformed features
     return f
 
 

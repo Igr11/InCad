@@ -46,3 +46,9 @@ class PatternsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.Volume, 4000, places=1)
         self.assertEqual(common.parse_picks(self.doc, k.read(self.doc, f)["features"]), [(self.pad, "")])
+
+    def test_new_pattern_becomes_the_tip(self):
+        for k in (patterns.RECT, patterns.CIRC, patterns.MIRROR):
+            f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+            self.doc.recompute()
+            self.assertIs(self.body.Tip, f, k.TITLE)
