@@ -135,3 +135,19 @@ def dimension_display():
 
 def set_dimension_display(value):
     _set_choice("DimensionDisplay", DISPLAYS, value)
+
+
+def thread_clearance():
+    """Default print clearance for threads (mm, diametral)."""
+    try:
+        value = float(_s().get("str", "ThreadClearance", "0.2"))
+    except ValueError:
+        return 0.2
+    return value if 0 <= value <= 2 else 0.2
+
+
+def set_thread_clearance(value):
+    value = float(value)
+    if not 0 <= value <= 2:
+        raise ValueError("Thread clearance must be between 0 and 2 mm")
+    _s().set("str", "ThreadClearance", "%g" % value)

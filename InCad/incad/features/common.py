@@ -60,7 +60,7 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces"}
 
 
 def resolve(obj, sub):
@@ -113,6 +113,8 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
+    if kind == "cylinder":
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomCylinder"
     if kind == "vertex":
         return sub.startswith("Vertex") and el is not None
     if kind == "axis":

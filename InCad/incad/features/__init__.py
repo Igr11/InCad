@@ -3,14 +3,14 @@ Loaded on first use, so widget code can import incad.features.common without Fre
 
 
 def kinds():
-    from incad.features import dressup, extrude, hole, patterns, revolve, work
+    from incad.features import dressup, extrude, hole, patterns, revolve, thread, work
     return [extrude, revolve, hole, dressup.FILLET, dressup.CHAMFER, dressup.SHELL, patterns.RECT, patterns.CIRC,
-            patterns.MIRROR, work.PLANE, work.AXIS, work.POINT]
+            patterns.MIRROR, work.PLANE, work.AXIS, work.POINT, thread]
 
 
 def kind_for(feature):
     for kind in kinds():
-        if feature is not None and feature.TypeId in kind.TYPES:
+        if feature is not None and feature.TypeId in kind.TYPES and getattr(kind, "claims", lambda f: True)(feature):
             return kind
     return None
 
