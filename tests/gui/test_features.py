@@ -315,6 +315,26 @@ def test_18_closing_the_document_ends_the_dialog():
     assert s().feature_session is None and safe.busy() is None, (s().feature_session, safe.busy())
 
 
+
+def test_19_rmb_edit_in_the_model_tree_opens_sketch_and_feature():
+    from incad.core import context
+    pad = doc().getObject(ST["pad"])
+    context.set_target(pad.Name)
+    commands.REGISTRY.run("browser.edit")
+    harness.pump(800)
+    assert dialog() is not None and s().feature_session.feature is pad, "the feature's dialog opens"
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    sk = pad.Profile[0]
+    context.set_target(sk.Name)
+    commands.REGISTRY.run("browser.edit")
+    harness.pump(1000)
+    gdoc = Gui.ActiveDocument
+    assert gdoc.getInEdit() is not None and gdoc.getInEdit().Object is sk, "the sketch opens for editing"
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
 harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, test_2_ok_commits_one_undo_step,
              test_3_edit_feature_changes_the_distance, test_4_cancel_restores_after_previews,
              test_5_invalid_value_disables_ok, test_6_cut_through_all_on_top,
@@ -324,4 +344,5 @@ harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, t
              test_12_user_undo_keeps_features_following_their_parameters, test_13_enter_commits_the_typed_value,
              test_14_clicking_ok_commits_the_typed_value, test_15_undo_is_refused_while_a_dialog_is_open,
              test_16_apply_plus_does_not_reuse_the_extruded_sketch, test_17_failed_recreate_recovers,
+             test_19_rmb_edit_in_the_model_tree_opens_sketch_and_feature,
              test_18_closing_the_document_ends_the_dialog])

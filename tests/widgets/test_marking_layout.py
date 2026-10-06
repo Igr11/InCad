@@ -36,3 +36,9 @@ class MarkingLayoutTest(unittest.TestCase):
         self.assertEqual(marking_layout.LAYOUT["part"]["N"], "sketch.start")
         self.assertEqual(marking_layout.LAYOUT["part"]["S"], "feature.extrude")
         self.assertEqual(marking_layout.LAYOUT["face"]["S"], "feature.extrude")
+
+
+class BrowserListTest(unittest.TestCase):
+    def test_edit_is_first_in_the_model_tree_list(self):
+        """RMB on a sketch or feature in the model tree: Edit in the plain list too, not only the radial slot."""
+        self.assertEqual(marking_layout.LAYOUT["browser"]["list"][0], "browser.edit")
