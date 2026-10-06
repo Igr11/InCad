@@ -244,3 +244,43 @@ def toggle_construction(sk, geo_ids):
             sk.setConstruction(i, make)
     sk.Document.recompute()
     return ids
+
+
+SNAP_TOL = 1e-6
+
+
+def _polygon_circles(sk, first):
+    """Construction circles from `first` on that carry a polygon's corners (points on them from line ends)."""
+    found = []
+    for i in range(first, sk.GeometryCount):
+        if sk.Geometry[i].TypeId != "Part::GeomCircle" or not sk.getConstruction(i):
+            continue
+        corners = [c for c in sk.Constraints if c.Type == "PointOnObject" and c.Second == i and c.First >= 0]
+        if len(corners) >= 3:
+            found.append(i)
+    return found
+
+
+def pin_polygon_centres(sk, first=0):
+    """Inventor remembers where a polygon's centre was snapped: on the origin it is coincident with it, on an axis
+    it lies on that axis. Adds what FreeCAD's polygon tool left out (it can drop its first snap); returns the
+    circles pinned."""
+    import Sketcher
+    pinned = []
+    for i in _polygon_circles(sk, first):
+        c = sk.Geometry[i].Center
+        on_x, on_y = abs(c.y) < SNAP_TOL, abs(c.x) < SNAP_TOL
+        ties = {(k.Type, k.Second if k.First == i else k.First) for k in sk.Constraints
+                if (k.First == i and k.FirstPos == 3) or (k.Second == i and k.SecondPos == 3)}
+        if ("Coincident", -1) in ties:
+            continue
+        if on_x and on_y:
+            sk.addConstraint(Sketcher.Constraint("Coincident", i, 3, -1, 1))
+        elif on_x and ("PointOnObject", -1) not in ties:
+            sk.addConstraint(Sketcher.Constraint("PointOnObject", i, 3, -1))
+        elif on_y and ("PointOnObject", -2) not in ties:
+            sk.addConstraint(Sketcher.Constraint("PointOnObject", i, 3, -2))
+        else:
+            continue
+        pinned.append(i)
+    return pinned

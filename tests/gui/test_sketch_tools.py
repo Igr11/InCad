@@ -152,7 +152,22 @@ def test_6_one_picked_side_switches_the_whole_polygon():
     assert not any(sk.getConstruction(i) for i in sides), [sk.getConstruction(i) for i in sides]
 
 
+
+def test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there():
+    from ProfileLib import RegularPolygon
+    sk = Gui.ActiveDocument.getInEdit().Object
+    first = sk.GeometryCount
+    RegularPolygon.makeRegularPolygon(sk, 6, App.Vector(0, 0, 0), App.Vector(9, 2, 0), False)
+    App.ActiveDocument.recompute()
+    harness.pump(800)
+    circle = [i for i in range(first, sk.GeometryCount) if sk.Geometry[i].TypeId == "Part::GeomCircle"][0]
+    tied = [c for c in sk.Constraints if c.Type == "Coincident" and c.First == circle and c.FirstPos == 3
+            and c.Second == -1]
+    assert len(tied) == 1, [(c.Type, c.First, c.FirstPos, c.Second) for c in sk.Constraints]
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
-             test_6_one_picked_side_switches_the_whole_polygon])
+             test_6_one_picked_side_switches_the_whole_polygon,
+             test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there])

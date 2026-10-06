@@ -150,6 +150,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
 
@@ -686,6 +687,7 @@ class Shell(QtCore.QObject):
     def _sketch_changed(self, sk):
         """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
 
@@ -759,6 +761,23 @@ class Shell(QtCore.QObject):
     def _seed_geometry(self, sk):
         """Baseline for the 'drawn or dimensioned?' rule when a sketch is opened."""
         self._geometry_counts[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+        self._polygons_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+
+    def _pin_new_polygons(self, sk):
+        """A new polygon keeps its centre's snap to the origin or an axis (only new geometry: a constraint the user
+        deleted later is not put back)."""
+        from incad.core import sketch as sketches
+        try:
+            key = (sk.Document.Name, sk.Name)
+            first = self._polygons_from.get(key, sk.GeometryCount)
+            if sk.GeometryCount <= first:
+                self._polygons_from[key] = sk.GeometryCount
+                return
+            if sketches.pin_polygon_centres(sk, first):
+                sk.Document.recompute()
+            self._polygons_from[key] = sk.GeometryCount
+        except Exception as e:
+            log.report("warning", "Could not keep the polygon's centre constraint: %s" % e)
 
     def _apply_from_box(self, name, text):
         """The value box applies to its own sketch's document; returns (ok, error) so the box can stay red."""

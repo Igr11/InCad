@@ -203,3 +203,43 @@ class ConstructionChainTest(unittest.TestCase):
         sketch.toggle_construction(self.sk, [0])
         self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)
         self.assertTrue(self.sk.getConstruction(self.circle))  # the polygon's guide circle stays construction
+
+
+class PolygonCentreTest(unittest.TestCase):
+    """A polygon's centre drawn on the origin or an axis keeps that constraint, as Inventor remembers the snap."""
+    def setUp(self):
+        self.doc = util.new_doc("PC")
+        body = document.make_part(self.doc)
+        self.sk = sketch.make_sketch(body, plane(body, "XY_Plane"))
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def polygon(self, centre):
+        from ProfileLib import RegularPolygon
+        first = self.sk.GeometryCount
+        RegularPolygon.makeRegularPolygon(self.sk, 6, centre, centre + App.Vector(8, 3, 0), False)
+        circle = [i for i in range(first, self.sk.GeometryCount) if self.sk.Geometry[i].TypeId == "Part::GeomCircle"][0]
+        return first, circle
+
+    def to_origin(self, circle):
+        return [c for c in self.sk.Constraints if c.Type == "Coincident" and {(c.First, c.FirstPos), (c.Second, c.SecondPos)}
+                == {(circle, 3), (-1, 1)}]
+
+    def test_centre_on_the_origin_becomes_coincident(self):
+        first, circle = self.polygon(App.Vector(0, 0, 0))
+        self.assertEqual(sketch.pin_polygon_centres(self.sk, first), [circle])
+        self.assertEqual(len(self.to_origin(circle)), 1)
+        self.assertEqual(sketch.pin_polygon_centres(self.sk, first), [])  # already there: nothing twice
+
+    def test_centre_on_an_axis_lies_on_it(self):
+        first, circle = self.polygon(App.Vector(0, 12, 0))
+        sketch.pin_polygon_centres(self.sk, first)
+        on = [c for c in self.sk.Constraints if c.Type == "PointOnObject" and c.First == circle and c.Second == -2]
+        self.assertEqual(len(on), 1)  # the Y axis
+
+    def test_centre_elsewhere_is_left_free(self):
+        first, circle = self.polygon(App.Vector(5, 7, 0))
+        n = len(self.sk.Constraints)
+        self.assertEqual(sketch.pin_polygon_centres(self.sk, first), [])
+        self.assertEqual(len(self.sk.Constraints), n)
