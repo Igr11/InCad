@@ -1,0 +1,58 @@
+"""InCad Delete: removes a feature with what InCad made for it (helpers, hidden profiles, cuts in other files).
+Call inside safe.run_safely for one undo step."""
+import FreeCAD as App
+
+_ORIGIN = ("App::Origin", "App::Line", "App::Plane", "App::Point")
+
+
+def _remove_feature(f):
+    doc = f.Document
+    body = f.getParentGeoFeatureGroup()
+    if body is not None and body.TypeId == "PartDesign::Body":
+        if body.Tip is f:
+            body.Tip = f.BaseFeature
+        body.removeObject(f)  # the next feature is relinked to f's base: the chain is kept
+    doc.removeObject(f.Name)
+
+
+def delete(obj):
+    from incad import features
+    from incad.core import asm_cut, assembly, document
+    from incad.features import combine, thread
+    doc = obj.Document
+    if obj.TypeId in _ORIGIN:
+        raise ValueError("Origin planes and axes can't be deleted")
+    if asm_cut.is_record(obj):
+        asm_cut.remove(obj)
+        return
+    kind = features.kind_for(obj)
+    if kind is combine:
+        combine.delete(doc, obj)
+        return
+    if kind is thread:
+        profile = obj.Profile[0] if isinstance(obj.Profile, (tuple, list)) and obj.Profile else None
+        _remove_feature(obj)
+        if profile is not None and doc.getObject(profile.Name) is not None:
+            body = profile.getParentGeoFeatureGroup()
+            if body is not None:
+                body.removeObject(profile)
+            doc.removeObject(profile.Name)
+        return
+    if obj.TypeId == "PartDesign::Body":
+        if obj is document.primary_body(doc):
+            raise ValueError("The main solid can't be deleted (delete its features instead)")
+        obj.removeObjectsFromDocument()
+        doc.removeObject(obj.Name)
+        return
+    if obj.TypeId == "App::Link" and obj in assembly.components(doc):
+        for j in assembly.joints(doc):  # its grounding and the constraints that use it go with it
+            refs = [getattr(j, "ObjectToGround", None)] + \
+                [(getattr(j, p, None) or (None,))[0] for p in ("Reference1", "Reference2")]
+            if obj in refs:
+                doc.removeObject(j.Name)
+        doc.removeObject(obj.Name)
+        return
+    if obj.getParentGeoFeatureGroup() is not None and obj.getParentGeoFeatureGroup().TypeId == "PartDesign::Body":
+        _remove_feature(obj)
+        return
+    doc.removeObject(obj.Name)
