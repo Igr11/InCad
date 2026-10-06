@@ -5,6 +5,10 @@ from incad.ui import theme as themes
 SIZES = ("small", "medium", "large")
 
 
+# icons of stacked groups (Constrain, Format): two rows as tall as one button with its label, readable at each size
+STACKED_PX = {"small": 16, "medium": 24, "large": 28}
+
+
 class Ribbon(QtWidgets.QWidget):
     sizeChanged = Signal(str)
 
@@ -154,8 +158,8 @@ class Ribbon(QtWidgets.QWidget):
         if stacked:  # Inventor: many small tools as small icons in rows (names in the tooltips)
             row = QtWidgets.QGridLayout()
             row.setSpacing(0)
-            px = themes.ICON_PX["small"]
-            rows = {"small": 1, "medium": 2}.get(self._size, 3)
+            px = STACKED_PX[self._size]
+            rows = 1 if self._size == "small" else 2
             row.setContentsMargins(0, 0, 0, 0)
         else:
             row = QtWidgets.QHBoxLayout()

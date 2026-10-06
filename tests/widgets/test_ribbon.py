@@ -146,11 +146,12 @@ class CompactRibbonTest(unittest.TestCase):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
         b = rb.button("k0")
         self.assertEqual(b.toolButtonStyle(), QtCore.Qt.ToolButtonIconOnly)
-        self.assertLess(b.iconSize().width(), 24)
-        rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
+        self.assertEqual(b.iconSize().width(), 28)  # big enough to read on a large ribbon
         rb.show()
         rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 2)
+        medium = Ribbon(self.reg, self.layout, mode="sketch", size="medium", theme="light")
+        self.assertEqual(medium.button("k0").iconSize().width(), 24)
 
     def test_short_label_on_the_button(self):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
