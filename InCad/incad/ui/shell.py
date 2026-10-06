@@ -17,6 +17,7 @@ from incad.ui.sketch_session import SketchSession
 from incad.ui.value_box import ValueBox
 from incad.ui.feature_session import FeatureSession
 from incad.ui.info_panel import InfoPanel
+from incad.ui.plane_panel import PlanePanel
 from incad.ui import marking_layout
 from incad.ui.marking_menu import MarkingMenu
 from incad.ui.nav import Navigator, to_coin
@@ -132,6 +133,7 @@ class Shell(QtCore.QObject):
         self._box_owner = None
         self.feature_session = None
         self.info_panel = None
+        self.plane_panel = None
         self._profile_pick = None
         self.value_box = None
         self._shortcuts = {}
@@ -375,6 +377,10 @@ class Shell(QtCore.QObject):
             self.strip = NavStrip(self.registry, self.theme, mdi.viewport())
             self.strip.place(mdi.viewport().rect())
             self.strip.show()
+            self.plane_panel = PlanePanel(self.theme, mdi.viewport())
+            self.plane_panel.picked.connect(self._on_plane_picked)
+            self.plane_panel.cancelled.connect(self.sketches.cancel_pick)
+            self.plane_panel.hide()
         self.browser.parameterRenamed.connect(self._on_parameter_renamed)
         self.browser.parameterClicked.connect(self._on_parameter_clicked)
         self.status.dofClicked.connect(lambda: self.registry.run("sketch.show_dof"))
@@ -448,6 +454,12 @@ class Shell(QtCore.QObject):
             except RuntimeError:
                 pass
             self.strip = None
+        if self.plane_panel is not None:
+            try:
+                self.plane_panel.deleteLater()
+            except RuntimeError:
+                pass
+            self.plane_panel = None
         self._widgets = []
         self.ribbon = self.title = self.browser = self.status = None
 
@@ -497,6 +509,8 @@ class Shell(QtCore.QObject):
             return
         self.theme = themes.current()
         self._close_info_panel()  # it was drawn for the old theme
+        if self.plane_panel is not None:
+            self.plane_panel.set_theme(self.theme)
         qss = themes.stylesheet(self.theme)
         for w in self._widgets:
             w.setStyleSheet(qss)
@@ -963,6 +977,14 @@ class Shell(QtCore.QObject):
             self._close_value_box()
         mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
         self.ribbon.set_mode(mode)
+        if self.plane_panel is not None:
+            if self.sketches.picking and not self.plane_panel.isVisible():
+                self.plane_panel.adjustSize()
+                self.plane_panel.move(16, 16)
+                self.plane_panel.show()
+                self.plane_panel.raise_()
+            elif not self.sketches.picking:
+                self.plane_panel.hide()
         self.title.set_document_name(doc.Label if doc is not None else "")
         self.browser.set_nodes(tree.build(doc))
         from incad.core import sketch as sketches
@@ -1105,6 +1127,13 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
+
+    def _on_plane_picked(self, role):
+        try:
+            self.sketches.pick_origin(role)
+        except Exception as e:
+            log.report("error", "New sketch failed: %s" % e, traceback.format_exc())
+        self.schedule_refresh()
 
     def inspect(self, what):
         import FreeCADGui as Gui

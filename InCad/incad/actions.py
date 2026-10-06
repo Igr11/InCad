@@ -89,7 +89,8 @@ def new_part(ask=None):
         view = _gui().getDocument(doc.Name).ActiveView
         view.setActiveObject("pdbody", body)
         view.viewIsometric()
-        view.fitAll()
+        from incad.core import camera
+        camera.frame_origin(view.getCameraNode())
     return doc
 
 
@@ -206,6 +207,16 @@ def inspect_mass():
     shell.inspect("mass")
 
 
+def look_at():
+    """Inventor Look At: the selection; while sketching with nothing selected, the sketch itself."""
+    gdoc = _gui().ActiveDocument
+    editing = gdoc.getInEdit() if gdoc is not None else None
+    if editing is not None and not _gui().Selection.getSelection():
+        run_std("Sketcher_ViewSketch")
+    else:
+        run_std("Std_AlignToSelection")
+
+
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
@@ -276,6 +287,8 @@ def new_assembly(units=None):
     if App.GuiUp:
         view = _gui().getDocument(doc.Name).ActiveView
         view.viewIsometric()
+        from incad.core import camera
+        camera.frame_origin(view.getCameraNode())
     return doc
 
 
@@ -353,7 +366,8 @@ def commands():
         _std("view.style_shaded", "Shaded", "style_shaded"),
         _std("view.style_wireframe", "Wireframe", "style_wireframe"),
         Command(id="view.parameters", label="Parameters", icon="parameters", handler=focus_parameters),
-        _std("view.look_at", "Look At", "look_at"),
+        Command(id="view.look_at", label="Look At", icon="look_at", handler=look_at,
+                tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
         Command(id="browser.move_end_of_part", label="Move End of Part Here", icon="end_of_part",

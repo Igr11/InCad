@@ -50,6 +50,9 @@ class SketchSession:
             vo = body.Origin.ViewObject
             self._origin = (vo, vo.Visibility)
             vo.Visibility = True
+            if body.Shape.isNull() and Gui.ActiveDocument is not None:  # nothing yet: show the origin planes
+                from incad.core import camera
+                camera.frame_origin(Gui.ActiveDocument.ActiveView.getCameraNode())
         self.picking = True
         Gui.Selection.clearSelection()
         Gui.Selection.addObserver(self)
@@ -84,6 +87,13 @@ class SketchSession:
             QtCore.QTimer.singleShot(0, lambda: self._picked(support, face))
         else:
             log.report("warning", "That is not flat: pick a plane or a flat face")
+
+    def pick_origin(self, role):
+        """The plane panel's buttons: sketch on an origin plane of the main solid."""
+        import FreeCAD as App
+        body = document.primary_body(App.ActiveDocument)
+        plane = next(o for o in body.Origin.OriginFeatures if o.Role == role)
+        self._picked(plane, "")
 
     def _picked(self, support, face):
         import FreeCADGui as Gui

@@ -16,7 +16,7 @@ LAYOUT = {
     "vertex": dict(_EDGE),
     "sketch": {"N": "sketch.finish", "NE": "sketch.line", "E": "sketch.circle", "SE": "sketch.rectangle",
                "S": "sketch.dimension", "SW": "sketch.arc", "W": "edit.undo", "NW": "sketch.trim",
-               "list": ["sketch.construction", "sketch.project", "sketch.stop"]},
+               "list": ["view.look_at", "sketch.construction", "sketch.project", "sketch.stop"]},
     "assembly": {"N": "assembly.place", "S": "constrain.mate", "E": "joint.rigid", "W": "assembly.create",
                  "NE": "view.zoom_all", "NW": "edit.undo", "SE": "view.home", "SW": "assembly.ground",
                  "list": ["constrain.flush", "constrain.insert", "view.freecad"]},

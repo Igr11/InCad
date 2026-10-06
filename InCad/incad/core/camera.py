@@ -41,3 +41,15 @@ def pan_pixels(cam, dx, dy, viewport_height_px):
     right = rot.multVec(coin.SbVec3f(1, 0, 0))
     up = rot.multVec(coin.SbVec3f(0, 1, 0))
     cam.position.setValue(cam.position.getValue() - right * (dx * s) + up * (dy * s))
+
+
+def frame_origin(cam, size=40.0, distance=250.0):
+    """Look at the origin from the camera's current direction with about `size` model units in view
+    (a new, empty part: FreeCAD's fit-all on nothing leaves the view a few mm or kilometres across)."""
+    direction = cam.orientation.getValue().multVec(coin.SbVec3f(0, 0, -1))
+    if isinstance(cam, coin.SoOrthographicCamera):
+        cam.height.setValue(size)
+    else:
+        distance = (size / 2.0) / math.tan(cam.heightAngle.getValue() / 2.0)
+    cam.position.setValue(direction * -distance)
+    cam.focalDistance.setValue(distance)
