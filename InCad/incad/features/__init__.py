@@ -3,9 +3,9 @@ Loaded on first use, so widget code can import incad.features.common without Fre
 
 
 def kinds():
-    from incad.features import dressup, extrude, hole, patterns, revolve, thread, work
+    from incad.features import combine, dressup, extrude, hole, patterns, revolve, thread, work
     return [extrude, revolve, hole, dressup.FILLET, dressup.CHAMFER, dressup.SHELL, patterns.RECT, patterns.CIRC,
-            patterns.MIRROR, work.PLANE, work.AXIS, work.POINT, thread]
+            patterns.MIRROR, work.PLANE, work.AXIS, work.POINT, thread, combine]
 
 
 def kind_for(feature):

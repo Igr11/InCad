@@ -69,7 +69,7 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids"}
 
 
 def resolve(obj, sub):
@@ -115,6 +115,11 @@ def accepts(kind, obj, sub):
         return not sub and tid.startswith("PartDesign::") and tid not in ("PartDesign::Body",)
     if kind == "sketch":
         return not sub and tid == "Sketcher::SketchObject"
+    if kind == "body":
+        if tid == "PartDesign::Body":
+            return True
+        parent = obj.getParentGeoFeatureGroup()
+        return parent is not None and parent.TypeId == "PartDesign::Body" and tid.startswith("PartDesign::")
     el = _element(obj, sub)
     if kind == "edge":
         return sub.startswith("Edge") and el is not None
