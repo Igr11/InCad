@@ -3,7 +3,7 @@
  "steps": [
   "setup:block",
   "wait:1",
-  "cmd:quit_discard",
+  "quit_discard",
   "keys:C12",
   "exited:40"
  ]

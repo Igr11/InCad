@@ -134,7 +134,8 @@ def state():
         menu = sh.marking_menu
         if menu is not None:
             try:
-                st["menu"] = {b.text(): center(b) for b in menu._list} if menu.isVisible() else None
+                st["menu"] = ({b.text(): center(b) for b in menu._list} |
+                              {b.text(): center(b) for b in menu._buttons.values()}) if menu.isVisible() else None
             except RuntimeError:
                 st["menu"] = None
         for cmd_id in RIBBON_DEFAULT + ST["ribbon_ids"]:
