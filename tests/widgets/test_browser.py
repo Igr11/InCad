@@ -265,3 +265,10 @@ class TypingBeatsShortcutsTest(unittest.TestCase):
         self.assertTrue(self._override(b.tree, QtCore.Qt.Key_L, "l", N))
         self.assertFalse(self._override(b.params, QtCore.Qt.Key_N, "n", QtCore.Qt.ControlModifier))  # ⌘N still works
         self.assertFalse(self._override(b.params, QtCore.Qt.Key_F7, "", N))
+
+
+class AssemblyIconsTest(unittest.TestCase):
+    def test_assembly_rows_have_icons(self):
+        from incad.ui import browser
+        for kind in ("assembly", "component", "relationships", "joint"):
+            self.assertIn(kind, browser.KIND_ICONS)

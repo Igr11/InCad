@@ -13,7 +13,8 @@ EDIT_TRIGGERS = (QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstract
                  | QtWidgets.QAbstractItemView.AnyKeyPressed | QtWidgets.QAbstractItemView.SelectedClicked)
 
 KIND_ICONS = {"part": "part", "origin": "origin", "feature": "feature", "sketch": "sketch",
-              "end_of_part": "end_of_part", "solids": "solids", "body": "part"}
+              "end_of_part": "end_of_part", "solids": "solids", "body": "part", "assembly": "assembly",
+              "component": "part", "relationships": "mate", "joint": "mate"}
 
 
 class _TypingFirst(QtCore.QObject):

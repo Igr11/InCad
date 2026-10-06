@@ -621,6 +621,9 @@ class Shell(QtCore.QObject):
         from incad.core import sketch as sketches
         try:
             doc = sk.Document
+        except Exception:
+            return  # its file was closed meanwhile: nothing to name
+        try:
             if not document.is_incad_part(doc):
                 return
             key = (doc.Name, sk.Name)

@@ -46,3 +46,11 @@ Logs: ~/Library/Logs/InCad.log
 - Combine: select the base solid, then the tool solid(s), then Combine — Join, Cut or Intersect. Tools are always
   kept (hidden, editable; editing them updates the result). Cut has a print clearance (a parameter) on the Cavity
   (hole grown), on the Tool (a shrunk "<Tool> fit" copy to print) or Split (half each).
+
+## Assemblies
+- New ▸ Assembly (or the New Assembly button). Place (P) links a saved part or assembly file; the first one is
+  grounded, the next ones are put beside it. Create makes a new part file next to the assembly.
+- Constrain (C = Mate; Flush, Angle, Tangent, Insert) and Joints (J = Rigid; Rotational, Slider, Cylindrical,
+  Ball): pick the items on the components in the 3D view. Offsets and angles are parameters.
+- Ground / unground a component from the ribbon or the right-click menu. Double-click a component in the browser
+  to open its file. An assembly is saved before the first part is placed (FreeCAD links need a file).
