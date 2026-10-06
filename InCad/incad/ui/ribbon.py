@@ -6,7 +6,7 @@ SIZES = ("medium", "large")
 
 
 # icons of stacked groups (Constrain, Format): two rows as tall as one button with its label, readable at each size
-STACKED_PX = {"medium": 28, "large": 32}
+STACKED_PX = {"medium": 24, "large": 28}
 
 
 class Ribbon(QtWidgets.QWidget):
