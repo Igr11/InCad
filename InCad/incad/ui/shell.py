@@ -1118,15 +1118,22 @@ class Shell(QtCore.QObject):
         if tool and getattr(box, "closed_by_user", False) and self.sketches.editing() is not None:
             # Inventor keeps dimensioning after a value is entered; FreeCAD's tool is left dead by the change
             # under it (its cursor stays, probed): stop what is left of it and start it again
-            def again():
+            def stop():
                 if self.active and self.sketches.editing() is not None and self.value_box is None:
                     import FreeCADGui as Gui
                     try:
                         Gui.runCommand("Sketcher_StopOperation")
+                    except Exception as e:
+                        log.logger().warning("Could not stop the Sketcher tool: %s", e)
+                    QtCore.QTimer.singleShot(250, start)  # FreeCAD lets go of the old handler on the event loop
+
+            def start():
+                if self.active and self.sketches.editing() is not None and self.value_box is None:
+                    try:
                         self.registry.run(tool)
                     except Exception as e:
                         log.logger().warning("Could not restart %s: %s", tool, e)
-            QtCore.QTimer.singleShot(200, again)
+            QtCore.QTimer.singleShot(100, stop)
 
     def _sketch_tool_active(self):
         """A Sketcher tool shows its own bitmap cursor in the view (FreeCAD tells Python nothing else)."""
