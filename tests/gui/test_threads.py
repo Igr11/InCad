@@ -104,7 +104,8 @@ def test_3_threaded_hole():
     harness.pump(800)
     Gui.Selection.addSelection(doc().Name, hs.Name)
     harness.pump(800)
-    dialog().field("threaded").setChecked(True)
+    ht = dialog().field("hole_type")
+    ht.setCurrentIndex(ht.findData("tapped")) if hasattr(ht, "findData") else ht.button("tapped").click()
     harness.pump(400)
     assert dialog().values()["thread_size"] == "", dialog().values()  # Auto: from the diameter
     size = dialog().field("thread_size")

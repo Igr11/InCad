@@ -86,6 +86,10 @@ def test_2_hole_from_sketch():
     commands.REGISTRY.run("feature.hole")
     harness.pump(800)
     assert dialog().active_pick() == "sketch"
+    from incad.qt import QtWidgets
+    shown = [t.objectName() for t in Gui.getMainWindow().findChildren(QtWidgets.QTabWidget)
+             if t.objectName().startswith("Overlay") and t.isVisible()]
+    assert shown == [], "FreeCAD's overlay panels show through InCad: %s" % shown
     Gui.Selection.addSelection(doc().Name, sk.Name)
     harness.pump(800)
     ok()

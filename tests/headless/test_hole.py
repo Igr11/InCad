@@ -38,7 +38,7 @@ class HoleTest(unittest.TestCase):
 
     def test_counterbore(self):
         sk = self.sketch_with_circle()
-        v = dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name, type="counterbore", depth_type="through_all",
+        v = dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name, seat="counterbore", depth_type="through_all",
                  diameter="3 mm", cbore_diameter="6 mm", cbore_depth="2 mm")
         f = hole.create(self.doc, self.body, None, v)
         self.doc.recompute()
@@ -111,7 +111,7 @@ class HoleTest(unittest.TestCase):
                                                         diameter="4 mm"))
         self.doc.recompute()
         plain_param = model.bound_parameter(f, "Diameter")
-        v = dict(hole.read(self.doc, f), threaded=True, thread_standard="iso", thread_size="M8x1.25",
+        v = dict(hole.read(self.doc, f), hole_type="tapped", thread_standard="iso", thread_size="M8x1.25",
                  clearance="0.2 mm", depth_type="through_all")
         f = hole.update(self.doc, f, v)
         self.doc.recompute()
@@ -121,9 +121,9 @@ class HoleTest(unittest.TestCase):
         self.assertAlmostEqual(f.CustomThreadClearance.Value, 0.2, places=6)
         self.assertNotIn("Invalid", f.State)
         r = hole.read(self.doc, f)
-        self.assertEqual((r["threaded"], r["thread_standard"], r["thread_size"], r["clearance"]),
-                         (True, "iso", "M8x1.25", "0.2 mm"))
-        f = hole.update(self.doc, f, dict(r, threaded=False))
+        self.assertEqual((r["hole_type"], r["thread_standard"], r["thread_size"], r["clearance"]),
+                         ("tapped", "iso", "M8x1.25", "0.2 mm"))
+        f = hole.update(self.doc, f, dict(r, hole_type="simple"))
         self.doc.recompute()
         self.assertFalse(f.Threaded)
         self.assertEqual(model.bound_parameter(f, "Diameter"), plain_param)
@@ -135,3 +135,49 @@ class HoleTest(unittest.TestCase):
         self.assertEqual(sizes[0], "")  # Auto
         self.assertIs(App.ActiveDocument, self.doc)  # the hidden probe document leaves the active one alone
         self.assertIn("M8x1.25", [v for v, _ in hole.options("thread_size", {"thread_standard": "iso"})])
+
+    def test_clearance_hole_for_a_bolt_with_fit(self):
+        sk = self.sketch_with_circle()
+        for fit, dia in (("close", 5.3), ("normal", 5.5), ("loose", 5.8)):
+            f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name,
+                                                            hole_type="clearance", thread_standard="iso",
+                                                            thread_size="M5x0.8", fit=fit, depth_type="through_all"))
+            self.doc.recompute()
+            self.assertFalse(f.Threaded)
+            self.assertAlmostEqual(f.Diameter.Value, dia, places=3, msg=fit)
+            r = hole.read(self.doc, f)
+            self.assertEqual((r["hole_type"], r["fit"]), ("clearance", fit))
+            self.body.removeObject(f)
+            self.doc.removeObject(f.Name)
+            self.body.Tip = self.pad
+            self.doc.recompute()
+
+    def test_spotface_flip_and_drill_angle(self):
+        sk = self.sketch_with_circle()
+        f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name,
+                                                        seat="spotface", spot_diameter="9 mm", spot_depth="0.5 mm",
+                                                        depth_type="distance", depth="4 mm", tip="angled",
+                                                        tip_angle="120 °", flip=False))
+        self.doc.recompute()
+        self.assertEqual(f.HoleCutType, "Counterbore")
+        self.assertAlmostEqual(f.HoleCutDepth.Value, 0.5, places=6)
+        self.assertAlmostEqual(f.DrillPointAngle.Value, 120, places=6)
+        r = hole.read(self.doc, f)
+        self.assertEqual((r["seat"], r["spot_depth"]), ("spotface", "0.5 mm"))
+        hole.update(self.doc, f, dict(r, flip=True))
+        self.doc.recompute()
+        self.assertTrue(f.Reversed)
+        self.assertTrue(hole.read(self.doc, f)["flip"])
+
+    def test_up_to_a_face(self):
+        sk = self.sketch_with_circle()
+        plane = self.body.newObject("PartDesign::Plane", "Stop")
+        plane.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        plane.MapMode = "FlatFace"
+        plane.AttachmentOffset = App.Placement(App.Vector(0, 0, 3), App.Rotation())
+        self.doc.recompute()
+        f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name,
+                                                        depth_type="to", to_face=plane.Name, tip="flat"))
+        self.doc.recompute()
+        self.assertAlmostEqual(f.Depth.Value, 7, places=4)  # from the top (z 10) down to the plane at z 3
+        self.assertEqual(hole.read(self.doc, f)["depth_type"], "to")

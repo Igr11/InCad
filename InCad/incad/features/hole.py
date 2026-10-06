@@ -10,43 +10,56 @@ ICON = "hole"
 TYPES = ("PartDesign::Hole",)
 NEEDS_PROFILE = False
 PROPS = {"diameter": "Diameter", "depth": "Depth", "cbore_diameter": "HoleCutDiameter",
-         "cbore_depth": "HoleCutDepth", "csink_diameter": "HoleCutDiameter", "csink_angle": "HoleCutCountersinkAngle"}
+         "cbore_depth": "HoleCutDepth", "csink_diameter": "HoleCutDiameter", "csink_angle": "HoleCutCountersinkAngle",
+         "spot_diameter": "HoleCutDiameter", "spot_depth": "HoleCutDepth"}
+_THREADED = ("clearance", "tapped")
 FIELDS = (
     Field("placement", "Placement", "choice", (("sketch", "From Sketch"), ("concentric", "Concentric")), "sketch"),
     Field("sketch", "Sketch", "pick", show_if=("placement", ("sketch",)), pick="sketch"),
     Field("face", "Face", "pick", show_if=("placement", ("concentric",)), pick="plane"),
     Field("edge", "Circular edge", "pick", show_if=("placement", ("concentric",)), pick="circular_edge"),
-    Field("type", "Type", "choice", (("simple", "Simple"), ("counterbore", "Counterbore"),
-                                     ("countersink", "Countersink")), "simple"),
-    Field("threaded", "Threaded", "bool", default=False),
+    Field("hole_type", "Hole", "choice", (("simple", "Simple"), ("clearance", "Clearance"), ("tapped", "Tapped")),
+          "simple"),
     Field("thread_standard", "Standard", "combo", (("iso", "ISO metric"), ("iso_fine", "ISO metric fine"),
                                                    ("unc", "UNC"), ("unf", "UNF"), ("unef", "UNEF"), ("npt", "NPT"),
                                                    ("g", "G / BSP"), ("bsw", "BSW"), ("bsf", "BSF")), "iso",
-          show_if=("threaded", (True,))),
-    Field("thread_size", "Size", "combo", (), "", show_if=("threaded", (True,))),
-    Field("diameter", "Diameter", "value_length", default="5 mm", show_if=("threaded", (False,))),
-    Field("depth_type", "Termination", "choice", (("distance", "Distance"), ("through_all", "Through All")),
-          "through_all"),
+          show_if=("hole_type", _THREADED)),
+    Field("thread_size", "Size", "combo", (), "", show_if=("hole_type", _THREADED)),
+    Field("fit", "Fit", "choice", (("close", "Close"), ("normal", "Normal"), ("loose", "Loose")), "normal",
+          show_if=("hole_type", ("clearance",))),
+    Field("diameter", "Diameter", "value_length", default="5 mm", show_if=("hole_type", ("simple",))),
+    Field("seat", "Seat", "combo", (("none", "None (drilled)"), ("counterbore", "Counterbore"),
+                                    ("countersink", "Countersink"), ("spotface", "Spotface")), "none"),
+    Field("cbore_diameter", "C'bore Ø", "value_length", default="10 mm", show_if=("seat", ("counterbore",))),
+    Field("cbore_depth", "C'bore depth", "value_length", default="3 mm", show_if=("seat", ("counterbore",))),
+    Field("csink_diameter", "C'sink Ø", "value_length", default="10 mm", show_if=("seat", ("countersink",))),
+    Field("csink_angle", "C'sink angle", "value_angle", default="90 °", show_if=("seat", ("countersink",))),
+    Field("spot_diameter", "Spotface Ø", "value_length", default="10 mm", show_if=("seat", ("spotface",))),
+    Field("spot_depth", "Spotface depth", "value_length", default="0.5 mm", show_if=("seat", ("spotface",))),
+    Field("depth_type", "Termination", "choice", (("distance", "Distance"), ("through_all", "Through All"),
+                                                 ("to", "To")), "through_all"),
     Field("depth", "Depth", "value_length", default="10 mm", show_if=("depth_type", ("distance",))),
-    Field("tip", "Drill point", "choice", (("flat", "Flat"), ("angled", "118°")), "angled",
-          show_if=("depth_type", ("distance",))),
-    Field("cbore_diameter", "C'bore Ø", "value_length", default="10 mm", show_if=("type", ("counterbore",))),
-    Field("cbore_depth", "C'bore depth", "value_length", default="3 mm", show_if=("type", ("counterbore",))),
-    Field("csink_diameter", "C'sink Ø", "value_length", default="10 mm", show_if=("type", ("countersink",))),
-    Field("csink_angle", "C'sink angle", "value_angle", default="90 °", show_if=("type", ("countersink",))),
+    Field("to_face", "To face", "pick", pick="plane", show_if=("depth_type", ("to",))),
+    Field("tip", "Drill point", "choice", (("flat", "Flat"), ("angled", "Angle")), "angled",
+          show_if=("depth_type", ("distance", "to"))),
+    Field("tip_angle", "Point angle", "value_angle", default="118 °",
+          show_if=(("depth_type", ("distance", "to")), ("tip", ("angled",)))),
     Field("thread_depth", "Thread", "choice", (("hole", "Whole hole"), ("distance", "Depth")), "hole",
-          show_if=("threaded", (True,))),
+          show_if=("hole_type", ("tapped",))),
     Field("thread_length", "Thread depth", "value_length", default="8 mm",
-          show_if=(("threaded", (True,)), ("thread_depth", ("distance",)))),
-    Field("clearance", "Print clearance", "value_length", default="0.2 mm", show_if=("threaded", (True,))),
+          show_if=(("hole_type", ("tapped",)), ("thread_depth", ("distance",)))),
+    Field("clearance", "Print clearance", "value_length", default="0.2 mm", show_if=("hole_type", ("tapped",))),
     Field("hand", "Direction", "choice", (("right", "Right hand"), ("left", "Left hand")), "right",
-          show_if=("threaded", (True,))),
+          show_if=("hole_type", ("tapped",))),
+    Field("flip", "Flip direction", "bool", default=False),
 )
 _THREAD_TYPES = {"iso": "ISOMetricProfile", "iso_fine": "ISOMetricFineProfile", "unc": "UNC", "unf": "UNF",
                  "unef": "UNEF", "npt": "NPT", "g": "BSP", "bsw": "BSW", "bsf": "BSF"}
+_FIT = {"close": "Fine", "normal": "Medium", "loose": "Coarse"}
 _PLAIN = "InCadPlainDiameter"
+_STORE = "InCadHole"
 _SIZES = {}
-_CUT = {"simple": "None", "counterbore": "Counterbore", "countersink": "Countersink"}
+_CUT = {"none": "None", "counterbore": "Counterbore", "countersink": "Countersink", "spotface": "Counterbore"}
 
 
 def defaults(doc, body, profile):
@@ -127,40 +140,106 @@ def _profile(doc, body, values):
     return picks[0][0]
 
 
+def _store(f, data):
+    import json
+    if not hasattr(f, _STORE):
+        f.addProperty("App::PropertyString", _STORE, "InCad", "InCad hole settings")
+        f.setPropertyStatus(_STORE, "Hidden")
+    setattr(f, _STORE, json.dumps(data, sort_keys=True))
+
+
+def _load(f):
+    import json
+    try:
+        return json.loads(getattr(f, _STORE, "") or "{}")
+    except ValueError:
+        return {}
+
+
+def _depth_to(doc, f, text):
+    """Depth from the hole's start plane (its sketch) to a picked plane/flat face (computed; re-done on edit)."""
+    picks = parse_picks(doc, text)
+    if not picks:
+        raise ValueError("Pick the face or plane the hole goes to")
+    obj, sub = resolve(*picks[0])
+    target = obj.getSubObject(sub) if sub else (obj.Shape.Faces[0] if obj.Shape.Faces else None)
+    if target is None or target.ShapeType != "Face":
+        raise ValueError("Pick a flat face or a plane for the hole to stop at")
+    prof = f.Profile[0] if isinstance(f.Profile, (tuple, list)) else f.Profile
+    pl = prof.getGlobalPlacement()
+    n = pl.Rotation.multVec(App.Vector(0, 0, 1))
+    depth = abs((target.Surface.Position - pl.Base).dot(n)) if hasattr(target.Surface, "Position") else \
+        abs((target.CenterOfMass - pl.Base).dot(n))
+    if depth < 1e-6:
+        raise ValueError("That face is where the hole starts: pick another one")
+    return depth
+
+
 def _apply(doc, f, values):
-    f.HoleCutType = _CUT.get(values.get("type", "simple"), "None")
-    f.DepthType = "ThroughAll" if values.get("depth_type") == "through_all" else "Dimension"
+    from incad.core import model
+    seat = values.get("seat") or "none"
+    f.HoleCutType = _CUT.get(seat, "None")
+    f.Reversed = bool(values.get("flip"))
+    term = values.get("depth_type") or "through_all"
+    f.DepthType = "ThroughAll" if term == "through_all" else "Dimension"
     f.DrillPoint = "Angled" if values.get("tip") == "angled" else "Flat"
+    if f.DrillPoint == "Angled":
+        try:
+            f.DrillPointAngle = App.Units.Quantity((values.get("tip_angle") or "118 °").replace("°", " deg")).Value
+        except Exception:
+            raise ValueError("Point angle: enter an angle such as 118°")
     _apply_thread(doc, f, values)
-    if f.DepthType == "Dimension":
+    if term == "distance":
         value_param(doc, f, "Depth", values.get("depth") or "10 mm", "length")
-    if values.get("type") == "counterbore":
+    elif term == "to":
+        for path in ("Depth", ".Depth"):
+            if model.bound_parameter(f, path) is not None:
+                f.setExpression(path, None)
+        doc.recompute()
+        f.Depth = _depth_to(doc, f, values.get("to_face"))
+    if seat == "counterbore":
         value_param(doc, f, "HoleCutDiameter", values.get("cbore_diameter") or "10 mm", "length")
         value_param(doc, f, "HoleCutDepth", values.get("cbore_depth") or "3 mm", "length")
-    elif values.get("type") == "countersink":
+    elif seat == "countersink":
         value_param(doc, f, "HoleCutDiameter", values.get("csink_diameter") or "10 mm", "length")
         value_param(doc, f, "HoleCutCountersinkAngle", values.get("csink_angle") or "90 °", "angle")
+    elif seat == "spotface":
+        value_param(doc, f, "HoleCutDiameter", values.get("spot_diameter") or "10 mm", "length")
+        value_param(doc, f, "HoleCutDepth", values.get("spot_depth") or "0.5 mm", "length")
+    _store(f, {"hole_type": values.get("hole_type") or "simple", "seat": seat, "fit": values.get("fit") or "normal",
+               "depth_type": term, "to_face": values.get("to_face") or "", "flip": bool(values.get("flip")),
+               "tip_angle": values.get("tip_angle") or "118 °"})
+
+
+def _release_diameter(f):
+    from incad.core import model
+    name = model.bound_parameter(f, "Diameter")
+    if name is not None:  # the thread/bolt sets the drill size; keep the plain diameter for switching back
+        if not hasattr(f, _PLAIN):
+            f.addProperty("App::PropertyString", _PLAIN, "InCad")
+            f.setPropertyStatus(_PLAIN, "Hidden")
+        setattr(f, _PLAIN, name)
+        f.setExpression("Diameter", None)
 
 
 def _apply_thread(doc, f, values):
     from incad.core import model
-    if values.get("threaded"):
-        name = model.bound_parameter(f, "Diameter")
-        if name is not None:  # the thread sets the drill size; keep the plain diameter for switching back
-            if not hasattr(f, _PLAIN):
-                f.addProperty("App::PropertyString", _PLAIN, "InCad")
-                f.setPropertyStatus(_PLAIN, "Hidden")
-            setattr(f, _PLAIN, name)
-            f.setExpression("Diameter", None)
+    kind_of_hole = values.get("hole_type") or ("tapped" if values.get("threaded") else "simple")
+    if kind_of_hole in _THREADED:
+        _release_diameter(f)
         std = values.get("thread_standard") or "iso"
         kind = _THREAD_TYPES.get(std, "ISOMetricProfile")
-        f.Threaded = True
-        f.ModelThread = True
+        tapped = kind_of_hole == "tapped"
+        f.Threaded = tapped
+        f.ModelThread = tapped
         if f.ThreadType != kind:
             f.ThreadType = kind
         names = list(f.getEnumerationsOfProperty("ThreadSize"))
         size = values.get("thread_size")
         f.ThreadSize = size if size in names else _default_size(std, names, values.get("diameter"))
+        if not tapped:  # clearance hole for that bolt: FreeCAD sizes it from the fit
+            f.ThreadFit = _FIT.get(values.get("fit") or "normal", "Medium")
+            return
         f.ThreadDirection = "Left" if values.get("hand") == "left" else "Right"
         f.UseCustomThreadClearance = True
         try:
@@ -173,9 +252,10 @@ def _apply_thread(doc, f, values):
         else:
             f.ThreadDepthType = "Hole Depth"
         return
-    if f.Threaded:
+    if f.Threaded or f.ThreadType != "None":
         f.Threaded = False
         f.ModelThread = False
+        f.ThreadType = "None"
         plain = getattr(f, _PLAIN, "")
         if plain and model.bound_parameter(f, "Diameter") is None:
             model.bind(f, "Diameter", plain)
@@ -193,32 +273,47 @@ def create(doc, body, profile, values):
 def read(doc, f):
     prof = f.Profile[0] if isinstance(f.Profile, (tuple, list)) else f.Profile
     concentric = _is_helper(prof)
-    cut = {v: k for k, v in _CUT.items()}.get(f.HoleCutType, "simple")
+    data = _load(f)
+    seat = data.get("seat") or {v: k for k, v in _CUT.items() if k != "spotface"}.get(f.HoleCutType, "none")
+    if f.Threaded:
+        hole_type = "tapped"
+    elif f.ThreadType != "None":
+        hole_type = "clearance"
+    else:
+        hole_type = "simple"
     values = defaults(f.Document, None, None)
     values.update(placement="concentric" if concentric else "sketch", sketch="" if concentric else prof.Name,
-                  type=cut, depth_type="through_all" if f.DepthType == "ThroughAll" else "distance",
-                  tip="angled" if f.DrillPoint == "Angled" else "flat",
+                  hole_type=hole_type, seat=seat,
+                  depth_type=data.get("depth_type") or ("through_all" if f.DepthType == "ThroughAll" else "distance"),
+                  to_face=data.get("to_face", ""), flip=bool(f.Reversed),
+                  tip="angled" if f.DrillPoint == "Angled" else "flat", tip_angle=data.get("tip_angle", "118 °"),
                   diameter=value_text(doc, f, "Diameter") or "5 mm", depth=value_text(doc, f, "Depth") or "10 mm")
-    if f.Threaded:
+    if hole_type in _THREADED:
         std = {v: k for k, v in _THREAD_TYPES.items()}.get(f.ThreadType, "iso")
-        values.update(threaded=True, thread_standard=std, thread_size=f.ThreadSize,
-                      clearance="%g mm" % f.CustomThreadClearance.Value,
-                      hand="left" if f.ThreadDirection == "Left" else "right",
-                      thread_depth="distance" if f.ThreadDepthType == "Dimension" else "hole",
-                      thread_length=value_text(doc, f, "ThreadDepth") or "8 mm")
+        values.update(thread_standard=std, thread_size=f.ThreadSize)
         plain = getattr(f, _PLAIN, "")
         if plain:
             from incad.core import model
             values["diameter"] = model.parameter_text(doc, plain)
+    if hole_type == "clearance":
+        values["fit"] = {v: k for k, v in _FIT.items()}.get(f.ThreadFit, "normal")
+    if hole_type == "tapped":
+        values.update(clearance="%g mm" % f.CustomThreadClearance.Value,
+                      hand="left" if f.ThreadDirection == "Left" else "right",
+                      thread_depth="distance" if f.ThreadDepthType == "Dimension" else "hole",
+                      thread_length=value_text(doc, f, "ThreadDepth") or "8 mm")
     if concentric:
         face, _, edge = getattr(prof, "InCadPicks", "").partition("|")
         values.update(face=face, edge=edge)
-    if cut == "counterbore":
+    if seat == "counterbore":
         values.update(cbore_diameter=value_text(doc, f, "HoleCutDiameter") or "10 mm",
                       cbore_depth=value_text(doc, f, "HoleCutDepth") or "3 mm")
-    if cut == "countersink":
+    if seat == "countersink":
         values.update(csink_diameter=value_text(doc, f, "HoleCutDiameter") or "10 mm",
                       csink_angle=value_text(doc, f, "HoleCutCountersinkAngle") or "90°")
+    if seat == "spotface":
+        values.update(spot_diameter=value_text(doc, f, "HoleCutDiameter") or "10 mm",
+                      spot_depth=value_text(doc, f, "HoleCutDepth") or "0.5 mm")
     return values
 
 

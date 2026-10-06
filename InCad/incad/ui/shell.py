@@ -114,6 +114,14 @@ class _ProfilePicker:
             QtCore.QTimer.singleShot(0, lambda: (shell._cancel_profile_pick(), shell.start_feature(kind)))
 
 
+def _is_overlay(w):
+    return isinstance(w, QtWidgets.QTabWidget) and w.objectName().startswith("Overlay")
+
+
+def _overlays(mw):
+    return [t for t in mw.findChildren(QtWidgets.QTabWidget) if t.parent() is mw and _is_overlay(t)]
+
+
 class Shell(QtCore.QObject):
     def __init__(self, mw, registry):
         super().__init__(mw)
@@ -154,8 +162,11 @@ class Shell(QtCore.QObject):
                 if t.parent() is self.mw and t.objectName() and t.objectName() not in OURS]
 
     def _freecad_docks(self):
-        return [d for d in self.mw.findChildren(QtWidgets.QDockWidget)
-                if d.objectName() and d.objectName() not in OURS]
+        """FreeCAD's panels, and the overlay containers (OverlayLeft/Right/…) they float in when overlay mode is on
+        — those showed FreeCAD's 'Tasks' strip over InCad's view."""
+        docks = [d for d in self.mw.findChildren(QtWidgets.QDockWidget)
+                 if d.objectName() and d.objectName() not in OURS]
+        return docks + _overlays(self.mw)
 
     def _freecad_menu_actions(self):
         return [a for a in self.mw.menuBar().actions()
@@ -989,7 +1000,7 @@ class Shell(QtCore.QObject):
                     if isinstance(child, (QtWidgets.QToolBar, QtWidgets.QDockWidget)):
                         QtCore.QTimer.singleShot(0, lambda c=child: self._adopt(c))
             elif etype == QtCore.QEvent.Show and self.active and obj.objectName() not in OURS \
-                    and isinstance(obj, (QtWidgets.QToolBar, QtWidgets.QDockWidget)):
+                    and (isinstance(obj, (QtWidgets.QToolBar, QtWidgets.QDockWidget)) or _is_overlay(obj)):
                 QtCore.QTimer.singleShot(0, lambda o=obj: self._rehide(o))
         except Exception:
             log.logger().exception("InCad event filter")
