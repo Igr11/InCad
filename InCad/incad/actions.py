@@ -618,7 +618,7 @@ def commands():
         Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
         Command(id="view.section", label="Section", icon="section", handler=toggle_section,
-                contexts=frozenset({"part", "assembly"}, checkable=True, is_checked=lambda: section_on()), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
+                contexts=frozenset({"part", "assembly"}), checkable=True, is_checked=lambda: section_on(), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
                         "click again to close"),
         Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target,
                 contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),
