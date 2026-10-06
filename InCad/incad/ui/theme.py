@@ -108,14 +108,15 @@ SKETCH_ROOT = "User parameter:BaseApp/Preferences/Mod/Sketcher"
 SKETCH_TOOLS = "User parameter:BaseApp/Preferences/Mod/Sketcher/Tools"
 DISPLAY_FORMAT = {"value": (False, "%V"), "name": (True, "%N"), "expression": (True, "%N = %V")}
 SKETCH_COLORS = {
+    # calm constraint colours (FreeCAD's red/orange was too loud): blue-grey symbols and dimensions
     "light": dict(EditedEdgeColor="#1d1d1f", SketchEdgeColor="#1d1d1f", SketchVertexColor="#1d1d1f",
-                  FullyConstrainedColor="#1a8a2e", ConstructionColor="#0a64d6", ConstrainedDimColor="#b00020",
-                  ExprBasedConstrDimColor="#c75a00", NonDrivingConstrDimColor="#5b6b80", CursorTextColor="#1d1d1f",
-                  CreateLineColor="#e67e22"),
+                  FullyConstrainedColor="#1a8a2e", ConstructionColor="#0a64d6", ConstrainedDimColor="#35557f",
+                  ExprBasedConstrDimColor="#6a5a9e", NonDrivingConstrDimColor="#7d8896", CursorTextColor="#1d1d1f",
+                  CreateLineColor="#e67e22", ConstrainedIcoColor="#5a7698", DeactivatedConstrDimColor="#9aa3ad"),
     "dark": dict(EditedEdgeColor="#f2f2f2", SketchEdgeColor="#f2f2f2", SketchVertexColor="#f2f2f2",
-                 FullyConstrainedColor="#5ad16b", ConstructionColor="#5aa2ff", ConstrainedDimColor="#ff8a80",
-                 ExprBasedConstrDimColor="#f39c4a", NonDrivingConstrDimColor="#9aa7b8", CursorTextColor="#f2f2f2",
-                 CreateLineColor="#f39c4a"),
+                 FullyConstrainedColor="#5ad16b", ConstructionColor="#5aa2ff", ConstrainedDimColor="#9db8de",
+                 ExprBasedConstrDimColor="#b9a8e6", NonDrivingConstrDimColor="#8d99a8", CursorTextColor="#f2f2f2",
+                 CreateLineColor="#f39c4a", ConstrainedIcoColor="#7f9cc0", DeactivatedConstrDimColor="#6b7480"),
 }
 SKETCH_KEYS = {
     SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": "Bool", "ShowDimensionalName": "Bool",

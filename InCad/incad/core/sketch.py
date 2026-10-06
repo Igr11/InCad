@@ -186,3 +186,20 @@ def model_parameters(doc):
     """Dimensions and feature values (see incad.core.model)."""
     from incad.core import model
     return model.model_parameters(doc)
+
+
+def _symbol_constraints(sk):
+    return [i for i, c in enumerate(sk.Constraints) if c.Type not in DIMENSIONAL]
+
+
+def constraints_hidden(sk):
+    """Are the constraint symbols hidden? (dimensions always stay visible, as in Inventor)"""
+    ids = _symbol_constraints(sk)
+    return bool(ids) and all(sk.getVirtualSpace(i) for i in ids)
+
+
+def set_constraints_hidden(sk, hide):
+    """Hide/show constraint symbols by moving them to FreeCAD's virtual space; dimensions stay."""
+    ids = _symbol_constraints(sk)
+    if ids:
+        sk.setVirtualSpace(ids, bool(hide))

@@ -147,3 +147,24 @@ class NamesAreNeverReusedTest(unittest.TestCase):
         sketch.name_new_dimensions(self.doc)
         with self.assertRaises(ValueError):
             document.set_parameter(self.doc, "d0", "5 mm")
+
+
+class HideConstraintsTest(unittest.TestCase):
+    def test_hide_and_show_keeps_dimensions(self):
+        import Sketcher
+        doc = util.new_doc("HC")
+        try:
+            body = document.make_part(doc)
+            sk = util.add_rect_sketch(body)
+            sk.addConstraint(Sketcher.Constraint("Horizontal", 0))
+            sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+            doc.recompute()
+            self.assertFalse(sketch.constraints_hidden(sk))
+            sketch.set_constraints_hidden(sk, True)
+            self.assertTrue(sketch.constraints_hidden(sk))
+            dims = [i for i, c in enumerate(sk.Constraints) if c.Type == "DistanceX"]
+            self.assertFalse(sk.getVirtualSpace(dims[0]))
+            sketch.set_constraints_hidden(sk, False)
+            self.assertFalse(sketch.constraints_hidden(sk))
+        finally:
+            App.closeDocument(doc.Name)

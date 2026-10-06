@@ -259,6 +259,23 @@ def look_at():
         run_std("Std_AlignToSelection")
 
 
+def _editing_sketch():
+    gdoc = _gui().ActiveDocument
+    obj = gdoc.getInEdit() if gdoc is not None else None
+    obj = getattr(obj, "Object", None)
+    if obj is None or obj.TypeId != "Sketcher::SketchObject":
+        raise ValueError("Open a sketch first")
+    return obj
+
+
+def constraints_visible(show=None):
+    """Inventor F8/F9: show or hide the constraint symbols of the sketch being edited (dimensions stay)."""
+    from incad.core import safe, sketch
+    sk = _editing_sketch()
+    hide = sketch.constraints_hidden(sk) is False if show is None else not show
+    safe.run_safely("Constraints", lambda: sketch.set_constraints_hidden(sk, hide), sk.Document)
+
+
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
@@ -468,6 +485,13 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="sketch.constraints_toggle", label="Show / Hide Constraints", icon="constraints_toggle",
+                handler=lambda: constraints_visible(), contexts=frozenset({"sketch"}),
+                tooltip="Hide or show the constraint symbols (dimensions stay)"),
+        Command(id="sketch.constraints_show", label="Show Constraints", icon="constraints_toggle",
+                handler=lambda: constraints_visible(True), shortcut="F8", contexts=frozenset({"sketch"})),
+        Command(id="sketch.constraints_hide", label="Hide Constraints", icon="constraints_toggle",
+                handler=lambda: constraints_visible(False), shortcut="F9", contexts=frozenset({"sketch"})),
         Command(id="feature.sweep", label="Sweep", icon="sweep", handler=lambda: start_feature("sweep"),
                 contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a path sketch"),
         Command(id="feature.loft", label="Loft", icon="loft", handler=lambda: start_feature("loft"),

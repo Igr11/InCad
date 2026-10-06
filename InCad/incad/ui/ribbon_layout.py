@@ -35,7 +35,7 @@ LAYOUT = {
                                    "sketch.parallel", "sketch.perpendicular", "sketch.tangent", "sketch.equal",
                                    "sketch.symmetric", "sketch.fix"]],
                     ["Insert", ["sketch.project"]],
-                    ["Format", ["sketch.construction", "sketch.show_dof", "sketch.slice"]],
+                    ["Format", ["sketch.construction", "sketch.constraints_toggle", "sketch.show_dof", "sketch.slice"]],
                     ["Exit", ["sketch.finish"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "nav.orbit", "nav.pan"]],

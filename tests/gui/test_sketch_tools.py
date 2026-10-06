@@ -62,4 +62,25 @@ def test_2_ribbon_split_button_remembers():
     assert b.text() == "3-Point Rectangle"
 
 
-harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers])
+def test_3_hide_and_show_constraints_from_the_menu():
+    import Part
+    import Sketcher
+    from incad.core import sketch
+    from incad.ui import marking_layout
+    sk = Gui.ActiveDocument.getInEdit().Object
+    a = sk.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(20, 0, 0)))
+    sk.addConstraint(Sketcher.Constraint("Horizontal", a))
+    sk.addConstraint(Sketcher.Constraint("DistanceX", a, 1, a, 2, 20))
+    App.ActiveDocument.recompute()
+    assert "sketch.constraints_toggle" in marking_layout.LAYOUT["sketch"]["list"]
+    commands.REGISTRY.run("sketch.constraints_toggle")
+    harness.pump(400)
+    assert sketch.constraints_hidden(sk)
+    Gui.ActiveDocument.ActiveView.saveImage(os.environ.get("INCAD_SHOT", "/tmp/incad_sketch.png"), 800, 500, "Current")
+    commands.REGISTRY.run("sketch.constraints_show")
+    harness.pump(400)
+    assert not sketch.constraints_hidden(sk)
+
+
+harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
+             test_3_hide_and_show_constraints_from_the_menu])
