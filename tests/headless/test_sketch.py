@@ -88,6 +88,17 @@ class SketchTest(unittest.TestCase):
         sketch.set_dimension(self.doc, "d1", "12")  # a plain number uses the part's units
         self.assertEqual({n: (f, v) for n, f, v in sketch.model_parameters(self.doc)}["d1"], ("", "12 mm"))
 
+    def test_plain_numbers_added_to_a_dimension_take_its_unit(self):
+        """Inventor: d16+2 means 2 of the part's unit; FreeCAD refused it ('Unit mismatch')."""
+        sk = self.line_sketch()
+        sketch.name_new_dimensions(self.doc)  # d0 = 20 mm, d1 = 10 mm
+        sketch.set_dimension(self.doc, "d1", "d0+2")
+        self.assertAlmostEqual(sk.getDatum("d1").Value, 22)
+        sketch.set_dimension(self.doc, "d1", "(d0 - 4) / 2 + 1")
+        self.assertAlmostEqual(sk.getDatum("d1").Value, 9)
+        rows = {n: f for n, f, v in sketch.model_parameters(self.doc)}
+        self.assertEqual(rows["d1"], "(d0 - 4 mm) / 2 + 1 mm")  # shown with the units, as Inventor does
+
     def test_bad_input(self):
         self.line_sketch()
         sketch.name_new_dimensions(self.doc)

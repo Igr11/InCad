@@ -158,7 +158,9 @@ def set_dimension(doc, name, text):
             raise ValueError("%s cannot be %s: %s" % (name, text, e))
     else:
         try:
-            sk.setExpression(path, to_expression(doc, text))
+            from incad.core import model
+            unit = "deg" if sk.Constraints[index].Type == "Angle" else (document.part_units(doc) or "mm")
+            sk.setExpression(path, to_expression(doc, model.with_units(text, unit)))
         except Exception as e:
             from incad.core import model
             raise ValueError("%s: %s" % (name, model.friendly(str(e))))

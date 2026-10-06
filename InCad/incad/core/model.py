@@ -73,6 +73,32 @@ def refs(doc):
     return out
 
 
+_NUMBER = re.compile(r"(?<![\w.])(\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)(?![\w.])")
+_HAS_UNIT = re.compile(r"\s*[A-Za-z°\"']")
+
+
+def with_units(text, unit):
+    """Inventor reads a plain number added to or subtracted from a dimension in its unit ('d16+2' = d16 + 2 mm);
+    multiplied or divided it stays a plain number ('d3*2'). FreeCAD refuses mixing them ('Unit mismatch').
+    unit None: unchanged (counts)."""
+    if not unit:
+        return text
+    out, last = [], 0
+    for m in _NUMBER.finditer(text):
+        before = text[:m.start()].rstrip()
+        after = text[m.end():]
+        if _HAS_UNIT.match(after):  # '2 mm', '2mm', '30°' — the user gave a unit
+            continue
+        left = before[-1:] if before else ""
+        right = after.lstrip()[:1]
+        if left in "*/^" and left or right in "*/^" and right:
+            continue
+        out.append(text[last:m.end()] + " " + unit)
+        last = m.end()
+    out.append(text[last:])
+    return "".join(out)
+
+
 def to_expression(doc, text):
     r = refs(doc)
     return _TOKEN.sub(lambda m: r.get(m.group(1), m.group(1)), text)
@@ -121,12 +147,17 @@ def _with_unit(doc, text, unit_kind):
     return text
 
 
+def _formula_units(doc, text, unit_kind):
+    unit = {"count": None, "angle": "deg"}.get(unit_kind, document.part_units(doc) or "mm")
+    return with_units(text, unit)
+
+
 def new_feature_parameter(doc, text, unit_kind="length"):
     obj = _model_obj(doc, create=True)
     name = claim_name(doc)
     obj.addProperty("App::PropertyQuantity", name, _GROUP)
     try:
-        obj.setExpression(name, to_expression(doc, _with_unit(doc, text, unit_kind)))
+        obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, unit_kind), unit_kind)))
     except Exception as e:
         obj.removeProperty(name)
         raise ValueError("Invalid value %r: %s" % (text, e))
@@ -219,7 +250,8 @@ def set_model_parameter(doc, name, text):
     if not text:
         raise ValueError("%s needs a value" % name)
     try:
-        obj.setExpression(name, to_expression(doc, _with_unit(doc, text, _unit_kind(obj, name))))
+        kind = _unit_kind(obj, name)
+        obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, kind), kind)))
     except Exception as e:
         raise ValueError("%s: %s" % (name, friendly(str(e))))
     doc.recompute()

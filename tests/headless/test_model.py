@@ -28,6 +28,25 @@ class ModelTest(unittest.TestCase):
         self.assertEqual(model.parameter_text(self.doc, a), "12 mm")
         self.assertEqual(model.parameter_text(self.doc, b), "30°")
 
+    def test_units_for_plain_numbers_in_formulas(self):
+        u = model.with_units
+        self.assertEqual(u("d16+2", "mm"), "d16+2 mm")
+        self.assertEqual(u("d3*2", "mm"), "d3*2")
+        self.assertEqual(u("(d1+2)*3", "mm"), "(d1+2 mm)*3")
+        self.assertEqual(u("d1/2-1", "mm"), "d1/2-1 mm")
+        self.assertEqual(u("2 * d1 + 0.5", "in"), "2 * d1 + 0.5 in")
+        self.assertEqual(u("d1 + 2 mm", "mm"), "d1 + 2 mm")
+        self.assertEqual(u("d1 + 2mm - 1.5e1", "mm"), "d1 + 2mm - 1.5e1 mm")
+        self.assertEqual(u("d2 - 15", "deg"), "d2 - 15 deg")
+        self.assertEqual(u("d1 + 2", None), "d1 + 2")
+        self.assertEqual(u("Width2 + 3", "mm"), "Width2 + 3 mm")  # digits inside a name are not numbers
+
+    def test_feature_formula_with_a_plain_number(self):
+        a = model.new_feature_parameter(self.doc, "20 mm")
+        b = model.new_feature_parameter(self.doc, "%s+5" % a)
+        self.assertAlmostEqual(model.parameter_value(self.doc, b) if hasattr(model, "parameter_value")
+                               else getattr(self.doc.getObject(model.MODEL_NAME), b).Value, 25)
+
     def test_names_shared_with_dimensions_and_user_parameters(self):
         document.set_parameter(self.doc, "d2", "1 mm")
         self.assertEqual(model.new_feature_parameter(self.doc, "5 mm"), "d3")
