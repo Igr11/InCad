@@ -48,11 +48,18 @@ class SketchSession:
         self.cancel_pick()
         body = document.primary_body(doc)
         if body is not None:
-            vo = body.Origin.ViewObject
-            self._origin = (vo, vo.Visibility)
-            vo.Visibility = True
-            if Gui.ActiveDocument is not None:
-                self._datum_scale = _frame_planes(body, Gui.ActiveDocument.ActiveView)
+            vos = [body.Origin.ViewObject] + [f.ViewObject for f in body.Origin.OriginFeatures]
+            self._origin = [(v, v.Visibility) for v in vos]  # the planes themselves too (a saved file may hide them)
+            for v in vos:
+                v.Visibility = True
+            gdoc = Gui.getDocument(doc.Name)
+            if gdoc is not None:
+                view = gdoc.ActiveView
+                self._datum_scale = _frame_planes(body, view)
+                _redraw(view)
+                QtCore.QTimer.singleShot(150, lambda: _redraw(view))  # the bigger planes show on the next frame
+            _log_planes("pick", doc, body)
+            QtCore.QTimer.singleShot(600, lambda: _log_planes("pick+0.6s", doc, body))
         self.picking = True
         Gui.Selection.clearSelection()
         Gui.Selection.addObserver(self)
@@ -69,11 +76,11 @@ class SketchSession:
         except Exception:
             pass
         if self._origin is not None:
-            vo, was = self._origin
-            try:
-                vo.Visibility = was
-            except Exception:
-                pass
+            for vo, was in self._origin:
+                try:
+                    vo.Visibility = was
+                except Exception:
+                    pass
             self._origin = None
         if self._datum_scale is not None:
             _restore_datums(self._datum_scale)
@@ -254,3 +261,30 @@ def _frame_planes(body, view):
     old = _set_datum_scale(PICK_DATUM_SCALE)
     camera.frame(view.getCameraNode(), (0, 0, 0), max(40.0, radius * 2.3))
     return old
+
+
+def _redraw(view):
+    try:
+        view.redraw()
+    except Exception:
+        pass
+
+
+def _log_planes(when, doc, body):
+    """One line in InCad's log file (not shown) describing the origin planes during a pick: for diagnosing a
+    user's 'no planes' without access to their screen."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    try:
+        gdoc = Gui.ActiveDocument
+        view = gdoc.ActiveView if gdoc is not None else None
+        cam = view.getCameraNode() if view is not None else None
+        height = cam.height.getValue() if cam is not None and hasattr(cam, "height") else None
+        log.logger().info(
+            "planes %s: doc=%s active=%s view=%s origin=%s planes=%s scale=%s height=%s size=%s", when, doc.Name,
+            gdoc.Document.Name if gdoc is not None else None, type(view).__name__ if view is not None else None,
+            body.Origin.ViewObject.Visibility, [f.ViewObject.Visibility for f in body.Origin.OriginFeatures],
+            App.ParamGet("User parameter:BaseApp/Preferences/View").GetFloat("DatumScale", -1.0), height,
+            view.getSize() if view is not None and hasattr(view, "getSize") else None)
+    except Exception as e:
+        log.logger().info("planes %s: could not describe (%s)", when, e)
