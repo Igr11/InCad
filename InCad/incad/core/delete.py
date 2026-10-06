@@ -40,6 +40,9 @@ def delete(obj):
         return
     if kind is thread:
         profile = obj.Profile[0] if isinstance(obj.Profile, (tuple, list)) and obj.Profile else None
+        body = obj.getParentGeoFeatureGroup()
+        if body is not None:
+            thread._remove_helpers(doc, body, obj)
         _remove_feature(obj)
         if profile is not None and doc.getObject(profile.Name) is not None:
             body = profile.getParentGeoFeatureGroup()

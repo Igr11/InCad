@@ -32,6 +32,8 @@ FIELDS = (
     Field("custom_angle", "Flank angle", "value_angle", default="60 °", show_if=("standard", ("custom",))),
     Field("custom_depth", "Depth", "value_length", default="0.9 mm", show_if=("standard", ("custom",))),
     Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
+    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
+    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm", show_if=("chamfer", ("start", "both"))),
     Field("clearance", "Print clearance", "value_length", default="0.2 mm"),
 )
 
@@ -233,7 +235,11 @@ def _build(doc, body, f, values):
     else:
         f.setExpression("Height", None)
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
+    chamfer = _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_free, end_free,
+                       values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
+               "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
+               "chamfer_feature": chamfer.Name if chamfer is not None else "",
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
                "internal": internal, "custom_pitch": values.get("custom_pitch"),
@@ -242,6 +248,68 @@ def _build(doc, body, f, values):
     if f.Shape.isNull() or not f.Shape.isValid():
         raise ValueError("The thread can't be built with these values (check the size and the clearance)")
     return f
+
+
+HELPER = "InCadHelperOf"  # on objects InCad makes for a feature (the thread's chamfer): shown under it, deleted with it
+
+
+def helpers_of(f):
+    body = f.getParentGeoFeatureGroup()
+    return [o for o in (body.Group if body is not None else []) if getattr(o, HELPER, None) == f.Name]
+
+
+def _remove_helpers(doc, body, f):
+    for g in helpers_of(f):
+        prof = g.Profile[0] if isinstance(g.Profile, (tuple, list)) and g.Profile else None
+        if body.Tip is g:
+            body.Tip = g.BaseFeature if g.BaseFeature is not None else f
+        for o in (g, prof):
+            if o is not None and doc.getObject(o.Name) is not None:
+                body.removeObject(o)
+                doc.removeObject(o.Name)
+
+
+def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_free, end_free, mode, size):
+    """A 45° lead-in chamfer at the free end(s) of the threaded face: a revolve cut (Groove) of a triangle on the
+    thread's own section plane, so it needs no face names and the thread cuts through it. None when there is
+    nothing to chamfer (no free end asked for)."""
+    ends = []
+    if mode in ("start", "both") and start_free:
+        ends.append((0.0, 1.0))
+    if mode == "both" and end_free:
+        ends.append((face_len, -1.0))
+    if not ends or size <= 0:
+        _remove_helpers(doc, body, f)
+        return None
+    existing = helpers_of(f)
+    g = existing[0] if existing else None
+    sk = g.Profile[0] if g is not None and isinstance(g.Profile, (tuple, list)) and g.Profile else None
+    if g is None:
+        old_tip = body.Tip
+        body.Tip = f  # the chamfer goes right after its thread
+        sk = body.newObject("Sketcher::SketchObject", "ThreadChamferProfile")
+        g = body.newObject("PartDesign::Groove", "ThreadChamfer")
+        g.addProperty("App::PropertyString", HELPER, "InCad", "The thread this chamfer belongs to")
+        g.setPropertyStatus(HELPER, "Hidden")
+        setattr(g, HELPER, f.Name)
+        g.Profile = sk
+        g.Angle = 360.0
+        body.Tip = g if old_tip is f else old_tip
+    sk.AttachmentSupport = [(obj, edge)]
+    sk.MapMode = "SectionOfRevolution"
+    sk.deleteAllGeometry()
+    doc.recompute()
+    inward = size if internal else -size  # the end face is inside the shaft, outside the hole
+    for at, into in ends:
+        y0 = sign * at
+        pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0), App.Vector(radius, y0 + sign * into * size, 0)]
+        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 3]) for i in range(3)])
+    sk.Visibility = False
+    g.ReferenceAxis = (sk, ["V_Axis"])
+    doc.recompute()
+    if g.Shape.isNull() or not g.Shape.isValid():
+        raise ValueError("The chamfer can't be built with that size")
+    return g
 
 
 def create(doc, body, profile_, values):
@@ -253,6 +321,7 @@ def create(doc, body, profile_, values):
         _build(doc, body, f, values)
     except Exception:
         sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else None
+        _remove_helpers(doc, body, f)
         for obj in (f, sk):  # a refused thread leaves nothing behind
             if obj is not None and doc.getObject(obj.Name) is not None:
                 body.removeObject(obj)
@@ -260,7 +329,8 @@ def create(doc, body, profile_, values):
         body.Tip = tip
         doc.recompute()
         raise
-    body.Tip = f
+    helpers = helpers_of(f)
+    body.Tip = helpers[-1] if helpers else f
     return f
 
 

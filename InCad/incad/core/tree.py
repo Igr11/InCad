@@ -49,18 +49,28 @@ def _features(body):
     tip = body.Tip
     tip_index = group.index(tip) if tip in group else -1
     consumed = {p.Name for p in (_profile(o) for o in group) if p is not None}
+    helpers = {}  # owner name -> objects InCad made for it (a thread's chamfer): shown under the owner
+    for o in group:
+        owner = getattr(o, "InCadHelperOf", None)
+        if owner:
+            helpers.setdefault(owner, []).append(o)
+    tip_owner = getattr(tip, "InCadHelperOf", None) if tip is not None else None
     out = []
     if tip_index == -1:
         out.append(Node("end_of_part", "End of Part"))
     for i, obj in enumerate(group):
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
             continue
+        if getattr(obj, "InCadHelperOf", None):
+            continue
         node = _obj_node(obj, i > tip_index)
         prof = _profile(obj)
         if prof is not None and prof in group:
             node.children.append(_obj_node(prof, group.index(prof) > tip_index))
+        for h in helpers.get(obj.Name, []):
+            node.children.append(_obj_node(h, group.index(h) > tip_index))
         out.append(node)
-        if obj is tip or (prof is not None and prof is tip):
+        if obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner):
             out.append(Node("end_of_part", "End of Part"))
     return _work_in_progress_above_end(out)
 

@@ -292,3 +292,86 @@ class ThreadStartFaceTest(unittest.TestCase):
             thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
                                                           face=cyl_face(pad, 5), size="M10", start_face=other.Name))
         self.assertIn("start", str(ctx.exception).lower())
+
+
+class ThreadChamferTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Tc")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def make(self, **values):
+        v = dict(thread.defaults(self.doc, self.body, None), **values)
+        f = thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        return f
+
+    def test_start_chamfer_cuts_the_corner_and_sits_under_the_thread(self):
+        from incad.core import delete, tree
+        pad = shaft(self.doc, self.body)
+        plain = self.make(face=cyl_face(pad, 5.0), standard="iso", size="M10")
+        v_plain = self.body.Shape.Volume
+        delete.delete(plain)
+        self.doc.recompute()
+        f = self.make(face=cyl_face(pad, 5.0), standard="iso", size="M10", chamfer="start", chamfer_size="1 mm")
+        helpers = thread.helpers_of(f)
+        self.assertEqual([h.TypeId for h in helpers], ["PartDesign::Groove"])
+        self.assertIs(self.body.Tip, helpers[0])
+        self.assertTrue(self.body.Shape.isValid())
+        ring = math.pi * 1.0 ** 2 * (5.0 - 1.0 / 3)  # the whole 45° ring; the thread already took part of it
+        self.assertGreater(v_plain - self.body.Shape.Volume, 0.2 * ring)
+        self.assertLess(v_plain - self.body.Shape.Volume, ring + 1e-6)
+        r = thread.read(self.doc, f)
+        self.assertEqual((r["chamfer"], r["chamfer_size"]), ("start", "1 mm"))
+        names = [n.label for n in tree.build(self.doc)[0].children]  # top level of the part
+        self.assertNotIn("ThreadChamfer", names)
+        thread_node = [n for n in tree.build(self.doc)[0].children if n.name == f.Name][0]
+        self.assertIn("ThreadChamfer", [c.label for c in thread_node.children])
+
+    def test_both_ends_on_a_through_bore_and_removal(self):
+        from incad.core import delete
+        block = shaft(self.doc, self.body, radius=10.0, name="Block")
+        s = st.spec("iso", "M10")
+        bore_r = st.bore_diameter(s, 0.2) / 2
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), bore_r))
+        bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        self.body.Tip = bore
+        self.doc.recompute()
+        f = self.make(face=cyl_face(bore, bore_r), standard="iso", size="M10", chamfer="both", chamfer_size="0.8 mm")
+        g = thread.helpers_of(f)[0]
+        self.assertEqual(len(g.Profile[0].Geometry), 6)  # two triangles
+        self.assertTrue(self.body.Shape.isValid())
+        v = self.body.Shape.Volume
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), chamfer="none"))
+        self.doc.recompute()
+        self.assertEqual(thread.helpers_of(f), [])
+        self.assertGreater(self.body.Shape.Volume, v)
+        self.assertIs(self.body.Tip, f)
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), chamfer="start"))
+        self.doc.recompute()
+        self.assertEqual(len(thread.helpers_of(f)), 1)
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertFalse([o for o in self.body.Group if o.TypeId == "PartDesign::Groove"])
+        self.assertIs(self.body.Tip, bore)
+
+    def test_no_chamfer_on_a_shoulder(self):
+        big = shaft(self.doc, self.body, radius=8.0, length=5.0, name="Base")
+        small_sk = self.body.newObject("Sketcher::SketchObject", "SmallSk")
+        small_sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        small_sk.MapMode = "FlatFace"
+        small_sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5.0))
+        small = util.add_pad(self.body, small_sk, 25.0, name="Small")  # the free tip is at z = 25
+        self.body.Tip = small
+        self.doc.recompute()
+        f = self.make(face=cyl_face(small, 5.0), standard="iso", size="M10", chamfer="both", chamfer_size="1 mm")
+        g = thread.helpers_of(f)[0]
+        self.assertEqual(len(g.Profile[0].Geometry), 3)  # only the free end gets a chamfer, never the shoulder
