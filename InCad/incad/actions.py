@@ -409,6 +409,11 @@ def toggle_section():
     shell.start_section(base)
 
 
+def _section_points():
+    from incad.ui import shell
+    shell.start_section_points()
+
+
 def section_on():
     """Is a section plane on in the active view? Asked of the view itself: documents and views come and go."""
     gdoc = _gui().ActiveDocument
@@ -643,6 +648,9 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Tilt faces by an angle (for moulding)"),
         Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
+        Command(id="view.section_points", label="Section by 3 Points", icon="section",
+                handler=lambda: _section_points(), contexts=frozenset({"part", "assembly"}),
+                tooltip="Click three marked points (corners, edge middles, circle centres) for the section plane"),
         Command(id="view.section", label="Section", icon="section", handler=toggle_section,
                 contexts=frozenset({"part", "assembly"}), checkable=True, is_checked=lambda: section_on(), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
                         "click again to close"),
@@ -687,7 +695,7 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
+SHORT = {"view.section_points": "Section", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
          "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",

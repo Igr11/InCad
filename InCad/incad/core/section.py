@@ -39,3 +39,30 @@ def adjusted(base, offset=0.0, flip=False):
     normal = base.Rotation.multVec(App.Vector(0, 0, 1))
     rot = base.Rotation.multiply(App.Rotation(App.Vector(1, 0, 0), 180)) if flip else base.Rotation
     return App.Placement(base.Base + normal * offset, rot)
+
+
+def through_points(a, b, c):
+    n = (b - a).cross(c - a)
+    if n.Length < 1e-9:
+        raise ValueError("Pick three different points that are not in a line")
+    n.normalize()
+    return App.Placement(a, _rotation_to(n))
+
+
+def snap_points(shape):
+    """Points worth cutting through: corners, edge middles, circle/arc centres (no duplicates)."""
+    out = []
+
+    def add(kind, p):
+        if not any((p - q).Length < 1e-6 for _, q in out):
+            out.append((kind, App.Vector(p)))
+    for v in shape.Vertexes:
+        add("corner", v.Point)
+    for e in shape.Edges:
+        if e.Curve.TypeId == "Part::GeomCircle":
+            add("centre", e.Curve.Center)
+        try:
+            add("middle", e.valueAt((e.FirstParameter + e.LastParameter) / 2.0))
+        except Exception:
+            pass
+    return out

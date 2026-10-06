@@ -279,6 +279,34 @@ def test_section_on_and_off_twice_never_crashes():
     assert not actions.section_on() and sh.section_panel is None
 
 
+def test_section_by_three_marked_points():
+    from incad import actions
+    sh = shell.instance()
+    d = App.ActiveDocument
+    commands.REGISTRY.run("view.section_points")
+    harness.pump(800)
+    marks = [o for o in d.Objects if o.Name.startswith("Mark")]
+    assert len(marks) >= 8 and "3 points" in sh.status.texts()["prompt"], (len(marks), sh.status.texts())
+    pts = [o.Shape.Vertexes[0].Point for o in marks]
+    a = marks[0]
+    b = next(o for o, p in zip(marks, pts) if (p - pts[0]).Length > 1)
+    pb = b.Shape.Vertexes[0].Point
+    c = next(o for o, p in zip(marks, pts) if (p - pts[0]).cross(pb - pts[0]).Length > 1)
+    for o in (a, b, c):
+        Gui.Selection.addSelection(d.Name, o.Name)
+        harness.pump(500)
+    assert not [o for o in d.Objects if o.Name.startswith("Mark")], "markers gone after the third click"
+    assert actions.section_on() and sh.section_panel is not None and not d.HasPendingTransaction
+    sh.section_panel.off_button.click()
+    harness.pump(400)
+    assert not actions.section_on()
+    commands.REGISTRY.run("view.section_points")
+    harness.pump(600)
+    sh._on_escape()
+    harness.pump(400)
+    assert not [o for o in d.Objects if o.Name.startswith("Mark")] and not d.HasPendingTransaction
+
+
 def test_measure_edge_face_and_whole_part_by_clicking():
     """Measure, then click a rib (edge), a surface (face) and the whole part in the tree: each shows its numbers."""
     sh = shell.instance()
@@ -312,4 +340,5 @@ harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_fr
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,
              test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
-             test_section_on_and_off_twice_never_crashes, test_measure_edge_face_and_whole_part_by_clicking])
+             test_section_on_and_off_twice_never_crashes, test_section_by_three_marked_points,
+             test_measure_edge_face_and_whole_part_by_clicking])

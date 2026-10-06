@@ -118,6 +118,19 @@ class _MeasurePicker:
         self._again()
 
 
+class _PointPicker:
+    """Three clicks on the shown markers (corners, edge middles, circle centres) make the section plane."""
+
+    def __init__(self, shell, doc_name, names, points):
+        self.shell, self.doc_name, self.names, self.points, self.picked = shell, doc_name, names, points, []
+
+    def addSelection(self, doc_name, obj_name, sub, pnt):
+        if doc_name == self.doc_name and obj_name in self.names:
+            self.picked.append(self.points[self.names.index(obj_name)])
+            shell = self.shell
+            QtCore.QTimer.singleShot(0, lambda: shell._point_pick is self and shell._point_picked(self))
+
+
 class _RegionPicker:
     """Waits for a click on one of the shown areas of a sketch, then starts the feature on it."""
 
@@ -185,6 +198,7 @@ class Shell(QtCore.QObject):
         self._shortcuts = {}
         self._geometry_counts = {}
         self.section_panel = None
+        self._point_pick = None  # waiting for three clicks on the section markers
         self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
@@ -554,6 +568,7 @@ class Shell(QtCore.QObject):
         self.stop_slot_tool()
         self._stop_measuring()
         self.stop_section(keep_cut=False)
+        self._cancel_point_pick()
         self._cancel_region_pick()
         self._close_feature_session(cancel=True)
         self._close_info_panel()
@@ -823,6 +838,10 @@ class Shell(QtCore.QObject):
         if self._measure is not None:
             self._stop_measuring()
             self._close_info_panel()
+            self.status.set_prompt("Ready")
+            return
+        if self._point_pick is not None:
+            self._cancel_point_pick()
             self.status.set_prompt("Ready")
             return
         if self.section_panel is not None:
@@ -1628,12 +1647,15 @@ class Shell(QtCore.QObject):
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
         if self._region_pick is not None:
             self.status.set_prompt("Click the area to %s (Esc cancels)" % self._region_pick.kind.TITLE.lower())
+        if self._point_pick is not None:
+            self.status.set_prompt("Section: %d of 3 points picked — corners, edge middles, circle centres (Esc cancels)"
+                                   % len(self._point_pick.picked))
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
                                getattr(self, "slot_tool", None) is not None or self.feature_session is not None
                                or self._measure is not None or self._region_pick is not None
-                               or self.section_panel is not None)
+                               or self.section_panel is not None or self._point_pick is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -1827,6 +1849,70 @@ class Shell(QtCore.QObject):
         panel.show()
         panel.raise_()
         self.section_panel = panel
+        self.schedule_refresh()
+
+    def start_section_points(self):
+        """Markers at corners, edge middles and circle centres; three clicks make the plane."""
+        import FreeCADGui as Gui
+        from incad.core import document, section
+        doc = self._doc()
+        body = document.primary_body(doc) if doc is not None else None
+        if body is None or body.Shape.isNull():
+            raise ValueError("Open a part with a solid first")
+        self._cancel_point_pick()
+        self.stop_section(keep_cut=False)
+        points = section.snap_points(body.Shape)
+        doc.openTransaction("Pick points")  # the markers vanish with the pick (aborted): no undo step
+        names = []
+        import Part
+        for i, (kind, p) in enumerate(points):
+            o = doc.addObject("Part::Feature", "Mark%d" % (i + 1))
+            o.Label = "%s %d" % (kind.capitalize(), i + 1)
+            o.Shape = Part.Vertex(p)
+            try:
+                vo = o.ViewObject
+                vo.PointColor = (0.95, 0.62, 0.29) if kind == "corner" else (0.40, 0.70, 1.0)
+                vo.PointSize = 9.0
+            except Exception:
+                pass
+            names.append(o.Name)
+        doc.recompute()
+        self._point_pick = _PointPicker(self, doc.Name, names, [p for _, p in points])
+        Gui.Selection.clearSelection()
+        Gui.Selection.addObserver(self._point_pick)
+        self.status.set_prompt("Section: click 3 points — corners, edge middles, circle centres (Esc cancels)")
+        self.schedule_refresh()
+
+    def _point_picked(self, pick):
+        import FreeCADGui as Gui
+        from incad.core import section
+        n = len(pick.picked)
+        if n < 3:
+            self.status.set_prompt("Section: %d of 3 points picked (Esc cancels)" % n)
+            Gui.Selection.clearSelection()  # each marker can be clicked plainly, no ⌘ needed
+            return
+        a, b, c = pick.picked[:3]
+        self._cancel_point_pick()
+        try:
+            self.start_section(section.through_points(a, b, c))
+        except ValueError as e:
+            log.report("warning", str(e))
+
+    def _cancel_point_pick(self):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        pick = self._point_pick
+        if pick is None:
+            return
+        self._point_pick = None
+        try:
+            Gui.Selection.removeObserver(pick)
+        except Exception:
+            pass
+        doc = App.getDocument(pick.doc_name) if pick.doc_name in App.listDocuments() else None
+        if doc is not None and doc.HasPendingTransaction:
+            doc.abortTransaction()  # the markers go
+            doc.recompute()
         self.schedule_refresh()
 
     def _section_changed(self, offset, flip):
@@ -2165,6 +2251,10 @@ def measuring():
 
 def start_section(base):
     return _active().start_section(base)
+
+
+def start_section_points():
+    return _active().start_section_points()
 
 
 def stop_section(keep_cut=False):

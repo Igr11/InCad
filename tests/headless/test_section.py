@@ -50,3 +50,22 @@ class AdjustedTest(unittest.TestCase):
         self.assertAlmostEqual((moved.Base - base.Base - n * 5.0).Length, 0, places=9)
         flipped = section.adjusted(base, 0.0, True)
         self.assertAlmostEqual((flipped.Rotation.multVec(App.Vector(0, 0, 1)) + n).Length, 0, places=9)
+
+
+class SnapPointsTest(unittest.TestCase):
+    def test_corners_middles_and_centres(self):
+        from incad.core import section
+        import Part
+        box = Part.makeBox(20, 10, 10)
+        pts = section.snap_points(box)
+        kinds = [k for k, _ in pts]
+        self.assertEqual(kinds.count("corner"), 8)
+        self.assertEqual(kinds.count("middle"), 12)
+        cyl = Part.makeCylinder(5, 10)
+        kinds = [k for k, _ in section.snap_points(cyl)]
+        self.assertEqual(kinds.count("centre"), 2)  # top and bottom circle centres
+        a, b, c = App.Vector(0, 0, 0), App.Vector(10, 0, 0), App.Vector(0, 10, 0)
+        pl = section.through_points(a, b, c)
+        self.assertAlmostEqual(abs(pl.Rotation.multVec(App.Vector(0, 0, 1)).z), 1, places=9)
+        with self.assertRaises(ValueError):
+            section.through_points(a, b, App.Vector(20, 0, 0))

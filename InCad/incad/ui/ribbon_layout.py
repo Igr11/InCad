@@ -17,7 +17,7 @@ LAYOUT = {
         ["Tools", [["Material", ["tools.material"]], ["Options", ["view.freecad"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "sketch": [
@@ -43,7 +43,7 @@ LAYOUT = {
                     ["Exit", ["sketch.finish"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "assembly": [
@@ -54,7 +54,7 @@ LAYOUT = {
                                  "joint.ball"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "empty": [
