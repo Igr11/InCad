@@ -495,6 +495,7 @@ class Shell(QtCore.QObject):
         if self.ribbon is None:
             return
         self.theme = themes.current()
+        self._close_info_panel()  # it was drawn for the old theme
         qss = themes.stylesheet(self.theme)
         for w in self._widgets:
             w.setStyleSheet(qss)

@@ -178,6 +178,9 @@ class FeatureSession(QtCore.QObject):
             pass
 
     def _label_params(self):
+        extra = self.kind.param_names(self.feature) if hasattr(self.kind, "param_names") and self.feature else {}
+        for key, name in extra.items():
+            self.dialog.set_param_name(key, name)
         for f in self.kind.FIELDS:
             if f.kind.startswith("value"):
                 prop = getattr(self.kind, "PROPS", {}).get(f.key)

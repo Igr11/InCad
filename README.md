@@ -32,3 +32,9 @@ Logs: ~/Library/Logs/InCad.log
   automatically; otherwise select one. The preview updates as you type; OK, Apply + (one more), Cancel/Esc.
 - Values accept units, names and formulas (Width/2, d3*2); click a dimension or a parameter to insert its name.
 - Every value becomes a named parameter (d0, d1 …) in the Parameters panel. Double-click a feature to edit it.
+- H Hole (from sketch points/circles or concentric to a round edge; counterbore, countersink, through all),
+  F Fillet, Chamfer, Shell (inside/outside), Rectangular / Circular Pattern, Mirror, Work Plane / Axis / Point.
+- Select edges or faces first, then the command, or pick them while the dialog is open (the highlighted
+  field takes the picks; while picking, the shape before the feature is shown).
+- Inspect: Measure (a face, an edge, or two items) and Mass Properties (PLA density).
+- Unused values of deleted features can be removed with − in the Parameters panel.

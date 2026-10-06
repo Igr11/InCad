@@ -52,3 +52,18 @@ class PatternsTest(unittest.TestCase):
             f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
             self.doc.recompute()
             self.assertIs(self.body.Tip, f, k.TITLE)
+
+    def test_defaults_name_the_origin_directions(self):
+        names = {o.Role: o.Name for o in self.body.Origin.OriginFeatures}
+        r = patterns.RECT.defaults(self.doc, self.body, None)
+        self.assertEqual((r["dir1"], r["dir2"]), (names["X_Axis"], names["Y_Axis"]))
+        self.assertEqual(patterns.CIRC.defaults(self.doc, self.body, None)["axis"], names["Z_Axis"])
+        self.assertEqual(patterns.MIRROR.defaults(self.doc, self.body, None)["plane"], names["YZ_Plane"])
+
+    def test_spacing_parameters_are_named_for_the_dialog(self):
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), two_directions=True))
+        self.doc.recompute()
+        names = k.param_names(f)
+        self.assertEqual(set(names), {"spacing1", "spacing2"})
+        self.assertTrue(all(names.values()))

@@ -9,6 +9,13 @@ def _origin(body, role):
     return [o for o in body.Origin.OriginFeatures if o.Role == role][0]
 
 
+def _origin_name(body, role):
+    try:
+        return _origin(body, role).Name
+    except Exception:
+        return ""
+
+
 def _features(doc, body, text):
     picks = [resolve(o, s)[0] for o, s in parse_picks(doc, text)]
     return picks or ([body.Tip] if body.Tip is not None else [])
@@ -105,12 +112,15 @@ RECT = SimpleNamespace(
             Field("dir1", "Direction 1", "pick", pick="axis"),
             Field("count1", "Count", "value_length", default="2"),
             Field("spacing1", "Spacing", "value_length", default="10 mm"),
-            Field("two_directions", "Direction 2", "bool", default=False),
+            Field("two_directions", "Two directions", "bool", default=False),
             Field("dir2", "Direction 2", "pick", pick="axis", show_if=("two_directions", (True,))),
             Field("count2", "Count 2", "value_length", default="2", show_if=("two_directions", (True,))),
             Field("spacing2", "Spacing 2", "value_length", default="10 mm", show_if=("two_directions", (True,)))),
-    defaults=lambda doc, body, profile: {"features": "", "dir1": "", "count1": "2", "spacing1": "10 mm",
-                                         "two_directions": False, "dir2": "", "count2": "2", "spacing2": "10 mm"},
+    defaults=lambda doc, body, profile: {"features": "", "dir1": _origin_name(body, "X_Axis"), "count1": "2",
+                                         "spacing1": "10 mm", "two_directions": False,
+                                         "dir2": _origin_name(body, "Y_Axis"), "count2": "2", "spacing2": "10 mm"},
+    param_names=lambda f: {k: spacing_param_from(f, k) for k in ("spacing1", "spacing2")
+                           if spacing_param_from(f, k)},
     create=_rect_create, read=_rect_read, update=_rect_update, _pad_of=lambda f: f)
 
 
@@ -147,7 +157,8 @@ CIRC = SimpleNamespace(
             Field("axis", "Axis", "pick", pick="axis"),
             Field("count", "Count", "value_length", default="4"),
             Field("angle", "Angle", "value_angle", default="360 °")),
-    defaults=lambda doc, body, profile: {"features": "", "axis": "", "count": "4", "angle": "360 °"},
+    defaults=lambda doc, body, profile: {"features": "", "axis": _origin_name(body, "Z_Axis"), "count": "4",
+                                         "angle": "360 °"},
     create=_circ_create, read=_circ_read, update=_circ_update, _pad_of=lambda f: f)
 
 
@@ -177,5 +188,5 @@ MIRROR = SimpleNamespace(
     NEEDS_PROFILE=False, PROPS={}, PRESELECT={"features": "feature"},
     FIELDS=(Field("features", "Features", "picks", pick="feature"),
             Field("plane", "Mirror plane", "pick", pick="plane")),
-    defaults=lambda doc, body, profile: {"features": "", "plane": ""},
+    defaults=lambda doc, body, profile: {"features": "", "plane": _origin_name(body, "YZ_Plane")},
     create=_mirror_create, read=_mirror_read, update=_mirror_update, _pad_of=lambda f: f)

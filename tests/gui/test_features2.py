@@ -168,6 +168,17 @@ def test_6_extrude_to_face_pick_now_works():
     harness.pump(600)
 
 
+def test_7_theme_switch_closes_the_old_info_panel():
+    commands.REGISTRY.run("inspect.mass")
+    harness.pump(400)
+    assert s().info_panel is not None
+    commands.REGISTRY.run("view.theme_toggle")
+    harness.pump(500)
+    commands.REGISTRY.run("view.theme_toggle")
+    harness.pump(500)
+    assert s().info_panel is None
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
-             test_6_extrude_to_face_pick_now_works])
+             test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel])
