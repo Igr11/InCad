@@ -9,7 +9,7 @@ import FreeCADGui as Gui  # noqa: E402
 import Part  # noqa: E402
 from pivy import coin  # noqa: E402,F401
 from PySide6.QtTest import QTest  # noqa: E402
-from incad.qt import QtCore  # noqa: E402
+from incad.qt import QtCore, QtWidgets  # noqa: E402
 from incad.core import commands, document, prefs  # noqa: E402
 from incad.ui import shell  # noqa: E402
 import headless.util as util  # noqa: E402
@@ -280,23 +280,31 @@ def test_section_on_and_off_twice_never_crashes():
 
 
 def test_section_by_three_marked_points():
+    """Markers on the view (never in the document); three clicks on them make the cut; Esc clears them."""
     from incad import actions
     sh = shell.instance()
     d = App.ActiveDocument
+    before = len(d.Objects)
     commands.REGISTRY.run("view.section_points")
     harness.pump(800)
-    marks = [o for o in d.Objects if o.Name.startswith("Mark")]
-    assert len(marks) >= 8 and "3 points" in sh.status.texts()["prompt"], (len(marks), sh.status.texts())
-    pts = [o.Shape.BoundBox.Center for o in marks]
-    a = marks[0]
-    b = next(o for o, p in zip(marks, pts) if (p - pts[0]).Length > 1)
-    pb = b.Shape.BoundBox.Center
-    c = next(o for o, p in zip(marks, pts) if (p - pts[0]).cross(pb - pts[0]).Length > 1)
-    for o in (a, b, c):
-        Gui.Selection.addSelection(d.Name, o.Name)
-        harness.pump(500)
-    assert not [o for o in d.Objects if o.Name.startswith("Mark")], "markers gone after the third click"
-    assert actions.section_on() and sh.section_panel is not None and not d.HasPendingTransaction
+    pick = sh._point_pick
+    assert pick is not None and len(pick.points) >= 8 and len(d.Objects) == before, "markers are not objects"
+    assert "3 points" in sh.status.texts()["prompt"]
+    view = Gui.ActiveDocument.ActiveView
+    vp = [w for w in Gui.getMainWindow().findChildren(QtWidgets.QGraphicsView) if w.isVisible()][0].viewport()
+    def at(p):
+        x, y = view.getPointOnViewport(p)
+        r = vp.devicePixelRatioF()
+        return x / r, (view.getSize()[1] - y) / r
+    pts = pick.points
+    a = pts[0]
+    b = next(p for p in pts if (p - a).Length > 1)
+    c = next(p for p in pts if (p - a).cross(b - a).Length > 1)
+    for p in (a, b, c):
+        assert sh._click_hook(view, vp, *at(p))
+        harness.pump(300)
+    assert sh._point_pick is None and actions.section_on() and sh.section_panel is not None
+    assert len(d.Objects) == before and not d.HasPendingTransaction
     sh.section_panel.off_button.click()
     harness.pump(400)
     assert not actions.section_on()
@@ -304,7 +312,7 @@ def test_section_by_three_marked_points():
     harness.pump(600)
     sh._on_escape()
     harness.pump(400)
-    assert not [o for o in d.Objects if o.Name.startswith("Mark")] and not d.HasPendingTransaction
+    assert sh._point_pick is None and len(d.Objects) == before
 
 
 def test_measure_edge_face_and_whole_part_by_clicking():

@@ -118,17 +118,49 @@ class _MeasurePicker:
         self._again()
 
 
-class _PointPicker:
-    """Three clicks on the shown markers (corners, edge middles, circle centres) make the section plane."""
+class _PointPick:
+    """Section by 3 points: markers drawn on the view (never in the document) and the clicks on them."""
 
-    def __init__(self, shell, doc_name, names, points):
-        self.shell, self.doc_name, self.names, self.points, self.picked = shell, doc_name, names, points, []
+    def __init__(self, view, points, kinds):
+        from pivy import coin
+        self.view, self.points, self.kinds, self.picked = view, points, kinds, []
+        self.node = coin.SoAnnotation()  # drawn on top of the part
+        for kind, color in (("corner", (0.95, 0.62, 0.29)), ("other", (0.40, 0.70, 1.0))):
+            pts = [p for p, k in zip(points, kinds) if (k == "corner") == (kind == "corner")]
+            if not pts:
+                continue
+            sep = coin.SoSeparator()
+            c = coin.SoBaseColor()
+            c.rgb.setValue(*color)
+            style = coin.SoDrawStyle()
+            style.pointSize = 13
+            coords = coin.SoCoordinate3()
+            coords.point.setValues(0, len(pts), [(p.x, p.y, p.z) for p in pts])
+            for n in (c, style, coords, coin.SoPointSet()):
+                sep.addChild(n)
+            self.node.addChild(sep)
+        view.getSceneGraph().addChild(self.node)
 
-    def addSelection(self, doc_name, obj_name, sub, pnt):
-        if doc_name == self.doc_name and obj_name in self.names:
-            self.picked.append(self.points[self.names.index(obj_name)])
-            shell = self.shell
-            QtCore.QTimer.singleShot(0, lambda: shell._point_pick is self and shell._point_picked(self))
+    def remove(self):
+        try:
+            self.view.getSceneGraph().removeChild(self.node)
+        except Exception:
+            pass
+
+    def nearest(self, viewport, x, y, within_px=16):
+        """Index of the marker under a viewport click (logical px, top-left origin), or None."""
+        dpr = viewport.devicePixelRatioF()
+        px, py = x * dpr, (viewport.height() - y) * dpr
+        best, best_d = None, within_px * dpr
+        for i, p in enumerate(self.points):
+            try:
+                sx, sy = self.view.getPointOnViewport(p)
+            except Exception:
+                continue
+            d = ((sx - px) ** 2 + (sy - py) ** 2) ** 0.5
+            if d < best_d:
+                best, best_d = i, d
+        return best
 
 
 class _RegionPicker:
@@ -1213,6 +1245,8 @@ class Shell(QtCore.QObject):
         return None, None
 
     def _click_hook(self, view, viewport, x, y):
+        if self._point_pick is not None:
+            return self._point_clicked(viewport, x, y)
         if self.value_box is None and self.feature_session is None:
             return False
         sk, name = self._preselected_dimension()
@@ -1581,6 +1615,14 @@ class Shell(QtCore.QObject):
         except Exception as e:
             log.report("warning", "InCad could not update its panels: %s" % e, traceback.format_exc())
 
+    def _purge_old_markers(self, doc):
+        from incad.core import section
+        try:
+            if section.purge_markers(doc):
+                doc.recompute()
+        except Exception as e:
+            log.logger().warning("Could not remove old section markers: %s", e)
+
     def _refresh(self):
         import FreeCAD as App
         from incad.core import document, tree
@@ -1645,6 +1687,8 @@ class Shell(QtCore.QObject):
         else:
             self.status.set_stats(None, None)
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
+        if doc is not None and self._point_pick is None:
+            self._purge_old_markers(doc)
         if self._region_pick is not None:
             self.status.set_prompt("Click the area to %s (Esc cancels)" % self._region_pick.kind.TITLE.lower())
         if self._point_pick is not None:
@@ -1862,59 +1906,41 @@ class Shell(QtCore.QObject):
         self._cancel_point_pick()
         self.stop_section(keep_cut=False)
         points = section.snap_points(body.Shape)
-        radius = max(0.4, body.Shape.BoundBox.DiagonalLength / 120.0)  # small balls: easy to see and to hit
-        doc.openTransaction("Pick points")  # the markers vanish with the pick (aborted): no undo step
-        names = []
-        import Part
-        for i, (kind, p) in enumerate(points):
-            o = doc.addObject("Part::Feature", "Mark%d" % (i + 1))
-            o.Label = "%s %d" % (kind.capitalize(), i + 1)
-            o.Shape = Part.makeSphere(radius, p)
-            try:
-                vo = o.ViewObject
-                vo.ShapeColor = (0.95, 0.62, 0.29) if kind == "corner" else (0.40, 0.70, 1.0)
-                vo.LineWidth = 1.0
-                vo.Selectable = True
-            except Exception:
-                pass
-            names.append(o.Name)
-        doc.recompute()
-        self._point_pick = _PointPicker(self, doc.Name, names, [p for _, p in points])
+        view = Gui.getDocument(doc.Name).ActiveView
+        self._point_pick = _PointPick(view, [p for _, p in points], [k for k, _ in points])
         Gui.Selection.clearSelection()
-        Gui.Selection.addObserver(self._point_pick)
         self.status.set_prompt("Section: click 3 points — corners, edge middles, circle centres (Esc cancels)")
         self.schedule_refresh()
 
-    def _point_picked(self, pick):
-        import FreeCADGui as Gui
+    def _point_clicked(self, viewport, x, y):
+        """A click while picking section points: on a marker it counts; elsewhere it is ignored."""
         from incad.core import section
+        pick = self._point_pick
+        i = pick.nearest(viewport, x, y)
+        if i is None:
+            return True
+        p = pick.points[i]
+        if any((p - q).Length < 1e-9 for q in pick.picked):
+            return True
+        pick.picked.append(p)
         n = len(pick.picked)
         if n < 3:
             self.status.set_prompt("Section: %d of 3 points picked (Esc cancels)" % n)
-            Gui.Selection.clearSelection()  # each marker can be clicked plainly, no ⌘ needed
-            return
+            return True
         a, b, c = pick.picked[:3]
         self._cancel_point_pick()
         try:
             self.start_section(section.through_points(a, b, c))
         except ValueError as e:
             log.report("warning", str(e))
+        return True
 
     def _cancel_point_pick(self):
-        import FreeCAD as App
-        import FreeCADGui as Gui
         pick = self._point_pick
         if pick is None:
             return
         self._point_pick = None
-        try:
-            Gui.Selection.removeObserver(pick)
-        except Exception:
-            pass
-        doc = App.getDocument(pick.doc_name) if pick.doc_name in App.listDocuments() else None
-        if doc is not None and doc.HasPendingTransaction:
-            doc.abortTransaction()  # the markers go
-            doc.recompute()
+        pick.remove()
         self.schedule_refresh()
 
     def _section_changed(self, offset, flip):

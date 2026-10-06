@@ -69,3 +69,22 @@ class SnapPointsTest(unittest.TestCase):
         self.assertAlmostEqual(abs(pl.Rotation.multVec(App.Vector(0, 0, 1)).z), 1, places=9)
         with self.assertRaises(ValueError):
             section.through_points(a, b, App.Vector(20, 0, 0))
+
+
+class PurgeMarkersTest(unittest.TestCase):
+    def test_old_markers_go_and_other_objects_stay(self):
+        from incad.core import section
+        import Part
+        doc = App.newDocument("Pm")
+        try:
+            m = doc.addObject("Part::Feature", "Mark3")
+            m.Label = "Corner 3"
+            m.Shape = Part.makeSphere(1)
+            keep = doc.addObject("Part::Feature", "Mark4")  # a user's own object with another label
+            keep.Label = "My ball"
+            keep.Shape = Part.makeSphere(1)
+            self.assertEqual(section.purge_markers(doc), 1)
+            self.assertIsNone(doc.getObject("Mark3"))
+            self.assertIsNotNone(doc.getObject("Mark4"))
+        finally:
+            App.closeDocument(doc.Name)

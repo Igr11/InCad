@@ -66,3 +66,17 @@ def snap_points(shape):
         except Exception:
             pass
     return out
+
+
+def purge_markers(doc):
+    """Remove section markers an earlier InCad build left in the file (Part::Feature balls outside any body,
+    named MarkN with a Corner/Middle/Centre label). Returns how many were removed."""
+    import re
+    gone = 0
+    for o in list(doc.Objects):
+        if o.TypeId == "Part::Feature" and re.match(r"^Mark\d+$", o.Name) and \
+                re.match(r"^(Corner|Middle|Centre) \d+$", o.Label) and o.getParentGeoFeatureGroup() is None \
+                and not o.InList:
+            doc.removeObject(o.Name)
+            gone += 1
+    return gone
