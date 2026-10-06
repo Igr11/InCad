@@ -50,14 +50,14 @@ class SketchSession:
         if body is not None:
             vos = [body.Origin.ViewObject] + [f.ViewObject for f in body.Origin.OriginFeatures]
             self._origin = [(v, v.Visibility) for v in vos]  # the planes themselves too (a saved file may hide them)
-            for v in vos:
-                v.Visibility = True
             gdoc = Gui.getDocument(doc.Name)
-            if gdoc is not None:
-                view = gdoc.ActiveView
-                self._datum_scale = _frame_planes(body, view)
-                _redraw(view)
-                QtCore.QTimer.singleShot(150, lambda: _redraw(view))  # the bigger planes show on the next frame
+            view = gdoc.ActiveView if gdoc is not None else None
+            if view is not None:
+                self._datum_scale = _frame_planes(body, view)  # the size first: planes switched on below use it
+            # FreeCAD applies a new datum size only when a plane is shown again (clicking Origin did that for the
+            # user): switch them on fresh now, and once more when the size has surely arrived
+            _show_fresh(vos, view)
+            QtCore.QTimer.singleShot(300, lambda: self.picking and _show_fresh(vos[1:], view))
             _log_planes("pick", doc, body)
             QtCore.QTimer.singleShot(600, lambda: _log_planes("pick+0.6s", doc, body))
         self.picking = True
@@ -261,6 +261,16 @@ def _frame_planes(body, view):
     old = _set_datum_scale(PICK_DATUM_SCALE)
     camera.frame(view.getCameraNode(), (0, 0, 0), max(40.0, radius * 2.3))
     return old
+
+
+def _show_fresh(vos, view):
+    for v in vos:
+        try:
+            v.Visibility = False
+            v.Visibility = True
+        except Exception:
+            pass
+    _redraw(view)
 
 
 def _redraw(view):
