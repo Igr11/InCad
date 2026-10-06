@@ -807,6 +807,7 @@ class Shell(QtCore.QObject):
         """Esc, Inventor style: the value box first, then InCad's own picks and tools, then the feature dialog,
         else the running Sketcher tool (the sketch itself is left with Finish Sketch, never with Esc)."""
         if self.value_box is not None:
+            self.value_box.closed_by_user = True  # Esc
             self._close_value_box()
             return
         if self.sketches.picking or self._profile_pick is not None or self.slot_tool is not None \
@@ -1114,12 +1115,14 @@ class Shell(QtCore.QObject):
         if self.value_box is box:
             self.value_box = None
         tool = getattr(box, "restart_tool", None)
-        if tool and self.sketches.editing() is not None:
-            # Inventor keeps dimensioning after a value is entered; FreeCAD's tool stops when the sketch changes
-            # under it. Started again unless the user already picked another tool.
+        if tool and getattr(box, "closed_by_user", False) and self.sketches.editing() is not None:
+            # Inventor keeps dimensioning after a value is entered; FreeCAD's tool is left dead by the change
+            # under it (its cursor stays, probed): stop what is left of it and start it again
             def again():
-                if self.active and self.sketches.editing() is not None and not self._sketch_tool_active():
+                if self.active and self.sketches.editing() is not None and self.value_box is None:
+                    import FreeCADGui as Gui
                     try:
+                        Gui.runCommand("Sketcher_StopOperation")
                         self.registry.run(tool)
                     except Exception as e:
                         log.logger().warning("Could not restart %s: %s", tool, e)

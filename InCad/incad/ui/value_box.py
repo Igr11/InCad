@@ -26,6 +26,7 @@ class ValueBox(QtWidgets.QFrame):
         self.edit.setMinimumWidth(170)
         self.edit.selectAll()
         self._typed = False  # until the user types, taking the keyboard selects the value (typing replaces it)
+        self.closed_by_user = False  # Enter/Esc/✓/✕ (not InCad closing it because the user moved on)
         self.edit.textEdited.connect(lambda _t: setattr(self, "_typed", True))
         self.edit.returnPressed.connect(self._apply)
         self.edit.installEventFilter(self)
@@ -40,7 +41,7 @@ class ValueBox(QtWidgets.QFrame):
         self.cancel_button.setText("✕")
         self.cancel_button.setToolTip("Cancel (Esc)")
         self.cancel_button.setObjectName("InCadValueCancel")
-        self.cancel_button.clicked.connect(self.close)
+        self.cancel_button.clicked.connect(self._cancel)
         for b in (self.apply_button, self.cancel_button):
             b.setFocusPolicy(QtCore.Qt.NoFocus)  # a click must not take the keyboard from the field
             b.setCursor(QtCore.Qt.PointingHandCursor)
@@ -90,7 +91,12 @@ class ValueBox(QtWidgets.QFrame):
         self._typed = True
         self.take_keyboard()  # a click in the view or the table took the keyboard
 
+    def _cancel(self):
+        self.closed_by_user = True
+        self.close()
+
     def _apply(self):
+        self.closed_by_user = True
         text = self.edit.text().strip()
         if not text:
             self.close()
@@ -117,7 +123,7 @@ class ValueBox(QtWidgets.QFrame):
 
     def eventFilter(self, obj, event):
         if obj is self.edit and event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Escape:
-            self.close()
+            self._cancel()
             return True
         return False
 
