@@ -258,3 +258,37 @@ class ThreadRunOutTest(unittest.TestCase):
         middle = ring_cut(9.25)
         self.assertAlmostEqual(ring_cut(0.0) / middle, 1.0, delta=0.1)   # full thread right to the end
         self.assertAlmostEqual(ring_cut(18.5) / middle, 1.0, delta=0.1)
+
+
+class ThreadStartFaceTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Sf")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_start_face_picks_the_end_and_offset_counts_from_it(self):
+        pad = shaft(self.doc, self.body)  # Ø10 × 20
+        bottom = [i + 1 for i, fc in enumerate(pad.Shape.Faces)
+                  if fc.Surface.TypeId == "Part::GeomPlane" and abs(fc.CenterOfMass.z) < 1e-6][0]
+        f = thread.create(self.doc, self.body, None, dict(
+            thread.defaults(self.doc, self.body, None), face=cyl_face(pad, 5), size="M10", clearance="0 mm",
+            start_face="%s:Face%d" % (pad.Name, bottom), offset="2 mm", length_mode="distance", length="6 mm"))
+        self.doc.recompute()
+        cut = pad.Shape.cut(f.Shape)
+        self.assertGreater(cut.BoundBox.ZMin, 1.0, cut.BoundBox)   # starts 2 mm above the bottom face
+        self.assertLess(cut.BoundBox.ZMax, 9.5, cut.BoundBox)      # and runs ~6 mm up
+        self.assertEqual(thread.read(self.doc, f)["start_face"], "%s:Face%d" % (pad.Name, bottom))
+
+    def test_start_face_must_touch_the_threaded_face(self):
+        pad = shaft(self.doc, self.body)
+        other = self.body.newObject("PartDesign::Plane", "Far")
+        other.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        other.MapMode = "FlatFace"
+        other.AttachmentOffset = App.Placement(App.Vector(0, 0, 50), App.Rotation())
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as ctx:
+            thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                          face=cyl_face(pad, 5), size="M10", start_face=other.Name))
+        self.assertIn("start", str(ctx.exception).lower())

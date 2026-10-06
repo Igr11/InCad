@@ -21,17 +21,18 @@ _STORE = "InCadThread"
 
 FIELDS = (
     Field("face", "Face", "pick", pick="cylinder"),
+    Field("start_face", "Start face", "pick", pick="plane"),
+    Field("offset", "Offset", "value_length", default="0 mm"),
+    Field("length_mode", "Length", "choice", (("full", "Full length"), ("distance", "Distance")), "full"),
+    Field("length", "Distance", "value_length", default="10 mm", show_if=("length_mode", ("distance",))),
+    Field("flip", "Flip direction", "bool", default=False),
     Field("standard", "Standard", "combo", tuple(standards.STANDARDS), "iso"),
     Field("size", "Size", "combo", (), ""),
     Field("custom_pitch", "Pitch", "value_length", default="1.5 mm", show_if=("standard", ("custom",))),
     Field("custom_angle", "Flank angle", "value_angle", default="60 °", show_if=("standard", ("custom",))),
     Field("custom_depth", "Depth", "value_length", default="0.9 mm", show_if=("standard", ("custom",))),
-    Field("length_mode", "Length", "choice", (("full", "Full length"), ("distance", "Distance")), "full"),
-    Field("length", "Distance", "value_length", default="10 mm", show_if=("length_mode", ("distance",))),
-    Field("offset", "Offset", "value_length", default="0 mm"),
-    Field("hand", "Direction", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
+    Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
     Field("clearance", "Print clearance", "value_length", default="0.2 mm"),
-    Field("flip", "Start at other end", "bool", default=False),
 )
 
 
@@ -42,7 +43,7 @@ def claims(feature):
 def defaults(doc, body, profile_=None):
     from incad.core import prefs
     values = {f.key: f.default for f in FIELDS}
-    values.update(face="", size="", clearance="%g mm" % prefs.thread_clearance(), internal=False)
+    values.update(face="", start_face="", size="", clearance="%g mm" % prefs.thread_clearance(), internal=False)
     return values
 
 
@@ -81,7 +82,19 @@ def _is_free(solid, centre, outward, radial, radius):
     return not solid.isInside(probe, 1e-7, True)
 
 
-def _geometry(obj, face, flip):
+def _plane_of(doc, text):
+    """(point, normal) of a picked flat face or plane, or None."""
+    picks = parse_picks(doc, text)
+    if not picks:
+        return None
+    o, sub = resolve(*picks[0])
+    shape = o.getSubObject(sub) if sub else (o.Shape.Faces[0] if getattr(o, "Shape", None) and o.Shape.Faces else None)
+    if shape is None or shape.ShapeType != "Face" or shape.Surface.TypeId != "Part::GeomPlane":
+        raise ValueError("The start face must be flat (a face or a work plane)")
+    return shape.Surface.Position, shape.normalAt(0, 0)
+
+
+def _geometry(obj, face, flip, start_plane=None):
     """Facts about a cylindrical face: internal?, radius, start edge name, length along the axis, vector to the
     far end, and whether the start / far end are free. The start is a free end (the tip of a shaft, the mouth of
     a hole); with both ends free, the one farther from the origin; "flip" takes the other end."""
@@ -103,7 +116,13 @@ def _geometry(obj, face, flip):
         out = e.Curve.Center - other.Curve.Center
         out.normalize()
         free.append(_is_free(obj.Shape, e.Curve.Center, out, radial, surf.Radius))
-    if free[0] != free[1]:
+    if start_plane is not None:  # the picked start face names the end
+        point, normal = start_plane
+        on = [i for i, e in enumerate(ends) if abs((e.Curve.Center - point).dot(normal)) < 1e-4]
+        if not on:
+            raise ValueError("The start face must be at one end of the threaded face")
+        pick = on[0]
+    elif free[0] != free[1]:
         pick = 0 if free[0] else 1
     else:
         pick = 0 if ends[0].Curve.Center.Length > ends[1].Curve.Center.Length else 1
@@ -177,7 +196,8 @@ def _load(f):
 
 def _build(doc, body, f, values):
     obj, sub, face = _face(doc, values)
-    internal, radius, edge, face_len, to_other, start_free, end_free = _geometry(obj, face, bool(values.get("flip")))
+    internal, radius, edge, face_len, to_other, start_free, end_free = _geometry(
+        obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     clearance = _mm(values.get("clearance"), 0.2)
     spec = _spec(values, 2 * radius, internal, clearance)
     runout = _fit(spec, internal, radius, clearance)
@@ -213,7 +233,7 @@ def _build(doc, body, f, values):
     else:
         f.setExpression("Height", None)
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
-    _store(f, {"face": values.get("face"), "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
+    _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
                "internal": internal, "custom_pitch": values.get("custom_pitch"),
@@ -225,7 +245,8 @@ def _build(doc, body, f, values):
 
 
 def create(doc, body, profile_, values):
-    _face(doc, values)  # refuse a wrong face before anything is made
+    obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
+    _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     tip = body.Tip
     f = body.newObject("PartDesign::SubtractiveHelix", "Thread")
     try:
