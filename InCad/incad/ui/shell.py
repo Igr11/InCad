@@ -150,6 +150,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+
         self._wait_notice = None
         self._polygons_from = {}
         self.marking_menu = None
@@ -210,6 +211,7 @@ class Shell(QtCore.QObject):
         for a in _std_actions("Std_Quit"):
             a.setMenuRole(QAction.NoRole)
         mdi = self._mdi()
+        QtCore.QTimer.singleShot(0, self._front_last_view)
         if mdi is not None:
             mdi.setViewMode(QtWidgets.QMdiArea.TabbedView)
             mdi.setTabPosition(QtWidgets.QTabWidget.South)
@@ -229,6 +231,28 @@ class Shell(QtCore.QObject):
                 a.setShortcut(QtGui.QKeySequence(seq))
         for a in _std_actions("Std_Quit"):
             a.setMenuRole(QAction.QuitRole)
+
+    def _on_subwindow(self, window):
+        if window is not None and _is_start_page(window):  # FreeCAD's Start page came up (seen after Finish
+            QtCore.QTimer.singleShot(0, self._front_last_view)  # Sketch): the part stays in front
+
+    def _front_last_view(self):
+        """FreeCAD's Start page never stays in front in InCad: back to the view shown before it. It is not closed
+        or hidden: closing it crashes FreeCAD while its setup timer is pending, hiding it breaks the tabbed layout
+        (both probed). No Python handle on these windows is kept (handles left at exit crashed FreeCAD)."""
+        mdi = self._mdi()
+        if mdi is None or not self.active:
+            return
+        try:
+            active = mdi.activeSubWindow()
+            if active is None or not _is_start_page(active):
+                return
+            history = [w for w in mdi.subWindowList(QtWidgets.QMdiArea.ActivationHistoryOrder)
+                       if not _is_start_page(w)]
+            if history:
+                mdi.setActiveSubWindow(history[-1])
+        except RuntimeError:
+            pass
 
     def _restore_mdi(self, saved):
         mdi = self._mdi()
@@ -1015,6 +1039,7 @@ class Shell(QtCore.QObject):
         if mdi is not None:
             mdi.viewport().installEventFilter(self)
             mdi.subWindowActivated.connect(self._raise_strip)
+            mdi.subWindowActivated.connect(self._on_subwindow)
         if prefs.navigation_enabled():
             params.write(themes.VIEW_GROUP, NAV_VALUES)
             self.navigator.attach_all()
@@ -1026,6 +1051,7 @@ class Shell(QtCore.QObject):
             try:
                 mdi.viewport().removeEventFilter(self)
                 mdi.subWindowActivated.disconnect(self._raise_strip)
+                mdi.subWindowActivated.disconnect(self._on_subwindow)
             except (RuntimeError, TypeError):
                 pass
         if self.navigator is not None:
@@ -1521,6 +1547,15 @@ def _release_python_markers():
                 o.setProperty("_PySideInvalidatePtr", None)
         except RuntimeError:
             pass
+
+
+def _is_start_page(window):
+    """FreeCAD's Start page, by its tab title (InCad's UI is English; looking inside the window would leave a
+    Python handle on it)."""
+    try:
+        return window.windowTitle() == "Start"
+    except RuntimeError:
+        return False
 
 
 _FILTERED_EVENTS = (QtCore.QEvent.Resize, QtCore.QEvent.Close, QtCore.QEvent.ChildAdded, QtCore.QEvent.Show)

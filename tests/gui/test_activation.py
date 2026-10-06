@@ -63,5 +63,36 @@ def test_2_another_freecad_task_says_why_incad_waits():
                 if w.objectName() == "InCadWaitNotice" and w.isVisible()], "the notice goes away"
 
 
+
+def start_in_front():
+    mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
+    w = mdi.activeSubWindow()
+    return w is not None and w.widget() is not None and w.widget().metaObject().className() == "StartGui::StartView"
+
+
+def test_3_freecads_start_page_never_stays_in_front_in_incad():
+    from incad.core import commands, prefs
+    prefs.set_remember_new_choice(True)
+    Gui.activateWorkbench("PartDesignWorkbench")
+    harness.pump(800)
+    doc = App.newDocument("Before")  # a part open while FreeCAD's Start page is in front
+    harness.pump(300)
+    Gui.runCommand("Start_Start")
+    harness.pump(800)
+    assert start_in_front(), "precondition: the Start page is in front"
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    assert shell.instance().active
+    assert not start_in_front(), "taking over brings the part's view to the front"
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
+    part_view = mdi.activeSubWindow()
+    Gui.runCommand("Start_Start")  # it comes back by some route (seen after Finish Sketch)
+    harness.pump(800)
+    assert mdi.activeSubWindow() is part_view, mdi.activeSubWindow() and mdi.activeSubWindow().windowTitle()
+    assert mdi.viewMode() == QtWidgets.QMdiArea.TabbedView  # the layout stays tabbed
+
+
 harness.run([test_1_switching_to_incad_while_editing_a_freecad_sketch_takes_over,
-             test_2_another_freecad_task_says_why_incad_waits])
+             test_2_another_freecad_task_says_why_incad_waits, test_3_freecads_start_page_never_stays_in_front_in_incad])
