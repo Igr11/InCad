@@ -844,12 +844,34 @@ class Shell(QtCore.QObject):
             count = sk.GeometryCount
             drawn = count != self._geometry_counts.get(key, count)
             self._geometry_counts[key] = count
+            if self._box_dimension_replaced(sk):
+                return
             added = sketches.name_new_dimensions(doc)
         except Exception as e:
             log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
             return
         if len(added) == 1 and not drawn and self.sketches.editing() is sk:
             self.open_value_box(sk, added[0])
+
+    def _box_dimension_replaced(self, sk):
+        """FreeCAD 1.1's Dimension tool makes the dimension at the first click and replaces it when it is placed:
+        the replacement keeps the name of the open box (no number lost) and the keyboard goes back to the box
+        (the placing click gave it to the 3D view)."""
+        from incad.core import sketch as sketches
+        box = self.value_box
+        if box is None or self._box_owner != (sk.Document.Name, sk.Name):
+            return False
+        names = [c.Name for c in sk.Constraints]
+        if box.name in names:
+            return False
+        fresh = [i for i, c in enumerate(sk.Constraints)
+                 if c.Type in sketches.DIMENSIONAL and not c.Name and c.Driving]
+        if len(fresh) != 1:
+            return False
+        sk.renameConstraint(fresh[0], box.name)
+        for ms in (150, 400, 800):  # the view takes the keyboard back when the placing click ends
+            QtCore.QTimer.singleShot(ms, lambda b=box: self.value_box is b and b.take_keyboard())
+        return True
 
     def _after_undo(self, doc):
         """Undo/redo can bring objects back without their formula links (FreeCAD quirk): repair them."""
@@ -904,7 +926,8 @@ class Shell(QtCore.QObject):
         expr = sketches._expression_of(sk, "Constraints." + name)
         text = sketches.to_display(sk.Document, expr) if expr else \
             sketches.document._format(sk.getDatum(name))
-        box = ValueBox(name, text, self.theme, self.mw, apply=self._apply_from_box)
+        parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+        box = ValueBox(name, text, self.theme, parent, apply=self._apply_from_box)
         self._box_owner = (sk.Document.Name, sk.Name)
         box.closed.connect(lambda: self._value_box_closed(box))
         self.value_box = box
@@ -921,6 +944,8 @@ class Shell(QtCore.QObject):
     def _value_box_closed(self, box):
         if self.value_box is box:
             self.value_box = None
+
+
 
     def _on_value_applied(self, name, text):
         self._on_parameter_set(name, text)

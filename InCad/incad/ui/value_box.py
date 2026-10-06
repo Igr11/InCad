@@ -9,7 +9,10 @@ class ValueBox(QtWidgets.QFrame):
     closed = Signal()
 
     def __init__(self, name, text, theme="light", parent=None, apply=None):
-        super().__init__(parent, QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
+        # a panel inside the main window (as the feature dialogs), not a window of its own: macOS gives the
+        # keyboard back to a separate window unreliably once the 3D view was clicked (the Dimension tool's
+        # placing click), so typing, Enter and Esc went to the view
+        super().__init__(parent)
         self.setObjectName("InCadValueBox")
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
         self.name = name
@@ -22,6 +25,8 @@ class ValueBox(QtWidgets.QFrame):
         self.edit = QtWidgets.QLineEdit(text)
         self.edit.setMinimumWidth(170)
         self.edit.selectAll()
+        self._typed = False  # until the user types, taking the keyboard selects the value (typing replaces it)
+        self.edit.textEdited.connect(lambda _t: setattr(self, "_typed", True))
         self.edit.returnPressed.connect(self._apply)
         self.edit.installEventFilter(self)
         row.addWidget(self.edit)
@@ -41,17 +46,29 @@ class ValueBox(QtWidgets.QFrame):
 
     def show_near(self, global_pos):
         self.adjustSize()
-        self.move(global_pos + QtCore.QPoint(16, 16))
+        parent = self.parentWidget()
+        pos = parent.mapFromGlobal(global_pos + QtCore.QPoint(16, 16)) if parent is not None else global_pos
+        if parent is not None:  # stay inside the view
+            pos.setX(max(0, min(pos.x(), parent.width() - self.width())))
+            pos.setY(max(0, min(pos.y(), parent.height() - self.height())))
+        self.move(pos)
         self.show()
-        self.raise_()
-        self.activateWindow()
-        self.edit.setFocus()
+        self.take_keyboard()
+
+    def take_keyboard(self):
+        try:
+            self.raise_()
+            self.window().activateWindow()
+            self.edit.setFocus(QtCore.Qt.OtherFocusReason)
+            if not self._typed:
+                self.edit.selectAll()
+        except RuntimeError:
+            pass
 
     def insert(self, name):
         self.edit.insert(name)
-        self.raise_()
-        self.activateWindow()  # a click in the view or the table made the main window active
-        self.edit.setFocus()
+        self._typed = True
+        self.take_keyboard()  # a click in the view or the table took the keyboard
 
     def _apply(self):
         text = self.edit.text().strip()

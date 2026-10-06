@@ -1,0 +1,179 @@
+"""Editing a sketch from the model tree and its dimension box, through real clicks and keys:
+RMB → Edit; the box takes the keyboard at once; Enter applies, Esc cancels; a clicked dimension is inserted."""
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
+import harness  # noqa: E402
+import FreeCAD as App  # noqa: E402
+import FreeCADGui as Gui  # noqa: E402
+import Sketcher  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
+from incad.qt import QtCore, QtWidgets  # noqa: E402
+from incad.core import commands, document, prefs, sketch as sketches  # noqa: E402
+from incad.ui import shell  # noqa: E402
+import headless.util as util  # noqa: E402
+
+ST = {}
+
+
+def s():
+    return shell.instance()
+
+
+def doc():
+    return App.ActiveDocument
+
+
+def editing():
+    v = Gui.ActiveDocument.getInEdit()
+    return v.Object if v is not None else None
+
+
+def rect(name, x0):
+    body = document.primary_body(doc())
+    sk = util.add_rect_sketch(body, name=name)
+    sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 1, 1, 1, 2, 10))
+    doc().recompute()
+    sketches.name_new_dimensions(doc())
+    harness.pump(300)
+    return sk
+
+
+def rmb_edit(name):
+    """A real right-click on the model-tree row, then a real click on Edit in the menu."""
+    from PySide6 import QtGui
+    tree = s().browser.tree
+    item = [i for i in s().browser._items() if i.data(0, QtCore.Qt.UserRole) == name][0]
+    tree.scrollToItem(item)
+    pos = tree.visualItemRect(item).center()
+    QTest.mouseClick(tree.viewport(), QtCore.Qt.RightButton, QtCore.Qt.NoModifier, pos)
+    ev = QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, pos, tree.viewport().mapToGlobal(pos))
+    QtWidgets.QApplication.sendEvent(tree.viewport(), ev)  # what macOS sends after a real right-click
+    harness.pump(500)
+    menu = s().marking_menu
+    assert menu is not None and menu.isVisible(), "the RMB menu opens"
+    edit = [b for b in menu._list if b.text() == "Edit"][0]
+    QTest.mouseClick(edit, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+
+
+def box():
+    return s().value_box
+
+
+def focused():
+    return QtWidgets.QApplication.focusWidget()
+
+
+def test_0_setup():
+    prefs.set_remember_new_choice(True)
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    a = rect("SketchA", 0)
+    b = rect("SketchB", 30)
+    ST["a"], ST["b"] = a.Name, b.Name
+    ST["a_dims"] = [c.Name for c in a.Constraints if c.Name]
+    harness.pump(300)
+
+
+def test_1_rmb_edit_opens_the_sketch():
+    rmb_edit(ST["a"])
+    assert editing() is not None and editing().Name == ST["a"], editing()
+
+
+def test_2_rmb_edit_another_sketch_while_one_is_open():
+    rmb_edit(ST["b"])
+    assert editing() is not None and editing().Name == ST["b"], editing()
+    rmb_edit(ST["a"])
+    assert editing() is not None and editing().Name == ST["a"], editing()
+
+
+def test_3_the_dimension_box_has_the_keyboard_and_enter_applies():
+    sk = doc().getObject(ST["a"])
+    d0, d1 = ST["a_dims"][:2]
+    s().open_value_box(sk, d0)
+    harness.pump(500)
+    assert box() is not None and focused() is box().edit, focused()
+    QTest.keyClicks(focused(), "15")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    harness.pump(600)
+    assert box() is None, "Enter closes the box"
+    assert abs(sk.getDatum(d0).Value - 15) < 1e-6, sk.getDatum(d0)
+
+
+def test_4_esc_cancels():
+    sk = doc().getObject(ST["a"])
+    d0 = ST["a_dims"][0]
+    s().open_value_box(sk, d0)
+    harness.pump(500)
+    QTest.keyClicks(focused(), "99")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Escape)
+    harness.pump(500)
+    assert box() is None, "Esc closes the box"
+    assert abs(sk.getDatum(d0).Value - 15) < 1e-6, "nothing changed"
+    assert editing() is not None, "and the sketch stays open"
+
+
+def test_5_clicking_another_dimension_inserts_its_name():
+    sk = doc().getObject(ST["a"])
+    d0, d1 = ST["a_dims"][:2]
+    s().open_value_box(sk, d1)
+    harness.pump(500)
+    QTest.keyClick(focused(), QtCore.Qt.Key_Backspace)
+    index = [i for i, c in enumerate(sk.Constraints) if c.Name == d0][0]
+    real = Gui.Selection.getPreselection
+
+    class Pre:  # the d0 dimension under the cursor
+        Object = sk
+        SubElementNames = ("Constraint%d" % (index + 1),)
+    Gui.Selection.getPreselection = lambda: Pre()
+    try:
+        found = s()._preselected_dimension()
+        assert s()._click_hook(None, None, 0, 0), (found, box(), s().feature_session, d0, index)
+    finally:
+        Gui.Selection.getPreselection = real
+    harness.pump(300)
+    assert focused() is box().edit, "the keyboard stays in the box"
+    QTest.keyClicks(focused(), "+2")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    harness.pump(600)
+    assert box() is None, (box().edit.text(), box().error_text())
+    assert abs(sk.getDatum(d1).Value - 17) < 1e-6, sk.getDatum(d1)
+
+
+
+def test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard():
+    """FreeCAD 1.1's Dimension tool makes the dimension at the first click and replaces it when it is placed:
+    the box must keep its name (no dN lost) and get the keyboard back from the 3D view."""
+    sk = doc().getObject(ST["a"])
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))  # the first click's dimension
+    doc().recompute()
+    harness.pump(600)
+    name = box().name if box() is not None else None
+    assert name, "a new dimension opens its box"
+    index = [i for i, c in enumerate(sk.Constraints) if c.Name == name][0]
+    sk.delConstraint(index)  # the placing click: replaced by a new one
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))
+    doc().recompute()
+    s().browser.tree.setFocus()  # the click put the keyboard elsewhere
+    harness.pump(1200)
+    assert box() is not None and box().name == name
+    assert name in [c.Name for c in sk.Constraints], [c.Name for c in sk.Constraints]
+    assert focused() is box().edit, focused()
+    QTest.keyClicks(focused(), "12")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    harness.pump(600)
+    assert abs(sk.getDatum(name).Value - 12) < 1e-6
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
+harness.run([test_0_setup, test_1_rmb_edit_opens_the_sketch, test_2_rmb_edit_another_sketch_while_one_is_open,
+             test_3_the_dimension_box_has_the_keyboard_and_enter_applies, test_4_esc_cancels,
+             test_5_clicking_another_dimension_inserts_its_name,
+             test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard])
