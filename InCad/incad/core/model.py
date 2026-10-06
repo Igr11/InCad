@@ -110,6 +110,8 @@ def is_model_parameter(doc, name):
 
 
 def _with_unit(doc, text, unit_kind):
+    if unit_kind == "count":
+        return text
     try:
         q = App.Units.Quantity(text)
     except Exception:
