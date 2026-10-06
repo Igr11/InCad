@@ -123,7 +123,10 @@ def accepts(kind, obj, sub):
     if kind == "face":
         return sub.startswith("Face") and el is not None
     if kind == "cylinder":
-        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomCylinder"
+        if not (sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomCylinder"):
+            return False
+        u0, u1 = el.ParameterRange[:2]
+        return u1 - u0 > 2 * 3.14159265 - 1e-6  # a full round face, not a fillet strip
     if kind == "vertex":
         return sub.startswith("Vertex") and el is not None
     if kind == "axis":

@@ -26,6 +26,7 @@ class ThreadSpec:
     crest_ext: float
     crest_int: float
     taper: float = 0.0
+    crest_drop: float = 0.0  # external crest below the nominal major (radial), e.g. print-friendly
 
 
 _ISO = [("M1", 0.25), ("M1.2", 0.25), ("M1.4", 0.3), ("M1.6", 0.35), ("M2", 0.4), ("M2.5", 0.45), ("M3", 0.5),
@@ -136,8 +137,11 @@ def spec(std, size, custom=None):
         return ThreadSpec(std, size, _fraction(name) * IN, p, 29.0, h, h, 0.3707 * p, 0.3707 * p)
     if std == "print":
         p = dict(_ISO)[size]
-        depth = 0.25 * p / math.tan(math.radians(30))  # flats P/4 at crest and root
-        return ThreadSpec(std, size, float(size[1:]), p, 60.0, depth, depth, p / 4.0, p / 4.0)
+        # ISO flank lines (same pitch diameter as ISO, so it fits metal ISO parts), external tooth truncated to
+        # P/4 flats at crest and root; the nut is the ISO internal profile
+        depth = 0.25 * p / math.tan(math.radians(30))
+        return ThreadSpec(std, size, float(size[1:]), p, 60.0, depth, 0.54127 * p, p / 4.0, p / 4.0, 0.0,
+                          0.10825 * p)
     if std == "custom":
         c = dict(custom or {})
         major, p, angle, depth = (float(c[k]) for k in ("major", "pitch", "angle", "depth"))

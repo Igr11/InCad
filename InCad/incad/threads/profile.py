@@ -19,6 +19,7 @@ def _width_fn(spec, internal, c):
         base = spec.pitch - spec.crest_int
         return (lambda r: min(wm, base - 2.0 * (r - (r_min + c)) * t)), t, base, r_min
     base = spec.pitch - spec.crest_ext
+    R = R - spec.crest_drop
     return (lambda r: min(wm, base - 2.0 * (R - c - r) * t)), t, base, R
 
 
@@ -31,7 +32,8 @@ def groove(spec, internal, clearance=0.0, runout=None):
         lo, hi = ref - run, R + c
         knee = ref + c + (base - wm) / (2.0 * t)  # where the flank leaves the clamp, going outward
     else:
-        lo, hi = R - spec.depth - c, R + run
+        R = ref  # the external crest (nominal major less any crest drop)
+        lo, hi = R - spec.depth - c, R + spec.crest_drop + run
         knee = R - c - (base - wm) / (2.0 * t)  # where the flank reaches the clamp, going outward
     rs = [lo] + ([knee] if lo < knee < hi else []) + [hi]
     left = [(r, -max(width(r), 0.0) / 2.0) for r in rs]
