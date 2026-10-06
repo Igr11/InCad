@@ -200,6 +200,27 @@ def _build(doc, f, base, values):
     return f
 
 
+def delete(doc, f):
+    """Remove a Combine with its helper offsets and fit copies; the tools stay (shown again)."""
+    data = _load(f)
+    body = f.getParentGeoFeatureGroup()
+    if body is not None:
+        if body.Tip is f:
+            body.Tip = f.BaseFeature
+        body.removeObject(f)
+    f.Group = []
+    doc.removeObject(f.Name)
+    for tool_name, helpers in data.get("helpers", {}).items():
+        for key in ("grown", "fit"):
+            if helpers.get(key):
+                _remove(doc, helpers[key])
+        if helpers.get("fit_shape") and doc.getObject(helpers["fit_shape"]) is not None:
+            doc.removeObject(helpers["fit_shape"])
+        tool = doc.getObject(tool_name)
+        if tool is not None and tool.TypeId == "PartDesign::Body":
+            tool.Visibility = True
+
+
 def create(doc, body, profile, values):
     bases = _bodies(doc, values.get("base"))
     base = bases[0] if bases else body
