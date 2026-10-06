@@ -9,6 +9,7 @@ TYPES = ("App::FeaturePython",)
 NEEDS_PROFILE = False
 ASSEMBLY = True
 PROPS = {}
+RECREATE_ON = ("base",)  # another base means a cut in another part file
 
 FIELDS = (
     Field("base", "Cut this", "pick", pick="component"),

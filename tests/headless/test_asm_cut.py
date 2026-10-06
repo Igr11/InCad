@@ -108,3 +108,31 @@ class AsmCutTest(unittest.TestCase):
         self.assertEqual(asm_cut.records(self.asm), [])
         self.assertEqual([o for o in self.plate_doc.Objects if o.TypeId == "App::Link"], [])
         self.assertEqual([b for b in document.bodies(self.plate_doc) if b.Label.endswith(" fit")], [])
+
+    def test_moved_folder_still_syncs(self):
+        rec = self.cut()
+        data = asm_cut._load(rec, asm_cut._RECORD)
+        data["target"] = "/nowhere/Plate.FCStd"  # as after moving the project folder
+        asm_cut._save(rec, asm_cut._RECORD, data, "")
+        self.b.Placement = App.Placement(App.Vector(2, 2, 5), App.Rotation())
+        self.asm.recompute()
+        self.assertEqual(asm_cut.sync(self.asm), [self.plate_doc])
+        self.assertEqual(asm_cut.read(rec)["clearance"], "0.2 mm")
+
+    def test_body_placement_inside_the_files_is_respected(self):
+        tool_body = document.primary_body(self.block_doc)
+        tool_body.Placement = App.Placement(App.Vector(100, 0, 0), App.Rotation())
+        self.block_doc.recompute()
+        self.asm.recompute()
+        self.cut(clearance="0 mm")
+        bb = self.b.Shape.BoundBox
+        inside = App.Vector((bb.XMin + bb.XMax) / 2, (bb.YMin + bb.YMax) / 2, 9)
+        self.assertFalse(self.plate().Shape.isInside(inside, 1e-6, True), (bb, inside))
+
+    def test_a_refused_tool_leaves_no_proxy(self):
+        rec = self.cut()
+        a2 = assembly.place(self.asm, self.plate_doc.FileName)  # another copy of the base: can't be a tool
+        with self.assertRaises(ValueError):
+            asm_cut.update(rec, self.a, [a2], dict(clearance="0.2 mm", apply_to="cavity"))
+        proxies = [o for o in self.plate_doc.Objects if o.TypeId == "App::Link"]
+        self.assertEqual(len(proxies), 1, [p.Label for p in proxies])

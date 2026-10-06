@@ -78,6 +78,42 @@ def _apply(doc, j, spec, values):
     return result
 
 
+def _turn_around(doc, j, spec, values):
+    """FreeCAD's pre-solve picks the nearest orientation; from an awkward start that can end with the faces
+    across each other. Turn the moving component 180° about an axis lying in its picked face, then solve again."""
+    from incad.core import assembly
+    (l1, e1), (l2, e2) = _moving_refs(doc, values)
+    link, el = (l1, e1) if assembly.is_grounded(l2) else (l2, e2)
+    face = link.Shape.getElement(el)
+    n = _normal(link, el)
+    if n is None:
+        return 1
+    axis = n.cross(App.Vector(1, 0, 0))
+    if axis.Length < 1e-6:
+        axis = n.cross(App.Vector(0, 1, 0))
+    axis.normalize()
+    c = face.CenterOfMass
+    turn = App.Placement(c, App.Rotation(axis, 180)) * App.Placement(-c, App.Rotation())
+    link.Placement = turn * link.Placement
+    doc.recompute()
+    return _apply(doc, j, spec, values)
+
+
+def _settle(doc, j, spec, values):
+    """Solve; while the result doesn't meet the constraint, flip the moving part's side (FreeCAD's pre-solve
+    picks the nearest orientation, which from an awkward start can take two flips), then turn it around."""
+    (l1, _), _ = _moving_refs(doc, values)
+    result = _apply(doc, j, spec, values)
+    for _ in range(3):
+        if result != 0 or _met(doc, j, spec, values):
+            return result
+        j.Proxy.flipOnePart(j)
+        result = _solve(doc, l1)
+    if result == 0 and not _met(doc, j, spec, values):
+        result = _turn_around(doc, j, spec, values)
+    return result
+
+
 def _placements(doc):
     from incad.core import assembly
     return {c.Name: App.Placement(c.Placement) for c in assembly.components(doc)}
@@ -95,7 +131,10 @@ def _met(doc, j, spec, values):
     gap = abs((f2.CenterOfMass - f1.CenterOfMass).dot(n1))
     want = abs(j.Distance.Value)
     n2 = _normal(l2, e2)
-    return abs(gap - want) < 1e-3 and (n2 is None or abs(abs(n1.dot(n2)) - 1) < 1e-6)
+    if n2 is None:
+        return abs(gap - want) < 1e-3
+    facing = (n1.dot(n2) < 0) == (spec.facing == "opposed")
+    return abs(gap - want) < 1e-3 and abs(abs(n1.dot(n2)) - 1) < 1e-6 and facing
 
 
 def _make(spec):
@@ -118,7 +157,7 @@ def _make(spec):
         setattr(j, _STORE, spec.key)
         j.Label = spec.TITLE
         try:
-            result = _apply(doc, j, spec, values)
+            result = _settle(doc, j, spec, values)
             if result != 0 or not _met(doc, j, spec, values):
                 raise ValueError("%s conflicts with the other constraints (it can't be met)" % spec.TITLE)
         except Exception:
@@ -144,7 +183,7 @@ def _make(spec):
 
     def update(doc, j, values):
         before = _placements(doc)
-        result = _apply(doc, j, spec, values)
+        result = _settle(doc, j, spec, values)
         if result != 0 or not _met(doc, j, spec, values):
             for name, plc in before.items():
                 doc.getObject(name).Placement = plc

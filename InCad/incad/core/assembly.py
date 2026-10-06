@@ -72,13 +72,32 @@ def main_solid(doc):
     raise ValueError("%s has no solid to place" % doc.Label)
 
 
+def _depends_on(doc):
+    """Every document `doc` links to, directly or through others."""
+    seen, todo = set(), [doc]
+    while todo:
+        d = todo.pop()
+        for o in d.Objects:
+            linked = getattr(o, "LinkedObject", None) if o.TypeId == "App::Link" else None
+            target = linked.Document if linked is not None else None
+            if target is not None and target is not doc and target.Name not in seen:
+                seen.add(target.Name)
+                todo.append(target)
+    return [App.getDocument(n) for n in seen]
+
+
 def place(doc, path):
     """Link a part (or assembly) file; the first component is grounded, later ones go beside the others."""
     _require_saved(doc)
     asm = assembly_of(doc)
     if asm is None:
         raise ValueError("This file is not an InCad assembly")
-    target = main_solid(_open(path))
+    target_doc = _open(path)
+    if target_doc is doc:
+        raise ValueError("An assembly can't be placed into itself")
+    if doc in _depends_on(target_doc):
+        raise ValueError("%s already contains this assembly: placing it here would make a loop" % target_doc.Label)
+    target = main_solid(target_doc)
     existing = components(doc)
     link = asm.newObject("App::Link", _safe_name(os.path.splitext(os.path.basename(path))[0]))
     link.LinkedObject = target

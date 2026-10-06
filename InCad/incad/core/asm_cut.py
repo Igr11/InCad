@@ -38,9 +38,10 @@ def is_record(obj):
 
 def _relative(base_link, tool_link):
     """Placement of the tool's solid in the base solid's file coordinates."""
+    # links replace their solid's own placement (LinkTransform off): a tool point p sits at TL·p in the
+    # assembly, the base file shows base points at BB·p while the assembly shows them at BL·p
     base_body = base_link.LinkedObject
-    tool_body = tool_link.LinkedObject
-    return (base_link.Placement * base_body.Placement).inverse() * tool_link.Placement * tool_body.Placement
+    return base_body.Placement * base_link.Placement.inverse() * tool_link.Placement
 
 
 def _target(base_link):
@@ -80,9 +81,15 @@ def create(asm_doc, base_link, tool_links, values):
         raise ValueError("Pick at least one other component as a tool")
     proxies = [_proxy(target_doc, asm_doc, base_link, t) for t in tools]
     target_doc.recompute()
-    f = combine.create(target_doc, body, None, {
-        "base": body.Name, "tools": ",".join(p.Name for p in proxies), "operation": "cut",
-        "clearance": values.get("clearance") or "0.2 mm", "apply_to": values.get("apply_to") or "cavity"})
+    try:
+        f = combine.create(target_doc, body, None, {
+            "base": body.Name, "tools": ",".join(p.Name for p in proxies), "operation": "cut",
+            "clearance": values.get("clearance") or "0.2 mm", "apply_to": values.get("apply_to") or "cavity"})
+    except Exception:
+        for p in proxies:  # a refused cut leaves nothing in the part file
+            if target_doc.getObject(p.Name) is not None:
+                target_doc.removeObject(p.Name)
+        raise
     target_doc.recompute()
     rec = asm_doc.addObject("App::FeaturePython", "AssemblyCut")
     rec.Label = "Cut %s" % base_link.Label
@@ -94,10 +101,19 @@ def create(asm_doc, base_link, tool_links, values):
 
 
 def _target_of(rec):
+    """The base part's document: through the base component's link (survives a moved project folder), else the
+    stored path; None when neither is available."""
     data = _load(rec, _RECORD)
+    base = rec.Document.getObject(data.get("base", ""))
+    linked = getattr(base, "LinkedObject", None) if base is not None else None
+    if linked is not None:
+        return data, linked.Document
     doc = next((d for d in App.listDocuments().values() if d.FileName == data.get("target")), None)
     if doc is None and data.get("target"):
-        doc = App.openDocument(data["target"], hidden=True)
+        try:
+            doc = App.openDocument(data["target"], hidden=True)
+        except Exception:
+            doc = None
     return data, doc
 
 
@@ -119,16 +135,25 @@ def update(rec, base_link, tool_links, values):
     if base_link.Name != data.get("base"):
         raise ValueError("To cut another base, delete this cut and make a new one")
     old = dict(data.get("proxies", {}))
-    proxies = {}
-    for t in tool_links:
-        if t is not base_link:
-            proxies[t.Name] = _proxy(target_doc, asm_doc, base_link, t, old.get(t.Name)).Name
-    if not proxies:
-        raise ValueError("Pick at least one other component as a tool")
-    target_doc.recompute()
-    combine.update(target_doc, f, {"tools": ",".join(proxies.values()), "operation": "cut",
-                                   "clearance": values.get("clearance") or "0.2 mm",
-                                   "apply_to": values.get("apply_to") or "cavity"})
+    proxies, made = {}, []
+    try:
+        for t in tool_links:
+            if t is not base_link:
+                p = _proxy(target_doc, asm_doc, base_link, t, old.get(t.Name))
+                proxies[t.Name] = p.Name
+                if p.Name not in old.values():
+                    made.append(p.Name)
+        if not proxies:
+            raise ValueError("Pick at least one other component as a tool")
+        target_doc.recompute()
+        combine.update(target_doc, f, {"tools": ",".join(proxies.values()), "operation": "cut",
+                                       "clearance": values.get("clearance") or "0.2 mm",
+                                       "apply_to": values.get("apply_to") or "cavity"})
+    except Exception:
+        for name in made:  # a refused tool leaves no proxy behind
+            if target_doc.getObject(name) is not None:
+                target_doc.removeObject(name)
+        raise
     for tool, name in old.items():
         if tool not in proxies and target_doc.getObject(name) is not None:
             target_doc.removeObject(name)

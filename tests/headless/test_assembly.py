@@ -99,3 +99,18 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual([(n.label, n.detail) for n in comps], [("Plate", "grounded"), ("Block", "")])
         rel = [n for n in root.children if n.kind == "relationships"][0]
         self.assertEqual([n.label for n in rel.children], ["Mate"])
+
+    def test_placing_the_assembly_into_itself_is_refused(self):
+        with self.assertRaises(ValueError) as ctx:
+            assembly.place(self.doc, self.doc.FileName)
+        self.assertIn("itself", str(ctx.exception))
+
+    def test_placing_an_assembly_that_contains_this_one_is_refused(self):
+        outer = App.newDocument("Outer")
+        assembly.make_assembly(outer, "mm")
+        outer.saveAs(os.path.join(self.dir, "Outer.FCStd"))
+        assembly.place(outer, self.doc.FileName)
+        outer.save()
+        with self.assertRaises(ValueError) as ctx:
+            assembly.place(self.doc, outer.FileName)
+        self.assertIn("contains", str(ctx.exception))
