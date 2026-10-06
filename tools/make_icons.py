@@ -223,6 +223,22 @@ ICONS.update({
     "ball": ('<circle cx="16" cy="12" r="8" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
              '<path d="M8 22 A10 10 0 0 0 24 22" fill="none" stroke="{A}" stroke-width="2.4"/>'
              '<path d="M16 22 V30" stroke="{S}" stroke-width="2.4"/>'),
+    "sweep": ('<path d="M5 26 C5 14 14 8 27 8" fill="none" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
+              '<path d="M3 24 C3 11 13 5 27 5 L27 11 C16 11 9 16 9 26 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'),
+    "loft": ('<ellipse cx="16" cy="25" rx="11" ry="4" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+             '<path d="M5 25 L11 8 M27 25 L21 8" stroke="{S}" stroke-width="1.4"/>'
+             '<ellipse cx="16" cy="8" rx="5" ry="2" fill="{F}" stroke="{A}" stroke-width="1.6"/>'),
+    "coil": ('<path d="M6 26 C26 24 26 20 6 18 C26 16 26 12 6 10 C26 8 26 4 6 2" fill="none" stroke="{S}" '
+             'stroke-width="2.2"/><path d="M16 1 V31" stroke="{A}" stroke-width="1.4" stroke-dasharray="3 2"/>'),
+    "draft": ('<path d="M6 27 L10 6 H22 L26 27 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<path d="M10 6 V27 M22 6 V27" stroke="{A}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "material": ('<path d="M16 3 C10 12 7 16 7 20 A9 9 0 0 0 25 20 C25 16 22 12 16 3 Z" fill="{F}" stroke="{S}" '
+                 'stroke-width="1.6"/><path d="M12 21 A4 4 0 0 0 16 25" fill="none" stroke="{A}" stroke-width="2"/>'),
+    "section": ('<path d="M5 12 L16 6 L27 12 L27 22 L16 28 L5 22 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<path d="M2 17 L30 15" stroke="{A}" stroke-width="2.4"/>'),
+    "delete": ('<path d="M8 9 H24 L22 28 H10 Z" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+               '<path d="M5 9 H27 M13 5 H19" stroke="{S}" stroke-width="2"/><path d="M13 13 L19 23 M19 13 L13 23" '
+               'stroke="{A}" stroke-width="2"/>'),
     "combine": ('<path d="M4 12 L14 7 L24 12 L24 24 L14 29 L4 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<circle cx="21" cy="11" r="7" fill="none" stroke="{A}" stroke-width="2"/>'
                 '<circle cx="21" cy="11" r="4.5" fill="{N}" stroke="{A}" stroke-width="1" stroke-dasharray="2 1.5"/>'),

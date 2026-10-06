@@ -5,16 +5,18 @@ Modes: 'part' (an InCad Part is active), 'empty' (no document, or a file not mad
 LAYOUT = {
     "part": [
         ["3D Model", [["Sketch", ["sketch.start"]],
-                      ["Create", ["feature.extrude", "feature.revolve", "feature.hole"]],
-                      ["Modify", ["feature.fillet", "feature.chamfer", "feature.shell", "feature.thread", "feature.combine"]],
+                      ["Create", ["feature.extrude", "feature.revolve", "feature.hole", "feature.sweep", "feature.loft",
+                                  "feature.coil"]],
+                      ["Modify", ["feature.fillet", "feature.chamfer", "feature.shell", "feature.thread", "feature.combine",
+                                  "feature.draft"]],
                       ["Pattern", ["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"]],
                       ["Work Features", ["work.plane", "work.axis", "work.point"]]]],
         ["Sketch", []],
         ["Inspect", [["Measure", ["inspect.measure", "inspect.mass"]]]],
-        ["Tools", [["Options", ["view.freecad"]]]],
+        ["Tools", [["Material", ["tools.material"]], ["Options", ["view.freecad"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "sketch": [
@@ -30,7 +32,7 @@ LAYOUT = {
                     ["Exit", ["sketch.finish"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "assembly": [
@@ -41,7 +43,7 @@ LAYOUT = {
                                  "joint.ball"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", "view.section"]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "empty": [

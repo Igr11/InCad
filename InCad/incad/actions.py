@@ -206,6 +206,36 @@ def inspect_mass():
     shell.inspect("mass")
 
 
+def delete_target():
+    from incad.core import delete
+    delete.delete(_target_object())
+
+
+def choose_material(ask=None):
+    """Pick the part's material (density for Mass Properties, colour). ask() -> name | None."""
+    import FreeCAD as App
+    from incad.core import document, materials, safe
+    doc = App.ActiveDocument
+    if not document.is_incad_part(doc):
+        raise ValueError("Open an InCad part first")
+    if ask is None:
+        from incad.qt import QtWidgets
+        names = materials.names()
+        name, ok = QtWidgets.QInputDialog.getItem(_gui().getMainWindow(), "Material", "Part material:", names,
+                                                  names.index(materials.material(doc)), False)
+        ask = (lambda: name if ok else None)
+    name = ask()
+    if name:
+        safe.run_safely("Material", lambda: materials.set_material(doc, name), doc)
+
+
+def toggle_section():
+    view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
+    if view is None or not hasattr(view, "toggleClippingPlane"):
+        raise ValueError("Open a part or an assembly to see a section")
+    view.toggleClippingPlane()
+
+
 def _refuse_while_busy():
     """An open feature dialog owns the model: undo, save, close or sketch editing would break its Cancel."""
     from incad.core import safe
@@ -347,6 +377,20 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="feature.sweep", label="Sweep", icon="sweep", handler=lambda: start_feature("sweep"),
+                contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a path sketch"),
+        Command(id="feature.loft", label="Loft", icon="loft", handler=lambda: start_feature("loft"),
+                contexts=frozenset({"part"}), tooltip="Loft through two or more section sketches"),
+        Command(id="feature.coil", label="Coil", icon="coil", handler=lambda: start_feature("coil"),
+                contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a helix (springs)"),
+        Command(id="feature.draft", label="Draft", icon="draft", handler=lambda: start_feature("draft"),
+                contexts=frozenset({"part"}), tooltip="Tilt faces by an angle (for moulding)"),
+        Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
+                contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
+        Command(id="view.section", label="Section", icon="section", handler=toggle_section,
+                contexts=frozenset({"part", "assembly"}), tooltip="Cut the view open (toggle)"),
+        Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target, transactional=True,
+                contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),
                 contexts=frozenset({"part"}), tooltip="Real thread on a shaft or in a hole (select its face)"),
         Command(id="feature.shell", label="Shell", icon="shell", handler=lambda: start_feature("shell"),
