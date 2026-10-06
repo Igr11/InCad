@@ -18,7 +18,13 @@ FIELDS = (
     Field("edge", "Circular edge", "pick", show_if=("placement", ("concentric",)), pick="circular_edge"),
     Field("type", "Type", "choice", (("simple", "Simple"), ("counterbore", "Counterbore"),
                                      ("countersink", "Countersink")), "simple"),
-    Field("diameter", "Diameter", "value_length", default="5 mm"),
+    Field("threaded", "Threaded", "bool", default=False),
+    Field("thread_standard", "Standard", "combo", (("iso", "ISO metric"), ("iso_fine", "ISO metric fine"),
+                                                   ("unc", "UNC"), ("unf", "UNF"), ("unef", "UNEF"), ("npt", "NPT"),
+                                                   ("g", "G / BSP"), ("bsw", "BSW"), ("bsf", "BSF")), "iso",
+          show_if=("threaded", (True,))),
+    Field("thread_size", "Size", "combo", (), "", show_if=("threaded", (True,))),
+    Field("diameter", "Diameter", "value_length", default="5 mm", show_if=("threaded", (False,))),
     Field("depth_type", "Termination", "choice", (("distance", "Distance"), ("through_all", "Through All")),
           "through_all"),
     Field("depth", "Depth", "value_length", default="10 mm", show_if=("depth_type", ("distance",))),
@@ -28,14 +34,61 @@ FIELDS = (
     Field("cbore_depth", "C'bore depth", "value_length", default="3 mm", show_if=("type", ("counterbore",))),
     Field("csink_diameter", "C'sink Ø", "value_length", default="10 mm", show_if=("type", ("countersink",))),
     Field("csink_angle", "C'sink angle", "value_angle", default="90 °", show_if=("type", ("countersink",))),
+    Field("thread_depth", "Thread", "choice", (("hole", "Whole hole"), ("distance", "Depth")), "hole",
+          show_if=("threaded", (True,))),
+    Field("thread_length", "Thread depth", "value_length", default="8 mm",
+          show_if=(("threaded", (True,)), ("thread_depth", ("distance",)))),
+    Field("clearance", "Print clearance", "value_length", default="0.2 mm", show_if=("threaded", (True,))),
+    Field("hand", "Direction", "choice", (("right", "Right hand"), ("left", "Left hand")), "right",
+          show_if=("threaded", (True,))),
 )
+_THREAD_TYPES = {"iso": "ISOMetricProfile", "iso_fine": "ISOMetricFineProfile", "unc": "UNC", "unf": "UNF",
+                 "unef": "UNEF", "npt": "NPT", "g": "BSP", "bsw": "BSW", "bsf": "BSF"}
+_PLAIN = "InCadPlainDiameter"
+_SIZES = {}
 _CUT = {"simple": "None", "counterbore": "Counterbore", "countersink": "Countersink"}
 
 
 def defaults(doc, body, profile):
     values = {f.key: f.default for f in FIELDS}
     values.update(sketch="", face="", edge="")
+    try:
+        from incad.core import prefs
+        values["clearance"] = "%g mm" % prefs.thread_clearance()
+    except Exception:
+        pass
     return values
+
+
+def thread_sizes(std):
+    """FreeCAD's size names for a thread type (asked once from a hidden probe Hole, then cached)."""
+    kind = _THREAD_TYPES.get(std, "ISOMetricProfile")
+    if kind not in _SIZES:
+        doc = App.newDocument("InCadHoleSizes", hidden=True)
+        try:
+            h = doc.addObject("PartDesign::Hole", "Probe")
+            h.ThreadType = kind
+            _SIZES[kind] = list(h.getEnumerationsOfProperty("ThreadSize"))
+        finally:
+            App.closeDocument(doc.Name)
+    return _SIZES[kind]
+
+
+def options(key, values):
+    if key == "thread_size":
+        return [(n, n) for n in thread_sizes(values.get("thread_standard") or "iso")]
+    return None
+
+
+def _default_size(std, names, diameter_text):
+    from incad.threads import standards
+    try:
+        d = App.Units.Quantity(diameter_text or "5 mm").Value
+        guess = standards.suggest(std if std in ("iso", "iso_fine", "unc", "unf", "npt", "g") else "iso", d, False)
+    except Exception:
+        guess = ""
+    guess = guess.replace("G", "").split("-")[0] if std in ("g", "unc", "unf", "unef", "bsw", "bsf") else guess
+    return next((n for n in names if n == guess or n.startswith(guess + "x")), names[0] if names else "")
 
 
 def _helper_sketch(doc, body, values, sk=None):
@@ -75,7 +128,7 @@ def _apply(doc, f, values):
     f.HoleCutType = _CUT.get(values.get("type", "simple"), "None")
     f.DepthType = "ThroughAll" if values.get("depth_type") == "through_all" else "Dimension"
     f.DrillPoint = "Angled" if values.get("tip") == "angled" else "Flat"
-    value_param(doc, f, "Diameter", values.get("diameter") or "5 mm", "length")
+    _apply_thread(doc, f, values)
     if f.DepthType == "Dimension":
         value_param(doc, f, "Depth", values.get("depth") or "10 mm", "length")
     if values.get("type") == "counterbore":
@@ -84,6 +137,46 @@ def _apply(doc, f, values):
     elif values.get("type") == "countersink":
         value_param(doc, f, "HoleCutDiameter", values.get("csink_diameter") or "10 mm", "length")
         value_param(doc, f, "HoleCutCountersinkAngle", values.get("csink_angle") or "90 °", "angle")
+
+
+def _apply_thread(doc, f, values):
+    from incad.core import model
+    if values.get("threaded"):
+        name = model.bound_parameter(f, "Diameter")
+        if name is not None:  # the thread sets the drill size; keep the plain diameter for switching back
+            if not hasattr(f, _PLAIN):
+                f.addProperty("App::PropertyString", _PLAIN, "InCad")
+                f.setPropertyStatus(_PLAIN, "Hidden")
+            setattr(f, _PLAIN, name)
+            f.setExpression("Diameter", None)
+        std = values.get("thread_standard") or "iso"
+        kind = _THREAD_TYPES.get(std, "ISOMetricProfile")
+        f.Threaded = True
+        f.ModelThread = True
+        if f.ThreadType != kind:
+            f.ThreadType = kind
+        names = list(f.getEnumerationsOfProperty("ThreadSize"))
+        size = values.get("thread_size")
+        f.ThreadSize = size if size in names else _default_size(std, names, values.get("diameter"))
+        f.ThreadDirection = "Left" if values.get("hand") == "left" else "Right"
+        f.UseCustomThreadClearance = True
+        try:
+            f.CustomThreadClearance = App.Units.Quantity(values.get("clearance") or "0.2 mm").Value
+        except Exception:
+            raise ValueError("Print clearance: enter a length such as 0.2 mm")
+        if values.get("thread_depth") == "distance":
+            f.ThreadDepthType = "Dimension"
+            value_param(doc, f, "ThreadDepth", values.get("thread_length") or "8 mm", "length")
+        else:
+            f.ThreadDepthType = "Hole Depth"
+        return
+    if f.Threaded:
+        f.Threaded = False
+        f.ModelThread = False
+        plain = getattr(f, _PLAIN, "")
+        if plain and model.bound_parameter(f, "Diameter") is None:
+            model.bind(f, "Diameter", plain)
+    value_param(doc, f, "Diameter", values.get("diameter") or "5 mm", "length")
 
 
 def create(doc, body, profile, values):
@@ -103,6 +196,17 @@ def read(doc, f):
                   type=cut, depth_type="through_all" if f.DepthType == "ThroughAll" else "distance",
                   tip="angled" if f.DrillPoint == "Angled" else "flat",
                   diameter=value_text(doc, f, "Diameter") or "5 mm", depth=value_text(doc, f, "Depth") or "10 mm")
+    if f.Threaded:
+        std = {v: k for k, v in _THREAD_TYPES.items()}.get(f.ThreadType, "iso")
+        values.update(threaded=True, thread_standard=std, thread_size=f.ThreadSize,
+                      clearance="%g mm" % f.CustomThreadClearance.Value,
+                      hand="left" if f.ThreadDirection == "Left" else "right",
+                      thread_depth="distance" if f.ThreadDepthType == "Dimension" else "hole",
+                      thread_length=value_text(doc, f, "ThreadDepth") or "8 mm")
+        plain = getattr(f, _PLAIN, "")
+        if plain:
+            from incad.core import model
+            values["diameter"] = model.parameter_text(doc, plain)
     if concentric:
         face, _, edge = getattr(prof, "InCadPicks", "").partition("|")
         values.update(face=face, edge=edge)

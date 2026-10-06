@@ -104,3 +104,32 @@ class HoleTest(unittest.TestCase):
                  and abs(fc.Surface.Radius - 0.5) < 1e-6]
         self.assertTrue(bores and all(abs(fc.Surface.Center.x - 15) < 1e-6 for fc in bores),
                         [fc.Surface.Center for fc in bores])
+
+    def test_threaded_m8_with_clearance_and_back_to_plain(self):
+        sk = self.sketch_with_circle()
+        f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name,
+                                                        diameter="4 mm"))
+        self.doc.recompute()
+        plain_param = model.bound_parameter(f, "Diameter")
+        v = dict(hole.read(self.doc, f), threaded=True, thread_standard="iso", thread_size="M8x1.25",
+                 clearance="0.2 mm", depth_type="through_all")
+        f = hole.update(self.doc, f, v)
+        self.doc.recompute()
+        self.assertTrue(f.Threaded and f.ModelThread)
+        self.assertEqual(f.ThreadSize, "M8x1.25")
+        self.assertTrue(f.UseCustomThreadClearance)
+        self.assertAlmostEqual(f.CustomThreadClearance.Value, 0.2, places=6)
+        self.assertNotIn("Invalid", f.State)
+        r = hole.read(self.doc, f)
+        self.assertEqual((r["threaded"], r["thread_standard"], r["thread_size"], r["clearance"]),
+                         (True, "iso", "M8x1.25", "0.2 mm"))
+        f = hole.update(self.doc, f, dict(r, threaded=False))
+        self.doc.recompute()
+        self.assertFalse(f.Threaded)
+        self.assertEqual(model.bound_parameter(f, "Diameter"), plain_param)
+        self.assertAlmostEqual(f.Diameter.Value, 4, places=6)
+
+    def test_thread_size_options_follow_the_standard(self):
+        sizes = [v for v, _ in hole.options("thread_size", {"thread_standard": "unc"})]
+        self.assertIn("1/4", sizes)
+        self.assertIn("M8x1.25", [v for v, _ in hole.options("thread_size", {"thread_standard": "iso"})])
