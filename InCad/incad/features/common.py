@@ -24,14 +24,21 @@ def shown(field, values):
 
 
 def closed_profile(sk):
+    """A sketch FreeCAD can pad as it is: closed wires, no crossing or dangling lines (those use areas instead,
+    see incad.core.regions)."""
+    from incad.core import regions
     try:
-        return any(w.isClosed() for w in sk.Shape.Wires)
+        return any(w.isClosed() for w in sk.Shape.Wires) and not regions.needs_regions(sk)
     except Exception:
         return False
 
 
 def consumers(sk):
-    return [o for o in sk.InList if getattr(o, "Profile", None) is not None and _profile(o) is sk]
+    from incad.core import regions
+    own = [o for o in sk.InList if getattr(o, "Profile", None) is not None and _profile(o) is sk]
+    for prof in regions.profiles_of(sk):  # a feature on one of its areas uses this sketch too
+        own += [o for o in prof.InList if getattr(o, "Profile", None) is not None and _profile(o) is prof]
+    return own
 
 
 def _profile(feature):

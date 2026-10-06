@@ -224,17 +224,19 @@ def test_8_enter_before_placing_keeps_name_and_value():
     sk = doc().getObject(ST["a"])
     rmb_edit(ST["a"])
     before = {c.Name for c in sk.Constraints if c.Name}
-    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))  # the first click's dimension
+    sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, 0, 1, 10))  # the first click's dimension (corner from the origin)
     doc().recompute()
     harness.pump(600)
     name = box().name
     QTest.keyClicks(focused(), "25")
     QTest.keyClick(focused(), QtCore.Qt.Key_Return)
     harness.pump(500)
-    assert box() is None and abs(sk.getDatum(name).Value - 25) < 1e-6
+    assert box() is None and abs(sk.getDatum(name).Value - 25) < 1e-6, (
+        box() and (box().name, box().edit.text(), box().error_text()), sk.getDatum(name), focused(),
+        open(os.environ["INCAD_LOG"]).read()[-400:])
     index = [i for i, c in enumerate(sk.Constraints) if c.Name == name][0]
     sk.delConstraint(index)  # the placing click: replaced by a new one with the measured value
-    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))
+    sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, 0, 1, 10))
     doc().recompute()
     harness.pump(1000)
     names = {c.Name for c in sk.Constraints if c.Name}
@@ -286,10 +288,13 @@ def test_11_moving_on_applies_what_was_typed():
     s().open_value_box(sk, d0)
     harness.pump(400)
     QTest.keyClicks(focused(), "33")
+    typed = (box().edit.text(), box()._typed, focused() is box().edit)
     commands.REGISTRY.run("sketch.finish")  # moved on without Enter
     harness.pump(1000)
-    assert editing() is None and box() is None
-    assert abs(sk.getDatum(d0).Value - 33) < 1e-6, sk.getDatum(d0)
+    assert editing() is None and box() is None, (editing(), box() and (box().edit.text(), box().error_text()),
+                                                 open(os.environ["INCAD_LOG"]).read()[-400:])
+    log_tail = open(os.environ["INCAD_LOG"]).read()[-500:] if os.path.exists(os.environ["INCAD_LOG"]) else ""
+    assert abs(sk.getDatum(d0).Value - 33) < 1e-6, (sk.getDatum(d0), typed, log_tail)
 
 
 harness.run([test_0_setup, test_1_rmb_edit_opens_the_sketch, test_2_rmb_edit_another_sketch_while_one_is_open,

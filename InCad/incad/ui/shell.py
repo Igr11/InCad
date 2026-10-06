@@ -118,6 +118,19 @@ class _MeasurePicker:
         self._again()
 
 
+class _RegionPicker:
+    """Waits for a click on one of the shown areas of a sketch, then starts the feature on it."""
+
+    def __init__(self, shell, kind, doc_name, body_name, source_name, names, faces):
+        self.shell, self.kind = shell, kind
+        self.doc_name, self.body_name, self.source_name, self.names, self.faces = doc_name, body_name, source_name, names, faces
+
+    def addSelection(self, doc_name, obj_name, sub, pnt):
+        if doc_name == self.doc_name and obj_name in self.names:
+            index, shell = self.names.index(obj_name), self.shell
+            QtCore.QTimer.singleShot(0, lambda: shell._region_pick is self and shell._region_picked(self, index))
+
+
 class _ProfilePicker:
     """Waits for the user to pick a sketch with a closed profile, then starts the feature."""
 
@@ -129,7 +142,8 @@ class _ProfilePicker:
         from incad.core import sketch
         from incad.features.common import closed_profile
         obj = App.getDocument(doc_name).getObject(obj_name)
-        if sketch.is_sketch(obj) and closed_profile(obj):
+        from incad.core import regions
+        if sketch.is_sketch(obj) and (closed_profile(obj) or regions.needs_regions(obj)):
             shell, kind = self.shell, self.kind
             QtCore.QTimer.singleShot(0, lambda: (shell._cancel_profile_pick(), shell.start_feature(kind)))
 
@@ -170,6 +184,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
         self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
         self._box_focus_hooked = False
@@ -535,6 +550,7 @@ class Shell(QtCore.QObject):
     def _teardown(self):
         self.stop_slot_tool()
         self._stop_measuring()
+        self._cancel_region_pick()
         self._close_feature_session(cancel=True)
         self._close_info_panel()
         self._cancel_profile_pick()
@@ -792,9 +808,11 @@ class Shell(QtCore.QObject):
         if self.value_box is not None:
             self._close_value_box()
             return
-        if self.sketches.picking or self._profile_pick is not None or self.slot_tool is not None:
+        if self.sketches.picking or self._profile_pick is not None or self.slot_tool is not None \
+                or self._region_pick is not None:
             self.sketches.cancel_pick()
             self._cancel_profile_pick()
+            self._cancel_region_pick()
             self.stop_slot_tool()
             return
         if self._measure is not None:
@@ -845,6 +863,7 @@ class Shell(QtCore.QObject):
         """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
 
@@ -953,6 +972,23 @@ class Shell(QtCore.QObject):
         self._geometry_counts[(sk.Document.Name, sk.Name)] = sk.GeometryCount
         self._dim_known[(sk.Document.Name, sk.Name)] = sketches.dimension_snapshot(sk)
         self._polygons_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+
+    def _update_area_profiles(self, sk):
+        """Features built on an area of this sketch follow its edits (the area holding the remembered point)."""
+        from incad.core import regions
+        if not _alive(sk) or regions.is_profile(sk):
+            return
+        try:
+            profiles = regions.profiles_of(sk)
+            if not profiles:
+                return
+            lost = [p for p in profiles if not regions.update(p)]
+            sk.Document.recompute()
+            for p in lost:
+                log.report("warning", "The area of %s used by %s is gone: it keeps its previous outline" % (
+                    sk.Label, ", ".join(o.Label for o in p.InList if getattr(o, "Profile", None) is not None)))
+        except Exception as e:
+            log.report("warning", "Could not update the areas of %s: %s" % (sk.Label, e), traceback.format_exc())
 
     def _pin_new_polygons(self, sk):
         """A new polygon keeps its centre's snap to the origin or an axis (only new geometry: a constraint the user
@@ -1160,15 +1196,86 @@ class Shell(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.core import sketch
         from incad.features.common import closed_profile, unconsumed_closed_sketches
+        from incad.core import regions
         for sel in Gui.Selection.getSelectionEx(doc.Name):
-            if sketch.is_sketch(sel.Object) and closed_profile(sel.Object):
+            if sketch.is_sketch(sel.Object) and (closed_profile(sel.Object) or regions.needs_regions(sel.Object)):
                 return sel.Object
         editing = self.sketches.editing()
-        if editing is not None and closed_profile(editing):
+        if editing is not None and (closed_profile(editing) or regions.needs_regions(editing)):
             self.sketches.finish()
             return editing
         candidates = unconsumed_closed_sketches(body)
         return candidates[0] if len(candidates) == 1 else None
+
+    def _profile_from_areas(self, kind, doc, body, source):
+        """Inventor: the areas between the sketch's lines are the profiles. One area: used at once. Several: they
+        are shown and the user clicks the one to use (Esc cancels)."""
+        from incad.core import regions
+        faces = regions.regions(source)
+        if not faces:
+            raise ValueError("%s has no closed area to %s" % (source.Label, kind.TITLE.lower()))
+        if len(faces) == 1:
+            prof = regions.make_profile(doc, body, source, faces[0])
+            self._open_session(kind, doc, body, profile=prof)
+            return
+        self._cancel_region_pick()
+        doc.openTransaction("Pick area")  # the shown areas vanish with the pick (aborted): no undo step
+        names = []
+        pl = source.getGlobalPlacement()
+        for i, f in enumerate(faces):
+            o = doc.addObject("Part::Feature", "Area%d" % (i + 1))
+            o.Label = "Area %d" % (i + 1)
+            shape = f.copy()
+            shape.Placement = pl
+            o.Shape = shape
+            try:
+                vo = o.ViewObject
+                vo.ShapeColor = (0.95, 0.62, 0.29)
+                vo.Transparency = 55
+                vo.LineWidth = 1.0
+            except Exception:
+                pass
+            names.append(o.Name)
+        doc.recompute()
+        import FreeCADGui as Gui
+        self._region_pick = _RegionPicker(self, kind, doc.Name, body.Name, source.Name, names, faces)
+        Gui.Selection.clearSelection()
+        Gui.Selection.addObserver(self._region_pick)
+        self.status.set_prompt("Click the area to %s (Esc cancels)" % kind.TITLE.lower())
+        log.report("info", "%d areas: click the one to %s" % (len(faces), kind.TITLE.lower()))
+        self.schedule_refresh()
+
+    def _cancel_region_pick(self):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        pick = self._region_pick
+        if pick is None:
+            return
+        self._region_pick = None
+        try:
+            Gui.Selection.removeObserver(pick)
+        except Exception:
+            pass
+        doc = App.getDocument(pick.doc_name) if pick.doc_name in App.listDocuments() else None
+        if doc is not None and doc.HasPendingTransaction:
+            doc.abortTransaction()  # the shown areas go
+            doc.recompute()
+        self.schedule_refresh()
+
+    def _region_picked(self, pick, index):
+        import FreeCAD as App
+        from incad.core import regions
+        face, kind = pick.faces[index], pick.kind
+        doc = App.getDocument(pick.doc_name)
+        self._cancel_region_pick()
+        body, source = doc.getObject(pick.body_name), doc.getObject(pick.source_name)
+        if body is None or source is None:
+            return
+        try:
+            prof = regions.make_profile(doc, body, source, face)
+            self._open_session(kind, doc, body, profile=prof)
+        except Exception as e:
+            log.report("error", "%s: %s" % (kind.TITLE, e), traceback.format_exc())
 
     def start_feature(self, kind):
         from incad.core import assembly, document
@@ -1191,6 +1298,10 @@ class Shell(QtCore.QObject):
         profile = self._profile_for(doc, body)
         if profile is None:
             self._begin_profile_pick(kind)
+            return
+        from incad.core import regions
+        if regions.needs_regions(profile):
+            self._profile_from_areas(kind, doc, body, profile)
             return
         self._open_session(kind, doc, body, profile=profile)
 
@@ -1439,7 +1550,7 @@ class Shell(QtCore.QObject):
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
                                getattr(self, "slot_tool", None) is not None or self.feature_session is not None
-                               or self._measure is not None)
+                               or self._measure is not None or self._region_pick is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)

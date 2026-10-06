@@ -64,7 +64,17 @@ def delete(obj):
                 doc.removeObject(j.Name)
         doc.removeObject(obj.Name)
         return
+    from incad.core import regions
+    if obj.TypeId == "Sketcher::SketchObject" and any(
+            o for p in regions.profiles_of(obj) for o in p.InList if getattr(o, "Profile", None) is not None):
+        raise ValueError("%s is used by a feature: delete that feature first" % obj.Label)
     if obj.getParentGeoFeatureGroup() is not None and obj.getParentGeoFeatureGroup().TypeId == "PartDesign::Body":
+        prof = obj.Profile[0] if isinstance(getattr(obj, "Profile", None), (tuple, list)) and obj.Profile else None
         _remove_feature(obj)
+        if prof is not None and regions.is_profile(prof) and doc.getObject(prof.Name) is not None:
+            body = prof.getParentGeoFeatureGroup()
+            if body is not None:
+                body.removeObject(prof)
+            doc.removeObject(prof.Name)  # the area copy goes with the feature; the user's sketch stays
         return
     doc.removeObject(obj.Name)

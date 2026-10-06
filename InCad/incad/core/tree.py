@@ -48,7 +48,13 @@ def _features(body):
     group = list(body.Group)
     tip = body.Tip
     tip_index = group.index(tip) if tip in group else -1
+    from incad.core import regions
     consumed = {p.Name for p in (_profile(o) for o in group) if p is not None}
+    for o in group:
+        if regions.is_profile(o):
+            src = regions.source_of(o)
+            if src is not None:
+                consumed.add(src.Name)
     helpers = {}  # owner name -> objects InCad made for it (a thread's chamfer): shown under the owner
     for o in group:
         owner = getattr(o, "InCadHelperOf", None)
@@ -61,16 +67,19 @@ def _features(body):
     for i, obj in enumerate(group):
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
             continue
-        if getattr(obj, "InCadHelperOf", None):
+        if getattr(obj, "InCadHelperOf", None) or regions.is_profile(obj):
             continue
         node = _obj_node(obj, i > tip_index)
         prof = _profile(obj)
+        if prof is not None and regions.is_profile(prof):
+            prof = regions.source_of(prof)  # the user's sketch, not the area copy
         if prof is not None and prof in group:
             node.children.append(_obj_node(prof, group.index(prof) > tip_index))
         for h in helpers.get(obj.Name, []):
             node.children.append(_obj_node(h, group.index(h) > tip_index))
         out.append(node)
-        if obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner):
+        if obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner) or \
+                (regions.is_profile(tip) if tip is not None else False) and _profile(obj) is tip:
             out.append(Node("end_of_part", "End of Part"))
     return _work_in_progress_above_end(out)
 

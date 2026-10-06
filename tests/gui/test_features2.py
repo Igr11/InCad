@@ -141,9 +141,13 @@ def test_5_measure_and_mass():
     rows = dict(s().info_panel.rows())
     assert "Mass" in rows and "Volume" in rows, rows
     Gui.Selection.clearSelection()
-    commands.REGISTRY.run("inspect.measure")
+    commands.REGISTRY.run("inspect.measure")  # nothing selected: Measure waits and says what to pick
     harness.pump(400)
-    assert "select" in s().status.texts()["message"].lower(), s().status.texts()
+    assert s().info_panel is None and "Select" in s().status.texts()["prompt"], s().status.texts()
+    assert shell.measuring() == "auto"
+    s()._on_escape()
+    harness.pump(300)
+    assert shell.measuring() is None
 
 
 def test_6_extrude_to_face_pick_now_works():
@@ -189,8 +193,12 @@ def _fillet():
 
 def test_8_pattern_without_selection_shows_and_keeps_its_feature():
     Gui.Selection.clearSelection()
+    fs0 = s().feature_session
     commands.REGISTRY.run("feature.circ_pattern")
     harness.pump(900)
+    fs = s().feature_session
+    assert fs is not None and "features" in dialog()._widgets, (
+        fs0 and fs0.kind.TITLE, fs and fs.kind.TITLE, open(os.environ["INCAD_LOG"]).read()[-600:])
     assert dialog().field("features").text() not in ("", "Select…"), dialog().field("features").text()
     w = dialog().field("count")
     w.setText("3")
