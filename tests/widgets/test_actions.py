@@ -15,7 +15,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "feature.combine", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
             "constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent", "constrain.insert",
             "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine", "feature.sweep", "feature.loft", "feature.coil", "feature.draft",
-            "tools.material", "view.section", "browser.delete"} | set(actions.SKETCHER)
+            "tools.material", "view.section", "browser.delete"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 
 
 class ActionsTest(unittest.TestCase):

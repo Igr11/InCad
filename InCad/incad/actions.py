@@ -12,12 +12,12 @@ STD_COMMANDS = {
 }
 STD_INDEX = {"view.style_shaded": 6, "view.style_wireframe": 2}  # Std_DrawStyle items: 6 Flat lines, 2 Wireframe
 SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
-    "sketch.line": ("Line", "line", "Sketcher_CreatePolyline", "L"),
+    "sketch.line": ("Line", "line", "Sketcher_CreatePolyline", "L"),  # polyline: chains, arcs with M
     "sketch.circle": ("Circle", "circle", "Sketcher_CreateCircle", "C"),
-    "sketch.arc": ("Arc", "arc", "Sketcher_Create3PointArc", "A"),
+    "sketch.arc": ("3-Point Arc", "arc", "Sketcher_CreateArc", "A"),
     "sketch.rectangle": ("Rectangle", "rectangle", "Sketcher_CreateRectangle", "R"),
-    "sketch.slot": ("Slot", "slot", "Sketcher_CreateSlot", ""),
-    "sketch.polygon": ("Polygon", "polygon", "Sketcher_CreateHexagon", ""),
+    "sketch.slot": ("Center-to-Center Slot", "slot", "Sketcher_CreateSlot", ""),
+    "sketch.polygon": ("Hexagon", "polygon", "Sketcher_CreateHexagon", ""),
     "sketch.spline": ("Spline", "spline", "Sketcher_CreateBSplineByInterpolation", ""),
     "sketch.point": ("Point", "sk_point", "Sketcher_CreatePoint", ""),
     "sketch.fillet": ("Fillet", "sk_fillet", "Sketcher_CreateFillet", ""),
@@ -43,6 +43,48 @@ SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
     "sketch.stop": ("Stop Tool", "stop", "Sketcher_StopOperation", ""),
     "sketch.slice": ("Slice Graphics", "slice", "Sketcher_ViewSection", "F7"),
 }
+
+# Variants (Inventor split buttons). Modes are FreeCAD's construction methods, set in its tool widget after start
+# (FreeCAD remembers the last method, so every variant sets its own).
+SKETCH_VARIANTS = {  # InCad id: (label, icon, FreeCAD command, construction method or None)
+    "sketch.rectangle_center": ("Center Rectangle", "rect_center", "Sketcher_CreateRectangle", "Center, width, height"),
+    "sketch.rectangle_3pt": ("3-Point Rectangle", "rect_3pt", "Sketcher_CreateRectangle", "3 corners"),
+    "sketch.rectangle_center_3pt": ("3-Point Center Rect.", "rect_center_3pt", "Sketcher_CreateRectangle",
+                                    "Center, 2 corners"),
+    "sketch.rectangle_rounded": ("Rounded Rectangle", "rect_rounded", "Sketcher_CreateOblong", None),
+    "sketch.circle_3pt": ("3-Point Circle", "circle_3pt", "Sketcher_CreateCircle", "3 rim points"),
+    "sketch.ellipse": ("Ellipse", "ellipse", "Sketcher_CreateEllipseByCenter", None),
+    "sketch.ellipse_3pt": ("3-Point Ellipse", "ellipse_3pt", "Sketcher_CreateEllipseBy3Points", None),
+    "sketch.arc_center": ("Center Arc", "arc_center", "Sketcher_CreateArc", "Center"),
+    "sketch.arc_ellipse": ("Elliptical Arc", "arc_ellipse", "Sketcher_CreateArcOfEllipse", None),
+    "sketch.line_single": ("Single Line", "line_single", "Sketcher_CreateLine", None),
+    "sketch.triangle": ("Triangle", "triangle", "Sketcher_CreateTriangle", None),
+    "sketch.square": ("Square", "square", "Sketcher_CreateSquare", None),
+    "sketch.pentagon": ("Pentagon", "pentagon", "Sketcher_CreatePentagon", None),
+    "sketch.octagon": ("Octagon", "octagon", "Sketcher_CreateOctagon", None),
+    "sketch.polygon_n": ("Polygon (N sides)", "polygon_n", "Sketcher_CreateRegularPolygon", None),
+    "sketch.slot_arc": ("Arc Slot", "slot_arc", "Sketcher_CreateArcSlot", "Arc ends"),
+    "sketch.slot_arc_flat": ("Flat-End Arc Slot", "slot_arc_flat", "Sketcher_CreateArcSlot", "Flat ends"),
+    "sketch.spline_cv": ("Control-Vertex Spline", "spline_cv", "Sketcher_CreateBSpline", None),
+}
+# The base tools pin their own method too (FreeCAD would reuse the last one chosen).
+_BASE_MODES = {"sketch.rectangle": "Corner, width, height", "sketch.circle": "Center", "sketch.arc": "3 rim points"}
+
+
+def set_tool_mode(text):
+    """Pick a construction method in the running Sketcher tool's widget (hidden while InCad is active)."""
+    from incad.qt import QtWidgets
+    for w in QtWidgets.QApplication.allWidgets():
+        if isinstance(w, QtWidgets.QComboBox) and w.objectName() == "comboBox1" and w.findText(text) >= 0:
+            w.setCurrentIndex(w.findText(text))
+            return True
+    raise ValueError("This FreeCAD version has no '%s' option for this tool" % text)
+
+
+def run_sketch_tool(name, mode=None):
+    run_std(name)
+    if mode:
+        set_tool_mode(mode)
 
 
 def _gui():
@@ -460,8 +502,10 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Select a face, an edge, or two items"),
         Command(id="inspect.mass", label="Mass Properties", icon="mass", handler=inspect_mass,
                 contexts=frozenset({"part"})),
-    ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd: run_std(n)), shortcut=sc,
-                 contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, sc) in SKETCHER.items()]
+    ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd, m=_BASE_MODES.get(i): run_sketch_tool(n, m)),
+                 shortcut=sc, contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, sc) in SKETCHER.items()] + \
+        [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd, m=mode: run_sketch_tool(n, m)),
+                 contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, mode) in SKETCH_VARIANTS.items()]
 
 
 def register_all(registry=REGISTRY):

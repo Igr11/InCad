@@ -239,6 +239,24 @@ ICONS.update({
     "delete": ('<path d="M8 9 H24 L22 28 H10 Z" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
                '<path d="M5 9 H27 M13 5 H19" stroke="{S}" stroke-width="2"/><path d="M13 13 L19 23 M19 13 L13 23" '
                'stroke="{A}" stroke-width="2"/>'),
+    'rect_center': '<rect x="5" y="8" width="22" height="16" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="16" r="2.4" fill="{A}"/><circle cx="27" cy="8" r="2.4" fill="{A}"/>',
+    'rect_3pt': '<path d="M4 20 L18 6 L28 16 L14 30 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="4" cy="20" r="2.4" fill="{A}"/><circle cx="18" cy="6" r="2.4" fill="{A}"/><circle cx="28" cy="16" r="2.4" fill="{A}"/>',
+    'rect_center_3pt': '<path d="M4 20 L18 6 L28 16 L14 30 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="16" cy="18" r="2.4" fill="{A}"/><circle cx="18" cy="6" r="2.4" fill="{A}"/><circle cx="28" cy="16" r="2.4" fill="{A}"/>',
+    'rect_rounded': '<rect x="5" y="8" width="22" height="16" rx="5" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="5" cy="24" r="2.2" fill="{A}"/><circle cx="27" cy="8" r="2.2" fill="{A}"/>',
+    'circle_3pt': '<circle cx="16" cy="16" r="10" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="6" cy="16" r="2.4" fill="{A}"/><circle cx="16" cy="6" r="2.4" fill="{A}"/><circle cx="25" cy="21" r="2.4" fill="{A}"/>',
+    'ellipse': '<ellipse cx="16" cy="16" rx="12" ry="7" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="16" r="2.2" fill="{A}"/>',
+    'ellipse_3pt': '<ellipse cx="16" cy="16" rx="12" ry="7" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="4" cy="16" r="2.2" fill="{A}"/><circle cx="28" cy="16" r="2.2" fill="{A}"/><circle cx="16" cy="9" r="2.2" fill="{A}"/>',
+    'arc_center': '<path d="M5 24 A13 13 0 0 1 27 24" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="24" r="2.4" fill="{A}"/><circle cx="5" cy="24" r="2.2" fill="{A}"/><circle cx="27" cy="24" r="2.2" fill="{A}"/>',
+    'arc_ellipse': '<path d="M3 20 A13 8 0 0 1 29 20" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="20" r="2.2" fill="{A}"/>',
+    'line_single': '<path d="M5 26 L27 6" stroke="{S}" stroke-width="2.4" stroke-linecap="round"/><circle cx="5" cy="26" r="2.6" fill="{A}"/><circle cx="27" cy="6" r="2.6" fill="{A}"/><text x="25" y="29" font-family="Helvetica" font-size="9" font-weight="bold" text-anchor="middle" fill="{A}">1</text>',
+    'triangle': '<path d="M16.0 5.0 L25.5 21.5 L6.5 21.5 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/>',
+    'square': '<path d="M23.8 8.2 L23.8 23.8 L8.2 23.8 L8.2 8.2 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/>',
+    'pentagon': '<path d="M16.0 5.0 L26.5 12.6 L22.5 24.9 L9.5 24.9 L5.5 12.6 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/>',
+    'octagon': '<path d="M20.2 5.8 L26.2 11.8 L26.2 20.2 L20.2 26.2 L11.8 26.2 L5.8 20.2 L5.8 11.8 L11.8 5.8 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/>',
+    'polygon_n': '<path d="M16.0 5.0 L24.6 9.1 L26.7 18.4 L20.8 25.9 L11.2 25.9 L5.3 18.4 L7.4 9.1 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/><text x="16" y="20" font-family="Helvetica" font-size="10" font-weight="bold" text-anchor="middle" fill="{A}">N</text>',
+    'slot_arc_flat': '<path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="8" opacity=".35"/><path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="2"/><path d="M2 22 H10 M22 22 H30" stroke="{A}" stroke-width="2"/>',
+    'slot_arc': '<path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="8" stroke-linecap="round" opacity=".35"/><path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="2"/><circle cx="6" cy="22" r="2" fill="{A}"/><circle cx="26" cy="22" r="2" fill="{A}"/>',
+    'spline_cv': '<path d="M4 24 L10 6 L22 28 L28 8" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/><path d="M4 24 C10 6 22 28 28 8" fill="none" stroke="{S}" stroke-width="2.4"/><rect x="8" y="4" width="4" height="4" fill="{A}"/><rect x="20" y="26" width="4" height="4" fill="{A}"/>',
     "combine": ('<path d="M4 12 L14 7 L24 12 L24 24 L14 29 L4 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<circle cx="21" cy="11" r="7" fill="none" stroke="{A}" stroke-width="2"/>'
                 '<circle cx="21" cy="11" r="4.5" fill="{N}" stroke="{A}" stroke-width="1" stroke-dasharray="2 1.5"/>'),

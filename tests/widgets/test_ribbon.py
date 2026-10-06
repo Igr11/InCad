@@ -85,3 +85,47 @@ class RibbonTest(unittest.TestCase):
         ribbon_layout.add_group("part", "Model", "Sketch", ["a"], layout)
         ribbon_layout.add_group("part", "Inspect", "Measure", ["b"], layout)
         self.assertEqual(layout, {"part": [["Model", [["Sketch", ["a"]]]], ["Inspect", [["Measure", ["b"]]]]]})
+
+
+class SplitButtonTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.ran = []
+        self.reg = Registry()
+        for i in ("r2", "rc", "r3"):
+            self.reg.register(Command(id=i, label=i.upper(), icon="incad", handler=lambda i=i: self.ran.append(i)))
+        self.layout = {"sketch": [["Sketch", [["Create", [["r2", "rc", "missing", "r3"]]]]]]}
+        self.rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
+
+    def test_split_button_runs_the_default_and_lists_variants(self):
+        b = self.rb.button("r2")
+        self.assertIs(self.rb.button("r3"), b)
+        self.assertEqual(b.text(), "R2")
+        self.assertEqual([a.text() for a in b.menu().actions()], ["R2", "RC", "R3"])
+        b.click()
+        self.assertEqual(self.ran, ["r2"])
+
+    def test_choosing_a_variant_runs_it_and_becomes_the_default(self):
+        b = self.rb.button("r2")
+        b.menu().actions()[2].trigger()
+        self.assertEqual(self.ran, ["r3"])
+        self.assertEqual(b.text(), "R3")
+        b.click()
+        self.assertEqual(self.ran, ["r3", "r3"])
+        self.rb.set_theme("dark")  # rebuild keeps the choice
+        self.assertEqual(self.rb.button("r2").text(), "R3")
+
+
+class WideRibbonTest(unittest.TestCase):
+    def test_many_buttons_never_widen_the_window(self):
+        qtapp.app()
+        reg = Registry()
+        ids = ["c%d" % i for i in range(40)]
+        for i in ids:
+            reg.register(Command(id=i, label="Command %s" % i, icon="incad", handler=lambda: None))
+        layout = {"part": [["Model", [["G%d" % g, ids[g * 5:(g + 1) * 5]] for g in range(8)]]]}
+        rb = Ribbon(reg, layout, mode="part", size="large", theme="light")
+        self.assertLess(rb.minimumSizeHint().width(), 700)
+        rb.resize(600, rb.sizeHint().height())
+        rb.show()
+        self.assertTrue(rb.button("c39") is not None)
