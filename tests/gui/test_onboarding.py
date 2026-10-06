@@ -134,7 +134,38 @@ def test_4_origin_planes_fill_the_view_while_picking():
     harness.pump(300)
 
 
+
+def sketch_up(sk):
+    """(camera up · sketch Y, view direction · sketch normal): (1, -1) = the sketch upright, seen from the front."""
+    cam = Gui.ActiveDocument.ActiveView.getCameraNode()
+    up = App.Vector(*cam.orientation.getValue().multVec(coin.SbVec3f(0, 1, 0)).getValue())
+    look = App.Vector(*cam.orientation.getValue().multVec(coin.SbVec3f(0, 0, -1)).getValue())
+    r = sk.getGlobalPlacement().Rotation
+    return round(up.dot(r.multVec(App.Vector(0, 1, 0))), 3), round(look.dot(r.multVec(App.Vector(0, 0, 1))), 3)
+
+
+def test_5_look_at_puts_an_upside_down_sketch_upright():
+    """The user's dimension text read upside down: the view was turned 180° in the sketch's plane."""
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(800)
+    s().plane_panel.button("XZ_Plane").click()
+    harness.pump(1500)
+    sk = Gui.ActiveDocument.getInEdit().Object
+    cam = Gui.ActiveDocument.ActiveView.getCameraNode()
+    d = cam.orientation.getValue().multVec(coin.SbVec3f(0, 0, -1))
+    cam.orientation.setValue(cam.orientation.getValue() * coin.SbRotation(d, 3.14159265))  # turned upside down
+    harness.pump(300)
+    assert sketch_up(sk)[0] < 0, sketch_up(sk)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("view.look_at")
+    harness.pump(1500)
+    assert sketch_up(sk) == (1.0, -1.0), sketch_up(sk)
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
 harness.run([test_0_new_part_starts_near_the_origin, test_1_plane_panel_picks_a_plane,
              test_2_look_at_faces_the_sketch_while_sketching,
              test_3_double_click_a_plane_in_the_browser_starts_a_sketch,
-             test_4_origin_planes_fill_the_view_while_picking])
+             test_4_origin_planes_fill_the_view_while_picking,
+             test_5_look_at_puts_an_upside_down_sketch_upright])
