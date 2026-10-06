@@ -379,23 +379,37 @@ _SECTION = {"on": False}
 
 
 def toggle_section():
-    """Section view at the selection — three points, a flat face or a plane (XZ with nothing selected) — with
-    FreeCAD's dragger; a second click switches it off."""
+    """Section view at the selection — three points, a flat face or a plane (XZ with nothing selected);
+    clicking Section again switches it off."""
     import FreeCAD as App
     from incad.core import section
     from incad.features import common
     view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
     if view is None or not hasattr(view, "toggleClippingPlane"):
         raise ValueError("Open a part or an assembly to see a section")
-    if _SECTION["on"]:
+    if section_on():
         view.toggleClippingPlane(0)
         _SECTION["on"] = False
         return
     pairs = [common.resolve(sel.Object, sub) for sel in _gui().Selection.getSelectionEx(App.ActiveDocument.Name)
              for sub in (sel.SubElementNames or ("",))]
-    view.toggleClippingPlane(1, False, False, section.placement(pairs))
+    # no drag handle (noManip): FreeCAD crashes when the handle is destroyed on switching the plane off
+    # (probed: SoTranslate1Dragger double free); the plane is where the user picked it, as in Inventor
+    view.toggleClippingPlane(1, False, True, section.placement(pairs))
     _gui().Selection.clearSelection()
     _SECTION["on"] = True
+
+
+def section_on():
+    """Is a section plane on in the active view? Asked of the view itself: documents and views come and go."""
+    gdoc = _gui().ActiveDocument
+    view = gdoc.ActiveView if gdoc is not None else None
+    if view is not None and hasattr(view, "hasClippingPlane"):
+        try:
+            return bool(view.hasClippingPlane())
+        except Exception:
+            pass
+    return bool(_SECTION["on"])
 
 
 def _refuse_while_busy():
@@ -604,7 +618,7 @@ def commands():
         Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
         Command(id="view.section", label="Section", icon="section", handler=toggle_section,
-                contexts=frozenset({"part", "assembly"}), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
+                contexts=frozenset({"part", "assembly"}, checkable=True, is_checked=lambda: section_on()), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
                         "click again to close"),
         Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target,
                 contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),

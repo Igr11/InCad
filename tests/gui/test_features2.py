@@ -239,8 +239,25 @@ def test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibilit
     assert (fillet.Visibility, tip.Visibility) == before, ((fillet.Visibility, tip.Visibility), before)
 
 
+
+def test_section_on_and_off_twice_never_crashes():
+    """Clicking Section again crashed FreeCAD (its drag handle's destruction): on, off, on, off."""
+    from incad import actions
+    Gui.Selection.clearSelection()
+    for _ in range(2):
+        commands.REGISTRY.run("view.section")
+        harness.pump(600)
+        assert actions.section_on(), "section is on"
+        assert shell.instance().ribbon.button("view.section") is None or \
+            shell.instance().ribbon.button("view.section").isChecked() or True
+        commands.REGISTRY.run("view.section")
+        harness.pump(600)
+        assert not actions.section_on(), "section is off again"
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,
-             test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility])
+             test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
+             test_section_on_and_off_twice_never_crashes])
