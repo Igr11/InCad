@@ -182,9 +182,28 @@ def test_8_double_click_with_a_deleted_preselection_is_ignored():
         Gui.Selection.getPreselection = real
 
 
+
+def test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile():
+    """They run just after a sketch changes; the sketch may be gone by then (an assembly placing parts did it)."""
+    from incad.ui import shell
+    from incad.core import log
+    doc = App.ActiveDocument
+    sk = doc.addObject("Sketcher::SketchObject", "Gone")
+    doc.removeObject(sk.Name)
+    seen = []
+    log.set_reporter(lambda level, msg: seen.append(msg))
+    try:
+        shell.instance()._pin_new_polygons(sk)
+        shell.instance()._make_construction(sk)
+    finally:
+        log.set_reporter(shell.instance()._report)
+    assert not seen, seen
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
              test_6_one_picked_side_switches_the_whole_polygon,
              test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
-             test_8_double_click_with_a_deleted_preselection_is_ignored])
+             test_8_double_click_with_a_deleted_preselection_is_ignored,
+             test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile])

@@ -639,8 +639,34 @@ class Shell(QtCore.QObject):
                 params.restore(themes.VIEW_GROUP, snap["nav"])
 
     def _raise_strip(self, *_):
-        """QMdiArea raises a sub-window when it is added or activated; keep the strip above the 3D view."""
-        QtCore.QTimer.singleShot(0, lambda: self.strip.raise_() if self.strip is not None else None)
+        """QMdiArea raises a sub-window when it is added or activated, over InCad's panels in the view area: keep
+        them all on top (a buried feature dialog stayed open unseen, and every other command was refused)."""
+        QtCore.QTimer.singleShot(0, self._raise_overlays)
+
+    def _dialog_first(self):
+        """The error for a command refused while a feature dialog is open, and that dialog brought to the front."""
+        self._show_open_dialog()
+        return ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+
+    def _show_open_dialog(self):
+        fs = self.feature_session
+        if fs is not None and fs.dialog is not None:
+            try:
+                if not fs.dialog.isVisible():
+                    fs.dialog.show()
+                fs.dialog.raise_()  # raise only: show() on a visible dialog moves the keyboard focus
+            except RuntimeError:
+                pass
+
+    def _raise_overlays(self):
+        fs = self.feature_session
+        for w in (self.strip, self.plane_panel, self.info_panel, self.value_box,
+                  fs.dialog if fs is not None else None):
+            try:
+                if w is not None and w.isVisible():
+                    w.raise_()
+            except RuntimeError:
+                pass
 
     def _on_nav_mode_changed(self, mode):
         if self.strip is not None:
@@ -790,6 +816,8 @@ class Shell(QtCore.QObject):
             self.ribbon.refresh_checks()
 
     def _make_construction(self, sk):
+        if not _alive(sk):
+            return  # deleted meanwhile (these handlers run just after the change)
         try:
             key = (sk.Document.Name, sk.Name)
             start = self._construction_from.get(key, sk.GeometryCount)
@@ -842,6 +870,8 @@ class Shell(QtCore.QObject):
         """A new polygon keeps its centre's snap to the origin or an axis (only new geometry: a constraint the user
         deleted later is not put back)."""
         from incad.core import sketch as sketches
+        if not _alive(sk):
+            return  # deleted meanwhile (these handlers run just after the change)
         try:
             key = (sk.Document.Name, sk.Name)
             first = self._polygons_from.get(key, sk.GeometryCount)
@@ -984,13 +1014,13 @@ class Shell(QtCore.QObject):
             if not assembly.is_assembly(doc):
                 raise ValueError("Open an InCad assembly first")
             if self.feature_session is not None:
-                raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+                raise self._dialog_first()
             self._open_session(kind, doc, None)
             return
         if not document.is_incad_part(doc):
             raise ValueError("Create or open an InCad part first")
         if self.feature_session is not None:
-            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+            raise self._dialog_first()
         body = document.primary_body(doc)
         if not getattr(kind, "NEEDS_PROFILE", True):
             self._open_session(kind, doc, body)
@@ -1007,7 +1037,7 @@ class Shell(QtCore.QObject):
         if kind is None:
             raise ValueError("%s cannot be edited yet" % feature.Label)
         if self.feature_session is not None:
-            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+            raise self._dialog_first()
         body = None if getattr(kind, "ASSEMBLY", False) else feature.getParentGeoFeatureGroup()
         self._open_session(kind, feature.Document, body, feature=feature)
 
@@ -1043,6 +1073,8 @@ class Shell(QtCore.QObject):
     def _install_hooks(self):
         import FreeCAD as App
         log.set_reporter(self._report)
+        from incad.core import safe
+        safe.set_refused_hook(self._show_open_dialog)
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
@@ -1072,6 +1104,8 @@ class Shell(QtCore.QObject):
         if self.navigator is not None:
             self.navigator.detach_all()
         log.set_reporter(None)
+        from incad.core import safe
+        safe.set_refused_hook(None)
         for w in [self.mw] + self._freecad_toolbars() + self._freecad_docks():
             try:
                 w.removeEventFilter(self)
@@ -1249,7 +1283,7 @@ class Shell(QtCore.QObject):
         if not assembly.is_assembly(doc):
             raise ValueError("Open an InCad assembly first")
         if self.feature_session is not None:
-            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+            raise self._dialog_first()
         return doc
 
     def _ensure_saved(self, doc):
@@ -1562,6 +1596,13 @@ def _release_python_markers():
                 o.setProperty("_PySideInvalidatePtr", None)
         except RuntimeError:
             pass
+
+
+def _alive(obj):
+    try:
+        return obj.Document is not None
+    except Exception:
+        return False
 
 
 def _is_start_page(window):

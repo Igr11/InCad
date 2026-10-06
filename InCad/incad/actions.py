@@ -380,6 +380,7 @@ def _refuse_while_busy():
     """An open feature dialog owns the model: undo, save, close or sketch editing would break its Cancel."""
     from incad.core import safe
     if safe.busy():
+        safe.refused()
         raise ValueError("Finish the %s dialog first" % safe.busy())
 
 

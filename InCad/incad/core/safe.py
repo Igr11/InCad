@@ -69,6 +69,23 @@ def busy():
     return _busy
 
 
+_on_refused = None  # shows the open dialog when a command is refused because of it (set by the shell)
+
+
+def set_refused_hook(fn):
+    global _on_refused
+    _on_refused = fn
+
+
+def refused():
+    """A command was refused because a dialog is open: make sure the user sees that dialog."""
+    if _on_refused is not None:
+        try:
+            _on_refused()
+        except Exception:
+            pass
+
+
 def snapshot_broken(doc):
     return {o.Name for o in doc.Objects if _broken(o, False)}
 
@@ -94,6 +111,7 @@ def run_safely(label, fn, doc=None):
         return SafeResult(True, fn())  # nested: the outer guard owns the transaction and catches errors
     if _busy:
         msg = "Finish the %s dialog first" % _busy
+        refused()
         log.report("warning", msg)
         return SafeResult(False, error=msg)
     import FreeCAD as App
