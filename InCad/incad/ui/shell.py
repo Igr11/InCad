@@ -1862,17 +1862,19 @@ class Shell(QtCore.QObject):
         self._cancel_point_pick()
         self.stop_section(keep_cut=False)
         points = section.snap_points(body.Shape)
+        radius = max(0.4, body.Shape.BoundBox.DiagonalLength / 120.0)  # small balls: easy to see and to hit
         doc.openTransaction("Pick points")  # the markers vanish with the pick (aborted): no undo step
         names = []
         import Part
         for i, (kind, p) in enumerate(points):
             o = doc.addObject("Part::Feature", "Mark%d" % (i + 1))
             o.Label = "%s %d" % (kind.capitalize(), i + 1)
-            o.Shape = Part.Vertex(p)
+            o.Shape = Part.makeSphere(radius, p)
             try:
                 vo = o.ViewObject
-                vo.PointColor = (0.95, 0.62, 0.29) if kind == "corner" else (0.40, 0.70, 1.0)
-                vo.PointSize = 9.0
+                vo.ShapeColor = (0.95, 0.62, 0.29) if kind == "corner" else (0.40, 0.70, 1.0)
+                vo.LineWidth = 1.0
+                vo.Selectable = True
             except Exception:
                 pass
             names.append(o.Name)

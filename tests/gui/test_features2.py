@@ -287,10 +287,10 @@ def test_section_by_three_marked_points():
     harness.pump(800)
     marks = [o for o in d.Objects if o.Name.startswith("Mark")]
     assert len(marks) >= 8 and "3 points" in sh.status.texts()["prompt"], (len(marks), sh.status.texts())
-    pts = [o.Shape.Vertexes[0].Point for o in marks]
+    pts = [o.Shape.BoundBox.Center for o in marks]
     a = marks[0]
     b = next(o for o, p in zip(marks, pts) if (p - pts[0]).Length > 1)
-    pb = b.Shape.Vertexes[0].Point
+    pb = b.Shape.BoundBox.Center
     c = next(o for o, p in zip(marks, pts) if (p - pts[0]).cross(pb - pts[0]).Length > 1)
     for o in (a, b, c):
         Gui.Selection.addSelection(d.Name, o.Name)
