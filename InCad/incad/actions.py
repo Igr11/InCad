@@ -207,8 +207,24 @@ def inspect_mass():
 
 
 def delete_target():
-    from incad.core import delete
-    delete.delete(_target_object())
+    """Delete with one undo step in every document it changes (opened before anything changes)."""
+    from incad.core import delete, safe
+    obj = _target_object()
+    doc = obj.Document
+    extras = delete.documents(obj)
+    for d in extras:
+        if not d.UndoMode:
+            d.UndoMode = 1
+        if d.HasPendingTransaction:
+            d.abortTransaction()
+        d.openTransaction("Delete")
+    res = safe.run_safely("Delete", lambda: delete.delete(obj), doc)
+    for d in extras:
+        if res.ok:
+            d.commitTransaction()
+        else:
+            d.abortTransaction()
+            d.recompute()
 
 
 def choose_material(ask=None):
@@ -233,7 +249,9 @@ def toggle_section():
     view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
     if view is None or not hasattr(view, "toggleClippingPlane"):
         raise ValueError("Open a part or an assembly to see a section")
-    view.toggleClippingPlane()
+    import FreeCAD as App
+    # XZ plane through the origin (its normal is the placement's Z, turned onto Y), with FreeCAD's dragger
+    view.toggleClippingPlane(-1, False, False, App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), -90)))
 
 
 def _refuse_while_busy():
@@ -276,6 +294,22 @@ def _std(cmd_id, label, icon, shortcut=""):
     return Command(id=cmd_id, label=label, icon=icon, handler=handler, shortcut=shortcut)
 
 
+def _linked_steps(doc, step, redo):
+    """A dialog that changed several files (assembly cuts) left one step in each, which FreeCAD marks "-> name":
+    undo/redo them together."""
+    import FreeCAD as App
+    from incad.core import model
+    base = step[3:] if step.startswith("-> ") else step
+    for other in App.listDocuments().values():
+        if other is doc:
+            continue
+        names = other.RedoNames if redo else other.UndoNames
+        if names and (names[0] == "-> " + base or (step.startswith("-> ") and names[0] == base)):
+            other.redo() if redo else other.undo()
+            other.recompute()
+            model.relink(other)
+
+
 def _undo_redo(redo):
     """Undo/Redo the active document. Sketcher's own command while a sketch is edited; otherwise straight on the
     document, so it works whatever tab is active (FreeCAD's Std_Undo talks to the active view)."""
@@ -288,10 +322,11 @@ def _undo_redo(redo):
     doc = App.ActiveDocument
     if doc is None:
         return
-    if redo and doc.RedoNames:
-        doc.redo()
-    elif not redo and doc.UndoNames:
-        doc.undo()
+    names = doc.RedoNames if redo else doc.UndoNames
+    step = names[0] if names else None
+    if step is not None:
+        doc.redo() if redo else doc.undo()
+        _linked_steps(doc, step, redo)
     doc.recompute()
     from incad.core import model
     repaired = model.relink(doc)  # objects brought back by undo lose their formula links (FreeCAD quirk)
@@ -389,7 +424,7 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
         Command(id="view.section", label="Section", icon="section", handler=toggle_section,
                 contexts=frozenset({"part", "assembly"}), tooltip="Cut the view open (toggle)"),
-        Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target, transactional=True,
+        Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target,
                 contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),
                 contexts=frozenset({"part"}), tooltip="Real thread on a shaft or in a hole (select its face)"),

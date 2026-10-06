@@ -15,6 +15,15 @@ def _remove_feature(f):
     doc.removeObject(f.Name)
 
 
+def documents(obj):
+    """Other documents a delete changes (an assembly cut lives in its part file)."""
+    from incad.core import asm_cut
+    if asm_cut.is_record(obj):
+        data, target = asm_cut._target_of(obj)
+        return [target] if target is not None and target is not obj.Document else []
+    return []
+
+
 def delete(obj):
     from incad import features
     from incad.core import asm_cut, assembly, document

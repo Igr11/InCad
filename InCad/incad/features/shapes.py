@@ -59,7 +59,7 @@ def _sweep_apply(doc, f, values):
     if prof is path:
         raise ValueError("The path must be another sketch than the profile")
     f.Profile = prof
-    f.Spine = (path, ["Edge%d" % (i + 1) for i in range(len(path.Shape.Edges))])
+    f.Spine = (path, [])  # the whole sketch: segments added or redrawn later are followed (probed)
     f.Transition = "Round corner" if "Round corner" in f.getEnumerationsOfProperty("Transition") else f.Transition
 
 
@@ -95,6 +95,10 @@ def _loft_apply(doc, f, values):
     f.Sections = secs[1:]
     f.Ruled = bool(values.get("ruled"))
     f.Closed = bool(values.get("closed"))
+    doc.recompute()
+    shape = f.AddSubShape
+    if shape.isNull() or not shape.isValid() or shape.Volume <= 0:  # probed: out-of-order sections give a
+        raise ValueError("The sections are out of order: pick them in order along the loft")  # negative volume
 
 
 def _loft_create(doc, body, profile, values):

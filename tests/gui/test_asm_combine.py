@@ -136,6 +136,22 @@ def test_4_opening_a_component_keeps_its_unsaved_cut():
     assert App.ActiveDocument is plate_doc()
 
 
+def test_4b_deleting_the_cut_is_one_undo_step_in_both_files():
+    from incad.core import context
+    App.setActiveDocument(asm().Name)
+    Gui.ActiveDocument = Gui.getDocument(asm().Name)
+    rec = [o for o in asm().Objects if hasattr(o, "InCadAsmCut")][0]
+    cut = plate_volume()
+    context.set_target(rec.Name)
+    commands.REGISTRY.run("browser.delete")
+    harness.pump(800)
+    assert abs(plate_volume() - PLATE) < 1e-6, plate_volume()
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(1200)
+    assert abs(plate_volume() - cut) < 1e-3, (plate_volume(), cut)
+    assert [o for o in asm().Objects if hasattr(o, "InCadAsmCut")], "record not restored"
+
+
 def test_5_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -145,4 +161,5 @@ def test_5_cleanup():
 harness.run([test_0_setup, test_1_cancel_leaves_the_part_file_unchanged,
              test_2_ok_writes_the_pocket_and_it_follows_the_tool,
              test_3_base_change_then_cancel_leaves_both_parts_unchanged,
-             test_4_opening_a_component_keeps_its_unsaved_cut, test_5_cleanup])
+             test_4_opening_a_component_keeps_its_unsaved_cut,
+             test_4b_deleting_the_cut_is_one_undo_step_in_both_files, test_5_cleanup])

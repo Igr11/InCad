@@ -237,11 +237,12 @@ def delete(doc, f):
     f.Group = []
     doc.removeObject(f.Name)
     for tool_name, helpers in data.get("helpers", {}).items():
+        kept_fit = False
         for key in ("grown", "fit"):
             if helpers.get(key):
-                _remove(doc, helpers[key])
-        if helpers.get("fit_shape") and doc.getObject(helpers["fit_shape"]) is not None:
-            doc.removeObject(helpers["fit_shape"])
+                kept_fit = (not _remove(doc, helpers[key])) or kept_fit
+        if helpers.get("fit_shape") and not kept_fit and doc.getObject(helpers["fit_shape"]) is not None:
+            doc.removeObject(helpers["fit_shape"])  # a kept fit copy still stands on it
         tool = doc.getObject(tool_name)
         if tool is not None and tool.TypeId == "PartDesign::Body":
             tool.Visibility = True

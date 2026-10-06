@@ -60,3 +60,15 @@ class DeleteTest(unittest.TestCase):
     def test_delete_refuses_origin_items(self):
         with self.assertRaises(ValueError):
             delete.delete(self.body.Origin.OriginFeatures[0])
+
+
+class DeleteKeptFitTest(CombineTest):
+    def test_delete_combine_with_a_worked_on_fit_copy(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")
+        fit = self.fit()[0]
+        util.add_pad(fit, util.add_rect_sketch(fit, 2, 2, "UserSk"), 2, "UserPad")
+        self.doc.recompute()
+        res = safe.run_safely("Delete", lambda: delete.delete(f), self.doc)
+        self.assertTrue(res.ok, res.error)
+        self.assertIsNotNone(self.doc.getObject(fit.Name))
+        self.assertTrue(self.doc.getObject(fit.Name).Shape.isValid())

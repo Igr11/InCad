@@ -14,8 +14,24 @@ def names():
     return list(MATERIALS)
 
 
+_PROP = "Material"
+
+
+def _store(doc, create=False):
+    """The material lives on the InCad model object, so a change is part of the undo history (doc.Meta isn't)."""
+    from incad.core import model
+    obj = model._model_obj(doc, create=create)
+    if obj is not None and create and _PROP not in obj.PropertiesList:
+        obj.addProperty("App::PropertyString", _PROP, "InCad", "Part material")
+        obj.setPropertyStatus(_PROP, "Hidden")
+    return obj
+
+
 def material(doc):
-    name = doc.Meta.get(KEY) if doc is not None else None
+    obj = _store(doc) if doc is not None else None
+    name = getattr(obj, _PROP, None) if obj is not None else None
+    if not name and doc is not None:
+        name = doc.Meta.get(KEY)  # files from before materials were undoable
     return name if name in MATERIALS else "PLA"
 
 
@@ -26,7 +42,7 @@ def density(doc):
 def set_material(doc, name):
     if name not in MATERIALS:
         raise ValueError("Unknown material %r (choose one of %s)" % (name, ", ".join(MATERIALS)))
-    document._meta_set(doc, **{KEY: name})
+    setattr(_store(doc, create=True), _PROP, name)
     color = MATERIALS[name][1]
     for body in document.bodies(doc):
         vo = getattr(body, "ViewObject", None)

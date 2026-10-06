@@ -88,3 +88,20 @@ class ShapesTest(unittest.TestCase):
         self.assertNotIn("Invalid", f.State)
         self.assertNotAlmostEqual(f.Shape.Volume, pad.Shape.Volume, places=1)
         self.assertEqual(shapes.DRAFT.read(self.doc, f)["angle"], "5°")
+
+    def test_loft_sections_out_of_order_are_refused(self):
+        a, c, b = self.circle(2, name="A"), self.circle(3, z=20, name="C"), self.circle(5, z=10, name="B")
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as ctx:
+            self.make(shapes.LOFT, sections="%s,%s,%s" % (a.Name, c.Name, b.Name))
+        self.assertIn("order", str(ctx.exception))
+
+    def test_sweep_follows_a_changed_path(self):
+        prof = self.circle(2, name="Prof")
+        path = sketch(self.body, "XZ_Plane", "Path", [Part.LineSegment(App.Vector(0, 0, 0), App.Vector(0, 20, 0))])
+        self.doc.recompute()
+        f = self.make(shapes.SWEEP, profile=prof.Name, path=path.Name)
+        v1 = f.Shape.Volume
+        path.addGeometry(Part.LineSegment(App.Vector(0, 20, 0), App.Vector(10, 30, 0)))
+        self.doc.recompute()
+        self.assertGreater(f.Shape.Volume, v1 + 1)

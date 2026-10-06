@@ -26,3 +26,11 @@ class MaterialsTest(unittest.TestCase):
     def test_unknown_material_is_refused(self):
         with self.assertRaises(ValueError):
             materials.set_material(self.doc, "Unobtainium")
+
+    def test_material_change_is_undoable(self):
+        from incad.core import safe
+        res = safe.run_safely("Material", lambda: materials.set_material(self.doc, "Steel"), self.doc)
+        self.assertTrue(res.ok, res.error)
+        self.assertEqual(self.doc.UndoNames[0], "Material")
+        self.doc.undo()
+        self.assertEqual(materials.material(self.doc), "PLA")
