@@ -6,8 +6,15 @@ def _rotation_to(normal):
     return App.Rotation(App.Vector(0, 0, 1), normal)
 
 
+def _usable(obj, sub):
+    if sub:
+        return sub.startswith(("Vertex", "Face"))
+    return obj.TypeId in ("App::Plane", "PartDesign::Plane")
+
+
 def placement(pairs):
     """Placement whose Z is the section normal, from resolved (obj, sub) picks."""
+    pairs = [(o, s) for o, s in pairs if _usable(o, s)]  # edges, whole solids… can't define a plane: ignored
     if not pairs:
         return App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), -90))  # XZ through the origin
     shapes = [o.getSubObject(s) if s else getattr(o, "Shape", None) for o, s in pairs]

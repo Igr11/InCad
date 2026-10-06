@@ -33,8 +33,9 @@ class SectionTest(unittest.TestCase):
 
     def test_default_and_refusals(self):
         self.assertAlmostEqual(abs(self.normal(section.placement([])).y), 1, places=6)  # XZ
-        with self.assertRaises(ValueError):
-            section.placement([(self.pad, "Edge1")])
+        # what can't define a plane (an edge, a whole solid) is ignored: XZ
+        self.assertAlmostEqual(abs(self.normal(section.placement([(self.pad, "Edge1")])).y), 1, places=6)
+        self.assertAlmostEqual(abs(self.normal(section.placement([(self.body, "")])).y), 1, places=6)
         vs = [(self.pad, "Vertex1"), (self.pad, "Vertex1"), (self.pad, "Vertex2")]
         with self.assertRaises(ValueError):
             section.placement(vs)  # not three different points
