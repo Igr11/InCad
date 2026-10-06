@@ -1049,14 +1049,20 @@ class Shell(QtCore.QObject):
 
     def eventFilter(self, obj, event):
         try:
-            mdi = self._mdi()
-            if self.strip is not None and mdi is not None and obj is mdi.viewport() \
-                    and event.type() == QtCore.QEvent.Resize:
-                self.strip.place(mdi.viewport().rect())
-                return False
             etype = event.type()
+            # only these matter; anything else returns before touching Qt (widgets being destroyed on quit send
+            # events through here, and a findChild on them aborted FreeCAD at exit)
+            if etype not in _FILTERED_EVENTS:
+                return False
+            if etype == QtCore.QEvent.Resize:
+                mdi = self._mdi()
+                if self.strip is not None and mdi is not None and obj is mdi.viewport():
+                    self.strip.place(mdi.viewport().rect())
+                return False
             if obj is self.mw:
-                if etype == QtCore.QEvent.Close and self.active:
+                if etype == QtCore.QEvent.Close and not self.active:
+                    shutdown()  # still waiting for a FreeCAD task: nothing to ask, just leave nothing behind
+                elif etype == QtCore.QEvent.Close and self.active:
                     # quitting (⌘Q, Dock, app menu, red button): ask about unsaved files while InCad still shows
                     # (Cancel keeps everything), then switch off — FreeCAD saves its layout right after — and
                     # delete InCad's Qt objects now: macOS ends the process inside this close (probed crash)
@@ -1515,6 +1521,9 @@ def _release_python_markers():
                 o.setProperty("_PySideInvalidatePtr", None)
         except RuntimeError:
             pass
+
+
+_FILTERED_EVENTS = (QtCore.QEvent.Resize, QtCore.QEvent.Close, QtCore.QEvent.ChildAdded, QtCore.QEvent.Show)
 
 
 def _resume_after_cancelled_quit():

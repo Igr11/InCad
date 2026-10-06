@@ -208,7 +208,25 @@ def test_9_close_all_documents():
         assert "could not update its panels" not in f.read()
 
 
+def test_8e_event_filter_ignores_teardown_events():
+    """Widgets being destroyed on quit send events through InCad's filter: it must not search for widgets then
+    (a findChild on half-destroyed widgets aborted FreeCAD at exit)."""
+    sh = s()
+    calls = []
+    real = sh._mdi
+    sh._mdi = lambda: (calls.append(1), real())[1]
+    try:
+        vp = real().viewport()
+        for etype in (QtCore.QEvent.ChildRemoved, QtCore.QEvent.Destroy, QtCore.QEvent.Paint,
+                      QtCore.QEvent.Hide, QtCore.QEvent.DeferredDelete):
+            sh.eventFilter(vp, QtCore.QEvent(etype))
+            sh.eventFilter(Gui.getMainWindow(), QtCore.QEvent(etype))
+    finally:
+        del sh._mdi
+    assert not calls, len(calls)
+
+
 harness.run([test_0_activate, test_1_new_part, test_2_switching_documents_updates_panels, test_3_parameters, test_3b_typing_a_parameter_like_a_user,
              test_4_plain_file, test_5_theme_toggle, test_6_ribbon_size_persists, test_7_std_commands_exist,
              test_8_failed_command_then_undo, test_8b_real_cmd_z_undoes, test_8c_quit_is_in_incads_file_menu,
-             test_8d_cmd_w_uses_incads_save_dialog, test_9_close_all_documents])
+             test_8d_cmd_w_uses_incads_save_dialog, test_8e_event_filter_ignores_teardown_events, test_9_close_all_documents])

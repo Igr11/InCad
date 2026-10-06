@@ -71,7 +71,61 @@ def step3():
         QtCore.QTimer.singleShot(800, lambda: Gui.getMainWindow().close())
 
 
+def answer_freecad_prompts():
+    """Answer FreeCAD's own message boxes during the quit like a user: Discard, else Yes/OK."""
+    from PySide6 import QtWidgets
+    box = QtWidgets.QApplication.activeModalWidget()
+    if isinstance(box, QtWidgets.QMessageBox):
+        roles = {box.buttonRole(b): b for b in box.buttons()}
+        for role in (QtWidgets.QMessageBox.DestructiveRole, QtWidgets.QMessageBox.YesRole,
+                     QtWidgets.QMessageBox.AcceptRole):
+            if role in roles:
+                roles[role].click()
+                break
+    QtCore.QTimer.singleShot(300, answer_freecad_prompts)
+
+
+def quit_now():
+    import os
+    from PySide6 import QtWidgets
+    shell.SAVE_ASK = lambda files: ("discard", [])
+    for d in App.listDocuments().values():
+        d.clearUndos()
+        g = Gui.getDocument(d.Name)
+        if g is not None:
+            g.Modified = False
+    answer_freecad_prompts()
+    if os.environ.get("INCAD_QUIT") == "menu":
+        menu = Gui.getMainWindow().menuBar().findChild(QtWidgets.QMenu, shell.MENU_PREFIX + "File")
+        acts = [a for a in menu.actions() if a.text() == "Quit"] if menu is not None else []
+        if acts:
+            QtCore.QTimer.singleShot(500, acts[0].trigger)
+            return
+    QtCore.QTimer.singleShot(500, lambda: Gui.getMainWindow().close())
+
+
+def waiting_step():
+    """InCad chosen while a FreeCAD task (Pad) is open: it waits, then FreeCAD is quit."""
+    import Part
+    Gui.activateWorkbench("PartDesignWorkbench")
+    doc = App.newDocument("PD")
+    body = doc.addObject("PartDesign::Body", "Body")
+    sk = body.newObject("Sketcher::SketchObject", "Sketch")
+    sk.AttachmentSupport = [([o for o in body.Origin.OriginFeatures if o.Role == "XY_Plane"][0], "")]
+    sk.MapMode = "FlatFace"
+    sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5))
+    doc.recompute()
+    Gui.Selection.addSelection(doc.Name, sk.Name)
+    Gui.runCommand("PartDesign_Pad")
+    QtCore.QTimer.singleShot(1500, lambda: (Gui.activateWorkbench("InCadWorkbench"),
+                                            QtCore.QTimer.singleShot(1500, quit_now)))
+
+
 def step1():
+    import os
+    if os.environ.get("INCAD_QUIT_SETUP") == "waiting":
+        QtCore.QTimer.singleShot(1500, waiting_step)
+        return
     prefs.set_remember_new_choice(True)
     Gui.activateWorkbench("InCadWorkbench")
     QtCore.QTimer.singleShot(1500, lambda: (commands.REGISTRY.run("file.new"),
