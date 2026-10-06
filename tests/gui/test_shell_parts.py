@@ -172,6 +172,10 @@ def test_8c_quit_is_in_incads_file_menu():
     assert acts[0].shortcut().toString() in ("Ctrl+Q", "Meta+Q"), acts[0].shortcut().toString()
     assert acts[0].menuRole() == QtGui.QAction.NoRole
     assert "Std_Quit" in sh.TAKEN_SHORTCUTS
+    # the app menu's Quit is InCad's: FreeCAD's Exit sits in a hidden menu where a real click never arrives
+    roles = [a.objectName() for a in Gui.getMainWindow().findChildren(QtGui.QAction)
+             if a.menuRole() == QtGui.QAction.QuitRole]
+    assert roles == ["InCadAppQuit"], roles
 
 
 def test_8d_cmd_w_uses_incads_save_dialog():

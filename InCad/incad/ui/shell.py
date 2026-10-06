@@ -203,6 +203,10 @@ class Shell(QtCore.QObject):
         for name in TAKEN_SHORTCUTS:
             for a in _std_actions(name):
                 a.setShortcut(QtGui.QKeySequence())
+        # macOS wires the app menu's Quit to the first QuitRole action: FreeCAD's Exit sits in its hidden File menu,
+        # where a click on that Quit never reaches Qt (probed with a real menu click). InCad's takes the slot.
+        for a in _std_actions("Std_Quit"):
+            a.setMenuRole(QAction.NoRole)
         mdi = self._mdi()
         if mdi is not None:
             mdi.setViewMode(QtWidgets.QMdiArea.TabbedView)
@@ -221,6 +225,8 @@ class Shell(QtCore.QObject):
         for name, seq in saved.items():
             for a in _std_actions(name):
                 a.setShortcut(QtGui.QKeySequence(seq))
+        for a in _std_actions("Std_Quit"):
+            a.setMenuRole(QAction.QuitRole)
 
     def _restore_mdi(self, saved):
         mdi = self._mdi()
@@ -420,9 +426,13 @@ class Shell(QtCore.QObject):
                     act.setShortcut(QtGui.QKeySequence(cmd.shortcut))
                 act.triggered.connect(lambda _=False, i=cmd_id: self.registry.run(i))
                 if cmd_id == "file.quit":
-                    # macOS keeps FreeCAD's own Quit in the app menu (QuitRole goes to the first one): ours stays a
-                    # normal File item that owns ⌘Q (probed: with QuitRole, ⌘Q did nothing)
+                    # ours stays a normal File item that owns ⌘Q; a second one, without a shortcut, becomes the app
+                    # menu's Quit (macOS moves the QuitRole action there)
                     act.setMenuRole(QAction.NoRole)
+                    app_quit = menu.addAction(cmd.label)
+                    app_quit.setObjectName("InCadAppQuit")
+                    app_quit.setMenuRole(QAction.QuitRole)
+                    app_quit.triggered.connect(lambda _=False: self.registry.run("file.quit"))
             if title == "View":
                 menu.addMenu(self.ribbon.size_menu(menu))
             bar.addAction(menu.menuAction())

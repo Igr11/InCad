@@ -41,6 +41,30 @@ def step3():
             QtCore.QTimer.singleShot(300, lambda: QTest.keyClick(QtWidgets.QApplication.focusWidget() or mw,
                                                                 QtCore.Qt.Key_Q, QtCore.Qt.ControlModifier))
         QtCore.QTimer.singleShot(800, press)
+    elif os.environ.get("INCAD_QUIT") == "menu":   # InCad's File > Quit
+        from PySide6 import QtWidgets
+        menu = Gui.getMainWindow().menuBar().findChild(QtWidgets.QMenu, shell.MENU_PREFIX + "File")
+        act = [a for a in menu.actions() if a.text() == commands.REGISTRY.get("file.quit").label][0]
+        QtCore.QTimer.singleShot(800, act.trigger)
+    elif os.environ.get("INCAD_QUIT") == "appmenu":  # the app menu's Quit item (the QuitRole action)
+        from PySide6.QtGui import QAction
+        acts = [a for a in Gui.getMainWindow().findChildren(QAction) if a.menuRole() == QAction.QuitRole]
+        open(os.environ["INCAD_QUIT_LOG"], "w").write(repr([(a.text(), a.isEnabled(), a.isVisible()) for a in acts]))
+        QtCore.QTimer.singleShot(800, acts[0].trigger)
+    elif os.environ.get("INCAD_QUIT") == "outside":  # quit is driven from outside (a real menu click)
+        log = open(os.environ["INCAD_QUIT_READY"] + ".events", "w", buffering=1)
+
+        class Spy(QtCore.QObject):
+            def eventFilter(self, obj, ev):
+                if ev.type() in (QtCore.QEvent.Close, QtCore.QEvent.Quit):
+                    log.write("%s %s %s accepted=%s\n" % (ev.type(), type(obj).__name__, obj.objectName(),
+                                                         ev.isAccepted()))
+                return False
+        global _spy
+        _spy = Spy()
+        QtCore.QCoreApplication.instance().installEventFilter(_spy)
+        QtCore.QCoreApplication.instance().aboutToQuit.connect(lambda: log.write("aboutToQuit\n"))
+        open(os.environ["INCAD_QUIT_READY"], "w").write("ready")
     elif os.environ.get("INCAD_QUIT") == "app":    # like Quit from the Dock / app menu
         QtCore.QTimer.singleShot(800, lambda: QtCore.QCoreApplication.instance().quit())
     else:
