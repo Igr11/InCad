@@ -138,3 +138,21 @@ class CapsTest(unittest.TestCase):
         self.assertEqual(caps.faces(section.adjusted(plane, 50.0)), [])
         caps.mesh = None  # no mesh: the solid answers
         self.assertAlmostEqual(sum(f.Area for f in caps.faces(plane)), 60, places=3)
+
+
+class HatchTest(unittest.TestCase):
+    def test_hatch_stays_inside_the_loops(self):
+        from incad.core import section
+        import Part
+        box = Part.makeBox(20, 10, 10).cut(Part.makeCylinder(2, 10, App.Vector(10, 5, 0)))
+        plane = App.Placement(App.Vector(0, 0, 5), App.Rotation())  # z = 5: the box minus the bore
+        caps = section.Caps(box)
+        loops = caps.loops(plane)
+        segs = section.hatch(loops, plane, 1.0)
+        self.assertGreater(len(segs), 20)
+        face = caps.faces(plane)[0]
+        for a, b in segs:
+            mid = (a + b) * 0.5
+            self.assertAlmostEqual(mid.z, 5.0, places=6)
+            self.assertTrue(face.isInside(mid, 1e-4, True), mid)  # never across the bore
+        self.assertEqual(section.hatch([], plane, 1.0), [])

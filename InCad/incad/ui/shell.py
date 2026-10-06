@@ -1990,8 +1990,14 @@ class Shell(QtCore.QObject):
         else:
             view.toggleClippingPlane(0)
         view.toggleClippingPlane(1, False, True, clip)  # no drag handle: destroying it crashes FreeCAD (probed)
-        self._section_display[0].set_faces(faces, kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0),
-                                           caps.polygons)
+        shift = kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0)
+        self._section_display[0].set_faces(faces, shift, caps.polygons)
+        try:  # hatching, as Inventor draws cut material
+            loops = caps.loops(placement)
+            # between the plane and the face (nearer the viewer than the face, still on the kept side)
+            self._section_display[0].set_hatch(section.hatch(loops, placement, shape.BoundBox.DiagonalLength / 45.0), shift * 0.5)
+        except Exception as e:
+            log.logger().warning("Section hatch: %s", e)
 
     def section_on(self):
         return self._section_display is not None

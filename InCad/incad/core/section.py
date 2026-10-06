@@ -303,3 +303,38 @@ def _loops(segments, tol):
         if len(chain) >= 3 and (chain[-1] - chain[0]).Length < reach:
             loops.append(chain)
     return loops
+
+
+def hatch(loops, placement, spacing, angle_deg=45.0):
+    """Hatch lines across the cut (Inventor draws material that way): 3D segments inside the loops, parallel
+    lines `spacing` apart at `angle_deg` in the plane, inside/outside by the even-odd rule."""
+    import math
+    if not loops or spacing <= 0:
+        return []
+    inv = placement.Rotation.inverted()
+    base = placement.Base
+    flat = [[inv.multVec(p - base) for p in loop] for loop in loops]
+    a = math.radians(angle_deg)
+    d = App.Vector(math.cos(a), math.sin(a), 0)   # along the lines
+    n2 = App.Vector(-math.sin(a), math.cos(a), 0)  # across them
+    ks = [p.dot(n2) for loop in flat for p in loop]
+    lo, hi = min(ks), max(ks)
+    out = []
+    k = lo + spacing / 2.0
+    while k < hi:
+        hits = []
+        for loop in flat:
+            for i in range(len(loop)):
+                p, q = loop[i], loop[(i + 1) % len(loop)]
+                dp, dq = p.dot(n2) - k, q.dot(n2) - k
+                if (dp < 0) != (dq < 0):
+                    t = dp / (dp - dq)
+                    hits.append((p + (q - p) * t).dot(d))
+        hits.sort()
+        for i in range(0, len(hits) - 1, 2):
+            s0, s1 = hits[i], hits[i + 1]
+            if s1 - s0 > 1e-6:
+                out.append((base + placement.Rotation.multVec(d * s0 + n2 * k),
+                            base + placement.Rotation.multVec(d * s1 + n2 * k)))
+        k += spacing
+    return out

@@ -30,7 +30,27 @@ class SectionDisplay:
         for n in (ec, style, self._edge_coords, self._edges):
             outline.addChild(n)
         self.node.addChild(outline)
+        hatch = coin.SoSeparator()
+        hc = coin.SoBaseColor()
+        hc.rgb.setValue(0.25, 0.25, 0.25)
+        hs = coin.SoDrawStyle()
+        hs.lineWidth = 1.0
+        self._hatch_coords = coin.SoCoordinate3()
+        self._hatch = coin.SoLineSet()
+        for n in (hc, hs, self._hatch_coords, self._hatch):
+            hatch.addChild(n)
+        self.node.addChild(hatch)
         view.getSceneGraph().addChild(self.node)
+
+    def set_hatch(self, segments, shift):
+        pts, counts = [], []
+        for a, b in segments:
+            pts += [(a.x + shift.x, a.y + shift.y, a.z + shift.z), (b.x + shift.x, b.y + shift.y, b.z + shift.z)]
+            counts.append(2)
+        self._hatch_coords.point.setValues(0, len(pts), pts)
+        self._hatch_coords.point.setNum(len(pts))
+        self._hatch.numVertices.setValues(0, len(counts), counts)
+        self._hatch.numVertices.setNum(len(counts))
 
     def set_faces(self, faces, shift, polygons=()):
         """faces: the cap faces; polygons: loops drawn as they are (no face could be made of them);
