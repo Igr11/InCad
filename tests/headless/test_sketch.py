@@ -360,13 +360,18 @@ class ReplacedDimensionTest(unittest.TestCase):
         self.doc.recompute()
         self.assertEqual(sketch.vanished_dimensions(self.sk, self.known), ["d0"])
 
-    def test_renaming_is_one_undo_step(self):
+    def test_while_the_tools_undo_step_is_open_only_the_name_is_put_back(self):
+        sketch.set_dimension(self.doc, "d0", "25 mm")
+        known = sketch.dimension_snapshot(self.sk)
+        self.doc.openTransaction("Add sketch dimension")  # as FreeCAD's Dimension tool does while placing
         self.replace()
-        self.doc.recompute()
         n = len(self.doc.UndoNames)
-        sketch.reconcile_replaced(self.sk, self.known)
+        self.assertEqual(sketch.reconcile_replaced(self.sk, known), "d0")
         self.assertEqual(self.sk.Constraints[-1].Name, "d0")
-        self.assertGreaterEqual(len(self.doc.UndoNames), n)  # never left half-done outside a transaction
+        self.assertAlmostEqual(self.sk.getDatum("d0").Value, 20)  # the value waits for the tool to finish
+        self.assertEqual(len(self.doc.UndoNames), n)  # nothing of ours committed over the tool's step
+        self.assertTrue(self.doc.HasPendingTransaction)
+        self.doc.commitTransaction()
 
 
 class FriendlyMessageTest(unittest.TestCase):

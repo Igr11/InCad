@@ -368,16 +368,16 @@ def reconcile_replaced(sk, known):
         return None
     name, index, doc = gone[0], fresh[0], sk.Document
     was = known[name]
-    doc.openTransaction("Dimension %s" % name)
-    try:
-        sk.renameConstraint(index, name)
-        if was["expr"]:
-            sk.setExpression("Constraints." + name, was["expr"])
-        elif sk.Constraints[index].Type == was["type"] and abs(sk.Constraints[index].Value - was["value"]) > 1e-9:
-            sk.setDatum(name, App.Units.Quantity(was["value"], "deg" if was["type"] == "Angle" else "mm"))
-    except Exception:
-        doc.abortTransaction()
-        raise
-    doc.commitTransaction()
+    # Never inside an undo step of our own: FreeCAD's Dimension tool keeps its own step open while the dimension
+    # is placed, and opening another breaks its bookkeeping (it then re-adds the dimension on every update —
+    # probed: a sketch full of copies). While that step is open only the name is put back; the value/formula
+    # follows once the tool has committed (the next change).
+    sk.renameConstraint(index, name)
+    if doc.HasPendingTransaction:
+        return name
+    if was["expr"]:
+        sk.setExpression("Constraints." + name, was["expr"])
+    elif sk.Constraints[index].Type == was["type"] and abs(sk.Constraints[index].Value - was["value"]) > 1e-9:
+        sk.setDatum(name, App.Units.Quantity(was["value"], "deg" if was["type"] == "Angle" else "mm"))
     doc.recompute()
     return name

@@ -937,17 +937,8 @@ class Shell(QtCore.QObject):
                     QtCore.QTimer.singleShot(ms, lambda b=box: self.value_box is b and b.take_keyboard())
             elif known and box is not None and self._box_owner == key and box.name in sketches.vanished_dimensions(sk, known):
                 self._close_value_box()  # its dimension is gone (tool cancelled, undo): nothing to apply to
-            added = []
-            if not replaced:
-                if doc.HasPendingTransaction:
-                    added = sketches.name_new_dimensions(doc)
-                else:
-                    doc.openTransaction("Name dimension")  # the name survives undo/redo with the dimension
-                    try:
-                        added = sketches.name_new_dimensions(doc)
-                    finally:
-                        doc.commitTransaction()
-            self._dim_known[key] = sketches.dimension_snapshot(sk)
+            added = [] if replaced else sketches.name_new_dimensions(doc)  # never in an undo step of our own:
+            self._dim_known[key] = sketches.dimension_snapshot(sk)       # the Sketcher tool's step is open
         except Exception as e:
             log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
             return
