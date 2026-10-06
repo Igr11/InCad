@@ -202,6 +202,7 @@ def test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile():
 
 def test_10_delete_removes_selected_dimension_and_feature():
     """Backspace/Delete died with FreeCAD's hidden Edit menu: InCad's Delete works in a sketch and on features."""
+    import Part
     import Sketcher
     sk = Gui.ActiveDocument.getInEdit().Object
     i = sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
