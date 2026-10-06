@@ -67,8 +67,13 @@ def preselect(pairs):
 
 
 def _bodies(doc, text):
+    """Solids named by the picks: bodies, or links to bodies (assembly cuts use links to other files)."""
     out = []
     for obj, sub in parse_picks(doc, text):
+        if obj.TypeId == "App::Link" and not sub:
+            if obj not in out:
+                out.append(obj)
+            continue
         b = body_of(*resolve(obj, sub)) if obj.TypeId != "PartDesign::Body" else obj
         if b is not None and b not in out:
             out.append(b)

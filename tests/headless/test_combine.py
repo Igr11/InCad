@@ -105,3 +105,15 @@ class CombineTest(unittest.TestCase):
         sk.addGeometry(Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 5))
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 25 * 10, places=1)
+
+    def test_a_link_can_be_a_tool(self):
+        link = self.doc.addObject("App::Link", "PinCopy")
+        link.LinkedObject = self.tool
+        link.Placement = App.Placement(App.Vector(5, 0, 0), App.Rotation())
+        self.doc.recompute()
+        f = self.make(tools=link.Name, operation="cut", clearance="0.2 mm", apply_to="cavity")
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.2 ** 2 * 10, places=1)
+        f = combine.update(self.doc, f, dict(combine.read(self.doc, f), clearance="0 mm"))
+        self.doc.recompute()
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 16 * 10, places=1)
+        self.assertEqual(combine.read(self.doc, f)["tools"], link.Name)
