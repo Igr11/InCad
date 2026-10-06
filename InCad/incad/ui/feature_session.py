@@ -33,6 +33,8 @@ class FeatureSession(QtCore.QObject):
         if doc.HasPendingTransaction:
             doc.commitTransaction()
         self._broken = safe.snapshot_broken(doc)
+        if not self.creating:  # every document's undo step opens before anything changes
+            self._join_documents(self.kind.read(doc, self.feature))
         doc.openTransaction(self.kind.TITLE)
         safe.set_busy(self.kind.TITLE)
         try:
@@ -44,7 +46,6 @@ class FeatureSession(QtCore.QObject):
                     self._created_values = dict(values)
             else:
                 values = self.kind.read(doc, self.feature)
-                self._join_documents(values)
             doc.recompute()
         except Exception as e:
             log.report("error", "%s could not start: %s" % (self.kind.TITLE, e))
@@ -270,13 +271,15 @@ class FeatureSession(QtCore.QObject):
         self._applied = values
         try:
             if self.creating and (self.feature is None or self._needs_recreate(values)):
+                # roll back every document, then open all the undo steps again before changing anything
+                # (opening a step in one more document commits what is pending in the others)
                 self.doc.abortTransaction()
+                self._abort_extras(reopen=False)
                 self.doc.recompute()
                 model.relink(self.doc)
+                self._join_documents(values)
                 self.doc.openTransaction(self.kind.TITLE)
-                self._abort_extras(reopen=True)
                 self.feature = None  # the abort removed it; stays None if the new one fails
-            self._join_documents(values)
             if self.feature is None:
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
@@ -332,7 +335,7 @@ class FeatureSession(QtCore.QObject):
             if not d.UndoMode:
                 d.UndoMode = 1
             if d.HasPendingTransaction:
-                d.commitTransaction()
+                d.abortTransaction()  # an empty step FreeCAD pre-opened for linked documents
             d.openTransaction(self.kind.TITLE)
             self._extra.append(d)
 

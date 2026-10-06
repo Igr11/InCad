@@ -103,3 +103,15 @@ class ConstraintsTest(unittest.TestCase):
         self.assertIn("conflict", str(ctx.exception).lower())
         self.assertTrue(self.block.Placement.isSame(before, 1e-6))
         self.assertEqual(len([j for j in assembly.joints(self.doc) if C.claims(j)]), 1)
+
+    def test_mate_and_flush_from_awkward_starts(self):
+        for kind, pitch_roll, check in ((C.MATE, (0, -90, 0), lambda bb: abs(bb.ZMin - 10) < 1e-4),
+                                        (C.FLUSH, (0, 90, 0), lambda bb: abs(bb.ZMax - 10) < 1e-4),
+                                        (C.FLUSH, (0, 0, 90), lambda bb: abs(bb.ZMax - 10) < 1e-4)):
+            for j in [j for j in assembly.joints(self.doc) if C.claims(j)]:
+                self.doc.removeObject(j.Name)
+            self.block.Placement = App.Placement(App.Vector(50, 40, 25), App.Rotation(*pitch_roll))
+            self.doc.recompute()
+            second = face(self.block, z_is(0)) if kind is C.MATE else face(self.block, z_is(10))
+            self.make(kind, first=face(self.plate, z_is(10)), second=second)
+            self.assertTrue(check(self.bb()), (kind.TITLE, pitch_roll, self.bb()))

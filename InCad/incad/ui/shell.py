@@ -1098,6 +1098,8 @@ class Shell(QtCore.QObject):
         path = link.LinkedObject.Document.FileName
         part = link.LinkedObject.Document
         if Gui.getDocument(part.Name) is None or Gui.getDocument(part.Name).ActiveView is None:
+            if part.FileName:
+                part.save()  # changes InCad made there (assembly cuts) belong to that file: never drop them
             App.closeDocument(part.Name)
             part = App.openDocument(path)
             link.Document.recompute()

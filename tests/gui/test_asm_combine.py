@@ -109,11 +109,40 @@ def test_2_ok_writes_the_pocket_and_it_follows_the_tool():
     assert not body.Shape.isInside(App.Vector(7, 7, 9), 1e-6, True)
 
 
-def test_3_cleanup():
+def test_3_base_change_then_cancel_leaves_both_parts_unchanged():
+    a, b = assembly.components(asm())
+    block_doc = b.LinkedObject.Document
+    plate_before, block_before = plate_volume(), document.primary_body(block_doc).Shape.Volume
+    records = len([o for o in asm().Objects if hasattr(o, "InCadAsmCut")])
+    select_both()
+    commands.REGISTRY.run("assembly.combine")
+    harness.pump(1500)
+    dialog().set_pick("base", b.Name)
+    dialog().set_pick("tools", a.Name)
+    harness.pump(1500)
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    assert abs(plate_volume() - plate_before) < 1e-6, (plate_volume(), plate_before)
+    assert abs(document.primary_body(block_doc).Shape.Volume - block_before) < 1e-6
+    assert len([o for o in asm().Objects if hasattr(o, "InCadAsmCut")]) == records
+
+
+def test_4_opening_a_component_keeps_its_unsaved_cut():
+    volume = plate_volume()
+    a = assembly.components(asm())[0]
+    s().open_component(a)
+    harness.pump(1500)
+    assert abs(plate_volume() - volume) < 1e-6, (plate_volume(), volume)
+    assert App.ActiveDocument is plate_doc()
+
+
+def test_5_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
     shutil.rmtree(ST["dir"], ignore_errors=True)
 
 
 harness.run([test_0_setup, test_1_cancel_leaves_the_part_file_unchanged,
-             test_2_ok_writes_the_pocket_and_it_follows_the_tool, test_3_cleanup])
+             test_2_ok_writes_the_pocket_and_it_follows_the_tool,
+             test_3_base_change_then_cancel_leaves_both_parts_unchanged,
+             test_4_opening_a_component_keeps_its_unsaved_cut, test_5_cleanup])
