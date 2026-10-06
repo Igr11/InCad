@@ -58,6 +58,10 @@ class FeatureSession(QtCore.QObject):
         self.dialog.applied.connect(self.apply)
         self.dialog.cancelled.connect(self.cancel)
         self.dialog.activePickChanged.connect(lambda _key: self._sync_pick_view(seed=True))
+        self._refresh_options()
+        if self.feature is not None:
+            self.dialog.set_values({f.key: values.get(f.key) for f in self.kind.FIELDS if f.kind == "combo"})
+        self._applied = self.dialog.values()
         self._label_params()
         self.dialog.move(16, 16)
         self.dialog.show()
@@ -76,9 +80,24 @@ class FeatureSession(QtCore.QObject):
         return True
 
     def _shown(self, field):
-        if field.show_if is None:
-            return True
-        return self.dialog.values().get(field.show_if[0]) in field.show_if[1]
+        from incad.features.common import shown
+        return shown(field, self.dialog.values())
+
+    def _refresh_options(self):
+        """Combos whose items depend on other values (e.g. thread sizes of the chosen standard)."""
+        options = getattr(self.kind, "options", None)
+        if options is None or self.dialog is None:
+            return
+        values = self.dialog.values()
+        for f in self.kind.FIELDS:
+            if f.kind == "combo":
+                try:
+                    items = options(f.key, values)
+                except Exception as e:
+                    log.report("warning", "Could not list %s: %s" % (f.label, e))
+                    items = None
+                if items is not None:
+                    self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
     _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge")
@@ -228,6 +247,8 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_param_name(f.key, model.bound_parameter(target, prop) if target else None)
 
     def _changed(self, values):
+        self._refresh_options()
+        values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
         self._timer.start()
 

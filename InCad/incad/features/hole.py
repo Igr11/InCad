@@ -76,7 +76,7 @@ def thread_sizes(std):
 
 def options(key, values):
     if key == "thread_size":
-        return [(n, n) for n in thread_sizes(values.get("thread_standard") or "iso")]
+        return [("", "Auto (from Diameter)")] + [(n, n) for n in thread_sizes(values.get("thread_standard") or "iso")]
     return None
 
 

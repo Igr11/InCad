@@ -7,11 +7,20 @@ from dataclasses import dataclass
 class Field:
     key: str
     label: str
-    kind: str                # value_length | value_angle | choice | bool | pick | picks
+    kind: str                # value_length | value_angle | choice | combo | bool | pick | picks
     choices: tuple = ()      # ((value, label), …) for choice
     default: object = None
-    show_if: tuple = None    # (other key, (values…)): shown only when that field has one of the values
+    show_if: tuple = None    # (other key, (values…)) or a tuple of those (all must hold)
     pick: str = ""           # pick fields: edge | face | feature | axis | plane | vertex | sketch | circular_edge
+
+
+def shown(field, values):
+    """Is the field shown for these values? show_if is (key, values) or a tuple of those (all must hold)."""
+    cond = field.show_if
+    if cond is None:
+        return True
+    conds = cond if isinstance(cond[0], tuple) else (cond,)
+    return all(values.get(k) in allowed for k, allowed in conds)
 
 
 def closed_profile(sk):

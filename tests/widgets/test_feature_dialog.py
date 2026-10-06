@@ -139,3 +139,47 @@ class PickFieldsTest(unittest.TestCase):
         self.d.field("edges").click()
         self.assertIsNone(self.d.active_pick())
         self.assertEqual(seen, ["edges", ""])
+
+
+COMBO_FIELDS = (
+    Field("threaded", "Threaded", "bool", default=False),
+    Field("standard", "Standard", "combo", (("iso", "ISO"), ("unc", "UNC")), "iso", show_if=("threaded", (True,))),
+    Field("size", "Size", "combo", (), "", show_if=("threaded", (True,))),
+    Field("deep", "Deep", "value_length", default="1 mm", show_if=(("threaded", (True,)), ("standard", ("unc",)))),
+)
+
+
+class ComboFieldsTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Hole", "incad", COMBO_FIELDS,
+                               {"threaded": True, "standard": "iso", "size": "", "deep": "1 mm"})
+        self.seen = []
+        self.d.changed.connect(lambda v: self.seen.append(dict(v)))
+
+    def test_options_and_value(self):
+        self.d.set_options("size", [("M6", "M6"), ("M8", "M8")])
+        self.assertEqual(self.d.values()["size"], "M6")
+        self.d.set_values({"size": "M8"})
+        self.assertEqual(self.d.values()["size"], "M8")
+        self.d.set_options("size", [("M8", "M8"), ("M10", "M10")])
+        self.assertEqual(self.d.values()["size"], "M8")  # still offered: kept
+        self.d.set_options("size", [("1/4", "1/4")])
+        self.assertEqual(self.d.values()["size"], "1/4")
+
+    def test_user_change_emits_once(self):
+        self.d.set_options("size", [("M6", "M6"), ("M8", "M8")])
+        self.seen.clear()
+        self.d.field("size").setCurrentIndex(1)
+        self.assertEqual(len(self.seen), 1)
+        self.assertEqual(self.seen[0]["size"], "M8")
+        self.seen.clear()
+        self.d.set_options("size", [("M8", "M8"), ("M10", "M10")])
+        self.assertEqual(self.seen, [])  # programmatic: no signal
+
+    def test_and_conditions(self):
+        self.assertFalse(self.d.row_visible("deep"))
+        self.d.field("standard").setCurrentIndex(1)
+        self.assertTrue(self.d.row_visible("deep"))
+        self.d.field("threaded").setChecked(False)
+        self.assertFalse(self.d.row_visible("deep"))

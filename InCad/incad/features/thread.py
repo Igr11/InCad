@@ -110,7 +110,7 @@ def _spec(values, diameter, internal, clearance):
 def options(key, values):
     if key == "size":
         std = values.get("standard") or "iso"
-        return [(s, s) for s in standards.sizes(std)]
+        return [("", "Auto (from the face)")] + [(s, s) for s in standards.sizes(std)]
     return None
 
 

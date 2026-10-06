@@ -125,6 +125,13 @@ class FeatureDialog(QtWidgets.QFrame):
             w = ChoiceField(f.choices, self)
             w.changed.connect(self._emit)
             return w
+        if f.kind == "combo":
+            w = QtWidgets.QComboBox(self)
+            w.setMinimumWidth(130)
+            for value, label in f.choices:
+                w.addItem(label, value)
+            w.currentIndexChanged.connect(lambda _=0: self._emit())
+            return w
         if f.kind == "bool":
             w = QtWidgets.QCheckBox(self)
             w.toggled.connect(lambda _=False: self._emit())
@@ -160,6 +167,8 @@ class FeatureDialog(QtWidgets.QFrame):
                 out[key] = w.text().strip()
             elif f.kind == "choice":
                 out[key] = w.value()
+            elif f.kind == "combo":
+                out[key] = w.currentData() if w.currentIndex() >= 0 else ""
             elif f.kind == "bool":
                 out[key] = w.isChecked()
             else:
@@ -177,6 +186,10 @@ class FeatureDialog(QtWidgets.QFrame):
                     w.setText(str(value))
                 elif f.kind == "choice":
                     w.set_value(value)
+                elif f.kind == "combo":
+                    i = w.findData(value)
+                    if i >= 0:
+                        w.setCurrentIndex(i)
                 elif f.kind == "bool":
                     w.setChecked(bool(value))
                 else:
@@ -192,9 +205,10 @@ class FeatureDialog(QtWidgets.QFrame):
             self.changed.emit(self.values())
 
     def _update_visibility(self):
+        from incad.features.common import shown as _shown
         values = self.values()
         for key, f in self._fields.items():
-            shown = f.show_if is None or values.get(f.show_if[0]) in f.show_if[1]
+            shown = _shown(f, values)
             for w in self._rows[key]:
                 w.setVisible(shown)
 
@@ -250,6 +264,22 @@ class FeatureDialog(QtWidgets.QFrame):
 
     def pick_text(self, key):
         return self._widgets[key].text()
+
+    def set_options(self, key, options):
+        """Replace a combo's items; keeps the current value when still offered, else the first. No signal."""
+        w = self._widgets[key]
+        current = w.currentData()
+        was = self._loading
+        self._loading = True
+        try:
+            w.clear()
+            for value, label in options:
+                w.addItem(label, value)
+            i = w.findData(current)
+            w.setCurrentIndex(i if i >= 0 else (0 if w.count() else -1))
+        finally:
+            self._loading = was
+        self._update_visibility()
 
     def set_choice_enabled(self, key, value, enabled):
         self._widgets[key].button(value).setEnabled(enabled)

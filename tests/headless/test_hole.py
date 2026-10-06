@@ -132,4 +132,5 @@ class HoleTest(unittest.TestCase):
     def test_thread_size_options_follow_the_standard(self):
         sizes = [v for v, _ in hole.options("thread_size", {"thread_standard": "unc"})]
         self.assertIn("1/4", sizes)
+        self.assertEqual(sizes[0], "")  # Auto
         self.assertIn("M8x1.25", [v for v, _ in hole.options("thread_size", {"thread_standard": "iso"})])
