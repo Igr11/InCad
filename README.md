@@ -54,3 +54,5 @@ Logs: ~/Library/Logs/InCad.log
   Ball): pick the items on the components in the 3D view. Offsets and angles are parameters.
 - Ground / unground a component from the ribbon or the right-click menu. Double-click a component in the browser
   to open its file. An assembly is saved before the first part is placed (FreeCAD links need a file).
+- Combine (Assemble ▸ Component): cut a component by others with a print clearance. The pocket is written into
+  the cut part's own file and follows the tools when they move or change. Save the part files with the assembly.

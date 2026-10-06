@@ -982,6 +982,12 @@ class Shell(QtCore.QObject):
             else:
                 self.status.set_prompt("Ready")
         elif is_asm:
+            if self.feature_session is None:
+                from incad.core import asm_cut
+                try:
+                    asm_cut.sync(doc)  # cut parts follow the tools' positions
+                except Exception as e:
+                    log.report("warning", "Could not update the assembly cuts: %s" % e, traceback.format_exc())
             self.status.set_stats(None, None)
             comps = len(assemblies.components(doc))
             self.status.set_prompt("Place part files (P), then constrain them (C)" if comps < 2 else

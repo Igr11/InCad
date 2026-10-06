@@ -14,7 +14,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass", "feature.thread",
             "feature.combine", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
             "constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent", "constrain.insert",
-            "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball"} | set(actions.SKETCHER)
+            "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine"} | set(actions.SKETCHER)
 
 
 class ActionsTest(unittest.TestCase):

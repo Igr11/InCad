@@ -69,7 +69,7 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components"}
 
 
 def resolve(obj, sub):
@@ -133,6 +133,8 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
+    if kind == "component":
+        return tid == "App::Link"
     if kind == "element":
         return sub.startswith(("Face", "Edge", "Vertex")) and el is not None
     if kind == "cylinder":

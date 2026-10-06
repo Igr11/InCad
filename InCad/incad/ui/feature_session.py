@@ -21,6 +21,7 @@ class FeatureSession(QtCore.QObject):
         self._applied = None
         self._closed = False
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
+        self._extra = []  # other documents this dialog changes (assembly cuts): one undo step in each
         self._observing = False
         self._seeding = False
         self._saved_visibility = []
@@ -42,6 +43,7 @@ class FeatureSession(QtCore.QObject):
                     self._created_with = values.get("operation")
             else:
                 values = self.kind.read(doc, self.feature)
+                self._join_documents(values)
             doc.recompute()
         except Exception as e:
             log.report("error", "%s could not start: %s" % (self.kind.TITLE, e))
@@ -268,7 +270,10 @@ class FeatureSession(QtCore.QObject):
                 self.doc.recompute()
                 model.relink(self.doc)
                 self.doc.openTransaction(self.kind.TITLE)
+                self._abort_extras(reopen=True)
                 self.feature = None  # the abort removed it; stays None if the new one fails
+            self._join_documents(values)
+            if self.feature is None:
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
             else:
@@ -307,8 +312,37 @@ class FeatureSession(QtCore.QObject):
             self.doc.recompute()
             model.relink(self.doc)
             self.doc.openTransaction(self.kind.TITLE)
+            self._abort_extras(reopen=True)
         except Exception as e:
             log.report("warning", "Could not roll back the unfinished %s: %s" % (self.kind.TITLE, e))
+
+    def _join_documents(self, values):
+        """Open this dialog's undo step in the other documents it changes (e.g. the part an assembly cut edits)."""
+        hook = getattr(self.kind, "documents", None)
+        if hook is None:
+            return
+        for d in hook(self.doc, values):
+            if d is self.doc or d in self._extra:
+                continue
+            if not d.UndoMode:
+                d.UndoMode = 1
+            if d.HasPendingTransaction:
+                d.commitTransaction()
+            d.openTransaction(self.kind.TITLE)
+            self._extra.append(d)
+
+    def _abort_extras(self, reopen):
+        for d in list(self._extra):
+            try:
+                d.abortTransaction()
+                d.recompute()
+                model.relink(d)
+                if reopen:
+                    d.openTransaction(self.kind.TITLE)
+            except Exception as e:
+                log.report("warning", "Could not roll back %s: %s" % (d.Label, e))
+        if not reopen:
+            self._extra = []
 
     def _needs_recreate(self, values):
         """While creating, Join/Cut switch in place; New Solid and Intersect build a different structure."""
@@ -370,10 +404,14 @@ class FeatureSession(QtCore.QObject):
         try:
             if commit:
                 self.doc.commitTransaction()
+                for d in self._extra:
+                    d.commitTransaction()
+                self._extra = []
             else:
                 self.doc.abortTransaction()
                 self.doc.recompute()
                 model.relink(self.doc)  # objects restored by the abort lose their formula links (FreeCAD quirk)
+                self._abort_extras(reopen=False)
         except Exception as e:
             log.report("warning", "Could not close the %s step cleanly: %s" % (self.kind.TITLE, e))
         safe.set_busy(None)

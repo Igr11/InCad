@@ -93,7 +93,8 @@ def _assembly(doc):
         root.children.append(Node("component", c.Label, c.Name,
                                   detail="grounded" if assembly.is_grounded(c) else "",
                                   tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else "")))
-    rel = [j for j in assembly.joints(doc) if constraints.claims(j)]
+    from incad.core import asm_cut
+    rel = [j for j in assembly.joints(doc) if constraints.claims(j)] + asm_cut.records(doc)
     root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
                               children=[Node("joint", j.Label, j.Name) for j in rel]))
     return [root]

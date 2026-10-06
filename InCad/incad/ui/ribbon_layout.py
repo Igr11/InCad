@@ -34,7 +34,7 @@ LAYOUT = {
                   ["Windows", ["view.parameters"]]]],
     ],
     "assembly": [
-        ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground"]],
+        ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground", "assembly.combine"]],
                       ["Constrain", ["constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent",
                                      "constrain.insert"]],
                       ["Joint", ["joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical",
