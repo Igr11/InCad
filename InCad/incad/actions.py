@@ -587,7 +587,23 @@ def commands():
                  contexts=frozenset({"sketch"})) for i, (lbl, icon, cmd, mode) in SKETCH_VARIANTS.items()]
 
 
+# Short ribbon labels (the full name stays in the tooltip and in split-button menus)
+SHORT = {"sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
+         "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
+         "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",
+         "sketch.rectangle_3pt": "Rectangle", "sketch.rectangle_center_3pt": "Rectangle",
+         "sketch.rectangle_rounded": "Rectangle", "sketch.line_single": "Line", "sketch.polygon": "Polygon",
+         "sketch.triangle": "Polygon", "sketch.square": "Polygon", "sketch.pentagon": "Polygon", "sketch.octagon": "Polygon",
+         "sketch.polygon_n": "Polygon", "sketch.spline_cv": "Spline", "sketch.rect_pattern": "Pattern",
+         "sketch.constraints_toggle": "Constraints", "sketch.show_dof": "Free DOF", "sketch.slice": "Slice",
+         "sketch.project": "Project", "inspect.mass": "Mass", "feature.rect_pattern": "Pattern",
+         "feature.circ_pattern": "Pattern"}
+
+
 def register_all(registry=REGISTRY):
+    import dataclasses
     for cmd in commands():
+        if cmd.id in SHORT and not cmd.short:
+            cmd = dataclasses.replace(cmd, short=SHORT[cmd.id])
         if not registry.has(cmd.id):
             registry.register(cmd)

@@ -19,6 +19,7 @@ class Command:
     transactional: bool = False    # True: runs inside safe.run_safely (one undo step, rollback on failure)
     checkable: bool = False
     is_checked: object = None      # callable() -> bool, for checkable commands
+    short: str = ""                # shorter ribbon label (the full label stays in tooltips and menus)
 
 
 class Registry:

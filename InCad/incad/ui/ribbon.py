@@ -109,7 +109,9 @@ class Ribbon(QtWidgets.QWidget):
         row.setContentsMargins(6, 4, 6, 0)
         row.setSpacing(0)
         count = 0
-        for group_name, ids in groups:
+        for entry in groups:
+            group_name, ids = entry[0], entry[1]
+            stacked = len(entry) > 2 and entry[2] == "stacked"
             cmds = []
             for item in ids:  # a list is one split button: a command and its variants
                 if isinstance(item, (list, tuple)):
@@ -119,7 +121,7 @@ class Ribbon(QtWidgets.QWidget):
                 elif self._registry.has(item):
                     cmds.append(self._registry.get(item))
             if cmds:
-                row.addWidget(self._build_group(group_name, cmds))
+                row.addWidget(self._build_group(group_name, cmds, stacked))
                 count += 1
         if not count:
             page.deleteLater()
@@ -135,31 +137,44 @@ class Ribbon(QtWidgets.QWidget):
         area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         area.setMinimumWidth(0)
-        area.setMinimumHeight(page.sizeHint().height())
+        # room for the sideways scrollbar under the page, so it never covers the group labels
+        area.setMinimumHeight(page.sizeHint().height() + area.horizontalScrollBar().sizeHint().height())
         area.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         area.setStyleSheet("QScrollArea#InCadRibbonPage { background: transparent; border: none; }")
         area.viewport().setAutoFillBackground(False)
         page.setAutoFillBackground(False)
         return area
 
-    def _build_group(self, name, cmds):
+    def _build_group(self, name, cmds, stacked=False):
         frame = QtWidgets.QFrame()
         frame.setObjectName("InCadRibbonGroup")
         col = QtWidgets.QVBoxLayout(frame)
         col.setContentsMargins(6, 0, 6, 0)
         col.setSpacing(2)
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(2)
-        px = themes.ICON_PX[self._size]
-        for cmd in cmds:
+        if stacked:  # Inventor: many small tools as small icons in rows (names in the tooltips)
+            row = QtWidgets.QGridLayout()
+            row.setSpacing(0)
+            px = themes.ICON_PX["small"]
+            rows = {"small": 1, "medium": 2}.get(self._size, 3)
+            row.setContentsMargins(0, 0, 0, 0)
+        else:
+            row = QtWidgets.QHBoxLayout()
+            row.setSpacing(2)
+            px = themes.ICON_PX[self._size]
+        for n, cmd in enumerate(cmds):
             if isinstance(cmd, list):
-                row.addWidget(self._split_button(frame, cmd, px))
+                w = self._split_button(frame, cmd, px)
+                if stacked:
+                    w.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+                    row.addWidget(w, n % rows, n // rows)
+                else:
+                    row.addWidget(w)
                 continue
             b = QtWidgets.QToolButton(frame)
             b.setIcon(themes.icon(cmd.icon, self._theme))
             b.setIconSize(QtCore.QSize(px, px))
-            b.setText(cmd.label)
-            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if self._size == "small"
+            b.setText(cmd.short or cmd.label)
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if self._size == "small" or stacked
                                  else QtCore.Qt.ToolButtonTextUnderIcon)
             tip = cmd.label
             if cmd.shortcut:
@@ -172,9 +187,14 @@ class Ribbon(QtWidgets.QWidget):
                 b.setCheckable(True)
                 b.setChecked(bool(cmd.is_checked and cmd.is_checked()))
             b.clicked.connect(lambda _=False, i=cmd.id: self._run(i))
-            row.addWidget(b)
+            if stacked:
+                b.setFixedSize(px + 8, px + 3)  # tight rows: as tall as one large button with its label
+                row.addWidget(b, n % rows, n // rows)
+            else:
+                row.addWidget(b)
             self._buttons[cmd.id] = b
         col.addLayout(row)
+        col.addStretch(1)  # group labels line up at the bottom whatever the group's height
         if self._size != "small":
             label = QtWidgets.QLabel(name)
             label.setObjectName("InCadRibbonGroupLabel")
@@ -202,7 +222,7 @@ class Ribbon(QtWidgets.QWidget):
 
         def show(cmd):
             b.setIcon(themes.icon(cmd.icon, self._theme))
-            b.setText(cmd.label)
+            b.setText(cmd.short or cmd.label)
             tip = cmd.label
             if cmd.shortcut:
                 tip += " (%s)" % QtGui.QKeySequence(cmd.shortcut).toString(QtGui.QKeySequence.NativeText)

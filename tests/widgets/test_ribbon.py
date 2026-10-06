@@ -1,7 +1,7 @@
 import unittest
 
 from widgets import qtapp
-from incad.qt import QtCore
+from incad.qt import QtCore, QtWidgets
 from incad.core.commands import Command, Registry
 from incad.ui import ribbon_layout
 from incad.ui.ribbon import Ribbon
@@ -129,3 +129,53 @@ class WideRibbonTest(unittest.TestCase):
         rb.resize(600, rb.sizeHint().height())
         rb.show()
         self.assertTrue(rb.button("c39") is not None)
+
+
+class CompactRibbonTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.reg = Registry()
+        for i in range(12):
+            self.reg.register(Command(id="k%d" % i, label="Constraint %d" % i, icon="incad", handler=lambda: None))
+        self.reg.register(Command(id="slot", label="Center-to-Center Slot", short="Slot", icon="incad",
+                                  handler=lambda: None))
+        self.layout = {"sketch": [["Sketch", [["Constrain", ["k%d" % i for i in range(12)], "stacked"],
+                                              ["Create", ["slot"]]]]]}
+
+    def test_stacked_group_is_small_icons_in_rows(self):
+        rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
+        b = rb.button("k0")
+        self.assertEqual(b.toolButtonStyle(), QtCore.Qt.ToolButtonIconOnly)
+        self.assertLess(b.iconSize().width(), 24)
+        rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
+        rb.show()
+        rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
+        self.assertEqual(len(rows), 3)
+
+    def test_short_label_on_the_button(self):
+        rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
+        self.assertEqual(rb.button("slot").text(), "Slot")
+        self.assertIn("Center-to-Center Slot", rb.button("slot").toolTip())
+
+    def test_scrollbar_never_covers_the_labels(self):
+        rb = Ribbon(self.reg, self.layout, mode="sketch", size="medium", theme="light")
+        rb.resize(200, rb.sizeHint().height())
+        rb.show()
+        area = rb.findChild(QtWidgets.QScrollArea, "InCadRibbonPage")
+        page = area.widget()
+        self.assertGreaterEqual(area.height(), page.sizeHint().height() + area.horizontalScrollBar().sizeHint().height())
+
+
+class StackedHeightTest(unittest.TestCase):
+    def test_stacked_group_is_no_taller_than_a_normal_one(self):
+        qtapp.app()
+        reg = Registry()
+        for i in range(10):
+            reg.register(Command(id="k%d" % i, label="K%d" % i, icon="incad", handler=lambda: None))
+        layout = {"sketch": [["Sketch", [["Big", ["k0"]], ["Constrain", ["k%d" % i for i in range(1, 10)], "stacked"]]]]}
+        for size in ("medium", "large"):
+            rb = Ribbon(reg, layout, mode="sketch", size=size, theme="light")
+            rb.show()
+            big = rb.button("k0").parentWidget().sizeHint().height()
+            stacked = rb.button("k1").parentWidget().sizeHint().height()
+            self.assertLessEqual(stacked, big + 4, size)
