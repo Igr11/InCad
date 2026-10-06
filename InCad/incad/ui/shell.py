@@ -98,6 +98,26 @@ class _DocObserver:
         self.callback()
 
 
+class _MeasurePicker:
+    """While Measure is live: any selection change measures again."""
+
+    def __init__(self, shell, mode):
+        self.shell, self.mode = shell, mode
+
+    def _again(self):
+        shell = self.shell
+        QtCore.QTimer.singleShot(0, lambda: shell._measure is self and shell.active and shell.inspect(self.mode))
+
+    def addSelection(self, doc_name, obj_name, sub, pnt):
+        self._again()
+
+    def removeSelection(self, doc_name, obj_name, sub):
+        self._again()
+
+    def clearSelection(self, doc_name):
+        self._again()
+
+
 class _ProfilePicker:
     """Waits for the user to pick a sketch with a closed profile, then starts the feature."""
 
@@ -150,6 +170,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._measure = None  # live Measure (a selection observer) while it is on
         self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
         self._box_focus_hooked = False
 
@@ -513,6 +534,7 @@ class Shell(QtCore.QObject):
 
     def _teardown(self):
         self.stop_slot_tool()
+        self._stop_measuring()
         self._close_feature_session(cancel=True)
         self._close_info_panel()
         self._cancel_profile_pick()
@@ -774,6 +796,11 @@ class Shell(QtCore.QObject):
             self.sketches.cancel_pick()
             self._cancel_profile_pick()
             self.stop_slot_tool()
+            return
+        if self._measure is not None:
+            self._stop_measuring()
+            self._close_info_panel()
+            self.status.set_prompt("Ready")
             return
         if self.feature_session is not None:
             self.feature_session.cancel()
@@ -1411,7 +1438,8 @@ class Shell(QtCore.QObject):
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
-                               getattr(self, "slot_tool", None) is not None or self.feature_session is not None)
+                               getattr(self, "slot_tool", None) is not None or self.feature_session is not None
+                               or self._measure is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -1555,10 +1583,18 @@ class Shell(QtCore.QObject):
         doc = self._doc()
         if not document.is_incad_part(doc):
             raise ValueError("Open an InCad part first")
-        if what == "measure":
+        if what in inspect.MODES or what == "measure":
+            mode = "auto" if what == "measure" else what
+            self._start_measuring(mode)
             pairs = [common.resolve(sel.Object, sub) for sel in Gui.Selection.getSelectionEx(doc.Name)
                      for sub in (sel.SubElementNames or ("",))]
-            rows, title = inspect.measure(pairs), "Measure"
+            try:
+                rows = inspect.measure(pairs, mode)
+            except ValueError as e:
+                self.status.set_prompt("%s (Esc finishes)" % e)
+                self._close_info_panel()
+                return
+            title = "Measure" if mode == "auto" else "Measure %s" % mode.capitalize()
         else:
             from incad.core import materials
             rows = inspect.mass_properties(document.primary_body(doc), materials.density(doc))
@@ -1569,6 +1605,25 @@ class Shell(QtCore.QObject):
         self.info_panel.adjustSize()
         self.info_panel.move(16, parent.height() - self.info_panel.height() - 16)
         self.info_panel.show()
+
+    def _start_measuring(self, mode):
+        """Measure stays live, as in Inventor: every change of the selection measures again (Esc finishes)."""
+        import FreeCADGui as Gui
+        self._stop_measuring()
+        self._measure = _MeasurePicker(self, mode)
+        Gui.Selection.addObserver(self._measure)
+
+    def _stop_measuring(self):
+        import FreeCADGui as Gui
+        if self._measure is not None:
+            try:
+                Gui.Selection.removeObserver(self._measure)
+            except Exception:
+                pass
+            self._measure = None
+
+    def measuring(self):
+        return self._measure.mode if self._measure is not None else None
 
     def _close_info_panel(self):
         if self.info_panel is not None:
@@ -1851,6 +1906,10 @@ def inspect(what):
     if _shell is None or not _shell.active:
         raise ValueError("InCad is not active")
     _shell.inspect(what)
+
+
+def measuring():
+    return _shell.measuring() if _shell is not None and _shell.active else None
 
 
 def _active():

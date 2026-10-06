@@ -40,3 +40,48 @@ class InspectTest(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 inspect.measure(pairs)
             self.assertIn("Select a face", str(ctx.exception))
+
+
+class MeasureModesTest(unittest.TestCase):
+    """Inspect's menu: Distance, Angle, Length (a loop of edges), Area (faces)."""
+    def setUp(self):
+        self.doc = util.new_doc("Im")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)  # 20 x 10 x 10
+        faces = self.pad.Shape.Faces
+        self.top = "Face%d" % ([i + 1 for i, f in enumerate(faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0])
+        self.bottom = "Face%d" % ([i + 1 for i, f in enumerate(faces) if abs(f.CenterOfMass.z) < 1e-6][0])
+        self.top_edges = ["Edge%d" % (i + 1) for i, e in enumerate(self.pad.Shape.Edges)
+                          if abs(e.CenterOfMass.z - 10) < 1e-6]
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_distance(self):
+        rows = dict(inspect.measure([(self.pad, self.top), (self.pad, self.bottom)], "distance"))
+        self.assertEqual(list(rows), ["Distance"])
+        self.assertEqual(rows["Distance"], "10 mm")
+        with self.assertRaises(ValueError) as c:
+            inspect.measure([(self.pad, self.top)], "distance")
+        self.assertIn("two", str(c.exception))
+
+    def test_angle(self):
+        rows = dict(inspect.measure([(self.pad, self.top), (self.pad, self.bottom)], "angle"))
+        self.assertEqual(rows, {"Angle": "0°"})
+        side = "Face%d" % ([i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.normalAt(0, 0).x) > 0.9][0])
+        self.assertEqual(dict(inspect.measure([(self.pad, self.top), (self.pad, side)], "angle")), {"Angle": "90°"})
+
+    def test_length_of_a_loop(self):
+        rows = dict(inspect.measure([(self.pad, e) for e in self.top_edges], "length"))
+        self.assertEqual(rows, {"Length": "60 mm", "Edges": "4"})
+        with self.assertRaises(ValueError):
+            inspect.measure([(self.pad, self.top)], "length")
+
+    def test_area_of_faces(self):
+        rows = dict(inspect.measure([(self.pad, self.top), (self.pad, self.bottom)], "area"))
+        self.assertEqual(rows, {"Area": "400 mm²", "Faces": "2"})
+
+    def test_empty_selection_says_what_to_pick(self):
+        for mode in inspect.MODES:
+            with self.assertRaises(ValueError) as c:
+                inspect.measure([], mode)
+            self.assertEqual(str(c.exception), inspect.PROMPTS[mode])

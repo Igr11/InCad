@@ -255,6 +255,31 @@ def test_section_on_and_off_twice_never_crashes():
         assert not actions.section_on(), "section is off again"
 
 
+
+def test_measure_distance_stays_live_until_esc():
+    """Inspect ▸ Measure ▸ Distance with nothing selected waits; selecting two faces shows the distance; Esc ends."""
+    sh = shell.instance()
+    doc = App.ActiveDocument
+    body = document.primary_body(doc)
+    tip = body.Tip
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("inspect.distance")
+    harness.pump(400)
+    assert shell.measuring() == "distance" and sh.info_panel is None
+    assert "two" in sh.status.texts()["prompt"], sh.status.texts()
+    faces = tip.Shape.Faces
+    zmax, zmin = tip.Shape.BoundBox.ZMax, tip.Shape.BoundBox.ZMin
+    top = [i + 1 for i, f in enumerate(faces) if abs(f.CenterOfMass.z - zmax) < 1e-6][0]
+    bottom = [i + 1 for i, f in enumerate(faces) if abs(f.CenterOfMass.z - zmin) < 1e-6][0]
+    Gui.Selection.addSelection(doc.Name, tip.Name, "Face%d" % top)
+    Gui.Selection.addSelection(doc.Name, tip.Name, "Face%d" % bottom)
+    harness.pump(600)
+    assert sh.info_panel is not None and dict(sh.info_panel.rows()).get("Distance"), sh.info_panel and sh.info_panel.rows()
+    sh._on_escape()
+    harness.pump(300)
+    assert shell.measuring() is None and sh.info_panel is None
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,

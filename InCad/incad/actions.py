@@ -256,6 +256,11 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def _inspect(what):
+    from incad.ui import shell
+    shell.inspect(what)
+
+
 def inspect_measure():
     from incad.ui import shell
     shell.inspect("measure")
@@ -644,6 +649,14 @@ def commands():
                 contexts=frozenset({"part"})),
         Command(id="inspect.measure", label="Measure", icon="measure", handler=inspect_measure,
                 contexts=frozenset({"part"}), tooltip="Select a face, an edge, or two items"),
+        Command(id="inspect.distance", label="Distance", icon="measure", handler=lambda: _inspect("distance"),
+                contexts=frozenset({"part"}), tooltip="Distance between two faces, edges or points"),
+        Command(id="inspect.angle", label="Angle", icon="measure", handler=lambda: _inspect("angle"),
+                contexts=frozenset({"part"}), tooltip="Angle between two flat faces or straight edges"),
+        Command(id="inspect.length", label="Length", icon="measure", handler=lambda: _inspect("length"),
+                contexts=frozenset({"part"}), tooltip="Length of the selected edges (a loop)"),
+        Command(id="inspect.area", label="Area", icon="measure", handler=lambda: _inspect("area"),
+                contexts=frozenset({"part"}), tooltip="Area of the selected faces"),
         Command(id="inspect.mass", label="Mass Properties", icon="mass", handler=inspect_mass,
                 contexts=frozenset({"part"})),
     ] + [Command(id=i, label=lbl, icon=icon, handler=(lambda n=cmd, m=_BASE_MODES.get(i): run_sketch_tool(n, m)),
@@ -653,7 +666,8 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
+SHORT = {"inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
+         "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
          "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",
          "sketch.rectangle_3pt": "Rectangle", "sketch.rectangle_center_3pt": "Rectangle",

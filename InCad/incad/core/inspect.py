@@ -21,9 +21,23 @@ def _element(obj, sub):
     return shape
 
 
-def measure(pairs):
+MODES = ("auto", "distance", "angle", "length", "area")
+PROMPTS = {"auto": "Select a face, an edge, or two items to measure between",
+           "distance": "Select two faces, edges or points to measure the distance between",
+           "angle": "Select two flat faces or straight edges to measure the angle between",
+           "length": "Select edges: their total length (a loop) is measured",
+           "area": "Select faces: their total area is measured"}
+
+
+def measure(pairs, what="auto"):
+    """Rows (label, text) for the selection. what: auto (as the selection suggests), distance, angle, length,
+    area. A selection that doesn't fit the mode raises the mode's prompt."""
+    if what not in MODES:
+        raise ValueError("Unknown measure mode %r" % what)
     if not pairs:
-        raise ValueError("Select a face, an edge, or two items to measure between")
+        raise ValueError(PROMPTS[what])
+    if what != "auto":
+        return _measure_mode(pairs, what)
     shapes = [_element(o, s) for o, s in pairs]
     if len(shapes) == 1:
         sh = shapes[0]
@@ -44,6 +58,43 @@ def measure(pairs):
             rows.append(("Angle", _num(min(angle, 180 - angle), "°")))
         return rows
     raise ValueError("Select one or two items")
+
+
+def _measure_mode(pairs, what):
+    shapes = [_element(o, s) for o, s in pairs]
+    if what == "length":
+        edges = [s for s in shapes if s.ShapeType == "Edge"]
+        if not edges or len(edges) != len(shapes):
+            raise ValueError(PROMPTS[what])
+        rows = [("Length", _num(sum(e.Length for e in edges), "mm"))]
+        if len(edges) > 1:
+            rows.append(("Edges", str(len(edges))))
+        elif edges[0].Curve.TypeId == "Part::GeomCircle":
+            r = edges[0].Curve.Radius
+            rows += [("Radius", _num(r, "mm")), ("Diameter", _num(2 * r, "mm"))]
+        return rows
+    if what == "area":
+        faces = [s for s in shapes if s.ShapeType == "Face"]
+        if not faces or len(faces) != len(shapes):
+            raise ValueError(PROMPTS[what])
+        rows = [("Area", _num(sum(f.Area for f in faces), "mm²"))]
+        if len(faces) > 1:
+            rows.append(("Faces", str(len(faces))))
+        return rows
+    if len(shapes) != 2:
+        raise ValueError(PROMPTS[what])
+    a, b = shapes
+    if what == "distance":
+        rows = [("Distance", _num(a.distToShape(b)[0], "mm"))]
+        if a.ShapeType == "Vertex" and b.ShapeType == "Vertex":
+            d = b.Point - a.Point
+            rows += [("ΔX", _num(abs(d.x), "mm")), ("ΔY", _num(abs(d.y), "mm")), ("ΔZ", _num(abs(d.z), "mm"))]
+        return rows
+    da, db = _direction(a), _direction(b)
+    if da is None or db is None:
+        raise ValueError(PROMPTS[what])
+    angle = math.degrees(da.getAngle(db))
+    return [("Angle", _num(min(angle, 180 - angle), "°"))]
 
 
 def _direction(shape):
