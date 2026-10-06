@@ -351,7 +351,13 @@ def delete_selection():
     if shell.sketch_session().editing() is not None:
         run_std("Std_Delete")
         return
-    names = [o.Name for o in _gui().Selection.getSelection()]
+    from incad.features import common
+    names = []
+    for sel in _gui().Selection.getSelectionEx():
+        for sub in (sel.SubElementNames or ("",)):
+            obj, _ = common.resolve(sel.Object, sub)  # a face of the body names its feature ("Body.Thread.Face5")
+            if obj is not None and obj.Name not in names:
+                names.append(obj.Name)
     if not names:
         row = shell.current_tree_object()
         names = [row] if row else []

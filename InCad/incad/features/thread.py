@@ -208,7 +208,7 @@ def _build(doc, body, f, values):
     offset = _mm(values.get("offset"), 0.0)
     # free end: the helix starts/ends a full pitch outside the part, so the thread runs out cleanly (as a die
     # cuts it); closed end (shoulder, floor): stop half a groove short, never cutting into it
-    lead = (-spec.pitch if offset == 0 else 0.0) if start_free else half
+    lead = (-spec.pitch if offset == 0 else half) if start_free else half
     tail = spec.pitch if end_free else -half
     sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else (f.Profile or None)
     if sk is None:

@@ -375,3 +375,74 @@ class ThreadChamferTest(unittest.TestCase):
         f = self.make(face=cyl_face(small, 5.0), standard="iso", size="M10", chamfer="both", chamfer_size="1 mm")
         g = thread.helpers_of(f)[0]
         self.assertEqual(len(g.Profile[0].Geometry), 3)  # only the free end gets a chamfer, never the shoulder
+
+
+class ThreadEditAndDeleteTest(unittest.TestCase):
+    """User reports: deleting a thread deleted the part; editing kept the previous start; the thread must start
+    at the given distance from the end, not at the rod's beginning."""
+    def setUp(self):
+        self.doc = util.new_doc("Te")
+        self.body = document.make_part(self.doc)
+        self.pad = shaft(self.doc, self.body)  # Ø10 × 20, free tip at z = 20, bottom on the XY plane
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def values(self, **kw):
+        return dict(thread.defaults(self.doc, self.body, None), face=cyl_face(self.pad, 5), size="M10",
+                    clearance="0 mm", **kw)
+
+    def cut_z(self, f):
+        cut = self.pad.Shape.cut(self.body.Shape)
+        return cut.BoundBox.ZMin, cut.BoundBox.ZMax
+
+    def test_offset_from_the_free_tip_without_a_start_face(self):
+        f = thread.create(self.doc, self.body, None, self.values(offset="5 mm", length_mode="distance", length="6 mm"))
+        self.doc.recompute()
+        zmin, zmax = self.cut_z(f)
+        self.assertLess(zmax, 15.05, (zmin, zmax))  # starts exactly 5 mm below the tip (z = 20)
+        self.assertGreater(zmin, 7.0, (zmin, zmax))  # and runs 6 mm down (plus the groove's own width)
+
+    def test_editing_the_start_moves_the_thread(self):
+        f = thread.create(self.doc, self.body, None, self.values(length_mode="distance", length="6 mm"))
+        self.doc.recompute()
+        zmin1, zmax1 = self.cut_z(f)
+        self.assertGreater(zmin1, 12.0)  # from the tip
+        bottom = [i + 1 for i, fc in enumerate(self.pad.Shape.Faces)
+                  if fc.Surface.TypeId == "Part::GeomPlane" and abs(fc.CenterOfMass.z) < 1e-6][0]
+        v = thread.read(self.doc, f)
+        v.update(start_face="%s:Face%d" % (self.pad.Name, bottom), offset="2 mm")
+        thread.update(self.doc, f, v)
+        self.doc.recompute()
+        zmin2, zmax2 = self.cut_z(f)
+        self.assertGreater(zmin2, 1.0, (zmin2, zmax2))   # now 2 mm above the bottom
+        self.assertLess(zmax2, 9.5, (zmin2, zmax2))
+        self.assertEqual(thread.read(self.doc, f)["offset"], "2 mm")
+        v = thread.read(self.doc, f)
+        v.update(start_face="", offset="0 mm")  # and back to the tip
+        thread.update(self.doc, f, v)
+        self.doc.recompute()
+        zmin3, zmax3 = self.cut_z(f)
+        self.assertGreater(zmin3, 12.0, (zmin3, zmax3))
+
+    def test_delete_keeps_the_part_with_features_after_the_thread_and_a_chamfer(self):
+        from incad.core import delete
+        f = thread.create(self.doc, self.body, None, self.values(chamfer="start", chamfer_size="1 mm"))
+        self.doc.recompute()
+        top_sk = self.body.newObject("Sketcher::SketchObject", "TopSk")
+        top_sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        top_sk.MapMode = "FlatFace"
+        top_sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 20), App.Rotation())
+        top_sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3))
+        knob = util.add_pad(self.body, top_sk, 5, name="Knob")
+        self.body.Tip = knob
+        self.doc.recompute()
+        v_with = self.body.Shape.Volume
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertFalse([o for o in self.body.Group if o.TypeId in ("PartDesign::SubtractiveHelix", "PartDesign::Groove")])
+        self.assertIs(self.body.Tip, knob)
+        self.assertTrue(self.body.Shape.isValid())
+        expected = math.pi * 25 * 20 + math.pi * 9 * 5
+        self.assertAlmostEqual(self.body.Shape.Volume, expected, delta=1.0)
+        self.assertGreater(self.body.Shape.Volume, v_with)

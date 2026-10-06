@@ -119,5 +119,58 @@ def test_3_threaded_hole():
     assert h.ThreadSize.startswith("M6"), h.ThreadSize
 
 
+
+def _thread_and_pad():
+    doc = App.ActiveDocument
+    body = document.primary_body(doc)
+    threads = [o for o in body.Group if o.TypeId == "PartDesign::SubtractiveHelix"]
+    pads = [o for o in body.Group if o.TypeId == "PartDesign::Pad"]
+    return doc, body, threads[-1], pads[0]
+
+
+def test_edit_changes_the_start_face_and_offset():
+    """Editing kept the previous start: Start face and Offset must be changeable in the dialog."""
+    from PySide6.QtTest import QTest
+    doc, body, th, pad = _thread_and_pad()
+    cut_before = pad.Shape.cut(body.Shape).BoundBox
+    shell.edit_feature(th)
+    harness.pump(800)
+    dlg = shell.instance().feature_session.dialog
+    assert dlg.field("start_face").isEnabled() and dlg.field("offset").isEnabled(), "start can be edited"
+    ends = [i + 1 for i, f in enumerate(pad.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"]
+    far = min(ends, key=lambda i: abs(pad.Shape.Faces[i - 1].CenterOfMass.z - cut_before.ZMin)
+              if cut_before.ZMin > pad.Shape.BoundBox.ZMin + 1 else -abs(pad.Shape.Faces[i - 1].CenterOfMass.z))
+    dlg.set_active_pick("start_face")
+    harness.pump(300)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, body.Name, "%s.Face%d" % (pad.Name, far))  # a 3D click on the end face
+    harness.pump(600)
+    assert dlg.values().get("start_face") == "%s:Face%d" % (pad.Name, far), (dlg.values().get("start_face"), dlg.error_text())
+    dlg.field("offset").setText("3 mm")
+    dlg.field("offset").editingFinished.emit()
+    harness.pump(800)
+    QTest.mouseClick(dlg.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(800)
+    cut_after = pad.Shape.cut(body.Shape).BoundBox
+    assert abs(cut_after.ZMin - cut_before.ZMin) > 1 or abs(cut_after.ZMax - cut_before.ZMax) > 1, (cut_before, cut_after)
+    from incad.features import thread as th_kind
+    assert th_kind.read(doc, th)["offset"] == "3 mm"
+
+
+def test_delete_from_a_3d_face_selection_removes_only_the_thread():
+    """Delete after clicking the thread in 3D deleted the whole part: the click names the Body."""
+    doc, body, th, pad = _thread_and_pad()
+    v_pad = pad.Shape.Volume
+    face = [i + 1 for i, f in enumerate(th.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"][0]
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, body.Name, "%s.Face%d" % (th.Name, face))  # what a 3D click gives
+    commands.REGISTRY.run("edit.delete")
+    harness.pump(800)
+    assert doc.getObject(th.Name) is None, "the thread is gone"
+    assert doc.getObject(body.Name) is not None and doc.getObject(pad.Name) is not None, "the part stays"
+    assert abs(body.Shape.Volume - v_pad) < 1e-6, body.Shape.Volume
+
+
 harness.run([test_0_setup, test_1_thread_on_a_selected_shaft_face, test_2_edit_the_thread_size,
-             test_3_threaded_hole])
+             test_3_threaded_hole, test_edit_changes_the_start_face_and_offset,
+             test_delete_from_a_3d_face_selection_removes_only_the_thread])
