@@ -73,6 +73,14 @@ def focused():
     return QtWidgets.QApplication.focusWidget()
 
 
+def keyboard():
+    """The widget to type into: the box's field. With the screen locked nothing has focus and QtTest would abort
+    the whole file on a None widget — a clean, environmental FAIL instead."""
+    assert box() is not None and focused() is box().edit, ("the keyboard must be in the box", focused(),
+                                                            "(screen locked?)")
+    return box().edit
+
+
 def test_0_setup():
     prefs.set_remember_new_choice(True)
     Gui.activateWorkbench("InCadWorkbench")
@@ -103,9 +111,8 @@ def test_3_the_dimension_box_has_the_keyboard_and_enter_applies():
     d0, d1 = ST["a_dims"][:2]
     s().open_value_box(sk, d0)
     harness.pump(500)
-    assert box() is not None and focused() is box().edit, focused()
-    QTest.keyClicks(focused(), "15")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    QTest.keyClicks(keyboard(), "15")
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Return)
     harness.pump(600)
     assert box() is None, "Enter closes the box"
     assert abs(sk.getDatum(d0).Value - 15) < 1e-6, sk.getDatum(d0)
@@ -116,8 +123,8 @@ def test_4_esc_cancels():
     d0 = ST["a_dims"][0]
     s().open_value_box(sk, d0)
     harness.pump(500)
-    QTest.keyClicks(focused(), "99")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Escape)
+    QTest.keyClicks(keyboard(), "99")
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Escape)
     harness.pump(500)
     assert box() is None, "Esc closes the box"
     assert abs(sk.getDatum(d0).Value - 15) < 1e-6, "nothing changed"
@@ -129,7 +136,7 @@ def test_5_clicking_another_dimension_inserts_its_name():
     d0, d1 = ST["a_dims"][:2]
     s().open_value_box(sk, d1)
     harness.pump(500)
-    QTest.keyClick(focused(), QtCore.Qt.Key_Backspace)
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Backspace)
     index = [i for i, c in enumerate(sk.Constraints) if c.Name == d0][0]
     real = Gui.Selection.getPreselection
 
@@ -143,9 +150,8 @@ def test_5_clicking_another_dimension_inserts_its_name():
     finally:
         Gui.Selection.getPreselection = real
     harness.pump(300)
-    assert focused() is box().edit, "the keyboard stays in the box"
-    QTest.keyClicks(focused(), "+2")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    QTest.keyClicks(keyboard(), "+2")  # the keyboard stays in the box
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Return)
     harness.pump(600)
     assert box() is None, (box().edit.text(), box().error_text())
     assert abs(sk.getDatum(d1).Value - 17) < 1e-6, sk.getDatum(d1)
@@ -169,9 +175,8 @@ def test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard():
     harness.pump(1200)
     assert box() is not None and box().name == name
     assert name in [c.Name for c in sk.Constraints], [c.Name for c in sk.Constraints]
-    assert focused() is box().edit, focused()
-    QTest.keyClicks(focused(), "12")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    QTest.keyClicks(keyboard(), "12")
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Return)
     harness.pump(600)
     assert abs(sk.getDatum(name).Value - 12) < 1e-6
     commands.REGISTRY.run("sketch.finish")
@@ -211,9 +216,8 @@ def test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name():
     assert s()._click_hook(Gui.ActiveDocument.ActiveView, vp, x, y), "the click on d0's label is taken"
     harness.pump(300)
     assert box() is not None and box().edit.text() == d0, box() and box().edit.text()  # replaced the selection
-    assert focused() is box().edit
-    QTest.keyClicks(focused(), "/2")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    QTest.keyClicks(keyboard(), "/2")
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Return)
     harness.pump(800)
     assert box() is None
     assert abs(sk.getDatum(d1).Value - 15) < 1e-6, sk.getDatum(d1)
@@ -233,8 +237,8 @@ def test_8_enter_before_placing_keeps_name_and_value():
     doc().recompute()
     harness.pump(600)
     name = box().name
-    QTest.keyClicks(focused(), "25")
-    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    QTest.keyClicks(keyboard(), "25")
+    QTest.keyClick(keyboard(), QtCore.Qt.Key_Return)
     harness.pump(500)
     assert box() is None and abs(sk.getDatum(name).Value - 25) < 1e-6, (
         box() and (box().name, box().edit.text(), box().error_text()), sk.getDatum(name), focused(),
