@@ -205,14 +205,14 @@ class ModelBrowser(QtWidgets.QWidget):
 
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
-        if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch"):
+        if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch", "origin_item"):
             return
         self.tree.setCurrentItem(item)
         self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
 
     def _on_double_click(self, item, _column=0):
         kind = item.data(0, KIND_ROLE)
-        if kind in ("feature", "sketch"):
+        if kind in ("feature", "sketch", "origin_item"):  # an origin plane: a new sketch on it
             self.featureActivated.emit(item.data(0, NAME_ROLE))
         elif kind == "action":
             self.actionTriggered.emit(item.data(0, NAME_ROLE))

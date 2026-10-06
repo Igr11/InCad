@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
 import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
-from incad.qt import QtCore, QtWidgets  # noqa: E402
+from incad.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from incad import actions  # noqa: E402
 from incad.core import commands, document, prefs, safe  # noqa: E402
 from incad.ui import shell, theme  # noqa: E402
@@ -164,6 +164,35 @@ def test_8b_real_cmd_z_undoes():
     assert "Keys" not in [p[0] for p in document.list_parameters(doc)], "⌘Z did not undo"
 
 
+def test_8c_quit_is_in_incads_file_menu():
+    from incad.ui import shell as sh
+    menus = [m for m in s()._menus if m.title() == "File"]
+    acts = [a for a in menus[0].actions() if a.text() == "Quit"]
+    assert acts, [a.text() for a in menus[0].actions()]
+    assert acts[0].shortcut().toString() in ("Ctrl+Q", "Meta+Q"), acts[0].shortcut().toString()
+    assert acts[0].menuRole() == QtGui.QAction.NoRole
+    assert "Std_Quit" in sh.TAKEN_SHORTCUTS
+
+
+def test_8d_cmd_w_uses_incads_save_dialog():
+    from incad.ui import shell as sh
+    doc = App.ActiveDocument
+    document.set_parameter(doc, "Spare", "1 mm")
+    Gui.getDocument(doc.Name).Modified = True
+    asked = []
+    sh.SAVE_ASK = lambda files: (asked.append(files), ("cancel", []))[1]
+    commands.REGISTRY.run("file.close")
+    harness.pump(400)
+    assert asked and asked[0][0][0] == doc.Label, asked
+    assert doc.Name in App.listDocuments(), "Cancel keeps the file open"
+    sh.SAVE_ASK = lambda files: ("discard", [])
+    name = doc.Name
+    commands.REGISTRY.run("file.close")
+    harness.pump(600)
+    sh.SAVE_ASK = None
+    assert name not in App.listDocuments()
+
+
 def test_9_close_all_documents():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -177,4 +206,5 @@ def test_9_close_all_documents():
 
 harness.run([test_0_activate, test_1_new_part, test_2_switching_documents_updates_panels, test_3_parameters, test_3b_typing_a_parameter_like_a_user,
              test_4_plain_file, test_5_theme_toggle, test_6_ribbon_size_persists, test_7_std_commands_exist,
-             test_8_failed_command_then_undo, test_8b_real_cmd_z_undoes, test_9_close_all_documents])
+             test_8_failed_command_then_undo, test_8b_real_cmd_z_undoes, test_8c_quit_is_in_incads_file_menu,
+             test_8d_cmd_w_uses_incads_save_dialog, test_9_close_all_documents])

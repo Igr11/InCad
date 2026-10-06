@@ -193,6 +193,10 @@ def move_end_of_part_here():
 def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
+    if obj.TypeId in ("App::Line", "App::Point"):
+        from incad.core import log
+        log.report("info", "Double-click a plane to start a sketch on it")
+        return
     if obj.TypeId in _PLANES:  # double-click a plane: a new sketch on it (Inventor)
         from incad.ui import shell
         shell.sketch_session().start_on(obj)
@@ -305,6 +309,11 @@ def constraints_visible(show=None):
     safe.run_safely("Constraints", lambda: sketch.set_constraints_hidden(sk, hide), sk.Document)
 
 
+def quit_freecad():
+    """Quit FreeCAD: open dialogs are cancelled and InCad asks about unsaved files (in the main window's close)."""
+    run_std("Std_Quit")
+
+
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
@@ -374,7 +383,19 @@ def _refuse_while_busy():
         raise ValueError("Finish the %s dialog first" % safe.busy())
 
 
-_GUARDED = {"file.save", "file.save_as", "file.close"}
+_GUARDED = {"file.save", "file.save_as"}
+
+
+def close_document():
+    """⌘W: InCad's Save dialog for this file, then close it."""
+    import FreeCAD as App
+    from incad.ui import shell
+    doc = App.ActiveDocument
+    if doc is None:
+        return
+    shell._finish_open_tools()  # an open dialog is cancelled, as in Inventor when its file closes
+    if shell.ask_save([doc], "closing"):
+        App.closeDocument(doc.Name)
 
 
 def new_assembly(units=None):
@@ -456,7 +477,10 @@ def commands():
         _std("file.open", "Open", "open", "Ctrl+O"),
         _std("file.save", "Save", "save", "Ctrl+S"),
         _std("file.save_as", "Save As", "save", "Ctrl+Shift+S"),
-        _std("file.close", "Close", "close", "Ctrl+W"),
+        Command(id="file.close", label="Close", icon="close", handler=close_document, shortcut="Ctrl+W",
+                tooltip="Close this file (asks to save changes)"),
+        Command(id="file.quit", label="Quit", icon="close", handler=lambda: quit_freecad(), shortcut="Ctrl+Q",
+                tooltip="Quit FreeCAD (asks to save changed files)"),
         Command(id="edit.undo", label="Undo", icon="undo", handler=lambda: _undo_redo(False), shortcut="Ctrl+Z"),
         Command(id="edit.redo", label="Redo", icon="redo", handler=lambda: _undo_redo(True), shortcut="Ctrl+Shift+Z"),
         Command(id="view.theme_toggle", label="Light / Dark", icon="theme_toggle", handler=toggle_theme,

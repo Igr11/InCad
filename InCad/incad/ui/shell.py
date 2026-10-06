@@ -6,7 +6,7 @@ import os
 import traceback
 
 from incad.core import commands, log, prefs
-from incad.qt import QAction, QtCore, QtGui, QtWidgets
+from incad.qt import dispose, QAction, QtCore, QtGui, QtWidgets
 from incad.ui import ribbon_layout
 from incad.ui import theme as themes
 from incad.ui.browser import ModelBrowser
@@ -28,7 +28,7 @@ MENU_PREFIX = "InCadMenu_"
 TOOLBAR_GROUP = "User parameter:BaseApp/MainWindow/Toolbars"
 NAV_KEYS = {"NavigationStyle": "String", "ZoomAtCursor": "Bool"}
 NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtCursor": ("Bool", True)}
-MENUS = [("File", ["file.new", "file.open", "file.save", "file.save_as", "file.close"]),
+MENUS = [("File", ["file.new", "file.open", "file.save", "file.save_as", "file.close", None, "file.quit"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
                    "view.style_wireframe", "view.parameters", None, "view.freecad"])]
@@ -38,7 +38,8 @@ _shell = None
 
 # FreeCAD commands whose shortcuts InCad's own menus take over while active: FreeCAD's actions sit in its hidden
 # menus, where they no longer answer keys (probed: ⌘Z did nothing), so InCad owns the keys and gives them back.
-TAKEN_SHORTCUTS = ("Std_New", "Std_Open", "Std_Save", "Std_SaveAs", "Std_CloseActiveWindow", "Std_Undo", "Std_Redo")
+TAKEN_SHORTCUTS = ("Std_New", "Std_Open", "Std_Save", "Std_SaveAs", "Std_CloseActiveWindow", "Std_Undo", "Std_Redo",
+                   "Std_Quit")
 
 
 def _std_actions(name):
@@ -407,6 +408,10 @@ class Shell(QtCore.QObject):
                 if cmd.shortcut:
                     act.setShortcut(QtGui.QKeySequence(cmd.shortcut))
                 act.triggered.connect(lambda _=False, i=cmd_id: self.registry.run(i))
+                if cmd_id == "file.quit":
+                    # macOS keeps FreeCAD's own Quit in the app menu (QuitRole goes to the first one): ours stays a
+                    # normal File item that owns ⌘Q (probed: with QuitRole, ⌘Q did nothing)
+                    act.setMenuRole(QAction.NoRole)
             if title == "View":
                 menu.addMenu(self.ribbon.size_menu(menu))
             bar.addAction(menu.menuAction())
@@ -415,7 +420,7 @@ class Shell(QtCore.QObject):
     def _remove_menus(self):
         for menu in self._menus:
             self.mw.menuBar().removeAction(menu.menuAction())
-            menu.deleteLater()
+            dispose(menu)
         self._menus = []
 
     def _teardown(self):
@@ -428,7 +433,7 @@ class Shell(QtCore.QObject):
         for act in self._shortcuts.values():
             try:
                 self.mw.removeAction(act)
-                act.deleteLater()
+                dispose(act)
             except RuntimeError:
                 pass
         self._shortcuts = {}
@@ -440,7 +445,7 @@ class Shell(QtCore.QObject):
                     self.mw.removeToolBar(w)
                 else:
                     self.mw.removeDockWidget(w)
-                w.deleteLater()
+                dispose(w)
             except RuntimeError:
                 pass
         if self.marking_menu is not None:
@@ -454,13 +459,13 @@ class Shell(QtCore.QObject):
             self.navigator = None
         if self.strip is not None:
             try:
-                self.strip.deleteLater()
+                dispose(self.strip)
             except RuntimeError:
                 pass
             self.strip = None
         if self.plane_panel is not None:
             try:
-                self.plane_panel.deleteLater()
+                dispose(self.plane_panel)
             except RuntimeError:
                 pass
             self.plane_panel = None
@@ -970,8 +975,15 @@ class Shell(QtCore.QObject):
             etype = event.type()
             if obj is self.mw:
                 if etype == QtCore.QEvent.Close and self.active:
-                    self.deactivate()  # FreeCAD saves its window layout right after this
-                    QtCore.QTimer.singleShot(0, self._reactivate_if_still_open)
+                    # quitting (⌘Q, Dock, app menu, red button): ask about unsaved files while InCad still shows
+                    # (Cancel keeps everything), then switch off — FreeCAD saves its layout right after — and
+                    # delete InCad's Qt objects now: macOS ends the process inside this close (probed crash)
+                    if not _ask_unsaved():
+                        event.ignore()
+                        return True
+                    QtCore.QTimer.singleShot(0, _resume_after_cancelled_quit)  # only runs if the quit is cancelled
+                    shutdown()  # deletes this object: nothing may touch self after it
+                    _mark_answered()  # switching off may have touched documents: already answered
                 elif etype == QtCore.QEvent.ChildAdded and self.active:
                     child = event.child()
                     if isinstance(child, (QtWidgets.QToolBar, QtWidgets.QDockWidget)):
@@ -1252,7 +1264,7 @@ class Shell(QtCore.QObject):
         if self.info_panel is not None:
             try:
                 self.info_panel.close()
-                self.info_panel.deleteLater()
+                dispose(self.info_panel)
             except RuntimeError:
                 pass
             self.info_panel = None
@@ -1338,6 +1350,130 @@ def apply_theme():
 def focus_parameters():
     if _shell is not None and _shell.active:
         _shell.browser.focus_parameters()
+
+
+SAVE_ASK = None  # tests: callable(files) -> ("save" | "discard" | "cancel", [names]) instead of the dialog
+
+
+def _finish_open_tools():
+    """Open dialogs and tools change documents when they close: close them before asking about saving."""
+    if _shell is None or not _shell.active:
+        return
+    try:
+        _shell.stop_slot_tool()
+        _shell._close_feature_session(cancel=True)
+        _shell._cancel_profile_pick()
+        _shell.sketches.cancel_pick()
+        if _shell.sketches.editing() is not None:
+            _shell.sketches.finish()
+    except Exception as e:
+        log.report("warning", "Could not close the open tools: %s" % e, traceback.format_exc())
+
+
+def ask_save(docs, action="quitting"):
+    """InCad's Save dialog for the changed documents among `docs`; False when cancelled. Answered documents are
+    marked unchanged so FreeCAD doesn't ask again."""
+    import FreeCADGui as Gui
+    changed = [d for d in docs if Gui.getDocument(d.Name) is not None and Gui.getDocument(d.Name).Modified]
+    if not changed:
+        return True
+    files = [(d.Label, d.FileName) for d in changed]
+    if SAVE_ASK is not None:
+        choice = SAVE_ASK(files)
+    else:
+        from incad.ui.save_dialog import SaveDialog
+        dlg = SaveDialog(files, _shell.theme if _shell is not None else themes.current(), Gui.getMainWindow(),
+                         action)
+        dlg.exec()
+        choice = dlg.result_choice()
+    if choice[0] == "cancel":
+        return False
+    for d in changed:
+        if choice[0] == "save" and d.Label in choice[1]:
+            if d.FileName:
+                d.save()
+            else:
+                path, _ = QtWidgets.QFileDialog.getSaveFileName(Gui.getMainWindow(), "Save %s" % d.Label,
+                                                                d.Label + ".FCStd", "FreeCAD files (*.FCStd)")
+                if not path:
+                    return False
+                d.saveAs(path if path.lower().endswith(".fcstd") else path + ".FCStd")
+        Gui.getDocument(d.Name).Modified = False
+    return True
+
+
+def _ask_unsaved():
+    import FreeCAD as App
+    _finish_open_tools()
+    return ask_save(list(App.listDocuments().values()), "quitting")
+
+
+def _mark_answered():
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    for d in App.listDocuments().values():
+        g = Gui.getDocument(d.Name)
+        if g is not None:
+            g.Modified = False
+
+
+def _release_python_markers():
+    """PySide marks every Qt object Python has touched with a '_PySideInvalidatePtr' property. On a Dock/app-menu
+    quit macOS ends the process before Qt destroys the widgets, after Python is gone, and destroying a marked
+    object then crashes (probed). The process is ending: drop the markers while Python still runs."""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return
+    objs = list(app.allWidgets()) + list(app.findChildren(QtCore.QObject))
+    for top in app.topLevelWidgets():
+        objs += list(top.findChildren(QtCore.QObject))
+    for o in objs:
+        try:
+            if b"_PySideInvalidatePtr" in [bytes(n) for n in o.dynamicPropertyNames()]:
+                o.setProperty("_PySideInvalidatePtr", None)
+        except RuntimeError:
+            pass
+
+
+def _resume_after_cancelled_quit():
+    """FreeCAD cancelled the quit (or the window stayed open): InCad starts again."""
+    import FreeCADGui as Gui
+    from incad.qt import dispose_now
+    if QtWidgets.QApplication.activeModalWidget() is not None:  # e.g. a question still open: wait for it
+        QtCore.QTimer.singleShot(300, _resume_after_cancelled_quit)
+        return
+    try:
+        dispose_now(False)
+        wb = Gui.activeWorkbench()
+        if wb is not None and wb.name() == "InCadWorkbench" and Gui.getMainWindow().isVisible():
+            activate()
+    except Exception as e:
+        log.report("warning", "InCad could not start again: %s" % e, traceback.format_exc())
+
+
+def shutdown():
+    """FreeCAD is quitting: switch InCad off (FreeCAD's interface back, saved clean) and delete every Qt object
+    InCad made now — not later, when Python is already finalized."""
+    global _shell
+    from incad.qt import dispose_now
+    try:
+        dispose_now(True)
+        sh = _shell
+        nav = getattr(sh, "navigator", None) if sh is not None else None
+        if sh is not None and sh.active:
+            sh.deactivate()
+        # InCad's own event-filter objects go too: deleting a filter detaches it from every widget, so Qt never
+        # calls into Python while the process ends (probed crash: QObjectWrapper::eventFilter at exit)
+        for obj in (nav, sh):
+            if obj is not None:
+                dispose(obj)
+        _shell = None
+        app = QtCore.QCoreApplication.instance()
+        if app is not None:
+            app.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+        _release_python_markers()
+    except Exception as e:
+        log.report("warning", "InCad could not shut down cleanly: %s" % e, traceback.format_exc())
 
 
 def recover_after_crash():

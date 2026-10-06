@@ -17,7 +17,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine", "feature.sweep", "feature.loft", "feature.coil", "feature.draft",
             "tools.material", "view.section", "browser.delete", "sketch.constraints_toggle",
             "sketch.constraints_show", "sketch.constraints_hide", "sketch.slot_overall",
-            "sketch.slot_center", "sketch.construction"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
+            "sketch.slot_center", "sketch.construction", "file.quit"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 
 
 class ActionsTest(unittest.TestCase):
@@ -63,3 +63,8 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual((r.get("assembly.place").shortcut, r.get("constrain.mate").shortcut,
                           r.get("joint.rigid").shortcut), ("P", "C", "J"))
         self.assertEqual(r.get("constrain.mate").contexts, frozenset({"assembly"}))
+
+    def test_quit_shortcut(self):
+        r = Registry()
+        actions.register_all(r)
+        self.assertEqual(r.get("file.quit").shortcut, "Ctrl+Q")

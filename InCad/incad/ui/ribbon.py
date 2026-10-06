@@ -1,5 +1,5 @@
 """The ribbon: a tab bar over a row of command groups, drawn from the command registry and a layout."""
-from incad.qt import QtCore, QtGui, QtWidgets, Signal
+from incad.qt import dispose, QtCore, QtGui, QtWidgets, Signal
 from incad.ui import theme as themes
 
 SIZES = ("small", "medium", "large")
@@ -88,7 +88,7 @@ class Ribbon(QtWidgets.QWidget):
         while self._stack.count():
             w = self._stack.widget(0)
             self._stack.removeWidget(w)
-            w.deleteLater()
+            dispose(w)
         self._buttons = {}
         for tab_name, groups in self._layout.get(self._mode, []):
             page = self._build_page(groups)
@@ -124,7 +124,7 @@ class Ribbon(QtWidgets.QWidget):
                 row.addWidget(self._build_group(group_name, cmds, stacked))
                 count += 1
         if not count:
-            page.deleteLater()
+            dispose(page)
             return None
         row.addStretch(1)
         # a tab wider than the window scrolls sideways instead of widening the window (it pushed the window

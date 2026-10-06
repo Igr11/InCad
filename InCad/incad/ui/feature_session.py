@@ -1,6 +1,6 @@
 """One feature dialog: one undo transaction around create/edit + live previews; OK commits, Cancel aborts."""
 from incad.core import log, model, safe
-from incad.qt import QtCore
+from incad.qt import dispose, QtCore
 from incad.ui.feature_dialog import FeatureDialog
 
 
@@ -428,7 +428,7 @@ class FeatureSession(QtCore.QObject):
         safe.set_busy(None)
         if self.dialog is not None:
             self.dialog.close()
-            self.dialog.deleteLater()
+            dispose(self.dialog)
             self.dialog = None
         if self._on_close is not None:
             self._on_close(self)

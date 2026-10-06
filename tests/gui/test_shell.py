@@ -138,10 +138,10 @@ def test_5_quit_path_restores_then_reactivates():
     s = shell.instance()
     before = json.loads(prefs.takeover_snapshot())
     s.eventFilter(mw, QtGui.QCloseEvent())
-    assert not s.active
+    assert shell.instance() is None or not shell.instance().active
     assert_reshown(before)
-    harness.pump(500)
-    assert s.active, "the window stayed open, so InCad must come back"
+    harness.pump(800)
+    assert shell.instance() is not None and shell.instance().active, "the window stayed open: InCad comes back"
 
 
 def test_6_restore_from_saved_snapshot_when_memory_lost():
@@ -204,10 +204,10 @@ def test_9_no_reactivation_while_a_dialog_is_open():
     harness.pump(300)
     s.eventFilter(mw, QtGui.QCloseEvent())  # what quitting with unsaved changes does first
     harness.pump(800)
-    assert not s.active, "InCad came back behind the dialog"
-    box.reject()
+    assert shell.instance() is None or not shell.instance().active, "InCad came back behind the dialog"
+    QtWidgets.QApplication.activeModalWidget().reject()  # quit cleanup released old Python references
     harness.pump(1000)
-    assert s.active, "InCad should come back once the dialog is gone"
+    assert shell.instance() is not None and shell.instance().active, "InCad should come back once the dialog is gone"
 
 
 def test_10_takeover_waits_for_an_open_edit():

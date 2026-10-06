@@ -272,3 +272,19 @@ class AssemblyIconsTest(unittest.TestCase):
         from incad.ui import browser
         for kind in ("assembly", "component", "relationships", "joint"):
             self.assertIn(kind, browser.KIND_ICONS)
+
+
+class OriginRowsTest(unittest.TestCase):
+    def test_double_click_and_right_click_on_an_origin_plane(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_nodes([Node("part", "P", children=[Node("origin", "Origin", "Origin", children=[
+            Node("origin_item", "XY Plane", "XY_Plane")])])])
+        seen = []
+        b.featureActivated.connect(lambda n: seen.append(("edit", n)))
+        b.markingMenuRequested.connect(lambda n, pos: seen.append(("menu", n)))
+        item = b.item_by_label("XY Plane")
+        b._on_double_click(item)
+        b.tree.scrollToItem(item)
+        b._on_context_menu(b.tree.visualItemRect(item).center())
+        self.assertEqual(seen, [("edit", "XY_Plane"), ("menu", "XY_Plane")])

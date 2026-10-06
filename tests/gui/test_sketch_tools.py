@@ -59,7 +59,7 @@ def test_2_ribbon_split_button_remembers():
     assert method() == "3 corners", method()
     commands.REGISTRY.run("sketch.stop")
     harness.pump(300)
-    assert b.text() == "3-Point Rectangle"
+    assert b.property("incad_cmd") == "sketch.rectangle_3pt", b.property("incad_cmd")  # remembered (label "Rectangle")
 
 
 def test_3_hide_and_show_constraints_from_the_menu():
