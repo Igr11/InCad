@@ -26,6 +26,7 @@ LAYOUT = {
     "asm_edge": {"N": "constrain.insert", "S": "joint.rotational", "E": "joint.cylindrical", "W": "joint.slider",
                  "SW": "assembly.ground", "list": ["joint.rigid", "view.zoom_selection"]},
     "empty": {"N": "file.new", "S": "file.open", "E": "view.theme_toggle", "W": "view.freecad", "list": []},
+    "origin": {"N": "sketch.start", "list": ["sketch.start"]},
     "browser": {"N": "browser.edit", "S": "browser.move_end_of_part", "E": "browser.suppress",
                 "W": "browser.rename", "list": ["browser.edit", "sketch.start", "browser.delete"]},
 }

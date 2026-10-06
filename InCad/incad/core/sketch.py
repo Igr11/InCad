@@ -338,3 +338,46 @@ def label_point(sk, name):
     else:
         return None
     return sk.getGlobalPlacement().multVec(local)
+
+
+def dimension_snapshot(sk):
+    """{name: {type, value, expr}} of the named driving dimensions, taken after every change: the next change
+    is compared with it (FreeCAD's Dimension tool replaces a dimension when it is placed)."""
+    out = {}
+    for c in sk.Constraints:
+        if c.Name and c.Type in DIMENSIONAL and c.Driving:
+            out[c.Name] = {"type": c.Type, "value": c.Value, "expr": _expression_of(sk, "Constraints." + c.Name)}
+    return out
+
+
+def vanished_dimensions(sk, known):
+    names = {c.Name for c in sk.Constraints if c.Name}
+    return [n for n in known if n not in names]
+
+
+def _fresh_dimensions(sk):
+    return [i for i, c in enumerate(sk.Constraints) if c.Type in DIMENSIONAL and not c.Name and c.Driving]
+
+
+def reconcile_replaced(sk, known):
+    """One named dimension gone and one unnamed appeared in the same change: it is the same dimension replaced
+    (FreeCAD 1.1's Dimension tool does that at the placing click). It gets its name back and the value or formula
+    the user gave it, in one undo step. Returns the name, or None when nothing was replaced."""
+    gone, fresh = vanished_dimensions(sk, known), _fresh_dimensions(sk)
+    if len(gone) != 1 or len(fresh) != 1:
+        return None
+    name, index, doc = gone[0], fresh[0], sk.Document
+    was = known[name]
+    doc.openTransaction("Dimension %s" % name)
+    try:
+        sk.renameConstraint(index, name)
+        if was["expr"]:
+            sk.setExpression("Constraints." + name, was["expr"])
+        elif sk.Constraints[index].Type == was["type"] and abs(sk.Constraints[index].Value - was["value"]) > 1e-9:
+            sk.setDatum(name, App.Units.Quantity(was["value"], "deg" if was["type"] == "Angle" else "mm"))
+    except Exception:
+        doc.abortTransaction()
+        raise
+    doc.commitTransaction()
+    doc.recompute()
+    return name

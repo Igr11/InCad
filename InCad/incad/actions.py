@@ -319,6 +319,9 @@ def delete_target():
     from incad.core import delete, safe
     obj = _target_object()
     doc = obj.Document
+    from incad.ui import shell
+    if shell.sketch_session().editing() is obj:
+        shell.sketch_session().finish()  # the edit would be left half-reset on a deleted object
     extras = delete.documents(obj)
     for d in extras:
         if not d.UndoMode:

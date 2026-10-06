@@ -9,7 +9,7 @@ rc=0
 for f in $files; do
   TMP="$(mktemp -d)"; OUT="$TMP/result.json"
   echo "== ${f:t}"
-  INCAD_REPO="$REPO" INCAD_GUI_OUT="$OUT" INCAD_LOG="$TMP/incad.log" PYTHONDONTWRITEBYTECODE=1 \
+  FREECAD_USER_TEMP="$TMP" INCAD_REPO="$REPO" INCAD_GUI_OUT="$OUT" INCAD_LOG="$TMP/incad.log" PYTHONDONTWRITEBYTECODE=1 \
     "$FC" -u "$TMP/user.cfg" "${f:A}" >"$TMP/fc.log" 2>&1 &
   pid=$!
   for i in {1..180}; do

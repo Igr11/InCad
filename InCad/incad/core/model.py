@@ -13,11 +13,21 @@ _DNAME = re.compile(r"^d(\d+)$")
 _TOKEN = re.compile(r"(?<![\w.<>])([A-Za-z_][A-Za-z0-9_]*)(?![\w(.])")
 
 
+UNIT_WORDS = {"mm", "cm", "m", "in", "ft", "deg", "rad", "um", "km", "mil", "thou", "yd"}
+
+
 def friendly(message):
     """FreeCAD's expression errors in plain words (no internal paths)."""
     m = re.search(r"Property '([^']+)' not found", message)
     if m:
         return "Unknown name '%s' (not a parameter or dimension)" % m.group(1)
+    m = re.search(r"Failed to parse expression '(.*)'", message)
+    if m:
+        text = re.sub(r"\b\w+\.Constraints\.", "", m.group(1))  # no internal paths
+        glued = re.search(r"(\d+\.?\d*)([A-Za-z_]\w*)", text)
+        if glued and glued.group(2).lower() not in UNIT_WORDS:
+            return "Put an operator between %s and %s" % (glued.group(1), glued.group(2))
+        return "Cannot read the formula '%s'" % text
     if "cyclic" in message.lower():
         return "This formula refers back to itself (a loop)"
     return message.split("\n")[0]
@@ -92,6 +102,8 @@ def with_units(text, unit):
         left = before[-1:] if before else ""
         right = after.lstrip()[:1]
         if left in "*/^" and left or right in "*/^" and right:
+            continue
+        if left == "(" and re.search(r"[A-Za-z_]\w*\s*\($", before):  # a function's argument: sqrt(4)
             continue
         out.append(text[last:m.end()] + " " + unit)
         last = m.end()

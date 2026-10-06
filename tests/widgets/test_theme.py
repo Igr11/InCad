@@ -49,7 +49,7 @@ class ThemeTest(unittest.TestCase):
         p = theme.sketch_params("dark", "expression")
         self.assertEqual(p[theme.SKETCH_ROOT]["ShowDialogOnDistanceConstraint"], ("Bool", False))
         self.assertEqual(p[theme.SKETCH_ROOT]["DimensionalStringFormat"], ("String", "%N = %V"))
-        self.assertEqual(p[theme.SKETCH_TOOLS]["OnViewParameterVisibility"], ("Int", 1))
+        self.assertEqual(p[theme.SKETCH_TOOLS]["OnViewParameterVisibility"], ("Int", 0))
         self.assertEqual(p[theme.VIEW_GROUP]["EditedEdgeColor"], ("Unsigned", 0xF2F2F2FF))
         self.assertEqual(theme.sketch_params("light", "value")[theme.SKETCH_ROOT]["ShowDimensionalName"], ("Bool", False))
         for group, values in p.items():

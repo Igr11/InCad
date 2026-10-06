@@ -1,0 +1,18 @@
+{
+ "name": "extrude_cut_from_tree_selection",
+ "steps": [
+  "setup:block_with_top_sketch",
+  "wait:1",
+  "memo:v=s['volume']",
+  "click:tree.TopSketch",
+  "wait:0.5",
+  "click:ribbon.feature.extrude",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Extrude'",
+  "click:dialog.operation.cut",
+  "wait:1",
+  "click:dialog.ok",
+  "wait:2",
+  "expect:s['dialog'] is None and s['volume'] < m['v'] - 1 and 'Extrude' in (s.get('tip') or '')"
+ ]
+}

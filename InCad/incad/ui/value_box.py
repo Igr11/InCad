@@ -79,7 +79,11 @@ class ValueBox(QtWidgets.QFrame):
             pass
 
     def insert(self, name):
-        if self._typed:
+        if name == self.name:  # the dimension being edited itself: a formula can't refer to it
+            self.take_keyboard()
+            return
+        whole = self.edit.hasSelectedText() and self.edit.selectedText() == self.edit.text()
+        if self._typed and not whole:
             self.edit.insert(name)  # at the cursor: 'd0+' then a click -> 'd0+d3'
         else:
             self.edit.setText(name)  # the untouched value is replaced (its selection is lost to the view's click)

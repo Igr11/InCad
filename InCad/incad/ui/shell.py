@@ -150,6 +150,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
         self._box_focus_hooked = False
 
         self._wait_notice = None
@@ -651,6 +652,9 @@ class Shell(QtCore.QObject):
 
     def _show_open_dialog(self):
         fs = self.feature_session
+        if fs is None and self._edit_open():
+            self._show_wait_notice()
+            return
         if fs is not None and fs.dialog is not None:
             try:
                 if not fs.dialog.isVisible():
@@ -723,13 +727,21 @@ class Shell(QtCore.QObject):
         doc = App.ActiveDocument
         if doc is None or doc.getObject(name) is None:
             return
+        waiting = (self.feature_session is not None and self.feature_session.dialog is not None
+                   and self.feature_session.dialog.active_pick() is not None) or self._profile_pick is not None \
+            or self.sketches.picking
+        if not waiting:
+            return  # just looking at the tree: the 3D selection stays
         Gui.Selection.clearSelection()
         Gui.Selection.addSelection(doc.Name, name)
 
     def _on_browser_marking_menu(self, name, global_pos):
+        import FreeCAD as App
         from incad.core import context
         context.set_target(name)
-        self._show_marking_menu("browser", global_pos)
+        obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
+        kind = "origin" if obj is not None and obj.TypeId in ("App::Plane", "App::Line", "App::Point") else "browser"
+        self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
     def _build_shortcuts(self):
@@ -753,9 +765,25 @@ class Shell(QtCore.QObject):
         self._shortcuts["_esc"] = self._esc
 
     def _on_escape(self):
-        self.sketches.cancel_pick()
-        self._cancel_profile_pick()
-        self.stop_slot_tool()
+        """Esc, Inventor style: the value box first, then InCad's own picks and tools, then the feature dialog,
+        else the running Sketcher tool (the sketch itself is left with Finish Sketch, never with Esc)."""
+        if self.value_box is not None:
+            self._close_value_box()
+            return
+        if self.sketches.picking or self._profile_pick is not None or self.slot_tool is not None:
+            self.sketches.cancel_pick()
+            self._cancel_profile_pick()
+            self.stop_slot_tool()
+            return
+        if self.feature_session is not None:
+            self.feature_session.cancel()
+            return
+        mdi = self._mdi()
+        views = [w for w in mdi.findChildren(QtWidgets.QGraphicsView) if w.isVisible()] if mdi is not None else []
+        if views:
+            vp = views[0].viewport()
+            for etype in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                QtWidgets.QApplication.sendEvent(vp, QtGui.QKeyEvent(etype, QtCore.Qt.Key_Escape, QtCore.Qt.NoModifier))
 
     # ----- InCad's own sketch tools -----
     def start_slot_tool(self, mode):
@@ -845,34 +873,32 @@ class Shell(QtCore.QObject):
             count = sk.GeometryCount
             drawn = count != self._geometry_counts.get(key, count)
             self._geometry_counts[key] = count
-            if self._box_dimension_replaced(sk):
-                return
-            added = sketches.name_new_dimensions(doc)
+            known = self._dim_known.get(key)
+            replaced = sketches.reconcile_replaced(sk, known) if known else None
+            box = self.value_box
+            if replaced and box is not None and box.name == replaced:
+                if not box._typed:  # the replacement may be another kind (two lines picked: an angle)
+                    box.edit.setText(sketches.document._format(sk.getDatum(replaced)))
+                for ms in (150, 400, 800):  # the view takes the keyboard back when the placing click ends
+                    QtCore.QTimer.singleShot(ms, lambda b=box: self.value_box is b and b.take_keyboard())
+            elif known and box is not None and self._box_owner == key and box.name in sketches.vanished_dimensions(sk, known):
+                self._close_value_box()  # its dimension is gone (tool cancelled, undo): nothing to apply to
+            added = []
+            if not replaced:
+                if doc.HasPendingTransaction:
+                    added = sketches.name_new_dimensions(doc)
+                else:
+                    doc.openTransaction("Name dimension")  # the name survives undo/redo with the dimension
+                    try:
+                        added = sketches.name_new_dimensions(doc)
+                    finally:
+                        doc.commitTransaction()
+            self._dim_known[key] = sketches.dimension_snapshot(sk)
         except Exception as e:
             log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
             return
         if len(added) == 1 and not drawn and self.sketches.editing() is sk:
             self.open_value_box(sk, added[0])
-
-    def _box_dimension_replaced(self, sk):
-        """FreeCAD 1.1's Dimension tool makes the dimension at the first click and replaces it when it is placed:
-        the replacement keeps the name of the open box (no number lost) and the keyboard goes back to the box
-        (the placing click gave it to the 3D view)."""
-        from incad.core import sketch as sketches
-        box = self.value_box
-        if box is None or self._box_owner != (sk.Document.Name, sk.Name):
-            return False
-        names = [c.Name for c in sk.Constraints]
-        if box.name in names:
-            return False
-        fresh = [i for i, c in enumerate(sk.Constraints)
-                 if c.Type in sketches.DIMENSIONAL and not c.Name and c.Driving]
-        if len(fresh) != 1:
-            return False
-        sk.renameConstraint(fresh[0], box.name)
-        for ms in (150, 400, 800):  # the view takes the keyboard back when the placing click ends
-            QtCore.QTimer.singleShot(ms, lambda b=box: self.value_box is b and b.take_keyboard())
-        return True
 
     def _after_undo(self, doc):
         """Undo/redo can bring objects back without their formula links (FreeCAD quirk): repair them."""
@@ -883,10 +909,22 @@ class Shell(QtCore.QObject):
             except Exception as e:
                 log.report("warning", "Could not repair formula links: %s" % e, traceback.format_exc())
         QtCore.QTimer.singleShot(0, repair)
+        box = self.value_box
+        if box is not None and self._box_owner and self._box_owner[0] == doc.Name:
+            from incad.core import sketch as sketches
+            QtCore.QTimer.singleShot(0, lambda: self.value_box is box and sketches.find_dimension(doc, box.name)[0] is None
+                                     and self._close_value_box())  # its dimension was undone
+        editing = self.sketches.editing()
+        if editing is not None:
+            from incad.core import sketch as sketches
+            QtCore.QTimer.singleShot(0, lambda: _alive(editing) and self._dim_known.__setitem__(
+                (editing.Document.Name, editing.Name), sketches.dimension_snapshot(editing)))
 
     def _seed_geometry(self, sk):
         """Baseline for the 'drawn or dimensioned?' rule when a sketch is opened."""
+        from incad.core import sketch as sketches
         self._geometry_counts[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+        self._dim_known[(sk.Document.Name, sk.Name)] = sketches.dimension_snapshot(sk)
         self._polygons_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
 
     def _pin_new_polygons(self, sk):
@@ -917,13 +955,22 @@ class Shell(QtCore.QObject):
             doc = App.getDocument(doc_name)
         except Exception:
             return False, "The sketch's document is closed"
+        sk = doc.getObject(self._box_owner[1])
+        key = tuple(self._box_owner)
+        if sk is not None and sketches.find_dimension(doc, name)[0] is None and self._dim_known.get(key):
+            try:
+                sketches.reconcile_replaced(sk, self._dim_known[key])  # replaced by the placing click just now
+            except Exception as e:
+                log.report("warning", "Could not find %s again: %s" % (name, e))
         r = safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text), doc)
+        if r.ok and sk is not None:
+            self._dim_known[key] = sketches.dimension_snapshot(sk)
         self.schedule_refresh()
         return r.ok, r.error
 
     def open_value_box(self, sk, name):
         from incad.core import sketch as sketches
-        self._close_value_box()
+        self._close_value_box(apply_if_typed=True)
         expr = sketches._expression_of(sk, "Constraints." + name)
         text = sketches.to_display(sk.Document, expr) if expr else \
             sketches.document._format(sk.getDatum(name))
@@ -938,19 +985,27 @@ class Shell(QtCore.QObject):
             self._box_focus_hooked = True
         box.show_near(QtGui.QCursor.pos())
 
-    def _close_value_box(self):
-        if self.value_box is not None:
-            try:
-                self.value_box.close()
-            except RuntimeError:
-                pass
-            self.value_box = None
+    def _close_value_box(self, apply_if_typed=False):
+        """apply_if_typed: the user moved on (next dimension, Finish Sketch, another tab) — what was typed is
+        applied first instead of silently dropped; a value that can't be used is reported."""
+        box = self.value_box
+        if box is None:
+            return
+        try:
+            if apply_if_typed and box._typed and box.edit.text().strip():
+                ok, error = self._apply_from_box(box.name, box.edit.text().strip())
+                if not ok:
+                    log.report("warning", "%s = %s was not applied: %s" % (box.name, box.edit.text().strip(), error))
+            box.close()
+        except RuntimeError:
+            pass
+        self.value_box = None
 
     def _keep_box_keyboard(self, _old, new):
         """FreeCAD's 3D view takes the keyboard whenever the mouse moves over it: while the dimension box is open,
         typing, Enter and Esc belong to the box (other fields, e.g. the parameter table, keep it)."""
         box = self.value_box
-        if box is None or new is None:
+        if box is None or new is None or not self.active:
             return
         w = new
         while w is not None:
@@ -979,7 +1034,8 @@ class Shell(QtCore.QObject):
 
     def _on_parameter_clicked(self, name):
         if self.value_box is not None:
-            self.value_box.insert(name)
+            if name != self.value_box.name:
+                self.value_box.insert(name)
         elif self.feature_session is not None:
             self.feature_session.insert(name)
 
@@ -1016,6 +1072,8 @@ class Shell(QtCore.QObject):
         if name is None:
             return False
         if self.value_box is not None:
+            if name == self.value_box.name:
+                return True  # the dimension being edited: nothing to insert, the click is not a tool click
             self.value_box.insert(name)
         elif not self.feature_session.insert(name):
             return False
@@ -1048,8 +1106,12 @@ class Shell(QtCore.QObject):
             return None, None
 
     def _dblclick_hook(self, view, viewport, x, y):
+        if self.sketches.editing() is None:
+            return False
         sk, name = self._preselected_dimension()
-        if name is None or self.sketches.editing() is None:
+        if name is None:
+            sk, name = self._dimension_near(view, viewport, x, y)  # FreeCAD preselects nothing while a tool runs
+        if name is None:
             return False
         self.open_value_box(sk, name)
         return True
@@ -1064,6 +1126,7 @@ class Shell(QtCore.QObject):
     def _session_closed(self, fs):
         if self.feature_session is fs:
             self.feature_session = None
+        dispose(fs)
         self.schedule_refresh()
 
     def _profile_for(self, doc, body):
@@ -1179,6 +1242,12 @@ class Shell(QtCore.QObject):
         log.set_reporter(None)
         from incad.core import safe
         safe.set_refused_hook(None)
+        if self._box_focus_hooked:
+            try:
+                QtWidgets.QApplication.instance().focusChanged.disconnect(self._keep_box_keyboard)
+            except (RuntimeError, TypeError):
+                pass
+            self._box_focus_hooked = False
         for w in [self.mw] + self._freecad_toolbars() + self._freecad_docks():
             try:
                 w.removeEventFilter(self)
@@ -1206,6 +1275,7 @@ class Shell(QtCore.QObject):
                 mdi = self._mdi()
                 if self.strip is not None and mdi is not None and obj is mdi.viewport():
                     self.strip.place(mdi.viewport().rect())
+                    QtCore.QTimer.singleShot(0, self._raise_overlays)  # QMdiArea re-raises the document window
                 return False
             if obj is self.mw:
                 if etype == QtCore.QEvent.Close and not self.active:
@@ -1288,7 +1358,9 @@ class Shell(QtCore.QObject):
         self.sketches.sync()
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
-            self._close_value_box()
+            self._close_value_box(apply_if_typed=True)
+        if editing is not None and self._profile_pick is not None:
+            self._cancel_profile_pick()  # the user went sketching instead: a pick would finish the sketch under them
         if editing is None and self.slot_tool is not None:
             self.stop_slot_tool()
         if editing is None and self.construction_mode:
@@ -1338,8 +1410,8 @@ class Shell(QtCore.QObject):
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
-                act.setEnabled(self.sketches.picking or self._profile_pick is not None or
-                               getattr(self, "slot_tool", None) is not None)
+                act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
+                               getattr(self, "slot_tool", None) is not None or self.feature_session is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -1347,7 +1419,9 @@ class Shell(QtCore.QObject):
             self.navigator.attach_all()
         if self.strip is not None:
             self.strip.refresh_checks()
-            self.strip.raise_()
+        self._raise_overlays()
+        if self._wait_notice is not None and not self._edit_open():
+            self._close_wait_notice()
 
     # ----- assemblies -----
     def _assembly_doc(self):

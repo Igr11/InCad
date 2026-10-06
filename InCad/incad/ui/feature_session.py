@@ -186,8 +186,14 @@ class FeatureSession(QtCore.QObject):
             return
         ok = common.whole(f.pick, [p for p in pairs if common.accepts(f.pick, *p)])
         if pairs and not ok:
+            if f.pick in self._GEOMETRY and not any(el for _, el in pairs):
+                return  # a whole object (a tree row) while a face/edge is wanted: just looking, not an error
             self.dialog.set_error("Select %s for %s" % (f.pick.replace("_", " "), f.label))
+            self._pick_error = True
             return
+        if not pairs and getattr(self, "_pick_error", False):
+            self.dialog.set_error("")
+            self._pick_error = False
         if not ok:
             return
         self.dialog.set_pick(key, common.format_picks(ok[-1:] if f.kind == "pick" else ok))
@@ -397,7 +403,12 @@ class FeatureSession(QtCore.QObject):
                 Gui.Selection.clearSelection()  # the next round must not pick the profile just used
             except Exception:
                 pass
-            QtCore.QTimer.singleShot(0, lambda: shell.start_feature(kind))
+            def again():
+                try:
+                    shell.start_feature(kind)
+                except Exception as e:  # e.g. no closed sketch left: say so instead of a silent traceback
+                    log.report("warning", "%s: %s" % (kind.TITLE, e))
+            QtCore.QTimer.singleShot(0, again)
 
     def cancel(self):
         self._timer.stop()

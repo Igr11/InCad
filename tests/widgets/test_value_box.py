@@ -37,6 +37,17 @@ class ValueBoxTest(unittest.TestCase):
         self.assertEqual(self.seen, [("d1", "25 mm")])  # nothing applied
         self.assertFalse(other.isVisible())
 
+    def test_clicking_the_boxs_own_dimension_inserts_nothing(self):
+        self.box.insert("d1")
+        self.assertEqual(self.box.edit.text(), "20 mm")
+
+    def test_a_clicked_name_replaces_a_fully_selected_value_even_after_typing(self):
+        from PySide6.QtTest import QTest
+        QTest.keyClicks(self.box.edit, "30")
+        self.box.edit.selectAll()
+        self.box.insert("d0")
+        self.assertEqual(self.box.edit.text(), "d0")
+
     def test_escape_cancels(self):
         from PySide6.QtTest import QTest
         QTest.keyClick(self.box.edit, QtCore.Qt.Key_Escape)

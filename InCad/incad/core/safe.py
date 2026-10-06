@@ -124,6 +124,7 @@ def run_safely(label, fn, doc=None):
             log.report("error", msg, traceback.format_exc())
             return SafeResult(False, error=msg)
     if edit_open():  # the open edit owns the pending transaction and its OK/Cancel
+        refused()
         msg = "Finish or cancel the current edit before %s" % label
         log.report("warning", msg)
         return SafeResult(False, error=msg)

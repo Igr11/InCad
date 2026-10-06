@@ -296,3 +296,88 @@ class LabelPointTest(unittest.TestCase):
 
     def test_unknown_or_non_dimensional_name_is_none(self):
         self.assertIsNone(sketch.label_point(self.sk, "nope"))
+
+
+class ReplacedDimensionTest(unittest.TestCase):
+    """FreeCAD 1.1's Dimension tool makes a constraint at the first click and replaces it at the placing click:
+    the replacement must keep the name and the value the user already gave it, whether or not a box is open."""
+    def setUp(self):
+        self.doc = util.new_doc("RD")
+        body = document.make_part(self.doc)
+        self.sk = sketch.make_sketch(body, plane(body, "XY_Plane"))
+        pts = [App.Vector(0, 0, 0), App.Vector(20, 0, 0), App.Vector(20, 10, 0), App.Vector(0, 10, 0)]
+        for i in range(4):
+            self.sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+        self.doc.recompute()
+        sketch.name_new_dimensions(self.doc)  # d0
+        self.known = sketch.dimension_snapshot(self.sk)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def replace(self):
+        i = [k for k, c in enumerate(self.sk.Constraints) if c.Name == "d0"][0]
+        self.sk.delConstraint(i)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+        self.doc.recompute()
+
+    def test_snapshot_lists_named_dimensions(self):
+        self.assertEqual(set(self.known), {"d0"})
+        self.assertEqual(self.known["d0"]["type"], "DistanceX")
+
+    def test_replacement_keeps_the_name_and_no_number_is_burned(self):
+        self.replace()
+        self.assertEqual(sketch.reconcile_replaced(self.sk, self.known), "d0")
+        self.assertEqual([c.Name for c in self.sk.Constraints if c.Name], ["d0"])
+        self.assertEqual(sketch.name_new_dimensions(self.doc), [])  # nothing left to name
+
+    def test_replacement_keeps_a_typed_value_and_formula(self):
+        sketch.set_dimension(self.doc, "d0", "25 mm")
+        known = sketch.dimension_snapshot(self.sk)
+        self.replace()
+        sketch.reconcile_replaced(self.sk, known)
+        self.assertAlmostEqual(self.sk.getDatum("d0").Value, 25)
+        document.set_parameter(self.doc, "Width", "40 mm")
+        sketch.set_dimension(self.doc, "d0", "Width / 2")
+        known = sketch.dimension_snapshot(self.sk)
+        self.replace()
+        sketch.reconcile_replaced(self.sk, known)
+        self.doc.recompute()
+        self.assertAlmostEqual(self.sk.getDatum("d0").Value, 20)
+        self.assertEqual({n: f for n, f, v in sketch.model_parameters(self.doc)}["d0"], "Width / 2")
+
+    def test_nothing_to_reconcile(self):
+        self.assertIsNone(sketch.reconcile_replaced(self.sk, self.known))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", 1, 1, 1, 2, 10))  # a plain new one, d0 still there
+        self.doc.recompute()
+        self.assertIsNone(sketch.reconcile_replaced(self.sk, self.known))
+        self.assertEqual(sketch.name_new_dimensions(self.doc), ["d1"])
+
+    def test_vanished_without_replacement_is_reported(self):
+        i = [k for k, c in enumerate(self.sk.Constraints) if c.Name == "d0"][0]
+        self.sk.delConstraint(i)
+        self.doc.recompute()
+        self.assertEqual(sketch.vanished_dimensions(self.sk, self.known), ["d0"])
+
+    def test_renaming_is_one_undo_step(self):
+        self.replace()
+        self.doc.recompute()
+        n = len(self.doc.UndoNames)
+        sketch.reconcile_replaced(self.sk, self.known)
+        self.assertEqual(self.sk.Constraints[-1].Name, "d0")
+        self.assertGreaterEqual(len(self.doc.UndoNames), n)  # never left half-done outside a transaction
+
+
+class FriendlyMessageTest(unittest.TestCase):
+    def test_glued_number_and_name(self):
+        from incad.core import model
+        self.assertIn("operator", model.friendly("Failed to parse expression '30d0'"))
+        self.assertIn("30", model.friendly("Failed to parse expression '30d0'"))
+        self.assertNotIn("Constraints", model.friendly("Failed to parse expression 'Sketch002.Constraints.d16=2'"))
+        self.assertIn("d16=2", model.friendly("Failed to parse expression 'Sketch002.Constraints.d16=2'"))
+
+    def test_units_skip_function_arguments(self):
+        from incad.core import model
+        self.assertEqual(model.with_units("sqrt(4) + d1", "mm"), "sqrt(4) + d1")
+        self.assertEqual(model.with_units("d1 + (2 + 3) * 2", "mm"), "d1 + (2 mm + 3 mm) * 2")

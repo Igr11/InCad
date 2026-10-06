@@ -1,0 +1,12 @@
+{
+ "name": "finish_sketch_keeps_part_view",
+ "steps": [
+  "setup:rect_sketch_open",
+  "wait:1.5",
+  "expect:s['editing'] == 'SketchA'",
+  "click:ribbon.sketch.finish",
+  "wait:2",
+  "expect:s['editing'] is None and not (s['front_window'] or '').startswith('Start')",
+  "shot:after-finish"
+ ]
+}

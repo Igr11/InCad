@@ -132,12 +132,13 @@ SKETCH_KEYS = {
 
 
 def sketch_params(theme, display="value"):
-    """Sketcher settings InCad uses: no modal dimension dialog (InCad's value box instead), dimensional on-view
-    parameters (dynamic input), continuous tools, Esc leaves the sketch, names shown per display mode, colors."""
+    """Sketcher settings InCad uses: no modal dimension dialog and no on-view value field (InCad's value box is
+    the one place to type), continuous tools, Esc cancels a tool but never leaves the sketch (Finish Sketch
+    does), names shown per display mode, colors."""
     show, fmt = DISPLAY_FORMAT[display]
     return {
         SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": ("Bool", False), "ShowDimensionalName": ("Bool", show),
-                      "DimensionalStringFormat": ("String", fmt), "LeaveSketchWithEscape": ("Bool", True)},
-        SKETCH_TOOLS: {"OnViewParameterVisibility": ("Int", 1), "ContinuousCreationMode": ("Bool", True)},
+                      "DimensionalStringFormat": ("String", fmt), "LeaveSketchWithEscape": ("Bool", False)},
+        SKETCH_TOOLS: {"OnViewParameterVisibility": ("Int", 0), "ContinuousCreationMode": ("Bool", True)},
         VIEW_GROUP: {k: ("Unsigned", _rgba(v)) for k, v in SKETCH_COLORS[theme].items()},
     }

@@ -1,0 +1,20 @@
+{
+ "name": "dimension_enter_before_place",
+ "steps": [
+  "setup:rect_sketch_open",
+  "wait:1.5",
+  "cmd:sketch.dimension",
+  "click:bottom",
+  "memo:n=s['box']['name']",
+  "type:25",
+  "keys:36",
+  "wait:1",
+  "expect:s['box'] is None",
+  "click:bottom_place",
+  "wait:1",
+  "move:away",
+  "expect:[m['n'], 25.0] in s['dims'] and len(s['dims']) == 1",
+  "expect:'ERROR' not in s['log'][-600:]",
+  "keys:53"
+ ]
+}

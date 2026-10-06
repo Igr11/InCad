@@ -218,8 +218,84 @@ def test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name():
     harness.pump(800)
 
 
+
+def test_8_enter_before_placing_keeps_name_and_value():
+    """Dimension → click line (box) → type 25, Enter → place: the placed dimension is still d? with 25 mm."""
+    sk = doc().getObject(ST["a"])
+    rmb_edit(ST["a"])
+    before = {c.Name for c in sk.Constraints if c.Name}
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))  # the first click's dimension
+    doc().recompute()
+    harness.pump(600)
+    name = box().name
+    QTest.keyClicks(focused(), "25")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    harness.pump(500)
+    assert box() is None and abs(sk.getDatum(name).Value - 25) < 1e-6
+    index = [i for i, c in enumerate(sk.Constraints) if c.Name == name][0]
+    sk.delConstraint(index)  # the placing click: replaced by a new one with the measured value
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))
+    doc().recompute()
+    harness.pump(1000)
+    names = {c.Name for c in sk.Constraints if c.Name}
+    assert names == before | {name}, (names, before, name)  # no number burned
+    assert abs(sk.getDatum(name).Value - 25) < 1e-6, sk.getDatum(name)  # the typed value survived
+    assert box() is None, "no box reopens for a dimension that already has its value"
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
+def test_9_box_closes_when_its_dimension_is_cancelled():
+    sk = doc().getObject(ST["a"])
+    rmb_edit(ST["a"])
+    sk.addConstraint(Sketcher.Constraint("DistanceY", 3, 2, 3, 1, 10))
+    doc().recompute()
+    harness.pump(600)
+    name = box().name
+    index = [i for i, c in enumerate(sk.Constraints) if c.Name == name][0]
+    sk.delConstraint(index)  # Esc in the view cancelled the tool: the dimension is gone, nothing replaces it
+    doc().recompute()
+    harness.pump(800)
+    assert box() is None, "the box of a vanished dimension closes"
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
+def test_10_esc_never_leaves_the_sketch():
+    rmb_edit(ST["a"])
+    vp = [w for w in Gui.getMainWindow().findChildren(QtWidgets.QGraphicsView) if w.isVisible()][0].viewport()
+    vp.setFocus()
+    for _ in range(3):
+        QTest.keyClick(vp, QtCore.Qt.Key_Escape)
+        harness.pump(400)
+    assert editing() is not None, "Esc cancels tools, Finish Sketch leaves"
+    sk = doc().getObject(ST["a"])
+    s().open_value_box(sk, ST["a_dims"][0])
+    harness.pump(400)
+    QTest.keyClick(focused(), QtCore.Qt.Key_Escape)
+    harness.pump(400)
+    assert box() is None and editing() is not None
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
+def test_11_moving_on_applies_what_was_typed():
+    sk = doc().getObject(ST["a"])
+    d0 = ST["a_dims"][0]
+    rmb_edit(ST["a"])
+    s().open_value_box(sk, d0)
+    harness.pump(400)
+    QTest.keyClicks(focused(), "33")
+    commands.REGISTRY.run("sketch.finish")  # moved on without Enter
+    harness.pump(1000)
+    assert editing() is None and box() is None
+    assert abs(sk.getDatum(d0).Value - 33) < 1e-6, sk.getDatum(d0)
+
+
 harness.run([test_0_setup, test_1_rmb_edit_opens_the_sketch, test_2_rmb_edit_another_sketch_while_one_is_open,
              test_3_the_dimension_box_has_the_keyboard_and_enter_applies, test_4_esc_cancels,
              test_5_clicking_another_dimension_inserts_its_name,
              test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard,
-             test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name])
+             test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name,
+             test_8_enter_before_placing_keeps_name_and_value, test_9_box_closes_when_its_dimension_is_cancelled,
+             test_10_esc_never_leaves_the_sketch, test_11_moving_on_applies_what_was_typed])

@@ -1,0 +1,17 @@
+{
+ "name": "hole_pick_sketch_in_tree",
+ "steps": [
+  "setup:block_with_top_sketch",
+  "wait:1",
+  "memo:v=s['volume']",
+  "cmd:feature.hole",
+  "wait:1",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Hole' and s['dialog']['active_pick'] == 'sketch'",
+  "click:tree.TopSketch",
+  "wait:1",
+  "expect:s['dialog']['values'].get('sketch') == 'TopSketch'",
+  "click:dialog.ok",
+  "wait:2",
+  "expect:s['dialog'] is None and s['busy'] is None and s['volume'] < m['v'] - 1"
+ ]
+}

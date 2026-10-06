@@ -1,0 +1,21 @@
+{
+ "name": "move_end_of_part_rmb",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "py:ST.__setitem__('pad2', util.add_pad(document.primary_body(App.ActiveDocument), util.add_rect_sketch(document.primary_body(App.ActiveDocument), w=5, h=5, name='SketchB'), 20))",
+  "py:(setattr(document.primary_body(App.ActiveDocument), 'Tip', ST['pad2']), App.ActiveDocument.recompute())",
+  "wait:1",
+  "expect:s['tip'] == 'Pad001' and s['volume'] > 2000.5",
+  "rclick:tree.Pad",
+  "wait:0.5",
+  "click:menu.Move End of Part Here",
+  "wait:1.5",
+  "expect:s['tip'] == 'Pad' and abs(s['volume'] - 2000) < 0.5",
+  "rclick:tree.Pad001",
+  "wait:0.5",
+  "click:menu.Move End of Part Here",
+  "wait:1.5",
+  "expect:s['tip'] == 'Pad001'"
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "name": "delete_sketch_rmb",
+ "steps": [
+  "setup:block_with_top_sketch",
+  "wait:1",
+  "expect:'TopSketch' in s['tree']",
+  "rclick:tree.TopSketch",
+  "wait:0.5",
+  "click:menu.Delete",
+  "wait:1.5",
+  "expect:'TopSketch' not in s['tree']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

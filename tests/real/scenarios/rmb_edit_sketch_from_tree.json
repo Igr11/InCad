@@ -1,0 +1,22 @@
+{
+ "name": "rmb_edit_sketch_from_tree",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "rclick:tree.SketchA",
+  "wait:0.5",
+  "expect:s['menu'] is not None and 'Edit' in s['menu']",
+  "click:menu.Edit",
+  "wait:1.5",
+  "expect:s['editing'] == 'SketchA'",
+  "cmd:sketch.finish",
+  "wait:1",
+  "expect:s['editing'] is None",
+  "rclick:tree.SketchA",
+  "wait:0.5",
+  "click:menu.Edit",
+  "wait:1.5",
+  "expect:s['editing'] == 'SketchA'",
+  "cmd:sketch.finish"
+ ]
+}
