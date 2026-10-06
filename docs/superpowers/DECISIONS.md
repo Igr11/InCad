@@ -243,3 +243,24 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
 - material colour only on bodies existing at the time; repeated/open loft section picks give raw messages
 - test_delete imports CombineTest (Combine tests run twice); Mass test doesn't check the density
 
+
+## Hands-on session 2026-10-06 (user testing, fixes on main)
+
+**Rulings**
+
+- New parts / sketch picks frame the origin at ~40 mm (FreeCAD's fit on an empty scene left the view a few mm across).
+- Sketch tool variants are Inventor split buttons; rectangle 3-point/center modes are set in FreeCAD's hidden tool widget after starting the tool (FreeCAD remembers the last method, so every variant sets its own).
+- Overall and Center Point slots are InCad's own 3-click tool (FreeCAD's slot is center-to-center only); built from two arcs + two lines with tangent/equal constraints.
+- Construction is an InCad-tracked drawing mode (FreeCAD's own construction mode can't be read back); new geometry is converted while it is on.
+- Hide constraints = move constraint symbols to FreeCAD's virtual space; dimensions always stay (Inventor F8/F9).
+- Threads run out one pitch past free ends; a picked Start face names the start end; shoulders/floors still stop the groove short.
+- Work features: midplane, angle-around-edge, parallel-through-point on a face, and axis parallel-through-point are computed when created/edited (no FreeCAD attachment mode follows them).
+- Section view cuts at the selection (3 points / flat face / plane), XZ otherwise; unusable picks are ignored.
+- Quitting: InCad asks its own Save dialog (Inventor style), cancels open tools, tears down and deletes its Qt objects inside the main window's close, and releases PySide's markers on all Qt objects (probed: macOS ends the process from inside the close; destroying marked objects after Python is gone crashed). If FreeCAD ever cancelled a quit after that, Python references taken earlier would be stale — cost if wrong: an add-on keeping a widget reference could misbehave after a cancelled quit.
+- ⌘Q is InCad's own File ▸ Quit (no QuitRole: macOS keeps FreeCAD's Quit in the app menu); Quit and ⌘W cancel an open feature dialog instead of refusing.
+- Hole: Simple / Clearance (FreeCAD's ThreadFit sizes the clearance) / Tapped; spotface = shallow counterbore; "To" face depth is computed when created/edited (FreeCAD's Hole has no up-to-face).
+- FreeCAD's overlay containers (OverlayLeft/Right/Top/Bottom) are hidden with the docks while InCad is active.
+
+**Known test limitation**
+
+- GUI tests that send real key events or need keyboard focus (parameter click into a focused field, real ⌘Z, real ⌘Q quit) fail while the screen is locked or another app holds focus; they pass with an unlocked screen.
