@@ -15,6 +15,8 @@ TITLE = "Combine"
 ICON = "combine"
 TYPES = ("PartDesign::Boolean",)
 NEEDS_PROFILE = False
+STRUCTURAL = ()  # every operation can be switched on edit
+RECREATE_ON = ("base",)  # a different base means a Boolean in another solid
 PROPS = {}
 _STORE = "InCadCombine"
 _TYPE = {"join": "Fuse", "cut": "Cut", "intersect": "Common"}
@@ -90,7 +92,18 @@ def _store(f, data):
 
 
 def clearance_parameter(f):
-    return _load(f).get("clearance_param")
+    """The clearance parameter, read from a helper's formula (follows renames); else the stored name."""
+    import re
+    from incad.core import model
+    data = _load(f)
+    for helpers in data.get("helpers", {}).values():
+        for key in ("grown", "fit_shape"):
+            obj = f.Document.getObject(helpers.get(key, "")) if helpers.get(key) else None
+            for path, expr in (getattr(obj, "ExpressionEngine", []) or []):
+                m = re.search(r"%s\.([A-Za-z_][A-Za-z0-9_]*)" % model.MODEL_NAME, expr)
+                if path.lstrip(".") == "Value" and m:
+                    return m.group(1)
+    return data.get("clearance_param")
 
 
 def _mm(text):
@@ -123,10 +136,16 @@ def _offset(doc, name, label, source, expr):
 
 
 def _remove(doc, name):
+    """Remove a helper; a fit copy the user has worked on (features added, or used elsewhere) is kept.
+    Returns False when it was kept."""
     obj = doc.getObject(name) if name else None
     if obj is None:
-        return
+        return True
     if obj.TypeId == "PartDesign::Body":
+        work = [o for o in obj.Group if o.TypeId != "PartDesign::FeatureBase"]
+        if work or list(obj.InList):
+            obj.Visibility = True
+            return False
         base = obj.BaseFeature
         obj.BaseFeature = None
         for child in list(obj.Group):
@@ -136,8 +155,9 @@ def _remove(doc, name):
         doc.removeObject(obj.Name)
         if base is not None and doc.getObject(base.Name) is not None:
             doc.removeObject(base.Name)
-        return
+        return True
     doc.removeObject(obj.Name)
+    return True
 
 
 def _build(doc, f, base, values):
@@ -147,6 +167,10 @@ def _build(doc, f, base, values):
         raise ValueError("Pick at least one other solid as a tool")
     if base in tools:
         raise ValueError("The base can't be a tool: pick the other solid(s) as tools")
+    for tool in tools:
+        if base in tool.OutListRecursive:
+            raise ValueError("%s already depends on %s (they were combined): pick another base or tool"
+                             % (tool.Label, base.Label))
     op = values.get("operation") or "cut"
     data = _load(f)
     old_helpers = data.get("helpers", {})
@@ -154,7 +178,7 @@ def _build(doc, f, base, values):
     apply_to = values.get("apply_to") or "cavity"
     name = None
     if op == "cut" and clearance > 0:
-        name = _clearance_param(doc, data, values.get("clearance") or "0.2 mm")
+        name = _clearance_param(doc, {"clearance_param": clearance_parameter(f)}, values.get("clearance") or "0.2 mm")
     ref = "%s.%s" % (model.MODEL_NAME, name) if name else None
     grow = {"cavity": ref, "split": "%s / 2" % ref} if ref else {}
     shrink = {"tool": "-%s" % ref, "split": "-%s / 2" % ref} if ref else {}
@@ -183,16 +207,61 @@ def _build(doc, f, base, values):
     f.Group = group
     for tool_name, old in old_helpers.items():  # drop helpers this setup no longer uses
         mine = helpers.get(tool_name, {})
+        kept_fit = False
         for key in ("grown", "fit"):
             if old.get(key) and old.get(key) != mine.get(key):
-                _remove(doc, old[key])
-        if old.get("fit_shape") and old.get("fit_shape") != mine.get("fit_shape") and \
+                kept_fit = (not _remove(doc, old[key])) or kept_fit
+        if old.get("fit_shape") and old.get("fit_shape") != mine.get("fit_shape") and not kept_fit and \
                 doc.getObject(old["fit_shape"]) is not None:
             doc.removeObject(old["fit_shape"])
+    _check_helpers(doc, helpers, tools)
     _store(f, {"base": base.Name, "tools": [t.Name for t in tools], "operation": op, "apply_to": apply_to,
                "clearance_param": name or data.get("clearance_param"),
                "clearance": values.get("clearance") or "0.2 mm", "helpers": helpers})
     return f
+
+
+
+
+
+def delete(doc, f):
+    """Remove a Combine with its helper offsets and fit copies; the tools stay (shown again)."""
+    data = _load(f)
+    body = f.getParentGeoFeatureGroup()
+    if body is not None:
+        if body.Tip is f:
+            body.Tip = f.BaseFeature
+        body.removeObject(f)
+    f.Group = []
+    doc.removeObject(f.Name)
+    for tool_name, helpers in data.get("helpers", {}).items():
+        for key in ("grown", "fit"):
+            if helpers.get(key):
+                _remove(doc, helpers[key])
+        if helpers.get("fit_shape") and doc.getObject(helpers["fit_shape"]) is not None:
+            doc.removeObject(helpers["fit_shape"])
+        tool = doc.getObject(tool_name)
+        if tool is not None and tool.TypeId == "PartDesign::Body":
+            tool.Visibility = True
+
+
+def _check_helpers(doc, helpers, tools):
+    """Part::Offset can fail on complex shapes (threads): say so instead of a silently wrong result."""
+    doc.recompute()
+    for tool in tools:
+        mine = helpers.get(tool.Name, {})
+        volume = tool.Shape.Volume if not tool.Shape.isNull() else 0.0
+        for key, bigger in (("grown", True), ("fit_shape", False)):
+            obj = doc.getObject(mine[key]) if mine.get(key) else None
+            if obj is None:
+                continue
+            shape = obj.Shape
+            ok = not shape.isNull() and shape.isValid() and shape.Volume > 1e-6 and \
+                ((shape.Volume > volume) if bigger else (shape.Volume < volume))
+            if not ok:
+                raise ValueError("Couldn't %s %s by the clearance (threads and other complex shapes can't be "
+                                 "offset): use Clearance 0 mm, or put the clearance on the thread itself"
+                                 % ("grow" if bigger else "shrink", tool.Label))
 
 
 def create(doc, body, profile, values):
@@ -205,8 +274,15 @@ def create(doc, body, profile, values):
         raise ValueError("Pick at least one other solid as a tool")
     if base in tools:
         raise ValueError("The base can't be a tool: pick the other solid(s) as tools")
+    tip = base.Tip
     f = base.newObject("PartDesign::Boolean", "Combine")
-    _build(doc, f, base, values)
+    try:
+        _build(doc, f, base, values)
+    except Exception:
+        delete(doc, f)  # a refused Combine leaves nothing behind
+        base.Tip = tip
+        doc.recompute()
+        raise
     base.Tip = f
     return f
 
@@ -225,7 +301,12 @@ def read(doc, f):
 
 
 def update(doc, f, values):
-    return _build(doc, f, f.getParentGeoFeatureGroup(), values)
+    body = f.getParentGeoFeatureGroup()
+    bases = _bodies(doc, values.get("base"))
+    if bases and bases[0] is not body:
+        raise ValueError("The base can't change on an existing Combine: cancel and start Combine on the other "
+                         "solid")
+    return _build(doc, f, body, values)
 
 
 def param_names(f):

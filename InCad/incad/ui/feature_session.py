@@ -40,6 +40,7 @@ class FeatureSession(QtCore.QObject):
                 if getattr(self.kind, "NEEDS_PROFILE", True):
                     self.feature = self.kind.create(doc, self.body, self.profile, values)
                     self._created_with = values.get("operation")
+                    self._created_values = dict(values)
             else:
                 values = self.kind.read(doc, self.feature)
             doc.recompute()
@@ -50,9 +51,12 @@ class FeatureSession(QtCore.QObject):
         self.dialog = FeatureDialog(self.kind.TITLE, self.kind.ICON, self.kind.FIELDS, values, self._theme, self._parent)
         self._applied = self.dialog.values()
         if not self.creating:
-            for value in ("intersect", "new_solid"):
+            for value in getattr(self.kind, "STRUCTURAL", ("intersect", "new_solid")):
                 if "operation" in self.dialog._widgets and value in self.dialog.field("operation")._buttons:
                     self.dialog.set_choice_enabled("operation", value, False)
+            for key in getattr(self.kind, "RECREATE_ON", ()):  # can't change on an existing feature
+                if key in self.dialog._widgets:
+                    self.dialog.field(key).setEnabled(False)
         self.dialog.changed.connect(self._changed)
         self.dialog.accepted.connect(self.ok)
         self.dialog.applied.connect(self.apply)
@@ -271,6 +275,7 @@ class FeatureSession(QtCore.QObject):
                 self.feature = None  # the abort removed it; stays None if the new one fails
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
+                self._created_values = dict(values)
             else:
                 self.feature = self.kind.update(self.doc, self.feature, values)
             self.doc.recompute()
@@ -312,8 +317,11 @@ class FeatureSession(QtCore.QObject):
 
     def _needs_recreate(self, values):
         """While creating, Join/Cut switch in place; New Solid and Intersect build a different structure."""
+        made = getattr(self, "_created_values", {})
+        if any(values.get(k) != made.get(k) for k in getattr(self.kind, "RECREATE_ON", ())):
+            return True
         before, after = getattr(self, "_created_with", None), values.get("operation")
-        structural = ("new_solid", "intersect")
+        structural = getattr(self.kind, "STRUCTURAL", ("new_solid", "intersect"))
         return before != after and (before in structural or after in structural)
 
     def _check(self):
