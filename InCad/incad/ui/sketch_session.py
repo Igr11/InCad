@@ -58,8 +58,6 @@ class SketchSession:
             # user): switch them on fresh now, and once more when the size has surely arrived
             _show_fresh(vos, view)
             QtCore.QTimer.singleShot(300, lambda: self.picking and _show_fresh(vos[1:], view))
-            _log_planes("pick", doc, body)
-            QtCore.QTimer.singleShot(600, lambda: _log_planes("pick+0.6s", doc, body))
         self.picking = True
         Gui.Selection.clearSelection()
         Gui.Selection.addObserver(self)
@@ -278,23 +276,3 @@ def _redraw(view):
         view.redraw()
     except Exception:
         pass
-
-
-def _log_planes(when, doc, body):
-    """One line in InCad's log file (not shown) describing the origin planes during a pick: for diagnosing a
-    user's 'no planes' without access to their screen."""
-    import FreeCAD as App
-    import FreeCADGui as Gui
-    try:
-        gdoc = Gui.ActiveDocument
-        view = gdoc.ActiveView if gdoc is not None else None
-        cam = view.getCameraNode() if view is not None else None
-        height = cam.height.getValue() if cam is not None and hasattr(cam, "height") else None
-        log.logger().info(
-            "planes %s: doc=%s active=%s view=%s origin=%s planes=%s scale=%s height=%s size=%s", when, doc.Name,
-            gdoc.Document.Name if gdoc is not None else None, type(view).__name__ if view is not None else None,
-            body.Origin.ViewObject.Visibility, [f.ViewObject.Visibility for f in body.Origin.OriginFeatures],
-            App.ParamGet("User parameter:BaseApp/Preferences/View").GetFloat("DatumScale", -1.0), height,
-            view.getSize() if view is not None and hasattr(view, "getSize") else None)
-    except Exception as e:
-        log.logger().info("planes %s: could not describe (%s)", when, e)
