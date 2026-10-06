@@ -34,9 +34,8 @@ class RibbonTest(unittest.TestCase):
         self.assertIsNone(self.rb.button("missing"))
 
     def test_sizes(self):
-        cases = (("small", 16, QtCore.Qt.ToolButtonIconOnly),
-                 ("medium", 24, QtCore.Qt.ToolButtonTextUnderIcon),
-                 ("large", 32, QtCore.Qt.ToolButtonTextUnderIcon))
+        cases = (("medium", 32, QtCore.Qt.ToolButtonTextUnderIcon),
+                 ("large", 40, QtCore.Qt.ToolButtonTextUnderIcon))
         for size, px, style in cases:
             self.rb.set_size(size)
             b = self.rb.button("a")
@@ -47,13 +46,15 @@ class RibbonTest(unittest.TestCase):
     def test_size_signal_once_per_change(self):
         seen = []
         self.rb.sizeChanged.connect(seen.append)
-        self.rb.set_size("small")
-        self.rb.set_size("small")
-        self.assertEqual(seen, ["small"])
+        self.rb.set_size("medium")
+        self.rb.set_size("medium")
+        self.assertEqual(seen, ["medium"])
 
     def test_bad_size(self):
         with self.assertRaises(ValueError):
             self.rb.set_size("huge")
+        with self.assertRaises(ValueError):
+            self.rb.set_size("small")  # removed: too small to use
 
     def test_theme_rebuild_keeps_tab(self):
         self.rb._tabs.setCurrentIndex(1)
@@ -69,10 +70,10 @@ class RibbonTest(unittest.TestCase):
     def test_size_menu(self):
         m = self.rb.size_menu(None)
         acts = m.actions()
-        self.assertEqual([a.text() for a in acts], ["Small", "Medium", "Large"])
-        self.assertEqual([a.isChecked() for a in acts], [False, False, True])
+        self.assertEqual([a.text() for a in acts], ["Medium", "Large"])
+        self.assertEqual([a.isChecked() for a in acts], [False, True])
         acts[0].trigger()
-        self.assertEqual(self.rb.current_size(), "small")
+        self.assertEqual(self.rb.current_size(), "medium")
 
     def test_checkable_reflects_state(self):
         self.assertFalse(self.rb.button("t").isChecked())
@@ -146,12 +147,12 @@ class CompactRibbonTest(unittest.TestCase):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
         b = rb.button("k0")
         self.assertEqual(b.toolButtonStyle(), QtCore.Qt.ToolButtonIconOnly)
-        self.assertEqual(b.iconSize().width(), 28)  # big enough to read on a large ribbon
+        self.assertEqual(b.iconSize().width(), 32)  # big enough to read on a large ribbon
         rb.show()
         rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
         self.assertEqual(len(rows), 2)
         medium = Ribbon(self.reg, self.layout, mode="sketch", size="medium", theme="light")
-        self.assertEqual(medium.button("k0").iconSize().width(), 24)
+        self.assertEqual(medium.button("k0").iconSize().width(), 28)
 
     def test_short_label_on_the_button(self):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")

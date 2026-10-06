@@ -17,7 +17,7 @@ class PrefsMemoryTest(unittest.TestCase):
 
     def test_roundtrip(self):
         prefs.set_theme("dark")
-        prefs.set_ribbon_size("small")
+        prefs.set_ribbon_size("medium")
         prefs.set_default_units("in")
         prefs.set_remember_new_choice(True)
         prefs.set_last_workbench("SketcherWorkbench")
@@ -25,9 +25,13 @@ class PrefsMemoryTest(unittest.TestCase):
         self.assertEqual(
             (prefs.theme(), prefs.ribbon_size(), prefs.default_units(), prefs.remember_new_choice(),
              prefs.last_workbench(), prefs.takeover_snapshot()),
-            ("dark", "small", "in", True, "SketcherWorkbench", '{"a": 1}'))
+            ("dark", "medium", "in", True, "SketcherWorkbench", '{"a": 1}'))
         prefs.clear_takeover_snapshot()
         self.assertEqual(prefs.takeover_snapshot(), "")
+
+    def test_a_saved_small_ribbon_becomes_the_default(self):
+        prefs._s().set("str", "RibbonSize", "small")  # saved before the small size was removed
+        self.assertEqual(prefs.ribbon_size(), "large")
 
     def test_invalid_values_rejected(self):
         for setter, bad in ((prefs.set_theme, "blue"), (prefs.set_ribbon_size, "huge"), (prefs.set_default_units, "cm")):

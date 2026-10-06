@@ -13,7 +13,7 @@ PALETTES = {
                  error="#ff6b7f", rolled_back="#777777", eop="#ff6b7f",
                  view_top="#2b3440", view_bottom="#14181e", cube="#3d4450"),
 }
-ICON_PX = {"small": 16, "medium": 24, "large": 32}
+ICON_PX = {"medium": 32, "large": 40}
 ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "icons")
 
 STYLE = """

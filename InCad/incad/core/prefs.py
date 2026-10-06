@@ -4,7 +4,7 @@ Falls back to an in-memory store when FreeCAD is not importable (widget tests)."
 GROUP = "User parameter:BaseApp/Preferences/Mod/InCad"
 
 THEMES = ("auto", "light", "dark")
-RIBBON_SIZES = ("small", "medium", "large")
+RIBBON_SIZES = ("medium", "large")  # "small" was removed: too small to use
 UNITS = ("mm", "in")
 
 

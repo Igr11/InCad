@@ -126,8 +126,8 @@ def test_5_theme_toggle():
 
 
 def test_6_ribbon_size_persists():
-    s().ribbon.set_size("small")
-    assert prefs.ribbon_size() == "small"
+    s().ribbon.set_size("medium")
+    assert prefs.ribbon_size() == "medium"
     s().ribbon.set_size("large")
     assert prefs.ribbon_size() == "large"
 

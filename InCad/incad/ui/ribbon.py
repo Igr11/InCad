@@ -2,11 +2,11 @@
 from incad.qt import dispose, QtCore, QtGui, QtWidgets, Signal
 from incad.ui import theme as themes
 
-SIZES = ("small", "medium", "large")
+SIZES = ("medium", "large")
 
 
 # icons of stacked groups (Constrain, Format): two rows as tall as one button with its label, readable at each size
-STACKED_PX = {"small": 16, "medium": 24, "large": 28}
+STACKED_PX = {"medium": 28, "large": 32}
 
 
 class Ribbon(QtWidgets.QWidget):
@@ -159,7 +159,7 @@ class Ribbon(QtWidgets.QWidget):
             row = QtWidgets.QGridLayout()
             row.setSpacing(0)
             px = STACKED_PX[self._size]
-            rows = 1 if self._size == "small" else 2
+            rows = 2
             row.setContentsMargins(0, 0, 0, 0)
         else:
             row = QtWidgets.QHBoxLayout()
@@ -178,8 +178,7 @@ class Ribbon(QtWidgets.QWidget):
             b.setIcon(themes.icon(cmd.icon, self._theme))
             b.setIconSize(QtCore.QSize(px, px))
             b.setText(cmd.short or cmd.label)
-            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if self._size == "small" or stacked
-                                 else QtCore.Qt.ToolButtonTextUnderIcon)
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if stacked else QtCore.Qt.ToolButtonTextUnderIcon)
             tip = cmd.label
             if cmd.shortcut:
                 tip += " (%s)" % QtGui.QKeySequence(cmd.shortcut).toString(QtGui.QKeySequence.NativeText)
@@ -199,11 +198,10 @@ class Ribbon(QtWidgets.QWidget):
             self._buttons[cmd.id] = b
         col.addLayout(row)
         col.addStretch(1)  # group labels line up at the bottom whatever the group's height
-        if self._size != "small":
-            label = QtWidgets.QLabel(name)
-            label.setObjectName("InCadRibbonGroupLabel")
-            label.setAlignment(QtCore.Qt.AlignHCenter)
-            col.addWidget(label)
+        label = QtWidgets.QLabel(name)
+        label.setObjectName("InCadRibbonGroupLabel")
+        label.setAlignment(QtCore.Qt.AlignHCenter)
+        col.addWidget(label)
         return frame
 
     def _split_button(self, parent, variants, px):
@@ -213,8 +211,7 @@ class Ribbon(QtWidgets.QWidget):
         current = next((c for c in variants if c.id == chosen), variants[0])
         b = QtWidgets.QToolButton(parent)
         b.setIconSize(QtCore.QSize(px, px))
-        b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if self._size == "small"
-                             else QtCore.Qt.ToolButtonTextUnderIcon)
+        b.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         b.setAutoRaise(True)
         b.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
         menu = QtWidgets.QMenu(b)

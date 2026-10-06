@@ -39,7 +39,7 @@ class ThemeTest(unittest.TestCase):
         self.assertEqual(set(v), set(theme.VIEW_KEYS))
 
     def test_icon_px(self):
-        self.assertEqual(theme.ICON_PX, {"small": 16, "medium": 24, "large": 32})
+        self.assertEqual(theme.ICON_PX, {"medium": 32, "large": 40})
 
     def test_navicube_params(self):
         self.assertEqual(theme.navicube_params("dark"), {"BaseColor": ("Unsigned", 0x3D4450FF)})
