@@ -183,8 +183,11 @@ def _build(doc, body, f, values):
     runout = _fit(spec, internal, radius, clearance)
     groove = profile.groove(spec, internal, clearance, runout)
     half = profile.max_width(groove) / 2.0
-    lead = 0.0 if start_free else half  # never cut past a shoulder or a floor
     offset = _mm(values.get("offset"), 0.0)
+    # free end: the helix starts/ends a full pitch outside the part, so the thread runs out cleanly (as a die
+    # cuts it); closed end (shoulder, floor): stop half a groove short, never cutting into it
+    lead = (-spec.pitch if offset == 0 else 0.0) if start_free else half
+    tail = spec.pitch if end_free else -half
     sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else (f.Profile or None)
     if sk is None:
         sk = body.newObject("Sketcher::SketchObject", "ThreadProfile")
@@ -209,7 +212,7 @@ def _build(doc, body, f, values):
         value_param(doc, f, "Height", values.get("length") or "10 mm", "length")
     else:
         f.setExpression("Height", None)
-        f.Height = max(face_len - offset - lead - (0.0 if end_free else half), spec.pitch)
+        f.Height = max(face_len - offset - lead + tail, spec.pitch)
     _store(f, {"face": values.get("face"), "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",

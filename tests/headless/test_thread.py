@@ -236,3 +236,25 @@ class ThreadReviewTest(unittest.TestCase):
                 self.assertAlmostEqual(profile.width_at(g, d2 / 2), spec.pitch / 2, places=2, msg=(size, spec.std))
                 gi = profile.groove(spec, internal=True, clearance=0.0)
                 self.assertAlmostEqual(profile.width_at(gi, d2 / 2), spec.pitch / 2, places=2, msg=(size, spec.std))
+
+
+class ThreadRunOutTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Ro")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_full_thread_runs_out_past_both_free_ends(self):
+        pad = shaft(self.doc, self.body)  # Ø10 × 20, both ends free
+        f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                          face=cyl_face(pad, 5), size="M10", clearance="0 mm"))
+        self.doc.recompute()
+
+        def ring_cut(z0):  # material removed in a 1.5 mm (one pitch) slab
+            slab = Part.makeCylinder(5, 1.5, App.Vector(0, 0, z0))
+            return slab.Volume - slab.common(f.Shape).Volume
+        middle = ring_cut(9.25)
+        self.assertAlmostEqual(ring_cut(0.0) / middle, 1.0, delta=0.1)   # full thread right to the end
+        self.assertAlmostEqual(ring_cut(18.5) / middle, 1.0, delta=0.1)
