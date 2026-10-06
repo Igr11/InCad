@@ -1,0 +1,18 @@
+{
+ "name": "section_panel_flip_and_off",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "expect:s['tip'] == 'Pad'",
+  "cmd:view.section",
+  "wait:1",
+  "expect:s['section']['on'] and s['section']['panel'] and not s['section']['flipped']",
+  "click:section.flip",
+  "wait:0.8",
+  "expect:s['section']['on'] and s['section']['flipped']",
+  "click:section.off",
+  "wait:0.8",
+  "expect:not s['section']['on'] and not s['section']['panel']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

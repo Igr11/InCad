@@ -1,0 +1,24 @@
+{
+ "name": "thread_with_chamfer_by_3d_click",
+ "steps": [
+  "setup:shaft",
+  "wait:1.2",
+  "expect:s['error'] == '' and s['tip'] == 'Shaft'",
+  "memo:v=s['volume']",
+  "move:side",
+  "click:side",
+  "wait:0.6",
+  "expect:any('Face' in sub for _, subs in s['selection'] for sub in subs)",
+  "cmd:feature.thread",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Thread' and s['dialog']['values'].get('face')",
+  "click:dialog.chamfer.start",
+  "wait:6",
+  "expect:s['dialog']['values'].get('chamfer') == 'start' and not s['dialog']['error']",
+  "click:dialog.ok",
+  "wait:8",
+  "expect:s['dialog'] is None and s['busy'] is None and s['volume'] < m['v'] - 5",
+  "expect:'ThreadChamfer' in str(s['features']) or 'Thread' in str(s['features'])",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

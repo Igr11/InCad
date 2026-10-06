@@ -154,6 +154,8 @@ def state():
             panel = getattr(sh, "section_panel", None)
             st["section"] = {"on": bool(sh.section_on()), "panel": panel is not None,
                              "offset": center(panel.offset) if panel is not None else None,
+                             "flip": center(panel.flip) if panel is not None else None,
+                             "flipped": bool(panel.flip.isChecked()) if panel is not None else None,
                              "done": center(panel.done_button) if panel is not None else None,
                              "off": center(panel.off_button) if panel is not None else None}
             d = App.ActiveDocument
@@ -215,6 +217,15 @@ def setup(name):
                 if hasattr(cam, "height"):
                     cam.height.setValue(cam.height.getValue() * 1.9)
             QtCore.QTimer.singleShot(800, fit_with_room)
+        return
+    if name == "shaft":  # Ø10 × 30 along Z, free tip at z = 30; points on its side and on the tip
+        from headless.test_thread import shaft as make_shaft
+        pad = make_shaft(doc, body, radius=5.0, length=30.0)
+        ST["pad"] = pad
+        ST["sketch"] = body.Group[0] if body.Group else None
+        ST["points"].update({"side": (3.5355, -3.5355, 15), "tip": (0, 0, 30), "away": (40, 30, 0)})  # off the seam
+        Gui.SendMsgToActiveView("ViewFit")
+        Gui.ActiveDocument.ActiveView.viewIsometric()
         return
     if name == "crossed_sketch":  # a 20 x 10 rectangle cut by a line, a circle in its right half ("Cross")
         from headless.test_regions import crossing_sketch
