@@ -7,8 +7,18 @@ def _num(value, unit, digits=3):
     return "%s %s" % (text, unit) if unit != "°" else text + "°"
 
 
+_NOT_MEASURABLE = ("App::Origin", "App::Plane", "App::Line", "App::Point")
+
+
 def _element(obj, sub):
-    return obj.getSubObject(sub) if sub else obj.Shape
+    if obj.TypeId in _NOT_MEASURABLE or (not sub and obj.TypeId.startswith("PartDesign::") and
+                                        obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
+                                                       "PartDesign::Point")):
+        raise ValueError("Select a face or an edge of the part (work and origin items have no size)")
+    shape = obj.getSubObject(sub) if sub else getattr(obj, "Shape", None)
+    if shape is None or shape.isNull():
+        raise ValueError("Select a face or an edge of the part")
+    return shape
 
 
 def measure(pairs):

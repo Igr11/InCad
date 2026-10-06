@@ -16,9 +16,29 @@ def _origin_name(body, role):
         return ""
 
 
-def _features(doc, body, text):
+def _features(doc, body, text, f):
+    """Picked features; else the ones it already patterns; else the Tip (never the pattern itself)."""
     picks = [resolve(o, s)[0] for o, s in parse_picks(doc, text)]
-    return picks or ([body.Tip] if body.Tip is not None else [])
+    if picks:
+        return [p for p in picks if p is not f]
+    if list(f.Originals):
+        return list(f.Originals)
+    return [x for x in [_last_shape_feature(body, f)] if x is not None]
+
+
+_PATTERNABLE = ("PartDesign::Pad", "PartDesign::Pocket", "PartDesign::Revolution", "PartDesign::Groove",
+                "PartDesign::Hole")
+
+
+def _last_shape_feature(body, f):
+    """The newest feature FreeCAD can pattern (patterns and dress-ups can't be), walking back from the Tip."""
+    x = body.Tip
+    while x is not None:
+        if x is not f and (x.TypeId in _PATTERNABLE or x.TypeId.startswith(("PartDesign::Additive",
+                                                                           "PartDesign::Subtractive"))):
+            return x
+        x = getattr(x, "BaseFeature", None)
+    return None
 
 
 def _dir_link(doc, body, text, default_role):
@@ -65,7 +85,7 @@ def spacing_param_from(f, key):
 
 
 def _rect_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"))
+    f.Originals = _features(doc, body, values.get("features"), f)
     f.Direction = _dir_link(doc, body, values.get("dir1"), "X_Axis")
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count1"))
@@ -125,7 +145,7 @@ RECT = SimpleNamespace(
 
 
 def _circ_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"))
+    f.Originals = _features(doc, body, values.get("features"), f)
     f.Axis = _dir_link(doc, body, values.get("axis"), "Z_Axis")
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count"))
@@ -163,7 +183,7 @@ CIRC = SimpleNamespace(
 
 
 def _mirror_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"))
+    f.Originals = _features(doc, body, values.get("features"), f)
     f.MirrorPlane = _dir_link(doc, body, values.get("plane"), "YZ_Plane")
 
 

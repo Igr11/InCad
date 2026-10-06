@@ -33,3 +33,10 @@ class InspectTest(unittest.TestCase):
         self.assertEqual(rows["Volume"], "2000 mm³")
         self.assertEqual(rows["Mass"], "2.48 g")
         self.assertEqual(rows["Size"], "20 × 10 × 10 mm")
+
+    def test_origin_items_are_refused_plainly(self):
+        xy = [o for o in self.body.Origin.OriginFeatures if o.Role == "XY_Plane"][0]
+        for pairs in ([(xy, "")], [(self.body.Origin, "")]):
+            with self.assertRaises(ValueError) as ctx:
+                inspect.measure(pairs)
+            self.assertIn("Select a face", str(ctx.exception))

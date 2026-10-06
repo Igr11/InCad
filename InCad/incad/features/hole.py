@@ -38,17 +38,22 @@ def defaults(doc, body, profile):
     return values
 
 
-def _helper_sketch(doc, body, values):
-    """A hidden sketch on the face with a point at the circular edge's centre (fixed position)."""
+def _helper_sketch(doc, body, values, sk=None):
+    """A hidden sketch on the face with a point at the circular edge's centre (fixed position). The picks are
+    kept on the sketch (InCadPicks) so the dialog can show and change them; `sk` reuses an existing helper."""
     faces, edges = parse_picks(doc, values.get("face")), parse_picks(doc, values.get("edge"))
     if not faces or not edges:
         raise ValueError("Pick the flat face and the round edge the hole is centred on")
     face_obj, face = faces[0]
     edge_obj, edge = edges[0]
     centre = edge_obj.getSubObject(edge).Curve.Center
-    sk = body.newObject("Sketcher::SketchObject", "HoleCentre")
+    if sk is None:
+        sk = body.newObject("Sketcher::SketchObject", "HoleCentre")
+        sk.addProperty("App::PropertyString", "InCadPicks", "InCad")
+    sk.deleteAllGeometry()
     sk.AttachmentSupport = [resolve(face_obj, face)]
     sk.MapMode = "FlatFace"
+    sk.InCadPicks = "%s|%s" % (values.get("face"), values.get("edge"))
     doc.recompute()
     local = sk.getGlobalPlacement().inverse().multVec(centre)
     sk.addGeometry(Part.Point(App.Vector(local.x, local.y, 0)))
@@ -91,13 +96,16 @@ def create(doc, body, profile, values):
 
 def read(doc, f):
     prof = f.Profile[0] if isinstance(f.Profile, (tuple, list)) else f.Profile
-    concentric = prof is not None and prof.Name.startswith("HoleCentre")
+    concentric = _is_helper(prof)
     cut = {v: k for k, v in _CUT.items()}.get(f.HoleCutType, "simple")
     values = defaults(f.Document, None, None)
     values.update(placement="concentric" if concentric else "sketch", sketch="" if concentric else prof.Name,
                   type=cut, depth_type="through_all" if f.DepthType == "ThroughAll" else "distance",
                   tip="angled" if f.DrillPoint == "Angled" else "flat",
                   diameter=value_text(doc, f, "Diameter") or "5 mm", depth=value_text(doc, f, "Depth") or "10 mm")
+    if concentric:
+        face, _, edge = getattr(prof, "InCadPicks", "").partition("|")
+        values.update(face=face, edge=edge)
     if cut == "counterbore":
         values.update(cbore_diameter=value_text(doc, f, "HoleCutDiameter") or "10 mm",
                       cbore_depth=value_text(doc, f, "HoleCutDepth") or "3 mm")
@@ -107,11 +115,25 @@ def read(doc, f):
     return values
 
 
+def _is_helper(sk):
+    return sk is not None and hasattr(sk, "InCadPicks")
+
+
 def update(doc, f, values):
-    if values.get("placement") == "sketch":
+    current = f.Profile[0] if isinstance(f.Profile, (tuple, list)) else f.Profile
+    body = f.getParentGeoFeatureGroup()
+    if values.get("placement") == "concentric":
+        if _is_helper(current):
+            _helper_sketch(doc, body, values, current)
+        else:
+            f.Profile = _helper_sketch(doc, body, values)
+    else:
         picks = parse_picks(doc, values.get("sketch"))
-        if picks and (f.Profile[0] if isinstance(f.Profile, (tuple, list)) else f.Profile) is not picks[0][0]:
+        if picks and current is not picks[0][0]:
             f.Profile = picks[0][0]
+            if _is_helper(current):
+                body.removeObject(current)
+                doc.removeObject(current.Name)
     _apply(doc, f, values)
     return f
 

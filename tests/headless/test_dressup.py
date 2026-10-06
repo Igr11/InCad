@@ -59,3 +59,19 @@ class DressUpTest(unittest.TestCase):
         k = dressup.FILLET
         with self.assertRaises(ValueError):
             k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+
+    def test_edges_must_be_on_the_current_shape(self):
+        import Part
+        sk = self.body.newObject("Sketcher::SketchObject", "Cut")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % self.top_face)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
+        pocket = self.body.newObject("PartDesign::Pocket", "Pocket")
+        pocket.Profile = sk
+        pocket.Length = 3
+        self.body.Tip = pocket
+        self.doc.recompute()
+        k = dressup.FILLET
+        with self.assertRaises(ValueError) as ctx:
+            k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), edges=self.edges()))
+        self.assertIn("current shape", str(ctx.exception))

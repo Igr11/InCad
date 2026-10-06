@@ -67,3 +67,26 @@ class PatternsTest(unittest.TestCase):
         names = k.param_names(f)
         self.assertEqual(set(names), {"spacing1", "spacing2"})
         self.assertTrue(all(names.values()))
+
+    def test_default_feature_survives_an_edit(self):
+        for k in (patterns.RECT, patterns.CIRC, patterns.MIRROR):
+            tip = self.body.Tip
+            f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+            self.doc.recompute()
+            f = k.update(self.doc, f, k.defaults(self.doc, self.body, None))
+            self.doc.recompute()
+            self.assertEqual(list(f.Originals), [tip], k.TITLE)
+            self.assertNotIn("Invalid", f.State, k.TITLE)
+            self.body.removeObject(f)
+            self.doc.removeObject(f.Name)
+            self.body.Tip = tip
+            self.doc.recompute()
+
+    def test_default_skips_back_over_patterns_and_dressups(self):
+        r = patterns.RECT.create(self.doc, self.body, None, patterns.RECT.defaults(self.doc, self.body, None))
+        self.doc.recompute()
+        self.assertIs(self.body.Tip, r)
+        c = patterns.CIRC.create(self.doc, self.body, None, patterns.CIRC.defaults(self.doc, self.body, None))
+        self.doc.recompute()
+        self.assertEqual(list(c.Originals), [self.pad])
+        self.assertNotIn("Invalid", c.State)

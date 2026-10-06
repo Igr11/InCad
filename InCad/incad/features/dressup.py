@@ -4,9 +4,18 @@ from types import SimpleNamespace
 from incad.features.common import Field, link_sub, parse_picks, resolve, value_param, value_text
 
 
-def _base(doc, text):
+def _base(doc, text, expected):
+    """(obj, subs) of the picks; they must lie on `expected` — the shape the feature starts from."""
     pairs = [resolve(o, s) for o, s in parse_picks(doc, text)]
-    return link_sub(pairs)
+    obj, subs = link_sub(pairs)
+    if expected is not None and obj is not expected:
+        raise ValueError("Pick on the current shape (%s), not on %s" % (expected.Label, obj.Label))
+    return obj, subs
+
+
+def _expected(f, body=None):
+    base = getattr(f, "BaseFeature", None) if f is not None else None
+    return base if base is not None else (body.Tip if body is not None else None)
 
 
 def _picks_text(f, prop="Base"):
@@ -19,7 +28,7 @@ def _picks_text(f, prop="Base"):
 
 # ----- Fillet -----
 def _fillet_create(doc, body, profile, values):
-    obj, subs = _base(doc, values.get("edges"))
+    obj, subs = _base(doc, values.get("edges"), body.Tip)
     f = body.newObject("PartDesign::Fillet", "Fillet")
     f.Base = (obj, subs)
     value_param(doc, f, "Radius", values.get("radius") or "1 mm", "length")
@@ -31,7 +40,7 @@ def _fillet_read(doc, f):
 
 
 def _fillet_update(doc, f, values):
-    obj, subs = _base(doc, values.get("edges"))
+    obj, subs = _base(doc, values.get("edges"), _expected(f))
     f.Base = (obj, subs)
     value_param(doc, f, "Radius", values.get("radius") or "1 mm", "length")
     return f
@@ -51,7 +60,7 @@ _CHAMFER = {"equal": "Equal distance", "two": "Two distances", "angle": "Distanc
 
 
 def _chamfer_apply(doc, f, values):
-    obj, subs = _base(doc, values.get("edges"))
+    obj, subs = _base(doc, values.get("edges"), _expected(f))
     f.Base = (obj, subs)
     kind = values.get("type", "equal")
     f.ChamferType = _CHAMFER.get(kind, "Equal distance")
@@ -98,7 +107,7 @@ CHAMFER = SimpleNamespace(
 
 # ----- Shell -----
 def _shell_apply(doc, f, values):
-    obj, subs = _base(doc, values.get("faces"))
+    obj, subs = _base(doc, values.get("faces"), _expected(f))
     f.Base = (obj, subs)
     f.Reversed = values.get("direction", "inside") == "inside"  # probed: Reversed=True keeps the outer size
     value_param(doc, f, "Value", values.get("thickness") or "1 mm", "length")

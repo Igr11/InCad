@@ -73,3 +73,34 @@ class HoleTest(unittest.TestCase):
         name = model.bound_parameter(f, "Diameter")
         model.set_model_parameter(self.doc, name, "5 mm")
         self.assertAlmostEqual(f.Diameter.Value, 5)
+
+    def test_concentric_edit_moves_to_another_edge(self):
+        boss_sk = self.body.newObject("Sketcher::SketchObject", "Bosses")
+        boss_sk.AttachmentSupport = [(self.pad, "Face%d" % self.top)]
+        boss_sk.MapMode = "FlatFace"
+        boss_sk.addGeometry(Part.Circle(App.Vector(5, 5, 0), App.Vector(0, 0, 1), 2))
+        boss_sk.addGeometry(Part.Circle(App.Vector(15, 5, 0), App.Vector(0, 0, 1), 2))
+        boss = util.add_pad(self.body, boss_sk, 3, name="Bosses")
+        self.body.Tip = boss
+        self.doc.recompute()
+        top2 = [i + 1 for i, f in enumerate(boss.Shape.Faces)
+                if abs(f.CenterOfMass.z - 13) < 1e-6 and abs(f.CenterOfMass.x - 5) < 1e-6][0]
+        top3 = [i + 1 for i, f in enumerate(boss.Shape.Faces)
+                if abs(f.CenterOfMass.z - 13) < 1e-6 and abs(f.CenterOfMass.x - 15) < 1e-6][0]
+        def circle(x):
+            return [i + 1 for i, e in enumerate(boss.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                    and abs(e.BoundBox.ZMax - 13) < 1e-6 and abs(e.Curve.Center.x - x) < 1e-6][0]
+        v = dict(hole.defaults(self.doc, self.body, None), placement="concentric", diameter="1 mm",
+                 face="%s:Face%d" % (boss.Name, top2), edge="%s:Edge%d" % (boss.Name, circle(5)),
+                 depth_type="distance", depth="2 mm")
+        f = hole.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        r = hole.read(self.doc, f)
+        self.assertEqual((r["face"], r["edge"]), (v["face"], v["edge"]))
+        f = hole.update(self.doc, f, dict(r, face="%s:Face%d" % (boss.Name, top3),
+                                          edge="%s:Edge%d" % (boss.Name, circle(15))))
+        self.doc.recompute()
+        bores = [fc for fc in f.Shape.Faces if fc.Surface.TypeId == "Part::GeomCylinder"
+                 and abs(fc.Surface.Radius - 0.5) < 1e-6]
+        self.assertTrue(bores and all(abs(fc.Surface.Center.x - 15) < 1e-6 for fc in bores),
+                        [fc.Surface.Center for fc in bores])
