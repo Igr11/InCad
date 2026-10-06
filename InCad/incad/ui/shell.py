@@ -823,12 +823,20 @@ class Shell(QtCore.QObject):
         if self.feature_session is not None:
             self.feature_session.cancel()
             return
+        import FreeCADGui as Gui
+        if self.sketches.editing() is not None:
+            Gui.runCommand("Sketcher_StopOperation")  # ends the running Sketcher tool; the sketch stays open
+            return
         mdi = self._mdi()
         views = [w for w in mdi.findChildren(QtWidgets.QGraphicsView) if w.isVisible()] if mdi is not None else []
-        if views:
-            vp = views[0].viewport()
-            for etype in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
-                QtWidgets.QApplication.sendEvent(vp, QtGui.QKeyEvent(etype, QtCore.Qt.Key_Escape, QtCore.Qt.NoModifier))
+        if views:  # outside a sketch: FreeCAD's own Esc handling, with InCad's shortcut off meanwhile (it would
+            vp = views[0].viewport()  # catch its own key again: recursion)
+            self._esc.setEnabled(False)
+            try:
+                for etype in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+                    QtWidgets.QApplication.sendEvent(vp, QtGui.QKeyEvent(etype, QtCore.Qt.Key_Escape, QtCore.Qt.NoModifier))
+            finally:
+                self._esc.setEnabled(True)
 
     # ----- InCad's own sketch tools -----
     def start_slot_tool(self, mode):
@@ -1546,6 +1554,8 @@ class Shell(QtCore.QObject):
         else:
             self.status.set_stats(None, None)
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
+        if self._region_pick is not None:
+            self.status.set_prompt("Click the area to %s (Esc cancels)" % self._region_pick.kind.TITLE.lower())
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or

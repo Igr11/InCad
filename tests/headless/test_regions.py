@@ -74,6 +74,20 @@ class RegionsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(pad.Shape.Volume, 11 * 10 * 5, places=2)
 
+    def test_a_stray_line_inside_is_not_part_of_the_outline(self):
+        sk = util.add_rect_sketch(self.body, name="Stray")
+        sk.addGeometry(Part.LineSegment(App.Vector(2, 2, 0), App.Vector(8, 2, 0)))
+        self.doc.recompute()
+        self.assertTrue(regions.needs_regions(sk))
+        faces = regions.regions(sk)
+        self.assertEqual(len(faces), 1)
+        prof = regions.make_profile(self.doc, self.body, sk, faces[0])
+        self.assertEqual(len(prof.Geometry), 4)
+        pad = util.add_pad(self.body, prof, 10)
+        self.doc.recompute()
+        self.assertTrue(pad.Shape.isValid())
+        self.assertAlmostEqual(pad.Shape.Volume, 2000, places=3)
+
     def test_arc_outline(self):
         sk = self.body.newObject("Sketcher::SketchObject", "Arcs")
         sk.AttachmentSupport = [(util.xy_plane(self.body), "")]

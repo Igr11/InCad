@@ -95,9 +95,17 @@ def _geometry(edge):
 
 
 def outline(face):
+    """The area's closed loops only: a line that dangles inside an area is no part of its outline (FreeCAD keeps
+    it on the split face as an open wire)."""
     geos = []
     for wire in face.Wires:
+        if not wire.isClosed() or len(wire.Edges) < 1:
+            continue
+        seen = []
         for e in wire.Edges:
+            if any(e.isSame(o) for o in seen):
+                continue  # an edge walked twice (both sides of a dangling line)
+            seen.append(e)
             geos.append(_geometry(e))
     return geos
 

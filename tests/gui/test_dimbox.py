@@ -274,7 +274,7 @@ def test_10_esc_never_leaves_the_sketch():
     sk = doc().getObject(ST["a"])
     s().open_value_box(sk, ST["a_dims"][0])
     harness.pump(400)
-    QTest.keyClick(focused(), QtCore.Qt.Key_Escape)
+    QTest.keyClick(box().edit, QtCore.Qt.Key_Escape)
     harness.pump(400)
     assert box() is None and editing() is not None
     commands.REGISTRY.run("sketch.finish")
@@ -287,7 +287,7 @@ def test_11_moving_on_applies_what_was_typed():
     rmb_edit(ST["a"])
     s().open_value_box(sk, d0)
     harness.pump(400)
-    QTest.keyClicks(focused(), "33")
+    QTest.keyClicks(box().edit, "33")
     typed = (box().edit.text(), box()._typed, focused() is box().edit)
     commands.REGISTRY.run("sketch.finish")  # moved on without Enter
     harness.pump(1000)

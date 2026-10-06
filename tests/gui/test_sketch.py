@@ -83,7 +83,7 @@ def test_2_start_on_selected_plane_stays_in_incad():
 
 def test_3_settings_applied_while_active():
     p = App.ParamGet(theme.SKETCH_TOOLS)
-    assert p.GetInt("OnViewParameterVisibility", 0) == 1
+    assert p.GetInt("OnViewParameterVisibility", 1) == 0  # FreeCAD's own value field is off: InCad's box instead
     assert not App.ParamGet(theme.SKETCH_ROOT).GetBool("ShowDialogOnDistanceConstraint", True)
 
 

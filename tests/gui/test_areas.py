@@ -65,6 +65,7 @@ def test_2_several_areas_are_shown_and_clicked():
     sk.AttachmentOffset = App.Placement(App.Vector(0, 30, 0), App.Rotation())  # beside the first part
     doc().recompute()
     harness.pump(300)
+    v_before = body().Shape.Volume
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(doc().Name, sk.Name)
     commands.REGISTRY.run("feature.extrude")
@@ -83,7 +84,7 @@ def test_2_several_areas_are_shown_and_clicked():
     harness.pump(800)
     pad = body().Tip
     import math
-    assert abs(pad.Shape.Volume - math.pi * 9 * 10) < 0.5, pad.Shape.Volume
+    assert abs(body().Shape.Volume - v_before - math.pi * 9 * 10) < 0.5, (v_before, body().Shape.Volume)
     assert safe.busy() is None and "Area" not in " ".join(doc().UndoNames[:2]), doc().UndoNames[:3]
     ST["pad2"], ST["sk"] = pad.Name, sk.Name
 
@@ -102,10 +103,11 @@ def test_3_tree_shows_the_sketch_under_the_feature_and_edits_follow():
     sk.delGeometry(circle)
     sk.addGeometry(Part.Circle(App.Vector(15, 5, 0), App.Vector(0, 0, 1), 4))  # a bigger circle
     doc().recompute()
+    v_before = body().Shape.Volume
     commands.REGISTRY.run("sketch.finish")
     harness.pump(1500)
     import math
-    assert abs(pad.Shape.Volume - math.pi * 16 * 10) < 0.5, pad.Shape.Volume
+    assert abs(body().Shape.Volume - v_before - math.pi * (16 - 9) * 10) < 0.5, (v_before, body().Shape.Volume)
 
 
 def test_4_esc_cancels_the_area_pick():
