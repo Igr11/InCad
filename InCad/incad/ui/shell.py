@@ -689,8 +689,11 @@ class Shell(QtCore.QObject):
             raise ValueError("Open a sketch first")
         picked = [sub for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
                   for sub in sel.SubElementNames if sub.startswith("Edge")]
-        if picked:
-            Gui.runCommand("Sketcher_ToggleConstruction")
+        if picked:  # the whole profile of each picked edge (a polygon's sides), not one edge at a time
+            from incad.core import safe, sketch
+            ids = [int(sub[4:]) - 1 for sub in picked]
+            safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document)
+            Gui.Selection.clearSelection()
             return
         self.construction_mode = not self.construction_mode
         self._construction_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount

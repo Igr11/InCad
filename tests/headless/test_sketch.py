@@ -168,3 +168,38 @@ class HideConstraintsTest(unittest.TestCase):
             self.assertFalse(sketch.constraints_hidden(sk))
         finally:
             App.closeDocument(doc.Name)
+
+
+class ConstructionChainTest(unittest.TestCase):
+    """One picked edge switches its whole profile (a polygon's sides), not just itself."""
+    def setUp(self):
+        self.doc = util.new_doc("CC")
+        body = document.make_part(self.doc)
+        sk = self.sk = sketch.make_sketch(body, plane(body, "XY_Plane"))
+        pts = [App.Vector(0, 0, 0), App.Vector(20, 0, 0), App.Vector(10, 15, 0)]
+        for i in range(3):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 3]))
+        for i in range(3):
+            sk.addConstraint(Sketcher.Constraint("Coincident", i, 2, (i + 1) % 3, 1))
+        circle = sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 11), True)  # polygon's
+        for i in range(3):
+            sk.addConstraint(Sketcher.Constraint("PointOnObject", i, 1, circle))
+        self.other = sk.addGeometry(Part.LineSegment(App.Vector(50, 0, 0), App.Vector(60, 0, 0)))
+        self.circle = circle
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_chain_follows_joined_ends_only(self):
+        self.assertEqual(sketch.chain(self.sk, [1]), {0, 1, 2})
+        self.assertEqual(sketch.chain(self.sk, [self.other]), {self.other})
+
+    def test_toggle_switches_the_whole_profile_and_back(self):
+        sketch.toggle_construction(self.sk, [2])
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [True] * 3)
+        self.assertTrue(self.sk.getConstruction(self.circle))
+        self.assertFalse(self.sk.getConstruction(self.other))
+        sketch.toggle_construction(self.sk, [0])
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)
+        self.assertTrue(self.sk.getConstruction(self.circle))  # the polygon's guide circle stays construction

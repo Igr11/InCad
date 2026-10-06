@@ -129,6 +129,30 @@ def test_5_construction_button_toggles_the_drawing_mode():
     assert not sk.getConstruction(g2), "back to normal"
 
 
+
+def test_6_one_picked_side_switches_the_whole_polygon():
+    from ProfileLib import RegularPolygon
+    sk = Gui.ActiveDocument.getInEdit().Object
+    first = sk.GeometryCount
+    RegularPolygon.makeRegularPolygon(sk, 6, App.Vector(100, 0, 0), App.Vector(110, 0, 0), False)
+    App.ActiveDocument.recompute()
+    harness.pump(300)
+    sides = [i for i in range(first, sk.GeometryCount) if sk.Geometry[i].TypeId == "Part::GeomLineSegment"]
+    assert len(sides) == 6, sides
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (sides[2] + 1))
+    commands.REGISTRY.run("sketch.construction")
+    harness.pump(500)
+    assert all(sk.getConstruction(i) for i in sides), [sk.getConstruction(i) for i in sides]
+    assert not shell.instance().construction_mode  # a selection switches geometry, not the drawing mode
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (sides[4] + 1))
+    commands.REGISTRY.run("sketch.construction")
+    harness.pump(500)
+    assert not any(sk.getConstruction(i) for i in sides), [sk.getConstruction(i) for i in sides]
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
-             test_5_construction_button_toggles_the_drawing_mode])
+             test_5_construction_button_toggles_the_drawing_mode,
+             test_6_one_picked_side_switches_the_whole_polygon])

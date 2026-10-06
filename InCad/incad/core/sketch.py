@@ -203,3 +203,44 @@ def set_constraints_hidden(sk, hide):
     ids = _symbol_constraints(sk)
     if ids:
         sk.setVirtualSpace(ids, bool(hide))
+
+
+def _joined(c):
+    """The two geometries a constraint joins end to end (coincident ends, or a tangent join at the ends)."""
+    if c.First < 0 or c.Second < 0 or c.FirstPos == 0 or c.SecondPos == 0:
+        return None
+    if c.Type == "Coincident" or c.Type == "Tangent":
+        return c.First, c.Second
+    return None
+
+
+def chain(sk, geo_ids):
+    """The edges joined end to end with the given ones (a polygon's sides, a slot's arcs and lines). Points on a
+    curve don't join, so a polygon's guide circle is not part of its sides."""
+    links = {}
+    for c in sk.Constraints:
+        pair = _joined(c)
+        if pair:
+            a, b = pair
+            links.setdefault(a, set()).add(b)
+            links.setdefault(b, set()).add(a)
+    found, todo = set(), list(geo_ids)
+    while todo:
+        g = todo.pop()
+        if g in found:
+            continue
+        found.add(g)
+        todo.extend(links.get(g, ()))
+    return found
+
+
+def toggle_construction(sk, geo_ids):
+    """Inventor's Construction on picked edges: their whole profiles become construction, or normal again when
+    already all construction."""
+    ids = sorted(chain(sk, geo_ids))
+    make = not all(sk.getConstruction(i) for i in ids)
+    for i in ids:
+        if sk.getConstruction(i) != make:
+            sk.setConstruction(i, make)
+    sk.Document.recompute()
+    return ids
