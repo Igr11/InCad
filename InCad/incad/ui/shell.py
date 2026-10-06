@@ -1953,12 +1953,16 @@ class Shell(QtCore.QObject):
         from incad.ui.section_display import SectionDisplay
         view = Gui.getDocument(body.Document.Name).ActiveView
         shape = body.Shape
+        if self._section_display is None or self._section_display[3] is None:
+            caps = section.Caps(shape)  # meshed once per section session: the slider then slices in milliseconds
+        else:
+            caps = self._section_display[3]
         # a plane that misses the part (or leaves nothing) is turned round: a section always shows material
-        faces = section.cap_faces(shape, placement)
+        faces = caps.faces(placement)
         if not faces:
             flipped = section.adjusted(placement, 0.0, True)
-            if section.cap_faces(shape, flipped):
-                placement, faces = flipped, section.cap_faces(shape, flipped)
+            if caps.faces(flipped):
+                placement, faces = flipped, caps.faces(flipped)
         kept = placement.Rotation.multVec(App.Vector(0, 0, 1))  # the side FreeCAD keeps with `clip` (probed)
         clip = App.Placement(placement.Base, placement.Rotation.multiply(App.Rotation(App.Vector(1, 0, 0), 180)))
         if self._section_display is None:
@@ -1967,7 +1971,7 @@ class Shell(QtCore.QObject):
                 color = tuple(body.Tip.ViewObject.ShapeColor[:3])
             except Exception:
                 pass
-            self._section_display = (SectionDisplay(view, color), body, view)
+            self._section_display = (SectionDisplay(view, color), body, view, caps)
         else:
             view.toggleClippingPlane(0)
         view.toggleClippingPlane(1, False, True, clip)  # no drag handle: destroying it crashes FreeCAD (probed)
@@ -1995,7 +1999,7 @@ class Shell(QtCore.QObject):
                 pass
             self.section_panel = None
         if not keep_cut and self._section_display is not None:
-            display, body, view = self._section_display
+            display, body, view = self._section_display[:3]
             self._section_display = None
             display.remove()
             try:

@@ -117,3 +117,22 @@ class CapFacesTest(unittest.TestCase):
         self.assertEqual(len(faces), 2)  # the bore's slot splits the 10 x 10 section in two
         self.assertAlmostEqual(sum(f.Area for f in faces), 100 - 4 * 10, places=3)
         self.assertEqual(section.cap_faces(box, section.adjusted(plane, 50.0)), [])  # misses the part
+
+
+class CapsTest(unittest.TestCase):
+    def test_mesh_caps_match_the_solid_and_fall_back(self):
+        from incad.core import section
+        import Part
+        box = Part.makeBox(20, 10, 10).cut(Part.makeCylinder(2, 10, App.Vector(10, 5, 0)))
+        caps = section.Caps(box)
+        plane = App.Placement(App.Vector(10, 0, 0), App.Rotation(App.Vector(0, 0, 1), App.Vector(1, 0, 0)))
+        faces = caps.faces(plane)
+        self.assertEqual(sorted(round(f.Area, 1) for f in faces), [30.0, 30.0])  # two rectangles beside the bore
+        ring = App.Placement(App.Vector(0, 5, 0), App.Rotation(App.Vector(1, 0, 0), -90))  # through the bore's axis? no: y = 5
+        faces = caps.faces(App.Placement(App.Vector(0, 0, 5), App.Rotation()))  # z = 5: the box minus the bore's circle
+        self.assertEqual(len(faces), 1)
+        self.assertAlmostEqual(faces[0].Area, 200 - 3.14159 * 4, delta=0.5)
+        self.assertEqual(len(faces[0].Wires), 2)  # the hole is a hole
+        self.assertEqual(caps.faces(section.adjusted(plane, 50.0)), [])
+        caps.mesh = None  # no mesh: the solid answers
+        self.assertAlmostEqual(sum(f.Area for f in caps.faces(plane)), 60, places=3)
