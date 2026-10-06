@@ -268,6 +268,11 @@ def _editing_sketch():
     return obj
 
 
+def _slot(mode):
+    from incad.ui import shell
+    shell.start_slot_tool(mode)
+
+
 def constraints_visible(show=None):
     """Inventor F8/F9: show or hide the constraint symbols of the sketch being edited (dimensions stay)."""
     from incad.core import safe, sketch
@@ -315,13 +320,27 @@ def choose_material(ask=None):
         safe.run_safely("Material", lambda: materials.set_material(doc, name), doc)
 
 
+_SECTION = {"on": False}
+
+
 def toggle_section():
+    """Section view at the selection — three points, a flat face or a plane (XZ with nothing selected) — with
+    FreeCAD's dragger; a second click switches it off."""
+    import FreeCAD as App
+    from incad.core import section
+    from incad.features import common
     view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
     if view is None or not hasattr(view, "toggleClippingPlane"):
         raise ValueError("Open a part or an assembly to see a section")
-    import FreeCAD as App
-    # XZ plane through the origin (its normal is the placement's Z, turned onto Y), with FreeCAD's dragger
-    view.toggleClippingPlane(-1, False, False, App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), -90)))
+    if _SECTION["on"]:
+        view.toggleClippingPlane(0)
+        _SECTION["on"] = False
+        return
+    pairs = [common.resolve(sel.Object, sub) for sel in _gui().Selection.getSelectionEx(App.ActiveDocument.Name)
+             for sub in (sel.SubElementNames or ("",))]
+    view.toggleClippingPlane(1, False, False, section.placement(pairs))
+    _gui().Selection.clearSelection()
+    _SECTION["on"] = True
 
 
 def _refuse_while_busy():
@@ -485,6 +504,12 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="sketch.slot_overall", label="Overall Slot", icon="slot_overall",
+                handler=lambda: _slot("overall"), contexts=frozenset({"sketch"}),
+                tooltip="Click the two outer ends, then the width"),
+        Command(id="sketch.slot_center", label="Center Point Slot", icon="slot_center",
+                handler=lambda: _slot("center"), contexts=frozenset({"sketch"}),
+                tooltip="Click the center, one end's center, then the width"),
         Command(id="sketch.constraints_toggle", label="Show / Hide Constraints", icon="constraints_toggle",
                 handler=lambda: constraints_visible(), contexts=frozenset({"sketch"}),
                 tooltip="Hide or show the constraint symbols (dimensions stay)"),
@@ -503,7 +528,8 @@ def commands():
         Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
         Command(id="view.section", label="Section", icon="section", handler=toggle_section,
-                contexts=frozenset({"part", "assembly"}), tooltip="Cut the view open (toggle)"),
+                contexts=frozenset({"part", "assembly"}), tooltip="Cut the view open at the selection: 3 points, a flat face or a plane (XZ if nothing); "
+                        "click again to close"),
         Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target,
                 contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),

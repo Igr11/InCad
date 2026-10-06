@@ -82,5 +82,31 @@ def test_3_hide_and_show_constraints_from_the_menu():
     assert not sketch.constraints_hidden(sk)
 
 
+def test_4_overall_slot_by_three_clicks():
+    sh = shell.instance()
+    sk = Gui.ActiveDocument.getInEdit().Object
+    before = sk.GeometryCount
+    commands.REGISTRY.run("sketch.slot_overall")
+    harness.pump(400)
+    tool = sh.slot_tool
+    assert tool is not None
+    view = Gui.ActiveDocument.ActiveView
+    pl = sk.getGlobalPlacement()
+    for x, y in ((-30, 40), (0, 40), (-15, 44)):
+        sx, sy = view.getPointOnViewport(pl.multVec(App.Vector(x, y, 0)))
+        tool._event({"Type": "SoLocation2Event", "Position": (int(sx), int(sy))})
+        tool._event({"Type": "SoMouseButtonEvent", "Button": "BUTTON1", "State": "DOWN",
+                     "Position": (int(sx), int(sy))})
+        harness.pump(200)
+    App.ActiveDocument.recompute()
+    assert sk.GeometryCount == before + 4, (before, sk.GeometryCount)
+    import Part
+    bb = Part.Compound([g.toShape() for g in sk.Geometry[before:]]).BoundBox
+    assert abs(bb.XMin - (-30)) < 0.5 and abs(bb.XMax - 0) < 0.5 and abs(bb.YLength - 8) < 0.5, bb
+    sh._on_escape()
+    harness.pump(300)
+    assert sh.slot_tool is None
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
-             test_3_hide_and_show_constraints_from_the_menu])
+             test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks])

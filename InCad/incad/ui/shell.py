@@ -134,6 +134,7 @@ class Shell(QtCore.QObject):
         self.feature_session = None
         self.info_panel = None
         self.plane_panel = None
+        self.slot_tool = None
         self._profile_pick = None
         self.value_box = None
         self._shortcuts = {}
@@ -416,6 +417,7 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
+        self.stop_slot_tool()
         self._close_feature_session(cancel=True)
         self._close_info_panel()
         self._cancel_profile_pick()
@@ -622,6 +624,33 @@ class Shell(QtCore.QObject):
     def _on_escape(self):
         self.sketches.cancel_pick()
         self._cancel_profile_pick()
+        self.stop_slot_tool()
+
+    # ----- InCad's own sketch tools -----
+    def start_slot_tool(self, mode):
+        import FreeCADGui as Gui
+        from incad.ui.slot_tool import SlotTool
+        gdoc = Gui.ActiveDocument
+        edit = gdoc.getInEdit() if gdoc is not None else None
+        sk = getattr(edit, "Object", None)
+        if sk is None or sk.TypeId != "Sketcher::SketchObject":
+            raise ValueError("Open a sketch first")
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")  # no FreeCAD tool fighting for the clicks
+        self.slot_tool = SlotTool(gdoc.ActiveView, sk, mode, on_finish=self._slot_tool_done)
+        self.slot_tool.start()
+        self.schedule_refresh()
+        return self.slot_tool
+
+    def stop_slot_tool(self):
+        tool, self.slot_tool = getattr(self, "slot_tool", None), None
+        if tool is not None:
+            tool.stop()
+
+    def _slot_tool_done(self, tool):
+        if getattr(self, "slot_tool", None) is tool:
+            self.slot_tool = None
+        self.schedule_refresh()
 
     def shortcut_action(self, cmd_id):
         return self._shortcuts.get(cmd_id)
@@ -975,6 +1004,8 @@ class Shell(QtCore.QObject):
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box()
+        if editing is None and self.slot_tool is not None:
+            self.stop_slot_tool()
         mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
         self.ribbon.set_mode(mode)
         if self.plane_panel is not None:
@@ -1020,7 +1051,8 @@ class Shell(QtCore.QObject):
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
-                act.setEnabled(self.sketches.picking or self._profile_pick is not None)
+                act.setEnabled(self.sketches.picking or self._profile_pick is not None or
+                               getattr(self, "slot_tool", None) is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -1333,6 +1365,10 @@ def assembly_create(name=None):
 
 def assembly_ground(link=None):
     return _active().assembly_ground(link)
+
+
+def start_slot_tool(mode):
+    return _active().start_slot_tool(mode)
 
 
 def open_component(link):

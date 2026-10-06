@@ -240,6 +240,8 @@ ICONS.update({
                '<path d="M5 9 H27 M13 5 H19" stroke="{S}" stroke-width="2"/><path d="M13 13 L19 23 M19 13 L13 23" '
                'stroke="{A}" stroke-width="2"/>'),
     'constraints_toggle': '<path d="M4 16 C9 8 23 8 28 16 C23 24 9 24 4 16 Z" fill="none" stroke="{S}" stroke-width="2"/><path d="M13 13 L19 13 M13 19 L19 19" stroke="{A}" stroke-width="2.2"/><path d="M6 27 L26 5" stroke="{S}" stroke-width="2"/>',
+    'slot_overall': '<rect x="4" y="10" width="24" height="12" rx="6" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="4" cy="16" r="2.2" fill="{A}"/><circle cx="28" cy="16" r="2.2" fill="{A}"/>',
+    'slot_center': '<rect x="4" y="10" width="24" height="12" rx="6" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="16" r="2.2" fill="{A}"/><circle cx="22" cy="16" r="1.8" fill="{A}"/>',
     'rect_center': '<rect x="5" y="8" width="22" height="16" fill="none" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="16" r="2.4" fill="{A}"/><circle cx="27" cy="8" r="2.4" fill="{A}"/>',
     'rect_3pt': '<path d="M4 20 L18 6 L28 16 L14 30 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="4" cy="20" r="2.4" fill="{A}"/><circle cx="18" cy="6" r="2.4" fill="{A}"/><circle cx="28" cy="16" r="2.4" fill="{A}"/>',
     'rect_center_3pt': '<path d="M4 20 L18 6 L28 16 L14 30 Z" fill="none" stroke="{S}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="16" cy="18" r="2.4" fill="{A}"/><circle cx="18" cy="6" r="2.4" fill="{A}"/><circle cx="28" cy="16" r="2.4" fill="{A}"/>',
