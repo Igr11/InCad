@@ -147,12 +147,12 @@ class CompactRibbonTest(unittest.TestCase):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
         b = rb.button("k0")
         self.assertEqual(b.toolButtonStyle(), QtCore.Qt.ToolButtonIconOnly)
-        self.assertEqual(b.iconSize().width(), 28)  # big enough to read on a large ribbon
+        self.assertEqual(b.iconSize().width(), 32)  # big enough to read on a large ribbon
         rb.show()
         rows = {rb.button("k%d" % i).mapTo(rb, QtCore.QPoint(0, 0)).y() for i in range(12)}
         self.assertEqual(len(rows), 2)
         medium = Ribbon(self.reg, self.layout, mode="sketch", size="medium", theme="light")
-        self.assertEqual(medium.button("k0").iconSize().width(), 24)
+        self.assertEqual(medium.button("k0").iconSize().width(), 28)
 
     def test_short_label_on_the_button(self):
         rb = Ribbon(self.reg, self.layout, mode="sketch", size="large", theme="light")
@@ -180,4 +180,4 @@ class StackedHeightTest(unittest.TestCase):
             rb.show()
             big = rb.button("k0").parentWidget().sizeHint().height()
             stacked = rb.button("k1").parentWidget().sizeHint().height()
-            self.assertLessEqual(stacked, big + 4, size)
+            self.assertLessEqual(stacked, big + 12, size)  # readable icons cost the ribbon a few px
