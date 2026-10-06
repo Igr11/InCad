@@ -125,84 +125,181 @@ def cap_faces(shape, placement, flip=False):
 
 class Caps:
     """Cut faces for many planes through one solid: a triangle mesh of it is sliced (milliseconds) instead of the
-    solid (hundreds of ms on a threaded part); the solid is asked only when the mesh gives nothing."""
+    solid (hundreds of ms on a threaded part). The slice's segments are chained into closed loops, projected
+    onto the plane exactly, and made into faces; a loop FreeCAD can't make a face of is kept as a polygon
+    (`polygons`), drawn as it is."""
 
     def __init__(self, shape):
         import MeshPart
         self.shape = shape
+        self.polygons = []  # loops of the last call that became no face (drawn directly)
         d = max(0.02, shape.BoundBox.DiagonalLength / 2000.0)
         try:
             self.mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=d, AngularDeflection=0.3, Relative=False)
         except Exception:
             self.mesh = None
 
+    def _topology(self):
+        if getattr(self, "_topo", None) is None:
+            pts, facets = self.mesh.Topology
+            try:
+                import numpy as np
+                self._topo = (np.array([(p.x, p.y, p.z) for p in pts], dtype=float), np.array(facets, dtype=int))
+            except ImportError:
+                self._topo = ([App.Vector(p) for p in pts], facets)
+        return self._topo
+
+    def _segments(self, base, n):
+        """Segments where the plane cuts the mesh's triangles (the mesh's own slicer glues loops together)."""
+        pts, facets = self._topology()
+        try:
+            import numpy as np
+        except ImportError:
+            np = None
+        if np is not None and isinstance(pts, np.ndarray):
+            nn = np.array([n.x, n.y, n.z])
+            d = (pts - np.array([base.x, base.y, base.z])) @ nn  # signed distance of every point
+            tri = d[facets]  # (M, 3)
+            cross = (tri.max(axis=1) > 0) & (tri.min(axis=1) < 0)
+            segs = []
+            for f, dd in zip(facets[cross], tri[cross]):
+                hits = []
+                for i in range(3):
+                    j = (i + 1) % 3
+                    a, b = dd[i], dd[j]
+                    if (a < 0) != (b < 0):
+                        t = a / (a - b)
+                        q = pts[f[i]] + (pts[f[j]] - pts[f[i]]) * t
+                        hits.append(App.Vector(*q))
+                if len(hits) == 2:
+                    segs.append((hits[0], hits[1]))
+            return segs
+        segs = []
+        for f in facets:
+            dd = [(pts[k] - base).dot(n) for k in f]
+            if max(dd) <= 0 or min(dd) >= 0:
+                continue
+            hits = []
+            for i in range(3):
+                j = (i + 1) % 3
+                a, b = dd[i], dd[j]
+                if (a < 0) != (b < 0):
+                    t = a / (a - b)
+                    hits.append(pts[f[i]] + (pts[f[j]] - pts[f[i]]) * t)
+            if len(hits) == 2:
+                segs.append((hits[0], hits[1]))
+        return segs
+
+    def loops(self, placement, flip=False):
+        """Closed loops (lists of points on the plane) of the cut at `placement`."""
+        pl = adjusted(placement, 0.0, flip)
+        if self.mesh is None:
+            return []
+        n = pl.Rotation.multVec(App.Vector(0, 0, 1))
+        segments = self._segments(pl.Base, n)
+        tol = max(1e-5, self.shape.BoundBox.DiagonalLength / 2e4)
+        out = []
+        for loop in _loops(segments, tol):
+            flat = [q - n * (q - pl.Base).dot(n) for q in loop]  # exactly on the plane
+            out.append(flat)
+        return out
+
     def faces(self, placement, flip=False):
         import Part
-        pl = adjusted(placement, 0.0, flip)
-        if self.mesh is not None:
-            n = pl.Rotation.multVec(App.Vector(0, 0, 1))
+        self.polygons = []
+        loops = self.loops(placement, flip)
+        if not loops:
+            return cap_faces(self.shape, placement, flip)
+        wires = []
+        for loop in loops:
             try:
-                raw = self.mesh.crossSections([(pl.Base, n)], 0.0001, False)[0]  # segments, chained here
+                wires.append(Part.makePolygon(loop + [loop[0]]))
             except Exception:
-                raw = []
-            segments = []
-            for poly in raw:
-                pts = [App.Vector(q) for q in poly]
-                segments += [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
-            wires = []
-            for loop in _loops(segments, max(1e-5, self.shape.BoundBox.DiagonalLength / 1e5)):
-                try:
-                    wires.append(Part.makePolygon(loop + [loop[0]]))
-                except Exception:
-                    pass
-            if wires:
-                try:
-                    return Part.makeFace(wires, "Part::FaceMakerBullseye").Faces
-                except Exception:
-                    out = []
-                    for w in wires:
-                        try:
-                            out.append(Part.Face(w))
-                        except Exception:
-                            pass
-                    if out:
-                        return out
-        return cap_faces(self.shape, placement, flip)
+                pass
+        try:
+            return Part.makeFace(wires, "Part::FaceMakerBullseye").Faces
+        except Exception:
+            pass
+        out = []
+        for w, loop in zip(wires, loops):
+            try:
+                out.append(Part.Face(w))
+            except Exception:
+                self.polygons.append(loop)
+        return out
 
 
 def _loops(segments, tol):
-    """Closed loops (lists of points) from unordered segments, matching ends within `tol`; open chains and
-    loops of fewer than three points are dropped."""
+    """Closed loops (lists of points) from unordered segments: walked from a start segment in both directions,
+    matching ends within `tol`; a chain that comes back to its start (or within 20·tol of it) is a loop; open
+    chains are dropped."""
     def key(p):
         return (round(p.x / tol), round(p.y / tol), round(p.z / tol))
+    segs = [(a, b) for a, b in segments if (a - b).Length >= tol]
     ends = {}
-    for i, (a, b) in enumerate(segments):
-        if (a - b).Length < tol:
-            continue
+    for i, (a, b) in enumerate(segs):
         ends.setdefault(key(a), []).append(i)
         ends.setdefault(key(b), []).append(i)
-    used = [False] * len(segments)
-    loops = []
-    for start, (a, b) in enumerate(segments):
-        if used[start] or (a - b).Length < tol:
+    used = [False] * len(segs)
+
+    def extend(chain):
+        """Walk on from the chain's last point; True when the walk came back to the chain's first point."""
+        while True:
+            k = key(chain[-1])
+            nxt, best = None, None
+            for j in ends.get(k, []):
+                if used[j]:
+                    continue
+                c, d = segs[j]
+                far = d if (c - chain[-1]).Length <= (d - chain[-1]).Length else c
+                dist = (far - chain[-1]).Length
+                if best is None or dist < best:
+                    nxt, best = j, dist
+            if nxt is None:
+                return False
+            used[nxt] = True
+            c, d = segs[nxt]
+            chain.append(d if (c - chain[-1]).Length <= (d - chain[-1]).Length else c)
+            if (chain[-1] - chain[0]).Length < tol:
+                chain.pop()  # the closing point is the first point again
+                return True
+
+    loops, open_chains = [], []
+    for start, (a, b) in enumerate(segs):
+        if used[start]:
             continue
         used[start] = True
         chain = [a, b]
-        while True:
-            k = key(chain[-1])
-            nxt = next((j for j in ends.get(k, []) if not used[j]), None)
-            if nxt is None:
-                break
-            used[nxt] = True
-            c, d = segments[nxt]
-            chain.append(d if (c - chain[-1]).Length < (d - chain[-1]).Length else c)
-            if (chain[-1] - chain[0]).Length < tol:
-                chain.pop()
-                break
-        if len(chain) >= 3 and (chain[-1] - chain[0]).Length < tol * 10 or len(chain) >= 3 and key(chain[-1]) == key(chain[0]):
+        closed = extend(chain)
+        if not closed:  # stuck: go on from the other end
+            chain.reverse()
+            closed = extend(chain)
+        if len(chain) >= 3 and (closed or (chain[-1] - chain[0]).Length < tol * 20):
             loops.append(chain)
-        elif len(chain) >= 3:
-            # the walk returned to the start without matching within tol: accept when it is close
-            if (chain[-1] - chain[0]).Length < tol * 100:
-                loops.append(chain)
+        else:
+            open_chains.append(chain)
+    # mesh seams (a point of one face on an edge of its neighbour) leave chains open: join them end to end
+    # within a wider reach, then close what came together
+    reach = tol * 500
+    changed = True
+    while changed and len(open_chains) > 1:
+        changed = False
+        for i in range(len(open_chains)):
+            if changed:
+                break
+            for j in range(len(open_chains)):
+                if i == j:
+                    continue
+                a, b = open_chains[i], open_chains[j]
+                pairs = [((a[-1] - b[0]).Length, a + b), ((a[-1] - b[-1]).Length, a + b[::-1]),
+                         ((a[0] - b[0]).Length, a[::-1] + b), ((a[0] - b[-1]).Length, b + a)]
+                dist, joined = min(pairs, key=lambda x: x[0])
+                if dist < reach:
+                    open_chains[i] = joined
+                    del open_chains[j]
+                    changed = True
+                    break
+    for chain in open_chains:
+        if len(chain) >= 3 and (chain[-1] - chain[0]).Length < reach:
+            loops.append(chain)
     return loops

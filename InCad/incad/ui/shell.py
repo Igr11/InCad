@@ -1975,7 +1975,8 @@ class Shell(QtCore.QObject):
         else:
             view.toggleClippingPlane(0)
         view.toggleClippingPlane(1, False, True, clip)  # no drag handle: destroying it crashes FreeCAD (probed)
-        self._section_display[0].set_faces(faces, kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0))
+        self._section_display[0].set_faces(faces, kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0),
+                                           caps.polygons)
 
     def section_on(self):
         return self._section_display is not None

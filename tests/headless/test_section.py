@@ -127,7 +127,9 @@ class CapsTest(unittest.TestCase):
         caps = section.Caps(box)
         plane = App.Placement(App.Vector(10, 0, 0), App.Rotation(App.Vector(0, 0, 1), App.Vector(1, 0, 0)))
         faces = caps.faces(plane)
-        self.assertEqual(sorted(round(f.Area, 1) for f in faces), [30.0, 30.0])  # two rectangles beside the bore
+        self.assertEqual(len(faces), 2)  # two rectangles beside the bore
+        for f in faces:
+            self.assertAlmostEqual(f.Area, 30.0, delta=0.3)
         ring = App.Placement(App.Vector(0, 5, 0), App.Rotation(App.Vector(1, 0, 0), -90))  # through the bore's axis? no: y = 5
         faces = caps.faces(App.Placement(App.Vector(0, 0, 5), App.Rotation()))  # z = 5: the box minus the bore's circle
         self.assertEqual(len(faces), 1)

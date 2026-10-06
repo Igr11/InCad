@@ -10,6 +10,7 @@ class SectionDisplay:
         hints = coin.SoShapeHints()
         hints.vertexOrdering = coin.SoShapeHints.COUNTERCLOCKWISE
         hints.shapeType = coin.SoShapeHints.UNKNOWN_SHAPE_TYPE  # both sides lit
+        hints.faceType = coin.SoShapeHints.UNKNOWN_FACE_TYPE  # concave polygons are tessellated
         self.node.addChild(hints)
         self._material = coin.SoMaterial()
         r, g, b = color
@@ -31,9 +32,16 @@ class SectionDisplay:
         self.node.addChild(outline)
         view.getSceneGraph().addChild(self.node)
 
-    def set_faces(self, faces, shift):
-        """faces: the cap faces; shift: a small vector toward the kept side so the clipping plane doesn't eat it."""
+    def set_faces(self, faces, shift, polygons=()):
+        """faces: the cap faces; polygons: loops drawn as they are (no face could be made of them);
+        shift: a small vector toward the kept side so the clipping plane doesn't eat it."""
         pts, idx, epts, counts = [], [], [], []
+        for loop in polygons:
+            base = len(pts)
+            pts += [(p.x + shift.x, p.y + shift.y, p.z + shift.z) for p in loop]
+            idx += list(range(base, base + len(loop))) + [-1]  # Coin triangulates a concave polygon itself
+            epts += [(p.x + shift.x, p.y + shift.y, p.z + shift.z) for p in loop] + [(loop[0].x + shift.x, loop[0].y + shift.y, loop[0].z + shift.z)]
+            counts.append(len(loop) + 1)
         for face in faces:
             d = max(0.02, face.BoundBox.DiagonalLength / 300.0)
             base = len(pts)
