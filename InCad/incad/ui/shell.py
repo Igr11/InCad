@@ -150,6 +150,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._wait_notice = None
         self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
@@ -274,28 +275,63 @@ class Shell(QtCore.QObject):
             return False
         return vp is not None or safe.edit_open()
 
+    @staticmethod
+    def _finish_freecad_sketch():
+        """A FreeCAD sketch being edited is simply closed (its changes are already in the model), so switching to
+        InCad from Sketcher or Part Design takes over at once."""
+        import FreeCADGui as Gui
+        from incad.core import document, sketch
+        gdoc = Gui.ActiveDocument
+        vp = gdoc.getInEdit() if gdoc is not None else None
+        obj = getattr(vp, "Object", None)
+        if sketch.is_sketch(obj) and not document.is_incad_part(obj.Document):
+            gdoc.resetEdit()
+
+    def _show_wait_notice(self):
+        """Other FreeCAD tasks keep their OK/Cancel: say plainly why InCad's interface isn't there yet."""
+        if self._wait_notice is None:
+            box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Information, "InCad",
+                                        "Finish or cancel the current FreeCAD task (OK or Cancel in its panel).\n"
+                                        "InCad opens as soon as it is closed.", QtWidgets.QMessageBox.Ok, self.mw)
+            box.setObjectName("InCadWaitNotice")
+            box.setWindowModality(QtCore.Qt.NonModal)
+            self._wait_notice = box
+        self._wait_notice.show()
+        self._wait_notice.raise_()
+
+    def _close_wait_notice(self):
+        if self._wait_notice is not None:
+            self._wait_notice.hide()
+            dispose(self._wait_notice)
+            self._wait_notice = None
+
     def _activate_when_edit_done(self):
         import FreeCADGui as Gui
         if not self._pending:
             return
+        if self._edit_open():
+            QtCore.QTimer.singleShot(500, self._activate_when_edit_done)
+            return
+        self._pending = False
+        self._close_wait_notice()
         wb = Gui.activeWorkbench()
         if wb is None or wb.name() != "InCadWorkbench":
-            self._pending = False
-        elif self._edit_open():
-            QtCore.QTimer.singleShot(500, self._activate_when_edit_done)
+            # closing a Part Design task switches back to Part Design by itself; the user asked for InCad
+            Gui.activateWorkbench("InCadWorkbench")
         else:
-            self._pending = False
             self.activate()
 
     def activate(self):
         if self.active:
             return True
+        self._finish_freecad_sketch()
         if self._edit_open():  # its OK/Cancel and its open transaction belong to FreeCAD: wait until it is finished
             if not self._pending:
                 self._pending = True
-                self.mw.statusBar().showMessage("InCad opens when you finish or cancel the current edit")
+                self._show_wait_notice()
                 QtCore.QTimer.singleShot(500, self._activate_when_edit_done)
             return False
+        self._close_wait_notice()
         stale = prefs.takeover_snapshot()
         try:
             self._snapshot = json.loads(stale) if stale else self._capture()
@@ -320,7 +356,10 @@ class Shell(QtCore.QObject):
         return True
 
     def deactivate(self):
-        self._pending = False
+        if self._pending and self._edit_open():  # the user left InCad while the FreeCAD task is still open
+            self._pending = False
+            self._close_wait_notice()
+        # (a task that just closed switches to its own workbench by itself: keep waiting, InCad comes back)
         if not self.active:
             return
         self.active = False

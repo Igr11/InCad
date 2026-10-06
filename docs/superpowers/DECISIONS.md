@@ -264,3 +264,4 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
 **Known test limitation**
 
 - GUI tests that send real key events or need keyboard focus (parameter click into a focused field, real ⌘Z, real ⌘Q quit) fail while the screen is locked or another app holds focus; they pass with an unlocked screen.
+- Ruling (2026-10-06): switching to InCad while a FreeCAD sketch (not an InCad part's) is in edit closes that edit and takes over at once (sketch changes are already in the model); other FreeCAD tasks keep their OK/Cancel and a visible notice says InCad opens when they close; when the closing task switches back to its own workbench, InCad is activated again. Replaces the earlier "wait for any edit" rule (status-bar notice was easy to miss: user saw "the FreeCAD interface" in InCad).

@@ -210,7 +210,7 @@ def test_9_no_reactivation_while_a_dialog_is_open():
     assert shell.instance() is not None and shell.instance().active, "InCad should come back once the dialog is gone"
 
 
-def test_10_takeover_waits_for_an_open_edit():
+def test_10_takeover_finishes_an_open_freecad_sketch():
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(800)
     doc = App.newDocument("Edit")
@@ -220,13 +220,10 @@ def test_10_takeover_waits_for_an_open_edit():
     Gui.ActiveDocument.setEdit(sketch.Name)
     harness.pump(1000)
     Gui.activateWorkbench("InCadWorkbench")
-    harness.pump(800)
+    harness.pump(1200)
     s = shell.instance()
-    assert not s.active, "took over while a sketch was being edited"
-    assert mw.findChild(QtWidgets.QToolBar, "InCadTop") is None
-    Gui.ActiveDocument.resetEdit()
-    harness.pump(1500)
-    assert s.active, "InCad should open once the edit is finished"
+    assert s.active, "switching to InCad closes the FreeCAD sketch edit and takes over"
+    assert Gui.ActiveDocument.getInEdit() is None
     App.closeDocument(doc.Name)
     Gui.activateWorkbench("PartDesignWorkbench")
     harness.pump(800)
@@ -236,4 +233,4 @@ harness.run([test_0_baseline_in_partdesign, test_1_activate_takes_over, test_2_n
              test_3_reshown_toolbar_is_hidden_again, test_4_return_to_freecad_restores_everything,
              test_5_quit_path_restores_then_reactivates, test_6_restore_from_saved_snapshot_when_memory_lost,
              test_7_recover_after_crash_at_startup, test_8_activation_failure_restores,
-             test_9_no_reactivation_while_a_dialog_is_open, test_10_takeover_waits_for_an_open_edit])
+             test_9_no_reactivation_while_a_dialog_is_open, test_10_takeover_finishes_an_open_freecad_sketch])
