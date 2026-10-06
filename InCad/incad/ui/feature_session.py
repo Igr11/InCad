@@ -115,6 +115,11 @@ class FeatureSession(QtCore.QObject):
 
     def _apply_preselection(self):
         from incad.features import common
+        hook = getattr(self.kind, "preselect", None)
+        if hook is not None:
+            for key, text in hook(self._selection()).items():
+                self.dialog.set_pick(key, text)
+            return
         wanted = getattr(self.kind, "PRESELECT", {})
         if not wanted:
             return

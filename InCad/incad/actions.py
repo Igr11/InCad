@@ -288,6 +288,8 @@ def commands():
                 shortcut="F", contexts=frozenset({"part"})),
         Command(id="feature.chamfer", label="Chamfer", icon="chamfer", handler=lambda: start_feature("chamfer"),
                 contexts=frozenset({"part"})),
+        Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
+                contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),
                 contexts=frozenset({"part"}), tooltip="Real thread on a shaft or in a hole (select its face)"),
         Command(id="feature.shell", label="Shell", icon="shell", handler=lambda: start_feature("shell"),

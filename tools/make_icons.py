@@ -186,6 +186,9 @@ ICONS.update({
                '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
     "chamfer": ('<path d="M5 27 V13 L12 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
                 '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "combine": ('<path d="M4 12 L14 7 L24 12 L24 24 L14 29 L4 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                '<circle cx="21" cy="11" r="7" fill="none" stroke="{A}" stroke-width="2"/>'
+                '<circle cx="21" cy="11" r="4.5" fill="{N}" stroke="{A}" stroke-width="1" stroke-dasharray="2 1.5"/>'),
     "thread": ('<rect x="9" y="4" width="14" height="24" rx="1.5" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                '<path d="M9 8 L23 11 M9 13 L23 16 M9 18 L23 21 M9 23 L23 26" stroke="{A}" stroke-width="2"/>'),
     "shell": ('<path d="M5 10 V26 H27 V10" fill="none" stroke="{S}" stroke-width="3"/>'

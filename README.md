@@ -43,3 +43,6 @@ Logs: ~/Library/Logs/InCad.log
   suggested from the face; a print clearance (default 0.2 mm, 0.3 mm print-friendly) makes printed parts fit.
 - Hole ▸ Threaded: modeled ISO / UNC / UNF / UNEF / NPT / G / BSW / BSF threads with the same print clearance.
   For Trapezoidal, ACME, print-friendly or custom threads in a hole, drill the hole, then use Thread on its face.
+- Combine: select the base solid, then the tool solid(s), then Combine — Join, Cut or Intersect. Tools are always
+  kept (hidden, editable; editing them updates the result). Cut has a print clearance (a parameter) on the Cavity
+  (hole grown), on the Tool (a shrunk "<Tool> fit" copy to print) or Split (half each).
