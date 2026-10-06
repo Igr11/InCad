@@ -150,6 +150,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._box_focus_hooked = False
 
         self._wait_notice = None
         self._polygons_from = {}
@@ -931,6 +932,10 @@ class Shell(QtCore.QObject):
         self._box_owner = (sk.Document.Name, sk.Name)
         box.closed.connect(lambda: self._value_box_closed(box))
         self.value_box = box
+        app = QtWidgets.QApplication.instance()
+        if not self._box_focus_hooked:
+            app.focusChanged.connect(self._keep_box_keyboard)
+            self._box_focus_hooked = True
         box.show_near(QtGui.QCursor.pos())
 
     def _close_value_box(self):
@@ -940,6 +945,19 @@ class Shell(QtCore.QObject):
             except RuntimeError:
                 pass
             self.value_box = None
+
+    def _keep_box_keyboard(self, _old, new):
+        """FreeCAD's 3D view takes the keyboard whenever the mouse moves over it: while the dimension box is open,
+        typing, Enter and Esc belong to the box (other fields, e.g. the parameter table, keep it)."""
+        box = self.value_box
+        if box is None or new is None:
+            return
+        w = new
+        while w is not None:
+            if isinstance(w, QtWidgets.QGraphicsView):
+                QtCore.QTimer.singleShot(0, lambda b=box: self.value_box is b and b.take_keyboard())
+                return
+            w = w.parentWidget()
 
     def _value_box_closed(self, box):
         if self.value_box is box:

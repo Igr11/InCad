@@ -23,6 +23,20 @@ class ValueBoxTest(unittest.TestCase):
         self.assertEqual(self.seen, [("d1", "25 mm")])
         self.assertFalse(self.box.isVisible())
 
+    def test_clicking_the_tick_applies_and_the_cross_cancels(self):
+        from PySide6.QtTest import QTest
+        self.box.edit.setText("25 mm")
+        QTest.mouseClick(self.box.apply_button, QtCore.Qt.LeftButton)
+        self.assertEqual(self.seen, [("d1", "25 mm")])
+        self.assertFalse(self.box.isVisible())
+        other = ValueBox("d2", "5 mm", "light")
+        other.applied.connect(lambda n, t: self.seen.append((n, t)))
+        other.show_near(QtCore.QPoint(300, 300))
+        other.edit.setText("99 mm")
+        QTest.mouseClick(other.cancel_button, QtCore.Qt.LeftButton)
+        self.assertEqual(self.seen, [("d1", "25 mm")])  # nothing applied
+        self.assertFalse(other.isVisible())
+
     def test_escape_cancels(self):
         from PySide6.QtTest import QTest
         QTest.keyClick(self.box.edit, QtCore.Qt.Key_Escape)

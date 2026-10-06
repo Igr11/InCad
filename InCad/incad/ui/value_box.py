@@ -30,9 +30,21 @@ class ValueBox(QtWidgets.QFrame):
         self.edit.returnPressed.connect(self._apply)
         self.edit.installEventFilter(self)
         row.addWidget(self.edit)
-        hint = QtWidgets.QLabel("Enter ✓  Esc ✕")
-        hint.setObjectName("InCadValueHint")
-        row.addWidget(hint)
+        # ✓ applies (= Enter), ✕ cancels (= Esc): clickable as well
+        self.apply_button = QtWidgets.QToolButton()
+        self.apply_button.setText("✓")
+        self.apply_button.setToolTip("Apply (Enter)")
+        self.apply_button.setObjectName("InCadValueApply")
+        self.apply_button.clicked.connect(self._apply)
+        self.cancel_button = QtWidgets.QToolButton()
+        self.cancel_button.setText("✕")
+        self.cancel_button.setToolTip("Cancel (Esc)")
+        self.cancel_button.setObjectName("InCadValueCancel")
+        self.cancel_button.clicked.connect(self.close)
+        for b in (self.apply_button, self.cancel_button):
+            b.setFocusPolicy(QtCore.Qt.NoFocus)  # a click must not take the keyboard from the field
+            b.setCursor(QtCore.Qt.PointingHandCursor)
+            row.addWidget(b)
         self._error = QtWidgets.QLabel("")
         self._error.setObjectName("InCadValueError")
         self._error.hide()
@@ -40,7 +52,8 @@ class ValueBox(QtWidgets.QFrame):
         p = themes.PALETTES[theme]
         self.setStyleSheet(
             "QFrame#InCadValueBox {{ background: {panel}; border: 1px solid {accent}; border-radius: 8px; }}"
-            " QLabel {{ color: {text}; }} QLabel#InCadValueError {{ color: {error}; }} QLabel#InCadValueHint {{ color: {text_dim}; font-size: 10px; }}"
+            " QLabel {{ color: {text}; }} QLabel#InCadValueError {{ color: {error}; }} QToolButton {{ color: {text}; background: {panel_alt}; border: 1px solid {border}; border-radius: 4px;"
+            " min-width: 22px; min-height: 20px; font-size: 13px; }} QToolButton:hover {{ background: {accent}; color: {selection_text}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
             " padding: 2px 4px; }}".format(**p))
 
