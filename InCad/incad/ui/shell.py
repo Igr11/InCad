@@ -1871,6 +1871,22 @@ def assembly_ground(link=None):
     return _active().assembly_ground(link)
 
 
+def current_tree_object():
+    """Name of the model-tree row in focus (a feature or sketch), else None."""
+    sh = _shell
+    if sh is None or not sh.active or sh.browser is None:
+        return None
+    try:
+        tree = sh.browser.tree
+        item = tree.currentItem()
+        if item is None or not tree.hasFocus():
+            return None
+        from incad.ui.browser import KIND_ROLE, NAME_ROLE
+        return item.data(0, NAME_ROLE) if item.data(0, KIND_ROLE) in ("feature", "sketch") else None
+    except RuntimeError:
+        return None
+
+
 def toggle_construction():
     return _active().toggle_construction()
 

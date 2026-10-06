@@ -15,7 +15,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "feature.combine", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
             "constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent", "constrain.insert",
             "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine", "feature.sweep", "feature.loft", "feature.coil", "feature.draft",
-            "tools.material", "view.section", "browser.delete", "sketch.constraints_toggle",
+            "tools.material", "view.section", "browser.delete", "edit.delete", "edit.delete_key", "sketch.constraints_toggle",
             "sketch.constraints_show", "sketch.constraints_hide", "sketch.slot_overall",
             "sketch.slot_center", "sketch.construction", "file.quit"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 

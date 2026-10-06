@@ -200,10 +200,35 @@ def test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile():
     assert not seen, seen
 
 
+def test_10_delete_removes_selected_dimension_and_feature():
+    """Backspace/Delete died with FreeCAD's hidden Edit menu: InCad's Delete works in a sketch and on features."""
+    import Sketcher
+    sk = Gui.ActiveDocument.getInEdit().Object
+    i = sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))
+    App.ActiveDocument.recompute()
+    harness.pump(400)
+    n = len(sk.Constraints)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Constraint%d" % (i + 1))
+    commands.REGISTRY.run("edit.delete")
+    harness.pump(600)
+    assert len(sk.Constraints) == n - 1, (n, len(sk.Constraints))
+    g = sk.addGeometry(Part.LineSegment(App.Vector(70, 0, 0), App.Vector(80, 0, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(300)
+    ng = sk.GeometryCount
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (g + 1))
+    commands.REGISTRY.run("edit.delete_key")
+    harness.pump(600)
+    assert sk.GeometryCount == ng - 1
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
              test_6_one_picked_side_switches_the_whole_polygon,
              test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
              test_8_double_click_with_a_deleted_preselection_is_ignored,
-             test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile])
+             test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile,
+             test_10_delete_removes_selected_dimension_and_feature])

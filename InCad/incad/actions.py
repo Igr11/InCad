@@ -338,6 +338,25 @@ def delete_target():
             d.recompute()
 
 
+def delete_selection():
+    """Delete / Backspace: in a sketch the selected geometry and dimensions (Sketcher's own delete, whose key
+    died with FreeCAD's hidden Edit menu); otherwise the selected objects, or the model-tree row in focus."""
+    from incad.core import context
+    from incad.ui import shell
+    if shell.sketch_session().editing() is not None:
+        run_std("Std_Delete")
+        return
+    names = [o.Name for o in _gui().Selection.getSelection()]
+    if not names:
+        row = shell.current_tree_object()
+        names = [row] if row else []
+    if not names:
+        raise ValueError("Select what to delete (in the model or the Model Browser)")
+    for name in names:
+        context.set_target(name)
+        delete_target()
+
+
 def choose_material(ask=None):
     """Pick the part's material (density for Mass Properties, colour). ask() -> name | None."""
     import FreeCAD as App
@@ -589,6 +608,10 @@ def commands():
                         "click again to close"),
         Command(id="browser.delete", label="Delete", icon="delete", handler=delete_target,
                 contexts=frozenset({"browser"}), tooltip="Delete with everything InCad made for it"),
+        Command(id="edit.delete", label="Delete", icon="delete", handler=delete_selection, shortcut="Backspace",
+                tooltip="Delete the selection (sketch geometry and dimensions, or features)"),
+        Command(id="edit.delete_key", label="Delete", icon="delete", handler=delete_selection, shortcut="Del",
+                tooltip="Delete the selection"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),
                 contexts=frozenset({"part"}), tooltip="Real thread on a shaft or in a hole (select its face)"),
         Command(id="feature.shell", label="Shell", icon="shell", handler=lambda: start_feature("shell"),
