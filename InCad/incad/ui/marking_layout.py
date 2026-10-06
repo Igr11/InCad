@@ -27,7 +27,7 @@ LAYOUT = {
                  "SW": "assembly.ground", "list": ["joint.rigid", "view.zoom_selection"]},
     "empty": {"N": "file.new", "S": "file.open", "E": "view.theme_toggle", "W": "view.freecad", "list": []},
     "browser": {"N": "browser.edit", "S": "browser.move_end_of_part", "E": "browser.suppress",
-                "W": "browser.rename", "list": ["browser.delete"]},
+                "W": "browser.rename", "list": ["sketch.start", "browser.delete"]},
 }
 
 

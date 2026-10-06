@@ -58,5 +58,32 @@ def test_2_look_at_faces_the_sketch_while_sketching():
         "view.look_at" in marking_layout.LAYOUT["sketch"]["list"]
 
 
+def test_3_double_click_a_plane_in_the_browser_starts_a_sketch():
+    from incad.core import context
+    from incad.ui import marking_layout
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+    body = document.primary_body(App.ActiveDocument)
+    yz = [o for o in body.Origin.OriginFeatures if o.Role == "YZ_Plane"][0]
+    s().browser.featureActivated.emit(yz.Name)
+    harness.pump(1200)
+    sk = s().sketches.editing()
+    assert sk is not None and sk.AttachmentSupport[0][0] is yz, sk and sk.AttachmentSupport
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+    browser = marking_layout.LAYOUT["browser"]
+    assert "sketch.start" in list(browser.values()) + browser["list"]
+    xy = [o for o in body.Origin.OriginFeatures if o.Role == "XY_Plane"][0]
+    context.set_target(xy.Name)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(1200)
+    sk = s().sketches.editing()
+    assert sk is not None and sk.AttachmentSupport[0][0] is xy, sk and sk.AttachmentSupport
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
 harness.run([test_0_new_part_starts_near_the_origin, test_1_plane_panel_picks_a_plane,
-             test_2_look_at_faces_the_sketch_while_sketching])
+             test_2_look_at_faces_the_sketch_while_sketching,
+             test_3_double_click_a_plane_in_the_browser_starts_a_sketch])

@@ -135,6 +135,8 @@ class Shell(QtCore.QObject):
         self.info_panel = None
         self.plane_panel = None
         self.slot_tool = None
+        self.construction_mode = False   # InCad's own: FreeCAD's construction mode can't be read back
+        self._construction_from = {}     # (doc, sketch) -> geometry count when construction mode was turned on
         self._profile_pick = None
         self.value_box = None
         self._shortcuts = {}
@@ -658,6 +660,41 @@ class Shell(QtCore.QObject):
     def _sketch_changed(self, sk):
         """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
+        if self.construction_mode:
+            QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
+
+    def toggle_construction(self):
+        """Inventor's Construction button: with sketch geometry selected, switch it; otherwise turn the drawing
+        mode on/off (new geometry becomes construction while on)."""
+        import FreeCADGui as Gui
+        from incad.core import log
+        sk = self.sketches.editing()
+        if sk is None:
+            raise ValueError("Open a sketch first")
+        picked = [sub for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
+                  for sub in sel.SubElementNames if sub.startswith("Edge")]
+        if picked:
+            Gui.runCommand("Sketcher_ToggleConstruction")
+            return
+        self.construction_mode = not self.construction_mode
+        self._construction_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+        log.report("info", "Construction on: new geometry is construction (click again to stop)"
+                   if self.construction_mode else "Construction off: normal geometry")
+        if self.ribbon is not None:
+            self.ribbon.refresh_checks()
+
+    def _make_construction(self, sk):
+        try:
+            key = (sk.Document.Name, sk.Name)
+            start = self._construction_from.get(key, sk.GeometryCount)
+            new = [i for i in range(start, sk.GeometryCount) if not sk.getConstruction(i)]
+            self._construction_from[key] = sk.GeometryCount
+            for i in new:
+                sk.setConstruction(i, True)
+            if new:
+                sk.Document.recompute()
+        except Exception as e:
+            log.report("warning", "Could not make the new geometry construction: %s" % e)
 
     def _name_dimensions(self, sk):
         from incad.core import document
@@ -1006,6 +1043,8 @@ class Shell(QtCore.QObject):
             self._close_value_box()
         if editing is None and self.slot_tool is not None:
             self.stop_slot_tool()
+        if editing is None and self.construction_mode:
+            self.construction_mode = False  # each sketch starts with normal geometry
         mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
         self.ribbon.set_mode(mode)
         if self.plane_panel is not None:
@@ -1365,6 +1404,10 @@ def assembly_create(name=None):
 
 def assembly_ground(link=None):
     return _active().assembly_ground(link)
+
+
+def toggle_construction():
+    return _active().toggle_construction()
 
 
 def start_slot_tool(mode):

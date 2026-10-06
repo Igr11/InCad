@@ -17,7 +17,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine", "feature.sweep", "feature.loft", "feature.coil", "feature.draft",
             "tools.material", "view.section", "browser.delete", "sketch.constraints_toggle",
             "sketch.constraints_show", "sketch.constraints_hide", "sketch.slot_overall",
-            "sketch.slot_center"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
+            "sketch.slot_center", "sketch.construction"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 
 
 class ActionsTest(unittest.TestCase):

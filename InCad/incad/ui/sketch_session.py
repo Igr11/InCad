@@ -88,6 +88,13 @@ class SketchSession:
         else:
             log.report("warning", "That is not flat: pick a plane or a flat face")
 
+    def start_on(self, support, face=""):
+        """New sketch straight on a plane or a flat face (browser double-click, right-click New Sketch)."""
+        if not sketch.valid_support(support, face):
+            raise ValueError("%s is not flat: pick a plane or a flat face" % support.Label)
+        self.cancel_pick()
+        return self._create(support, face)
+
     def pick_origin(self, role):
         """The plane panel's buttons: sketch on an origin plane of the main solid."""
         import FreeCAD as App

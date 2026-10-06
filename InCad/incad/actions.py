@@ -26,7 +26,6 @@ SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
     "sketch.extend": ("Extend", "extend", "Sketcher_Extend", ""),
     "sketch.offset": ("Offset", "offset", "Sketcher_Offset", ""),
     "sketch.project": ("Project Geometry", "project", "Sketcher_Projection", ""),
-    "sketch.construction": ("Construction", "construction", "Sketcher_ToggleConstruction", ""),
     "sketch.mirror": ("Mirror", "mirror", "Sketcher_Symmetry", ""),
     "sketch.rect_pattern": ("Rectangular Pattern", "rect_pattern", "Sketcher_RectangularArray", ""),
     "sketch.dimension": ("Dimension", "dimension", "Sketcher_Dimension", "D"),
@@ -194,6 +193,10 @@ def move_end_of_part_here():
 def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
+    if obj.TypeId in _PLANES:  # double-click a plane: a new sketch on it (Inventor)
+        from incad.ui import shell
+        shell.sketch_session().start_on(obj)
+        return
     if obj.TypeId == "App::Link":
         from incad.ui import shell
         shell.open_component(obj)
@@ -221,9 +224,19 @@ def nav_mode_is(mode):
     return shell.nav_mode() == mode
 
 
+_PLANES = ("App::Plane", "PartDesign::Plane")
+
+
 def start_sketch():
     _refuse_while_busy()
+    import FreeCAD as App
+    from incad.core import context
     from incad.ui import shell
+    name = context.target()
+    target = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None and name else None
+    if target is not None and target.TypeId in _PLANES and not _gui().Selection.getSelection():
+        context.set_target(None)  # right-click New Sketch on a plane in the browser
+        return shell.sketch_session().start_on(target)
     return shell.sketch_session().start()
 
 
@@ -266,6 +279,17 @@ def _editing_sketch():
     if obj is None or obj.TypeId != "Sketcher::SketchObject":
         raise ValueError("Open a sketch first")
     return obj
+
+
+def _construction():
+    from incad.ui import shell
+    shell.toggle_construction()
+
+
+def _construction_on():
+    from incad.ui import shell
+    inst = shell.instance()
+    return bool(inst is not None and getattr(inst, "construction_mode", False))
 
 
 def _slot(mode):
@@ -504,6 +528,11 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="sketch.construction", label="Construction", icon="construction",
+                handler=lambda: _construction(), contexts=frozenset({"sketch"}), checkable=True,
+                is_checked=lambda: _construction_on(),
+                tooltip="On: new geometry is construction; click again for normal geometry. "
+                        "With geometry selected: switches that geometry"),
         Command(id="sketch.slot_overall", label="Overall Slot", icon="slot_overall",
                 handler=lambda: _slot("overall"), contexts=frozenset({"sketch"}),
                 tooltip="Click the two outer ends, then the width"),

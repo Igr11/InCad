@@ -108,5 +108,27 @@ def test_4_overall_slot_by_three_clicks():
     assert sh.slot_tool is None
 
 
+def test_5_construction_button_toggles_the_drawing_mode():
+    import Part
+    sh = shell.instance()
+    sk = Gui.ActiveDocument.getInEdit().Object
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("sketch.construction")
+    harness.pump(300)
+    assert sh.construction_mode and sh.ribbon.button("sketch.construction").isChecked()
+    g = sk.addGeometry(Part.LineSegment(App.Vector(50, 0, 0), App.Vector(60, 0, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(500)
+    assert sk.getConstruction(g), "drawn in construction mode"
+    commands.REGISTRY.run("sketch.construction")
+    harness.pump(300)
+    assert not sh.construction_mode and not sh.ribbon.button("sketch.construction").isChecked()
+    g2 = sk.addGeometry(Part.LineSegment(App.Vector(50, 5, 0), App.Vector(60, 5, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(500)
+    assert not sk.getConstruction(g2), "back to normal"
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
-             test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks])
+             test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
+             test_5_construction_button_toggles_the_drawing_mode])
