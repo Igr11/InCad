@@ -105,3 +105,15 @@ class CutShapeTest(unittest.TestCase):
         comp = Part.makeCompound([box] + helix.Edges)
         kinds = [k for k, _ in section.snap_points(comp)]
         self.assertEqual(kinds.count("corner"), 8)  # the helix adds nothing
+
+
+class CapFacesTest(unittest.TestCase):
+    def test_cross_section_of_a_bored_box(self):
+        from incad.core import section
+        import Part
+        box = Part.makeBox(20, 10, 10).cut(Part.makeCylinder(2, 10, App.Vector(10, 5, 0)))
+        plane = App.Placement(App.Vector(10, 0, 0), App.Rotation(App.Vector(0, 0, 1), App.Vector(1, 0, 0)))  # x = 10
+        faces = section.cap_faces(box, plane)
+        self.assertEqual(len(faces), 2)  # the bore's slot splits the 10 x 10 section in two
+        self.assertAlmostEqual(sum(f.Area for f in faces), 100 - 4 * 10, places=3)
+        self.assertEqual(section.cap_faces(box, section.adjusted(plane, 50.0)), [])  # misses the part

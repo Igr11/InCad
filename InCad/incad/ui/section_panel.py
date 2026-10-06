@@ -40,6 +40,11 @@ class SectionPanel(QtWidgets.QFrame):
         row2.addWidget(self.done_button)
         col.addLayout(row2)
         self._syncing = False
+        self._timer = QtCore.QTimer(self)  # the view follows the slider a moment after it stops moving
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(120)
+        self._timer.timeout.connect(self._emit_now)
+        self.slider.sliderReleased.connect(self._emit_now)
         self.slider.valueChanged.connect(self._from_slider)
         self.offset.valueChanged.connect(self._from_spin)
         self.flip.toggled.connect(lambda _on: self._emit())
@@ -73,6 +78,10 @@ class SectionPanel(QtWidgets.QFrame):
         self._emit()
 
     def _emit(self):
+        self._timer.start()
+
+    def _emit_now(self):
+        self._timer.stop()
         self.changed.emit(float(self.offset.value()), bool(self.flip.isChecked()))
 
     def values(self):

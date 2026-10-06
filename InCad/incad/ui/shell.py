@@ -1946,25 +1946,32 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
 
     def _show_cut(self, body, placement):
-        """The cut solid instead of the part (its cut faces show material, as in Inventor)."""
+        """FreeCAD's clipping plane removes one side (fast); the material on the plane is drawn on top of it."""
+        import FreeCAD as App
         import FreeCADGui as Gui
         from incad.core import section
         from incad.ui.section_display import SectionDisplay
-        shape = section.cut_shape(body.Shape, placement)
-        if shape.isNull() or shape.Volume < 1e-9:  # that side holds nothing: keep the other one
-            shape = section.cut_shape(body.Shape, placement, flip=True)
+        view = Gui.getDocument(body.Document.Name).ActiveView
+        shape = body.Shape
+        # a plane that misses the part (or leaves nothing) is turned round: a section always shows material
+        faces = section.cap_faces(shape, placement)
+        if not faces:
+            flipped = section.adjusted(placement, 0.0, True)
+            if section.cap_faces(shape, flipped):
+                placement, faces = flipped, section.cap_faces(shape, flipped)
+        kept = placement.Rotation.multVec(App.Vector(0, 0, 1))  # the side FreeCAD keeps with `clip` (probed)
+        clip = App.Placement(placement.Base, placement.Rotation.multiply(App.Rotation(App.Vector(1, 0, 0), 180)))
         if self._section_display is None:
             color = (0.8, 0.8, 0.8)
             try:
                 color = tuple(body.Tip.ViewObject.ShapeColor[:3])
             except Exception:
                 pass
-            view = Gui.getDocument(body.Document.Name).ActiveView
-            display = SectionDisplay(view, color)
-            was = body.ViewObject.Visibility
-            body.ViewObject.Visibility = False
-            self._section_display = (display, body, was)
-        self._section_display[0].set_shape(shape)
+            self._section_display = (SectionDisplay(view, color), body, view)
+        else:
+            view.toggleClippingPlane(0)
+        view.toggleClippingPlane(1, False, True, clip)  # no drag handle: destroying it crashes FreeCAD (probed)
+        self._section_display[0].set_faces(faces, kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0))
 
     def section_on(self):
         return self._section_display is not None
@@ -1988,11 +1995,11 @@ class Shell(QtCore.QObject):
                 pass
             self.section_panel = None
         if not keep_cut and self._section_display is not None:
-            display, body, was = self._section_display
+            display, body, view = self._section_display
             self._section_display = None
             display.remove()
             try:
-                body.ViewObject.Visibility = was
+                view.toggleClippingPlane(0)
             except Exception:
                 pass
             self._section_base = None

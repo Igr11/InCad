@@ -94,3 +94,30 @@ def purge_markers(doc):
             doc.removeObject(o.Name)
             gone += 1
     return gone
+
+
+def cap_faces(shape, placement, flip=False):
+    """The material cut by the plane: faces of the solid's cross-section at `placement` (global). Empty when the
+    plane misses the solid. Cheap (a slice, not a boolean cut) and works where a cut fails (threads)."""
+    import Part
+    pl = adjusted(placement, 0.0, flip)
+    normal = pl.Rotation.multVec(App.Vector(0, 0, 1))
+    d = pl.Base.dot(normal)
+    try:
+        wires = shape.slice(normal, d)
+    except Exception:
+        return []
+    wires = [w for w in wires if w.isClosed()]
+    if not wires:
+        return []
+    try:
+        face = Part.makeFace(wires, "Part::FaceMakerBullseye")
+        return face.Faces
+    except Exception:
+        out = []
+        for w in wires:
+            try:
+                out.append(Part.Face(w))
+            except Exception:
+                pass
+        return out
