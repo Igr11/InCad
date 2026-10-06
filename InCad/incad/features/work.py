@@ -11,6 +11,15 @@ def _first(doc, text):
     return resolve(*picks[0])
 
 
+def _support_items(f):
+    """'Obj:Sub' for every element of the attachment (FreeCAD groups several subs of one object together)."""
+    out = []
+    for obj, subs in f.AttachmentSupport:
+        subs = subs if isinstance(subs, (tuple, list)) else [subs]
+        out.extend("%s:%s" % (obj.Name, s) if s else obj.Name for s in (subs or [""]))
+    return out
+
+
 def _plane_apply(doc, body, f, values):
     if values.get("mode") == "three_points":
         pts = [resolve(o, s) for o, s in parse_picks(doc, values.get("points"))]
@@ -42,8 +51,7 @@ def _plane_read(doc, f):
     from incad.core import model
     support = f.AttachmentSupport
     if f.MapMode == "ThreePointsPlane":
-        return {"mode": "three_points", "base": "", "offset": "10 mm",
-                "points": ",".join("%s:%s" % (o.Name, s[0] if isinstance(s, (tuple, list)) else s) for o, s in support)}
+        return {"mode": "three_points", "base": "", "offset": "10 mm", "points": ",".join(_support_items(f))}
     obj, sub = support[0][0], support[0][1]
     sub = sub[0] if isinstance(sub, (tuple, list)) and sub else (sub or "")
     pname = model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
@@ -85,7 +93,7 @@ def _axis_create(doc, body, profile, values):
 
 
 def _axis_read(doc, f):
-    items = ["%s:%s" % (o.Name, s[0] if isinstance(s, (tuple, list)) else s) for o, s in f.AttachmentSupport]
+    items = _support_items(f)
     if len(items) == 2:
         return {"mode": "two_points", "edge": "", "points": ",".join(items)}
     return {"mode": "edge", "edge": items[0] if items else "", "points": ""}

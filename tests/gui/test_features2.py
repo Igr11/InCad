@@ -179,6 +179,64 @@ def test_7_theme_switch_closes_the_old_info_panel():
     assert s().info_panel is None
 
 
+def _fillet():
+    return [o for o in body().Group if o.TypeId == "PartDesign::Fillet"][0]
+
+
+def test_8_pattern_without_selection_shows_and_keeps_its_feature():
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.circ_pattern")
+    harness.pump(900)
+    assert dialog().field("features").text() not in ("", "Select…"), dialog().field("features").text()
+    w = dialog().field("count")
+    w.setText("3")
+    w.editingFinished.emit()
+    harness.pump(700)
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
+def test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility():
+    fillet, tip = _fillet(), body().Tip
+    assert tip is not fillet
+    before = (fillet.Visibility, tip.Visibility)
+    shell.edit_feature(fillet)
+    harness.pump(700)
+    dialog().field("edges").click()
+    harness.pump(600)
+    base = fillet.BaseFeature
+    assert base.Visibility and not fillet.Visibility and not tip.Visibility, (base.Visibility, fillet.Visibility,
+                                                                             tip.Visibility)
+    picked = sum(len(x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name))
+    assert picked == 4, picked
+    tip_edge = "Edge1"
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, tip.Name, tip_edge)
+    harness.pump(600)
+    assert "current shape" in dialog().error_text(), dialog().error_text()
+    dialog().field("edges").click()  # stop picking
+    harness.pump(400)
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+    assert (fillet.Visibility, tip.Visibility) == before, ((fillet.Visibility, tip.Visibility), before)
+    shell.edit_feature(fillet)
+    harness.pump(700)
+    dialog().field("edges").click()
+    harness.pump(400)
+    dialog().field("edges").click()
+    harness.pump(400)
+    w = dialog().field("radius")
+    w.setText("1.5 mm")
+    w.editingFinished.emit()
+    harness.pump(600)
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+    assert (fillet.Visibility, tip.Visibility) == before, ((fillet.Visibility, tip.Visibility), before)
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
-             test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel])
+             test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
+             test_8_pattern_without_selection_shows_and_keeps_its_feature,
+             test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility])

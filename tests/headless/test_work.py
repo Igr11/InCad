@@ -36,3 +36,25 @@ class WorkTest(unittest.TestCase):
         self.doc.recompute()
         v = self.pad.Shape.Vertexes[0].Point
         self.assertAlmostEqual((f.Placement.Base - v).Length, 0, places=6)
+
+    def test_three_point_plane_and_two_point_axis_round_trip(self):
+        pts = "%s:Vertex1,%s:Vertex2,%s:Vertex3" % ((self.pad.Name,) * 3)
+        k = work.PLANE
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="three_points",
+                                                     points=pts))
+        self.doc.recompute()
+        r = k.read(self.doc, f)
+        self.assertEqual((r["mode"], r["points"]), ("three_points", pts))
+        k.update(self.doc, f, r)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State)
+        a = work.AXIS
+        two = "%s:Vertex1,%s:Vertex2" % ((self.pad.Name,) * 2)
+        g = a.create(self.doc, self.body, None, dict(a.defaults(self.doc, self.body, None), mode="two_points",
+                                                     points=two))
+        self.doc.recompute()
+        r = a.read(self.doc, g)
+        self.assertEqual((r["mode"], r["points"]), ("two_points", two))
+        a.update(self.doc, g, r)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", g.State)

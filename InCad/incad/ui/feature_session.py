@@ -22,6 +22,8 @@ class FeatureSession(QtCore.QObject):
         self._closed = False
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
         self._observing = False
+        self._seeding = False
+        self._saved_visibility = []
 
     def start(self):
         doc = self.doc
@@ -55,7 +57,7 @@ class FeatureSession(QtCore.QObject):
         self.dialog.accepted.connect(self.ok)
         self.dialog.applied.connect(self.apply)
         self.dialog.cancelled.connect(self.cancel)
-        self.dialog.activePickChanged.connect(lambda _key: self._sync_pick_view())
+        self.dialog.activePickChanged.connect(lambda _key: self._sync_pick_view(seed=True))
         self._label_params()
         self.dialog.move(16, 16)
         self.dialog.show()
@@ -111,13 +113,24 @@ class FeatureSession(QtCore.QObject):
         for sel in Gui.Selection.getSelectionEx(self.doc_name):
             for sub in (sel.SubElementNames or ("",)):
                 obj, el = common.resolve(sel.Object, sub)
-                if obj is not None and obj is self.feature:
-                    base = getattr(obj, "BaseFeature", None)
-                    if base is None or not el:
-                        continue  # the feature being made can't be its own input
-                    obj = base
-                pairs.append((obj, el))
+                if obj is not None and obj is not self.feature:  # the feature being made can't be its own input
+                    pairs.append((obj, el))
         return pairs
+
+    _DATUMS = ("PartDesign::Plane", "PartDesign::Line", "PartDesign::Point", "PartDesign::CoordinateSystem")
+
+    def _expected_base(self):
+        """The shape geometry picks must lie on: what the feature starts from."""
+        if self.feature is not None:
+            return getattr(self.feature, "BaseFeature", None)
+        return self.body.Tip if self.body is not None else None
+
+    def _off_base(self, pairs):
+        base = self._expected_base()
+        if base is None:
+            return []
+        return [o for o, el in pairs if el and o is not base and o.TypeId.startswith("PartDesign::")
+                and o.TypeId not in self._DATUMS]
 
     def addSelection(self, doc, obj, sub, pnt):
         QtCore.QTimer.singleShot(0, self._selection_changed)
@@ -130,13 +143,16 @@ class FeatureSession(QtCore.QObject):
 
     def _selection_changed(self):
         from incad.features import common
-        if self._closed or self.dialog is None:
+        if self._closed or self.dialog is None or self._seeding:
             return
         key = self.dialog.active_pick()
         if key is None:
             return
         f = self.dialog.field_def(key)
         pairs = self._selection()
+        if f.pick in self._GEOMETRY and self._off_base(pairs):
+            self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
+            return
         ok = [p for p in pairs if common.accepts(f.pick, *p)]
         if pairs and not ok:
             self.dialog.set_error("Select %s for %s" % (f.pick.replace("_", " "), f.label))
@@ -149,26 +165,49 @@ class FeatureSession(QtCore.QObject):
                         and self._shown(g) and not self.dialog.values().get(g.key)), None)
             self.dialog.set_active_pick(nxt)
 
-    def _sync_pick_view(self):
-        """While a geometry pick is active, show the base shape (picks go on it), not the preview."""
+    def _sync_pick_view(self, seed=False):
+        """While a geometry pick is active, show the base shape (picks go on it) instead of the preview and of
+        any later features; put everything back exactly as it was afterwards."""
         want = None
         key = self.dialog.active_pick() if self.dialog is not None else None
         if key and self.dialog.field_def(key).pick in self._GEOMETRY and self.feature is not None:
-            want = getattr(self.feature, "BaseFeature", None)
-        if want is self._base_shown:
-            return
-        self._show_base(False)
-        if want is not None:
-            self._base_shown = want
-            self._set_visible(want, True)
-            self._set_visible(self.feature, False)
+            want = self._expected_base()
+        if want is not self._base_shown:
+            self._show_base(False)
+            if want is not None:
+                tip = self.body.Tip if self.body is not None else None
+                shown = [o for o in (want, self.feature, tip) if o is not None]
+                self._saved_visibility = [(o, bool(o.Visibility)) for o in dict.fromkeys(shown)]
+                self._base_shown = want
+                for o in dict.fromkeys(shown):
+                    self._set_visible(o, o is want)
+        if seed and key:
+            self._seed_selection(key)
 
     def _show_base(self, on):
-        if not on and self._base_shown is not None:
-            base, self._base_shown = self._base_shown, None
-            self._set_visible(base, False)
-            if self.feature is not None:
-                self._set_visible(self.feature, True)
+        if not on:
+            for o, visible in getattr(self, "_saved_visibility", []):
+                self._set_visible(o, visible)
+            self._saved_visibility = []
+            self._base_shown = None
+
+    def _seed_selection(self, key):
+        """A picks field that becomes active shows its current items selected, so a click adds or removes one."""
+        import FreeCADGui as Gui
+        from incad.features import common
+        field = self.dialog.field_def(key)
+        if field.kind != "picks":
+            return
+        self._seeding = True
+        try:
+            Gui.Selection.clearSelection()
+            for obj, sub in common.parse_picks(self.doc, self.dialog.values().get(key)):
+                Gui.Selection.addSelection(self.doc_name, obj.Name, sub)
+        finally:
+            QtCore.QTimer.singleShot(0, self._end_seeding)
+
+    def _end_seeding(self):
+        self._seeding = False
 
     @staticmethod
     def _set_visible(obj, visible):
@@ -216,8 +255,24 @@ class FeatureSession(QtCore.QObject):
             return
         self._check()
         self._label_params()
-        self._base_shown = None  # re-apply: the recompute may have shown the (new) preview again
-        self._sync_pick_view()
+        self._fill_empty_picks()
+        if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
+            self._show_base(False)
+            self._sync_pick_view()
+
+    def _fill_empty_picks(self):
+        """Show what a default picked for an empty field (e.g. the feature a pattern repeats)."""
+        if self.feature is None:
+            return
+        try:
+            read = self.kind.read(self.doc, self.feature)
+        except Exception:
+            return
+        current = self.dialog.values()
+        fill = {f.key: read[f.key] for f in self.kind.FIELDS
+                if f.kind in ("pick", "picks") and not current.get(f.key) and read.get(f.key)}
+        if fill:
+            self.dialog.set_values(fill)
 
     def _drop_partial(self):
         """A create that failed half-way may have left objects behind: roll them back, keep the step open."""
