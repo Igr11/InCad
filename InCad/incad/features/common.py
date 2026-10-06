@@ -48,9 +48,15 @@ def _profile(feature):
     return prof
 
 
+def usable_profile(sk):
+    """A sketch a feature can be built on: closed, or with areas between crossing lines."""
+    from incad.core import regions
+    return closed_profile(sk) or regions.needs_regions(sk)
+
+
 def unconsumed_closed_sketches(body):
     from incad.core import sketch
-    return [o for o in body.Group if sketch.is_sketch(o) and closed_profile(o) and not consumers(o)]
+    return [o for o in body.Group if sketch.is_sketch(o) and usable_profile(o) and not consumers(o)]
 
 
 def value_param(doc, feature, prop, text, unit_kind):

@@ -1,0 +1,17 @@
+{
+ "name": "measure_face_and_part",
+ "steps": [
+  "setup:block",
+  "expect:s['error'] == '' and s['tip'] == 'Pad' and 'Pad' in s['tree']",
+  "wait:1",
+  "cmd:inspect.measure",
+  "wait:0.8",
+  "expect:s['error'] == ''",
+  "click:tree.Pad",
+  "wait:0.8",
+  "expect:s['info'] is not None and 'Volume' in s['info']",
+  "keys:53",
+  "wait:0.5",
+  "expect:s['error'] == ''"
+ ]
+}

@@ -1338,8 +1338,23 @@ class Shell(QtCore.QObject):
         if editing is not None and (closed_profile(editing) or regions.needs_regions(editing)):
             self.sketches.finish()
             return editing
+        row = self._tree_row()  # the sketch the user clicked in the model tree (Inventor: browser pick)
+        obj = doc.getObject(row) if row else None
+        if obj is not None and sketch.is_sketch(obj) and (closed_profile(obj) or regions.needs_regions(obj)):
+            return obj
         candidates = unconsumed_closed_sketches(body)
         return candidates[0] if len(candidates) == 1 else None
+
+    def _tree_row(self):
+        """Name of the model tree's current row (feature or sketch), focused or not."""
+        try:
+            from incad.ui.browser import KIND_ROLE, NAME_ROLE
+            item = self.browser.tree.currentItem() if self.browser is not None else None
+            if item is not None and item.data(0, KIND_ROLE) in ("feature", "sketch"):
+                return item.data(0, NAME_ROLE)
+        except RuntimeError:
+            pass
+        return None
 
     def _profile_from_areas(self, kind, doc, body, source):
         """Inventor: the areas between the sketch's lines are the profiles. One area: used at once. Several: they

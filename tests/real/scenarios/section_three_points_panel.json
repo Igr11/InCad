@@ -1,0 +1,31 @@
+{
+ "name": "section_three_points_panel",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "cmd:view.section_points",
+  "wait:1",
+  "expect:s['markers'] and len(s['markers']) >= 8 and s['picked'] == 0",
+  "memo:i1=next(i for i, p in enumerate(s['markers']) if p != s['markers'][0] and abs(p[0]-s['markers'][0][0]) > 40)",
+  "memo:i2=next(i for i, p in enumerate(s['markers']) if abs(p[0]-s['markers'][0][0]) > 40 and abs(p[1]-s['markers'][0][1]) > 40 and i != m['i1'])",
+  "move:marker.0",
+  "click:marker.0",
+  "wait:0.6",
+  "expect:s['picked'] == 1",
+  "move:marker.{m[i1]}",
+  "click:marker.{m[i1]}",
+  "wait:0.6",
+  "expect:s['picked'] == 2",
+  "move:marker.{m[i2]}",
+  "click:marker.{m[i2]}",
+  "wait:1.2",
+  "expect:s['section']['on'] and s['section']['panel'] and s['markers'] is None",
+  "click:section.done",
+  "wait:0.6",
+  "expect:s['section']['on'] and not s['section']['panel']",
+  "cmd:view.section",
+  "wait:0.8",
+  "expect:not s['section']['on']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "name": "areas_pick_extrude",
+ "steps": [
+  "setup:empty_part",
+  "wait:1",
+  "setup:crossed_sketch",
+  "wait:1",
+  "expect:s['error'] == '' and 'Cross' in s['tree']",
+  "click:tree.Cross",
+  "wait:0.5",
+  "click:ribbon.feature.extrude",
+  "wait:1.5",
+  "expect:s['dialog'] is None and len(s['areas']) == 3",
+  "move:area.smallest",
+  "click:area.smallest",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Extrude' and not s['areas']",
+  "click:dialog.ok",
+  "wait:2",
+  "expect:s['dialog'] is None and abs(s['volume'] - 3.14159 * 9 * 10) < 1"
+ ]
+}

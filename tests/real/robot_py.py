@@ -44,6 +44,19 @@ def spot(name, s, m):
         return s["dialog"].get(key) or s["dialog"].get("buttons", {}).get(key)
     if name.startswith("box.") and s.get("box"):
         return s["box"].get(name[4:])
+    if name.startswith("marker.") and s.get("markers"):  # marker.<index> (section by 3 points)
+        try:
+            return s["markers"][int(name[7:])]
+        except (ValueError, IndexError):
+            return None
+    if name.startswith("area.") and s.get("areas"):  # area.<Name> or area.smallest / area.largest
+        key = name[5:]
+        if key in s["areas"]:
+            return s["areas"][key]
+        names = sorted(s["areas"])  # Area1, Area2… are made largest first
+        return s["areas"][names[-1] if key == "smallest" else names[0]]
+    if name.startswith("section.") and s.get("section"):
+        return s["section"].get(name[8:])
     return None
 
 

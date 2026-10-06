@@ -110,6 +110,22 @@ def test_3_tree_shows_the_sketch_under_the_feature_and_edits_follow():
     assert abs(body().Shape.Volume - v_before - math.pi * (16 - 9) * 10) < 0.5, (v_before, body().Shape.Volume)
 
 
+def test_3b_a_crossed_sketch_clicked_in_the_tree_is_the_profile():
+    """Click the sketch row (no 3D selection), then Extrude: its areas are offered."""
+    sk = crossing_sketch(body(), name="Cross3")
+    sk.AttachmentOffset = App.Placement(App.Vector(80, 0, 0), App.Rotation())
+    doc().recompute()
+    harness.pump(500)
+    Gui.Selection.clearSelection()
+    assert s().browser.select_row(sk.Name)
+    harness.pump(300)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(1000)
+    assert [o for o in doc().Objects if o.Name.startswith("Area")], "the areas are shown"
+    s()._on_escape()
+    harness.pump(500)
+
+
 def test_4_esc_cancels_the_area_pick():
     sk = crossing_sketch(body(), name="Cross2")
     sk.AttachmentOffset = App.Placement(App.Vector(40, 0, 0), App.Rotation())
@@ -126,4 +142,5 @@ def test_4_esc_cancels_the_area_pick():
 
 
 harness.run([test_0_setup, test_1_one_area_extrudes_at_once, test_2_several_areas_are_shown_and_clicked,
-             test_3_tree_shows_the_sketch_under_the_feature_and_edits_follow, test_4_esc_cancels_the_area_pick])
+             test_3_tree_shows_the_sketch_under_the_feature_and_edits_follow,
+             test_3b_a_crossed_sketch_clicked_in_the_tree_is_the_profile, test_4_esc_cancels_the_area_pick])

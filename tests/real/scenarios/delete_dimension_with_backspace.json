@@ -1,0 +1,27 @@
+{
+ "name": "delete_dimension_with_backspace",
+ "steps": [
+  "setup:rect_sketch_open",
+  "wait:1.5",
+  "cmd:sketch.dimension",
+  "move:bottom",
+  "click:bottom",
+  "move:bottom_place",
+  "click:bottom_place",
+  "wait:0.6",
+  "memo:n=s['box']['name']",
+  "keys:53",
+  "wait:0.5",
+  "move:away",
+  "keys:53",
+  "wait:0.5",
+  "expect:s['box'] is None and len(s['dims']) == 1",
+  "move:label.{m[n]}",
+  "click:label.{m[n]}",
+  "wait:0.5",
+  "expect:any('Constraint' in sub for _, subs in s['selection'] for sub in subs)",
+  "keys:51",
+  "wait:0.8",
+  "expect:len(s['dims']) == 0 and s['editing'] is not None"
+ ]
+}

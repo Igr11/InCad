@@ -151,3 +151,17 @@ class RegionsIntegrationTest(unittest.TestCase):
         self.doc.recompute()
         self.assertIsNone(self.doc.getObject(prof_name))
         self.assertIsNotNone(self.doc.getObject(sk_name))
+
+
+class UsableProfileTest(unittest.TestCase):
+    def test_a_crossed_sketch_is_a_candidate_profile(self):
+        from incad.features import common
+        doc = util.new_doc("Up")
+        try:
+            body = document.make_part(doc)
+            sk = crossing_sketch(body)
+            doc.recompute()
+            self.assertTrue(common.usable_profile(sk))
+            self.assertEqual(common.unconsumed_closed_sketches(body), [sk])
+        finally:
+            App.closeDocument(doc.Name)

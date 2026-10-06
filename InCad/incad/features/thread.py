@@ -211,18 +211,20 @@ def _build(doc, body, f, values):
     lead = (-spec.pitch if offset == 0 else half) if start_free else half
     tail = spec.pitch if end_free else -half
     sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else (f.Profile or None)
-    if sk is None:
+    fresh = sk is None
+    if fresh:
         sk = body.newObject("Sketcher::SketchObject", "ThreadProfile")
-        f.Profile = sk
     sk.AttachmentSupport = [(obj, edge)]
     sk.MapMode = "SectionOfRevolution"
     sk.deleteAllGeometry()
-    doc.recompute()
+    sk.recompute()  # the sketch alone: the helix is never recomputed with an empty profile ("Linked shape is empty")
     ly = sk.getGlobalPlacement().Rotation.multVec(App.Vector(0, 1, 0))
     sign = 1.0 if to_other.dot(ly) > 0 else -1.0
     pts = [App.Vector(r, sign * (offset + lead + z), 0) for r, z in groove]
     sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))])
     sk.Visibility = False
+    if fresh:
+        f.Profile = sk
     f.Refine = False  # probed: refining a helical cut corrupts the solid (wrong volume, still "valid")
     f.ReferenceAxis = (sk, ["V_Axis"])
     f.Mode = "pitch-height-angle"
@@ -284,10 +286,21 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
     existing = helpers_of(f)
     g = existing[0] if existing else None
     sk = g.Profile[0] if g is not None and isinstance(g.Profile, (tuple, list)) and g.Profile else None
+    old_tip = body.Tip
     if g is None:
-        old_tip = body.Tip
         body.Tip = f  # the chamfer goes right after its thread
         sk = body.newObject("Sketcher::SketchObject", "ThreadChamferProfile")
+    sk.AttachmentSupport = [(obj, edge)]
+    sk.MapMode = "SectionOfRevolution"
+    sk.deleteAllGeometry()
+    sk.recompute()  # the sketch alone: no feature is recomputed with an empty profile
+    inward = size if internal else -size  # the end face is inside the shaft, outside the hole
+    for at, into in ends:
+        y0 = sign * at
+        pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0), App.Vector(radius, y0 + sign * into * size, 0)]
+        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 3]) for i in range(3)])
+    sk.Visibility = False
+    if g is None:
         g = body.newObject("PartDesign::Groove", "ThreadChamfer")
         g.addProperty("App::PropertyString", HELPER, "InCad", "The thread this chamfer belongs to")
         g.setPropertyStatus(HELPER, "Hidden")
@@ -295,16 +308,6 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
         g.Profile = sk
         g.Angle = 360.0
         body.Tip = g if old_tip is f else old_tip
-    sk.AttachmentSupport = [(obj, edge)]
-    sk.MapMode = "SectionOfRevolution"
-    sk.deleteAllGeometry()
-    doc.recompute()
-    inward = size if internal else -size  # the end face is inside the shaft, outside the hole
-    for at, into in ends:
-        y0 = sign * at
-        pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0), App.Vector(radius, y0 + sign * into * size, 0)]
-        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 3]) for i in range(3)])
-    sk.Visibility = False
     g.ReferenceAxis = (sk, ["V_Axis"])
     doc.recompute()
     if g.Shape.isNull() or not g.Shape.isValid():

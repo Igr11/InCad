@@ -19,7 +19,7 @@ echo '{}' > "$RUN/memo.json"
 fails=0; passes=0
 py() { python3 "$HERE/robot_py.py" "$OUT.state" "$RUN/memo.json" "$@" }
 driver_cmd() {  # send a command to the driver and wait for it to be done
-  rm -f "$OUT.done"; print -r -- "$1" > "$OUT.cmd"
+  rm -f "$OUT.done"; print -r -- "$1" > "$OUT.cmd.tmp" && mv "$OUT.cmd.tmp" "$OUT.cmd"  # atomic: the driver polls
   for i in {1..150}; do [[ -f "$OUT.done" ]] && break; sleep 0.1; done
   [[ -f "$OUT.done" ]] || echo "  (driver did not answer: $1)"
   sleep 0.3

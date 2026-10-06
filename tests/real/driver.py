@@ -146,6 +146,23 @@ def state():
         pp = sh.plane_panel
         if pp is not None and pp.isVisible():
             st["plane_panel"] = {r: center(pp.button(r)) for r in ("XY_Plane", "XZ_Plane", "YZ_Plane")}
+        # tonight's features: section markers / panel, shown areas, measure panel rows
+        try:
+            pick = getattr(sh, "_point_pick", None)
+            st["markers"] = [screen_xy(p) for p in pick.points] if pick is not None else None
+            st["picked"] = len(pick.picked) if pick is not None else None
+            panel = getattr(sh, "section_panel", None)
+            st["section"] = {"on": bool(sh.section_on()), "panel": panel is not None,
+                             "offset": center(panel.offset) if panel is not None else None,
+                             "done": center(panel.done_button) if panel is not None else None,
+                             "off": center(panel.off_button) if panel is not None else None}
+            d = App.ActiveDocument
+            st["areas"] = {o.Name: screen_xy(o.Shape.BoundBox.Center) for o in d.Objects if o.Name.startswith("Area")} if d else {}
+            info = getattr(sh, "info_panel", None)
+            st["info"] = dict(info.rows()) if info is not None else None
+            st["selection"] = [(x.ObjectName, list(x.SubElementNames)) for x in Gui.Selection.getSelectionEx()]
+        except Exception as e:
+            st["extra_error"] = str(e)
     try:
         with open(os.environ.get("INCAD_LOG", ""), encoding="utf-8") as f:
             st["log"] = f.read()[-1500:]
@@ -191,7 +208,19 @@ def setup(name):
                              "left": (0, 5, 0), "left_place": (-7, 5, 0), "inside": (10, 5, 0), "away": (40, 30, 0)})
         if name == "rect_sketch_open":
             shell.sketch_session().edit(sk)
-            QtCore.QTimer.singleShot(800, lambda: Gui.SendMsgToActiveView("ViewFit"))
+
+            def fit_with_room():  # the placed dimensions (6 mm outside the rectangle) must stay in view
+                Gui.SendMsgToActiveView("ViewFit")
+                cam = Gui.ActiveDocument.ActiveView.getCameraNode()
+                if hasattr(cam, "height"):
+                    cam.height.setValue(cam.height.getValue() * 1.9)
+            QtCore.QTimer.singleShot(800, fit_with_room)
+        return
+    if name == "crossed_sketch":  # a 20 x 10 rectangle cut by a line, a circle in its right half ("Cross")
+        from headless.test_regions import crossing_sketch
+        ST["sketch"] = crossing_sketch(body)
+        doc.recompute()
+        Gui.SendMsgToActiveView("ViewFit")
         return
     if name in ("block", "block_with_top_sketch"):
         pad = util.add_pad(body, util.add_rect_sketch(body, name="SketchA"), 10)
