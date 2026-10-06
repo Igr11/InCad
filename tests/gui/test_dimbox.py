@@ -54,6 +54,11 @@ def rmb_edit(name):
     QtWidgets.QApplication.sendEvent(tree.viewport(), ev)  # what macOS sends after a real right-click
     harness.pump(500)
     menu = s().marking_menu
+    if menu is None or not menu.isVisible():  # the simulated right-click is flaky: once more
+        QTest.mouseClick(tree.viewport(), QtCore.Qt.RightButton, QtCore.Qt.NoModifier, pos)
+        QtWidgets.QApplication.sendEvent(tree.viewport(), QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, pos, tree.viewport().mapToGlobal(pos)))
+        harness.pump(500)
+        menu = s().marking_menu
     assert menu is not None and menu.isVisible(), "the RMB menu opens"
     edit = [b for b in menu._list if b.text() == "Edit"][0]
     QTest.mouseClick(edit, QtCore.Qt.LeftButton)

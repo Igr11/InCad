@@ -187,6 +187,7 @@ class Shell(QtCore.QObject):
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
         self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
+        self._box_pending = None  # (key, name): a new dimension whose box opens once the tool has placed it
         self._box_focus_hooked = False
 
         self._wait_notice = None
@@ -939,11 +940,44 @@ class Shell(QtCore.QObject):
                 self._close_value_box()  # its dimension is gone (tool cancelled, undo): nothing to apply to
             added = [] if replaced else sketches.name_new_dimensions(doc)  # never in an undo step of our own:
             self._dim_known[key] = sketches.dimension_snapshot(sk)       # the Sketcher tool's step is open
+            placing = doc.HasPendingTransaction  # the Dimension tool still drags the line (its step is open)
         except Exception as e:
             log.report("warning", "Could not name new dimensions: %s" % e, traceback.format_exc())
             return
-        if len(added) == 1 and not drawn and self.sketches.editing() is sk:
-            self.open_value_box(sk, added[0])
+        if self.sketches.editing() is not sk:
+            return
+        # Inventor: place the dimension first, then type. The box waits until the tool has put it down.
+        if len(added) == 1 and not drawn:
+            if placing:
+                self._box_pending = (key, added[0], sk)
+                QtCore.QTimer.singleShot(150, self._open_pending_box)
+            else:
+                self.open_value_box(sk, added[0])
+            return
+        pending = self._box_pending
+        if pending and pending[0] == key and replaced:
+            self._box_pending = (key, replaced, sk)  # the placing click replaced it: same box, same name
+
+    def _open_pending_box(self, tries=0):
+        """The tool put the dimension down (its undo step closed): open its box. Nothing fires at that moment,
+        so this looks every 150 ms, for a while."""
+        pending = self._box_pending
+        if pending is None or not self.active:
+            return
+        key, name, sk = pending
+        if not _alive(sk) or self.sketches.editing() is not sk or name not in [c.Name for c in sk.Constraints]:
+            self._box_pending = None  # cancelled, finished, or gone
+            return
+        if sk.Document.HasPendingTransaction:
+            if tries < 400:  # a minute of dragging the line is plenty
+                QtCore.QTimer.singleShot(150, lambda: self._open_pending_box(tries + 1))
+            else:
+                self._box_pending = None
+            return
+        self._box_pending = None
+        self.open_value_box(sk, name)
+        if self.value_box is not None:
+            self.value_box.restart_tool = "sketch.dimension"  # the tool stops when the value is applied
 
     def _after_undo(self, doc):
         """Undo/redo can bring objects back without their formula links (FreeCAD quirk): repair them."""
@@ -1079,6 +1113,26 @@ class Shell(QtCore.QObject):
     def _value_box_closed(self, box):
         if self.value_box is box:
             self.value_box = None
+        tool = getattr(box, "restart_tool", None)
+        if tool and self.sketches.editing() is not None:
+            # Inventor keeps dimensioning after a value is entered; FreeCAD's tool stops when the sketch changes
+            # under it. Started again unless the user already picked another tool.
+            def again():
+                if self.active and self.sketches.editing() is not None and not self._sketch_tool_active():
+                    try:
+                        self.registry.run(tool)
+                    except Exception as e:
+                        log.logger().warning("Could not restart %s: %s", tool, e)
+            QtCore.QTimer.singleShot(200, again)
+
+    def _sketch_tool_active(self):
+        """A Sketcher tool shows its own bitmap cursor in the view (FreeCAD tells Python nothing else)."""
+        mdi = self._mdi()
+        views = [w for w in mdi.findChildren(QtWidgets.QGraphicsView) if w.isVisible()] if mdi is not None else []
+        try:
+            return bool(views) and views[0].viewport().cursor().shape() == QtCore.Qt.BitmapCursor
+        except RuntimeError:
+            return False
 
 
 
