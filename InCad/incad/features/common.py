@@ -69,11 +69,17 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items"}
 
 
 def resolve(obj, sub):
-    """A pick on a Body means its Tip; 'Pad.Face6' style paths name the object and the element."""
+    """A pick on a Body means its Tip; 'Pad.Face6' style paths name the object and the element; in an assembly
+    'Link.Body.Pad.Face5' means the component (the link) and its element."""
+    if obj is not None and obj.TypeId == "Assembly::AssemblyObject" and "." in sub:
+        parts = sub.split(".")
+        link = obj.Document.getObject(parts[0])
+        if link is not None:
+            return link, parts[-1]
     if "." in sub:
         parts = sub.split(".")
         child = obj.Document.getObject(parts[-2]) if len(parts) > 1 else None
@@ -127,6 +133,8 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
+    if kind == "element":
+        return sub.startswith(("Face", "Edge", "Vertex")) and el is not None
     if kind == "cylinder":
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomCylinder"
     if kind == "vertex":
