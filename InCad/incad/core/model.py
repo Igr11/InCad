@@ -128,9 +128,46 @@ def new_feature_parameter(doc, text, unit_kind="length"):
     except Exception as e:
         obj.removeProperty(name)
         raise ValueError("Invalid value %r: %s" % (text, e))
-    _remember_kind(obj, name, unit_kind)
     doc.recompute()
+    if "Invalid" in obj.State or "Error" in obj.State:
+        message = friendly(obj.getStatusString())
+        obj.setExpression(name, None)
+        obj.removeProperty(name)
+        doc.recompute()
+        raise ValueError("Invalid value %r: %s" % (text, message))
+    _remember_kind(obj, name, unit_kind)
     return name
+
+
+def users_of(doc, name):
+    """Labels of the objects whose formulas use the feature value `name` (the value itself excluded)."""
+    pattern = re.compile(r"(?:%s\.|(?<![\w.]))%s(?!\w)" % (MODEL_NAME, re.escape(name)))
+    model_obj = _model_obj(doc)
+    out = []
+    for obj in doc.Objects:
+        for path, expr in getattr(obj, "ExpressionEngine", []) or []:
+            if obj is model_obj and path.lstrip(".") == name:
+                continue
+            if pattern.search(expr):
+                out.append(obj.Label if obj is not model_obj else path.lstrip("."))
+                break
+    return out
+
+
+def remove_model_parameter(doc, name):
+    """Remove a feature value nothing uses any more (left behind by a deleted feature)."""
+    from incad.core import sketch
+    if sketch.find_dimension(doc, name)[0] is not None:
+        raise ValueError("%s is a sketch dimension: delete it in its sketch" % name)
+    obj = _model_obj(doc)
+    if obj is None or name not in _feature_names(doc):
+        raise ValueError("No parameter named %r" % name)
+    users = users_of(doc, name)
+    if users:
+        raise ValueError("%s is used by %s" % (name, ", ".join(users)))
+    obj.setExpression(name, None)
+    obj.removeProperty(name)
+    doc.recompute()
 
 
 def _remember_kind(obj, name, unit_kind):

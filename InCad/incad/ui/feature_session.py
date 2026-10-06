@@ -8,6 +8,7 @@ class FeatureSession(QtCore.QObject):
     def __init__(self, kind, doc, body, profile=None, feature=None, theme="light", parent=None, on_close=None):
         super().__init__(parent)
         self.kind, self.doc, self.body, self.profile = kind, doc, body, profile
+        self.doc_name = doc.Name
         self.feature = feature
         self.creating = feature is None
         self._theme, self._parent, self._on_close = theme, parent, on_close
@@ -17,6 +18,7 @@ class FeatureSession(QtCore.QObject):
         self._timer.setInterval(250)
         self._timer.timeout.connect(self._preview)
         self._pending = None
+        self._applied = None
         self._closed = False
 
     def start(self):
@@ -41,6 +43,7 @@ class FeatureSession(QtCore.QObject):
             self._finish(commit=False)
             return False
         self.dialog = FeatureDialog(self.kind.TITLE, self.kind.ICON, self.kind.FIELDS, values, self._theme, self._parent)
+        self._applied = self.dialog.values()
         if not self.creating:
             for value in ("intersect", "new_solid"):
                 if "operation" in self.dialog._widgets and value in self.dialog.field("operation")._buttons:
@@ -72,12 +75,14 @@ class FeatureSession(QtCore.QObject):
         if self._pending is None or self._closed:
             return
         values, self._pending = self._pending, None
+        self._applied = values
         try:
-            if self.creating and self._needs_recreate(values):
+            if self.creating and (self.feature is None or self._needs_recreate(values)):
                 self.doc.abortTransaction()
                 self.doc.recompute()
                 model.relink(self.doc)
                 self.doc.openTransaction(self.kind.TITLE)
+                self.feature = None  # the abort removed it; stays None if the new one fails
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
             else:
@@ -107,9 +112,16 @@ class FeatureSession(QtCore.QObject):
         return False
 
     def ok(self):
-        if self._pending is not None:
-            self._timer.stop()
-            self._preview()
+        """Commit what the dialog shows now: a value typed but not yet previewed (Enter, or a click on OK that
+        doesn't take focus on macOS) is applied first."""
+        self._timer.stop()
+        if self.dialog is not None:
+            current = self.dialog.values()
+            if self._pending is not None or current != self._applied:
+                self._pending = current
+                self._preview()
+        if self.feature is None and self.dialog is not None and not self.dialog.error_text():
+            self.dialog.set_error("Nothing to create yet")
         if self.dialog is not None and self.dialog.error_text():
             return
         self._finish(commit=True)
@@ -119,6 +131,11 @@ class FeatureSession(QtCore.QObject):
         self.ok()
         if self._closed:
             from incad.ui import shell
+            try:
+                import FreeCADGui as Gui
+                Gui.Selection.clearSelection()  # the next round must not pick the profile just used
+            except Exception:
+                pass
             QtCore.QTimer.singleShot(0, lambda: shell.start_feature(kind))
 
     def cancel(self):

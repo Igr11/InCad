@@ -70,6 +70,32 @@ class ExtrudeTest(unittest.TestCase):
         self.assertIs(self.body.Tip, g)
         self.assertLess(g.Shape.Volume, base.Shape.Volume)
 
+    def test_join_cut_switch_mid_history_keeps_later_features(self):
+        base = self.make(distance="10 mm")
+        later_sk = util.add_rect_sketch(self.body, w=4, h=4, name="Later")
+        later = extrude.create(self.doc, self.body, later_sk,
+                               dict(extrude.defaults(self.doc, self.body, later_sk), distance="20 mm"))
+        self.doc.recompute()
+        g = extrude.update(self.doc, base, dict(extrude.read(self.doc, base), operation="cut"))
+        self.doc.recompute()
+        self.assertIs(later.BaseFeature, g)
+        self.assertIs(self.body.Tip, later)
+        self.assertFalse(g.Visibility)
+
+    def test_join_cut_switch_refused_when_a_sketch_sits_on_its_face(self):
+        base = self.make(distance="10 mm")
+        top = [i + 1 for i, fc in enumerate(base.Shape.Faces) if abs(fc.CenterOfMass.z - 10) < 1e-6][0]
+        sk2 = self.body.newObject("Sketcher::SketchObject", "OnTop")
+        sk2.AttachmentSupport = [(base, "Face%d" % top)]
+        sk2.MapMode = "FlatFace"
+        sk2.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as ctx:
+            extrude.update(self.doc, base, dict(extrude.read(self.doc, base), operation="cut"))
+        self.assertIn("OnTop", str(ctx.exception))
+        self.assertEqual(sk2.AttachmentSupport[0][0], base)
+        self.assertEqual(base.TypeId, "PartDesign::Pad")
+
     def test_through_all_cut(self):
         base = self.make(distance="10 mm")
         sk2 = util.add_rect_sketch(self.body, w=4, h=4, name="Cutter")

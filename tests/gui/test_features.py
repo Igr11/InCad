@@ -201,8 +201,18 @@ def test_11_leaving_incad_closes_the_dialog():
 def test_12_user_undo_keeps_features_following_their_parameters():
     Gui.activateWorkbench("InCadWorkbench")
     harness.pump(1000)
-    pad = doc().getObject(ST["pad"])
-    shell.edit_feature(pad)
+    sk = util.add_rect_sketch(body(), w=4, h=4, name="UndoSk")
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    dialog().field("operation").button("join").click()
+    harness.pump(600)
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    ST["undo_pad"] = body().Tip.Name
+    shell.edit_feature(body().Tip)
     harness.pump(600)
     dialog().field("operation").button("cut").click()
     harness.pump(600)
@@ -211,12 +221,98 @@ def test_12_user_undo_keeps_features_following_their_parameters():
     before = list(doc().UndoNames)[:4]
     commands.REGISTRY.run("edit.undo")  # brings the Pad back (FreeCAD drops its formula link; InCad repairs it)
     harness.pump(800)
-    pad = doc().getObject(ST["pad"])
+    pad = doc().getObject(ST["undo_pad"])
     assert pad is not None and pad.TypeId == "PartDesign::Pad", (pad, before, list(doc().UndoNames)[:4])
     name = model.bound_parameter(pad, "Length")
     s().browser.parameterSet.emit(name, "13 mm")
     harness.pump(600)
-    assert abs(doc().getObject(ST["pad"]).Length.Value - 13) < 1e-6, doc().getObject(ST["pad"]).Length
+    assert abs(doc().getObject(ST["undo_pad"]).Length.Value - 13) < 1e-6, doc().getObject(ST["undo_pad"]).Length
+
+
+def edit_pad():
+    shell.edit_feature(doc().getObject(ST["pad"]))
+    harness.pump(600)
+
+
+def test_13_enter_commits_the_typed_value():
+    edit_pad()
+    f = dialog().field("distance")
+    f.setFocus()
+    f.selectAll()
+    QTest.keyClicks(f, "30")
+    QTest.keyClick(f, QtCore.Qt.Key_Return)
+    harness.pump(600)
+    assert s().feature_session is None
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 30) < 1e-6, doc().getObject(ST["pad"]).Length
+
+
+def test_14_clicking_ok_commits_the_typed_value():
+    edit_pad()
+    f = dialog().field("distance")
+    f.setFocus()
+    f.selectAll()
+    QTest.keyClicks(f, "31")
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert s().feature_session is None
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 31) < 1e-6, doc().getObject(ST["pad"]).Length
+
+
+def test_15_undo_is_refused_while_a_dialog_is_open():
+    names = list(doc().UndoNames)
+    edit_pad()
+    type_into("distance", "40 mm")
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(400)
+    assert "dialog" in s().status.texts()["message"].lower(), s().status.texts()
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 31) < 1e-6, doc().getObject(ST["pad"]).Length
+    assert list(doc().UndoNames) == names, (doc().UndoNames, names)
+
+
+def test_16_apply_plus_does_not_reuse_the_extruded_sketch():
+    sk = util.add_rect_sketch(body(), w=3, h=3, name="ApplySk")
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    QTest.mouseClick(dialog().apply_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+    fs = s().feature_session
+    assert fs is None or fs.profile is not sk, "Apply + extruded ApplySk again"
+    if fs is not None:
+        fs.cancel()
+    s()._cancel_profile_pick()
+    harness.pump(400)
+
+
+def test_17_failed_recreate_recovers():
+    sk = util.add_rect_sketch(body(), w=2, h=2, name="RecreateSk")
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(800)
+    type_into("distance", "Nope * 2")
+    dialog().field("operation").button("new_solid").click()
+    harness.pump(600)
+    dialog().field("operation").button("join").click()
+    harness.pump(600)
+    type_into("distance", "5 mm")
+    assert not dialog().error_text(), dialog().error_text()
+    f = s().feature_session.feature
+    assert f is not None and f.Document is doc() and abs(f.Length.Value - 5) < 1e-6
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
+def test_18_closing_the_document_ends_the_dialog():
+    edit_pad()
+    App.closeDocument(doc().Name)
+    harness.pump(1000)
+    assert s().feature_session is None and safe.busy() is None, (s().feature_session, safe.busy())
 
 
 harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, test_2_ok_commits_one_undo_step,
@@ -225,4 +321,7 @@ harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, t
              test_7_new_solid_and_cancel_moves_sketch_back, test_8_revolve,
              test_9_parameter_click_inserts_into_the_focused_field, test_10_busy_blocks_other_changes_and_is_cleared,
              test_11_leaving_incad_closes_the_dialog,
-             test_12_user_undo_keeps_features_following_their_parameters])
+             test_12_user_undo_keeps_features_following_their_parameters, test_13_enter_commits_the_typed_value,
+             test_14_clicking_ok_commits_the_typed_value, test_15_undo_is_refused_while_a_dialog_is_open,
+             test_16_apply_plus_does_not_reuse_the_extruded_sketch, test_17_failed_recreate_recovers,
+             test_18_closing_the_document_ends_the_dialog])

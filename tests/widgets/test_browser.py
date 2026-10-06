@@ -228,10 +228,10 @@ class ModelParametersTest(unittest.TestCase):
         self.b.params.item(1, 1).setText("d0 * 3")
         self.assertEqual(self.events, [("set", "d1", "d0 * 3")])
 
-    def test_model_rows_cannot_be_removed(self):
+    def test_model_rows_ask_to_be_removed(self):
         self.b.params.setCurrentCell(0, 0)
         self.b.remove_selected_parameter()
-        self.assertEqual(self.events, [])
+        self.assertEqual(self.events, [("remove", "d0")])
 
     def test_click_on_name_reports_it(self):
         self.b.params.cellClicked.emit(2, 0)

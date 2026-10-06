@@ -298,7 +298,8 @@ class ModelBrowser(QtWidgets.QWidget):
             return
         item = self.params.item(r, 0)
         if item is not None and item.data(PARAM_KIND_ROLE) == "model":
-            return  # dimensions live in their sketch
+            self.parameterRemoved.emit(item.data(NAME_ROLE) or item.text())  # the shell refuses values still in use
+            return
         saved = item is not None and not bool(item.flags() & QtCore.Qt.ItemIsEditable)
         if saved:
             self.parameterRemoved.emit(item.text())

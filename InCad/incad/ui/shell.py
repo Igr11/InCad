@@ -928,6 +928,9 @@ class Shell(QtCore.QObject):
         import FreeCAD as App
         from incad.core import document, tree
         doc = App.ActiveDocument
+        fs = self.feature_session
+        if fs is not None and fs.doc_name not in App.listDocuments():
+            self._close_feature_session(cancel=True)  # its document was closed: nothing to roll back, free busy
         is_part = document.is_incad_part(doc)
         editing = self.sketches.editing() if is_part else None
         self.sketches.sync()
@@ -1018,7 +1021,9 @@ class Shell(QtCore.QObject):
         from incad.core import document, safe
         doc = self._doc()
         if doc is not None:
-            safe.run_safely("Remove %s" % name, lambda: document.remove_parameter(doc, name), doc)
+            from incad.core import model
+            remove = model.remove_model_parameter if model.is_model_parameter(doc, name) else document.remove_parameter
+            safe.run_safely("Remove %s" % name, lambda: remove(doc, name), doc)
         self.schedule_refresh()
 
 

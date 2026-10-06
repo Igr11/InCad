@@ -149,6 +149,7 @@ def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
     if sketch.is_sketch(obj):
+        _refuse_while_busy()
         from incad.ui import shell
         shell.sketch_session().edit(obj)
     else:
@@ -171,6 +172,7 @@ def nav_mode_is(mode):
 
 
 def start_sketch():
+    _refuse_while_busy()
     from incad.ui import shell
     return shell.sketch_session().start()
 
@@ -187,15 +189,31 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def _refuse_while_busy():
+    """An open feature dialog owns the model: undo, save, close or sketch editing would break its Cancel."""
+    from incad.core import safe
+    if safe.busy():
+        raise ValueError("Finish the %s dialog first" % safe.busy())
+
+
+_GUARDED = {"file.save", "file.save_as", "file.close"}
+
+
 def _std(cmd_id, label, icon, shortcut=""):
     name, index = STD_COMMANDS[cmd_id], STD_INDEX.get(cmd_id, 0)
-    return Command(id=cmd_id, label=label, icon=icon, handler=lambda: run_std(name, index), shortcut=shortcut)
+
+    def handler():
+        if cmd_id in _GUARDED:
+            _refuse_while_busy()
+        return run_std(name, index)
+    return Command(id=cmd_id, label=label, icon=icon, handler=handler, shortcut=shortcut)
 
 
 def _undo_redo(redo):
     """Undo/Redo the active document. Sketcher's own command while a sketch is edited; otherwise straight on the
     document, so it works whatever tab is active (FreeCAD's Std_Undo talks to the active view)."""
     import FreeCAD as App
+    _refuse_while_busy()
     gdoc = _gui().ActiveDocument
     if gdoc is not None and gdoc.getInEdit() is not None:
         run_std("Std_Redo" if redo else "Std_Undo")

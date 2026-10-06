@@ -126,8 +126,34 @@ def update(doc, feature, values):
     return feature if is_boolean else f
 
 
+def _refers_to(value, target):
+    if value is target:
+        return True
+    if isinstance(value, (list, tuple)):
+        return any(_refers_to(v, target) for v in value)
+    return False
+
+
+def _dependents(old, body):
+    """Objects (other than the body and the next feature's BaseFeature link) that use `old` — they would lose it."""
+    out = []
+    for dep in old.InList:
+        if dep is body:
+            continue
+        uses = any(prop != "BaseFeature" and _refers_to(getattr(dep, prop, None), old) for prop in dep.PropertiesList)
+        uses = uses or any(old.Name + "." in expr for _, expr in getattr(dep, "ExpressionEngine", []) or [])
+        if uses:
+            out.append(dep.Label)
+    return out
+
+
 def _replace(doc, old, type_id):
     body = old.getParentGeoFeatureGroup()
+    users = _dependents(old, body)
+    if users:
+        raise ValueError("Join/Cut can't be switched here: %s %s built on this Extrude"
+                         % (", ".join(users), "is" if len(users) == 1 else "are"))
+    visible = old.Visibility
     profile = profile_of(old)
     bindings = {p: e for p, e in old.ExpressionEngine}
     was_tip = body.Tip is old
@@ -144,4 +170,6 @@ def _replace(doc, old, type_id):
         new.setExpression(path.lstrip("."), expr)
     if was_tip:
         body.Tip = new
+    else:
+        new.Visibility = visible
     return new

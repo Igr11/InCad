@@ -57,6 +57,25 @@ class ModelTest(unittest.TestCase):
         from incad.core import nodes, tree
         self.assertNotIn("InCadModel", [n.label for _, n in nodes.flatten(tree.build(self.doc))])
 
+    def test_new_parameter_with_unknown_name_is_refused_plainly(self):
+        before = model.feature_parameters(self.doc)
+        with self.assertRaises(ValueError) as ctx:
+            model.new_feature_parameter(self.doc, "Nope * 2")
+        self.assertIn("Unknown name 'Nope'", str(ctx.exception))
+        self.assertNotIn("property binding", str(ctx.exception))
+        self.assertEqual(model.feature_parameters(self.doc), before)
+
+    def test_unused_feature_parameter_can_be_removed(self):
+        used = model.new_feature_parameter(self.doc, "25 mm")
+        model.bind(self.pad, "Length", used)
+        spare = model.new_feature_parameter(self.doc, "3 mm")
+        self.doc.recompute()
+        model.remove_model_parameter(self.doc, spare)
+        self.assertNotIn(spare, [p[0] for p in model.feature_parameters(self.doc)])
+        with self.assertRaises(ValueError) as ctx:
+            model.remove_model_parameter(self.doc, used)
+        self.assertIn(self.pad.Label, str(ctx.exception))
+
 
 class RelinkAfterUndoTest(unittest.TestCase):
     """FreeCAD quirk (probed): an object restored by undo/abort loses its formula dependency links."""
