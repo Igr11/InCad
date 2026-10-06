@@ -105,3 +105,59 @@ class CombineTest(unittest.TestCase):
         sk.addGeometry(Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 5))
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 25 * 10, places=1)
+
+
+class CombineReviewTest(CombineTest):
+    def test_a_fit_copy_with_user_work_is_kept(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")
+        fit = self.fit()[0]
+        sk = util.add_rect_sketch(fit, 2, 2, "UserSk")
+        util.add_pad(fit, sk, 2, "UserPad")
+        self.doc.recompute()
+        combine.update(self.doc, f, dict(combine.read(self.doc, f), apply_to="cavity"))
+        self.doc.recompute()
+        self.assertIsNotNone(self.doc.getObject(fit.Name))
+        self.assertIsNotNone(self.doc.getObject("UserPad"))
+
+    def test_untouched_fit_copy_is_removed(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")
+        combine.update(self.doc, f, dict(combine.read(self.doc, f), apply_to="cavity"))
+        self.doc.recompute()
+        self.assertEqual(self.fit(), [])
+
+    def test_offset_failure_is_said_plainly(self):
+        from incad.features import thread
+        top = [i + 1 for i, fc in enumerate(self.pin.Shape.Faces) if fc.Surface.TypeId == "Part::GeomCylinder"][0]
+        t = thread.create(self.doc, self.tool, None, dict(thread.defaults(self.doc, self.tool, None),
+                                                          face="%s:Face%d" % (self.pin.Name, top), size="M8"))
+        self.doc.recompute()
+        self.assertIs(self.tool.Tip, t)
+        with self.assertRaises(ValueError) as ctx:
+            self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")
+        self.assertIn("clearance", str(ctx.exception).lower())
+
+    def test_dependency_loop_is_refused(self):
+        self.make(operation="cut", clearance="0 mm")
+        with self.assertRaises(ValueError) as ctx:
+            v = dict(combine.defaults(self.doc, self.tool, None), base=self.tool.Name, tools=self.base.Name,
+                     operation="cut", clearance="0 mm")
+            combine.create(self.doc, self.tool, None, v)
+        self.assertIn("depends on", str(ctx.exception))
+
+    def test_changing_the_base_on_edit_is_refused_plainly(self):
+        other = self.doc.addObject("PartDesign::Body", "Other")
+        other.Tip = util.add_pad(other, util.add_rect_sketch(other, 5, 5, "OS"), 5, "OP")
+        self.doc.recompute()
+        f = self.make(operation="cut", clearance="0 mm")
+        with self.assertRaises(ValueError) as ctx:
+            combine.update(self.doc, f, dict(combine.read(self.doc, f), base=other.Name))
+        self.assertIn("base", str(ctx.exception).lower())
+
+    def test_renamed_clearance_parameter_is_followed(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="split")
+        model.rename_model_parameter(self.doc, combine.clearance_parameter(f), "fitgap")
+        self.assertEqual(combine.clearance_parameter(f), "fitgap")
+        combine.update(self.doc, f, dict(combine.read(self.doc, f), clearance="0.3 mm"))
+        self.doc.recompute()
+        self.assertEqual(model.parameter_text(self.doc, "fitgap"), "0.3 mm")
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.15 ** 2 * 10, places=1)
