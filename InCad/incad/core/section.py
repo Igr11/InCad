@@ -49,16 +49,20 @@ def through_points(a, b, c):
     return App.Placement(a, _rotation_to(n))
 
 
-def snap_points(shape):
-    """Points worth cutting through: corners, edge middles, circle/arc centres (no duplicates)."""
+def snap_points(shape, limit=300):
+    """Points worth cutting through: corners and middles of straight and circular edges, circle/arc centres —
+    no duplicates, nothing from helix/spline edges or tiny ones (a thread would bury the part in markers)."""
     out = []
+    small = max(1e-6, shape.BoundBox.DiagonalLength / 100.0)
 
     def add(kind, p):
-        if not any((p - q).Length < 1e-6 for _, q in out):
+        if len(out) < limit and not any((p - q).Length < 1e-6 for _, q in out):
             out.append((kind, App.Vector(p)))
-    for v in shape.Vertexes:
-        add("corner", v.Point)
-    for e in shape.Edges:
+    edges = [e for e in shape.Edges if e.Curve.TypeId in ("Part::GeomLine", "Part::GeomCircle") and e.Length > small]
+    for e in edges:
+        for v in e.Vertexes:
+            add("corner", v.Point)
+    for e in edges:
         if e.Curve.TypeId == "Part::GeomCircle":
             add("centre", e.Curve.Center)
         try:
@@ -66,6 +70,16 @@ def snap_points(shape):
         except Exception:
             pass
     return out
+
+
+def cut_shape(shape, placement, flip=False):
+    """What is left of `shape` on one side of the section plane (the other side is cut away). The cut faces
+    are real, so the section looks like material, not like sheets."""
+    import Part
+    size = max(10.0, shape.BoundBox.DiagonalLength * 3)
+    box = Part.makeBox(size, size, size, App.Vector(-size / 2, -size / 2, 0))  # z from 0 up: the side to remove
+    box.Placement = adjusted(placement, 0.0, flip)
+    return shape.cut(box)
 
 
 def purge_markers(doc):

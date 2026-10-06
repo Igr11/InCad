@@ -231,6 +231,7 @@ class Shell(QtCore.QObject):
         self._geometry_counts = {}
         self.section_panel = None
         self._point_pick = None  # waiting for three clicks on the section markers
+        self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
@@ -1869,14 +1870,15 @@ class Shell(QtCore.QObject):
     # ----- section view -----
     def start_section(self, base):
         """Inventor's slice: the cut at the picked plane, with a panel to offset and flip it."""
-        from incad import actions
         from incad.core import document, section
         from incad.ui.section_panel import SectionPanel
         self.stop_section(keep_cut=False)
         self._section_base = base
-        actions.set_clipping(section.adjusted(base))
         doc = self._doc()
         body = document.primary_body(doc) if doc is not None else None
+        if body is None or body.Shape.isNull():
+            raise ValueError("Open a part with a solid to see a section")
+        self._show_cut(body, section.adjusted(base))
         reach = 50.0
         try:
             if body is not None and not body.Shape.isNull():
@@ -1943,19 +1945,41 @@ class Shell(QtCore.QObject):
         pick.remove()
         self.schedule_refresh()
 
-    def _section_changed(self, offset, flip):
-        from incad import actions
+    def _show_cut(self, body, placement):
+        """The cut solid instead of the part (its cut faces show material, as in Inventor)."""
+        import FreeCADGui as Gui
         from incad.core import section
-        if self._section_base is None:
+        from incad.ui.section_display import SectionDisplay
+        shape = section.cut_shape(body.Shape, placement)
+        if shape.isNull() or shape.Volume < 1e-9:  # that side holds nothing: keep the other one
+            shape = section.cut_shape(body.Shape, placement, flip=True)
+        if self._section_display is None:
+            color = (0.8, 0.8, 0.8)
+            try:
+                color = tuple(body.Tip.ViewObject.ShapeColor[:3])
+            except Exception:
+                pass
+            view = Gui.getDocument(body.Document.Name).ActiveView
+            display = SectionDisplay(view, color)
+            was = body.ViewObject.Visibility
+            body.ViewObject.Visibility = False
+            self._section_display = (display, body, was)
+        self._section_display[0].set_shape(shape)
+
+    def section_on(self):
+        return self._section_display is not None
+
+    def _section_changed(self, offset, flip):
+        from incad.core import section
+        if self._section_base is None or self._section_display is None:
             return
         try:
-            actions.set_clipping(section.adjusted(self._section_base, offset, flip))
+            self._show_cut(self._section_display[1], section.adjusted(self._section_base, offset, flip))
         except Exception as e:
             log.report("warning", "Could not move the section: %s" % e)
 
     def stop_section(self, keep_cut=False):
         """Done keeps the cut (the panel goes); Off / Section again removes it."""
-        from incad import actions
         if self.section_panel is not None:
             try:
                 self.section_panel.close()
@@ -1963,11 +1987,14 @@ class Shell(QtCore.QObject):
             except RuntimeError:
                 pass
             self.section_panel = None
-        if not keep_cut:
+        if not keep_cut and self._section_display is not None:
+            display, body, was = self._section_display
+            self._section_display = None
+            display.remove()
             try:
-                actions.clear_clipping()
-            except Exception as e:
-                log.report("warning", "Could not switch the section off: %s" % e)
+                body.ViewObject.Visibility = was
+            except Exception:
+                pass
             self._section_base = None
         self.schedule_refresh()
 
@@ -2283,6 +2310,10 @@ def start_section(base):
 
 def start_section_points():
     return _active().start_section_points()
+
+
+def section_on():
+    return _shell is not None and _shell.active and _shell.section_on()
 
 
 def stop_section(keep_cut=False):

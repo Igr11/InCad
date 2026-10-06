@@ -386,7 +386,6 @@ def choose_material(ask=None):
         safe.run_safely("Material", lambda: materials.set_material(doc, name), doc)
 
 
-_SECTION = {"on": False}
 
 
 def toggle_section():
@@ -395,9 +394,8 @@ def toggle_section():
     import FreeCAD as App
     from incad.core import section
     from incad.features import common
-    view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
-    if view is None or not hasattr(view, "toggleClippingPlane"):
-        raise ValueError("Open a part or an assembly to see a section")
+    if _gui().ActiveDocument is None:
+        raise ValueError("Open a part to see a section")
     from incad.ui import shell
     if section_on():
         shell.stop_section()
@@ -415,32 +413,9 @@ def _section_points():
 
 
 def section_on():
-    """Is a section plane on in the active view? Asked of the view itself: documents and views come and go."""
-    gdoc = _gui().ActiveDocument
-    view = gdoc.ActiveView if gdoc is not None else None
-    if view is not None and hasattr(view, "hasClippingPlane"):
-        try:
-            return bool(view.hasClippingPlane())
-        except Exception:
-            pass
-    return bool(_SECTION["on"])
-
-
-def set_clipping(placement):
-    """The section plane at `placement` (no drag handle: FreeCAD crashes destroying it — probed)."""
-    view = _gui().ActiveDocument.ActiveView
-    if section_on():
-        view.toggleClippingPlane(0)
-    view.toggleClippingPlane(1, False, True, placement)
-    _SECTION["on"] = True
-
-
-def clear_clipping():
-    gdoc = _gui().ActiveDocument
-    view = gdoc.ActiveView if gdoc is not None else None
-    if view is not None and section_on():
-        view.toggleClippingPlane(0)
-    _SECTION["on"] = False
+    """Is the part shown sectioned (the cut solid drawn instead of it)?"""
+    from incad.ui import shell
+    return shell.section_on()
 
 
 def _refuse_while_busy():

@@ -88,3 +88,20 @@ class PurgeMarkersTest(unittest.TestCase):
             self.assertIsNotNone(doc.getObject("Mark4"))
         finally:
             App.closeDocument(doc.Name)
+
+
+class CutShapeTest(unittest.TestCase):
+    def test_half_of_a_box_and_markers_skip_thread_edges(self):
+        from incad.core import section
+        import Part
+        box = Part.makeBox(20, 10, 10)
+        plane = App.Placement(App.Vector(10, 0, 0), App.Rotation(App.Vector(0, 0, 1), App.Vector(1, 0, 0)))  # x = 10
+        half = section.cut_shape(box, plane)
+        self.assertAlmostEqual(half.Volume, 1000, places=3)
+        self.assertAlmostEqual(half.BoundBox.XMax, 10, places=6)
+        other = section.cut_shape(box, plane, flip=True)
+        self.assertAlmostEqual(other.BoundBox.XMin, 10, places=6)
+        helix = Part.makeHelix(1.0, 10.0, 4.0)
+        comp = Part.makeCompound([box] + helix.Edges)
+        kinds = [k for k, _ in section.snap_points(comp)]
+        self.assertEqual(kinds.count("corner"), 8)  # the helix adds nothing

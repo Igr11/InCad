@@ -260,7 +260,8 @@ def test_section_on_and_off_twice_never_crashes():
     for _ in range(2):
         commands.REGISTRY.run("view.section")
         harness.pump(600)
-        assert actions.section_on() and sh.section_panel is not None, "section is on with its panel"
+        assert actions.section_on() and sh.section_panel is not None, ("section is on with its panel",
+            open(os.environ["INCAD_LOG"]).read()[-900:] if os.path.exists(os.environ["INCAD_LOG"]) else "")
         sh.section_panel.offset.setValue(3.0)
         harness.pump(300)
         sh.section_panel.flip.setChecked(True)
