@@ -85,9 +85,26 @@ def _origin(body):
     return Node("origin", "Origin", origin.Name, children=items)
 
 
+def _assembly(doc):
+    from incad.core import assembly
+    from incad.features import constraints
+    root = Node("assembly", doc.Label)
+    for c in assembly.components(doc):
+        root.children.append(Node("component", c.Label, c.Name,
+                                  detail="grounded" if assembly.is_grounded(c) else "",
+                                  tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else "")))
+    rel = [j for j in assembly.joints(doc) if constraints.claims(j)]
+    root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
+                              children=[Node("joint", j.Label, j.Name) for j in rel]))
+    return [root]
+
+
 def build(doc):
     if doc is None:
         return []
+    from incad.core import assembly
+    if assembly.is_assembly(doc):
+        return _assembly(doc)
     if not document.is_incad_part(doc):
         out = [Node("message", "Not an InCad part", tooltip="This file was made outside InCad.")]
         if len(document.bodies(doc)) == 1:

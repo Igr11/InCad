@@ -2,6 +2,7 @@
 title strip, ribbon, Model Browser and status bar are shown. Everything is restored on exit, also after a quit or
 a crash with InCad active: the snapshot stays in InCad's preferences until the restore has been done."""
 import json
+import os
 import traceback
 
 from incad.core import commands, log, prefs
@@ -573,6 +574,9 @@ class Shell(QtCore.QObject):
             Gui.Selection.addSelection(info["Document"], info["Object"], comp)
         else:
             kind = "part" if document.is_incad_part(doc) else "empty"
+        from incad.core import assembly
+        if assembly.is_assembly(doc):
+            kind = {"face": "asm_face", "edge": "asm_edge", "vertex": "asm_edge"}.get(kind, "assembly")
         return self._show_marking_menu(kind, global_pos, flick)
 
     def _on_browser_marking_menu(self, name, global_pos):
@@ -765,8 +769,15 @@ class Shell(QtCore.QObject):
         return candidates[0] if len(candidates) == 1 else None
 
     def start_feature(self, kind):
-        from incad.core import document
+        from incad.core import assembly, document
         doc = self._doc()
+        if getattr(kind, "ASSEMBLY", False):
+            if not assembly.is_assembly(doc):
+                raise ValueError("Open an InCad assembly first")
+            if self.feature_session is not None:
+                raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+            self._open_session(kind, doc, None)
+            return
         if not document.is_incad_part(doc):
             raise ValueError("Create or open an InCad part first")
         if self.feature_session is not None:
@@ -788,7 +799,8 @@ class Shell(QtCore.QObject):
             raise ValueError("%s cannot be edited yet" % feature.Label)
         if self.feature_session is not None:
             raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
-        self._open_session(kind, feature.Document, feature.getParentGeoFeatureGroup(), feature=feature)
+        body = None if getattr(kind, "ASSEMBLY", False) else feature.getParentGeoFeatureGroup()
+        self._open_session(kind, feature.Document, body, feature=feature)
 
     def _open_session(self, kind, doc, body, profile=None, feature=None):
         parent = self._mdi().viewport() if self._mdi() is not None else self.mw
@@ -938,21 +950,23 @@ class Shell(QtCore.QObject):
         fs = self.feature_session
         if fs is not None and fs.doc_name not in App.listDocuments():
             self._close_feature_session(cancel=True)  # its document was closed: nothing to roll back, free busy
+        from incad.core import assembly as assemblies
         is_part = document.is_incad_part(doc)
+        is_asm = assemblies.is_assembly(doc)
         editing = self.sketches.editing() if is_part else None
         self.sketches.sync()
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box()
-        mode = "sketch" if editing is not None else "part" if is_part else "empty"
+        mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
         self.ribbon.set_mode(mode)
         self.title.set_document_name(doc.Label if doc is not None else "")
         self.browser.set_nodes(tree.build(doc))
         from incad.core import sketch as sketches
-        self.browser.set_parameters(document.list_parameters(doc) if is_part else [],
-                                    sketches.model_parameters(doc) if is_part else [])
-        self.browser.set_parameters_enabled(is_part)
-        self.status.set_units(document.part_units(doc) if is_part else None)
+        self.browser.set_parameters(document.list_parameters(doc) if is_part or is_asm else [],
+                                    sketches.model_parameters(doc) if is_part or is_asm else [])
+        self.browser.set_parameters_enabled(is_part or is_asm)
+        self.status.set_units(document.part_units(doc) if is_part or is_asm else None)
         self.status.set_dof(editing.DoF if editing is not None else None)
         if is_part:
             bodies = document.bodies(doc)
@@ -964,6 +978,11 @@ class Shell(QtCore.QObject):
                 self.status.set_prompt("Pick a plane or a flat face for the new sketch (Esc cancels)")
             else:
                 self.status.set_prompt("Ready")
+        elif is_asm:
+            self.status.set_stats(None, None)
+            comps = len(assemblies.components(doc))
+            self.status.set_prompt("Place part files (P), then constrain them (C)" if comps < 2 else
+                                   "%d components · Constrain (C), Joint (J), Ground" % comps)
         else:
             self.status.set_stats(None, None)
             self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
@@ -978,6 +997,103 @@ class Shell(QtCore.QObject):
         if self.strip is not None:
             self.strip.refresh_checks()
             self.strip.raise_()
+
+    # ----- assemblies -----
+    def _assembly_doc(self):
+        from incad.core import assembly
+        doc = self._doc()
+        if not assembly.is_assembly(doc):
+            raise ValueError("Open an InCad assembly first")
+        if self.feature_session is not None:
+            raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
+        return doc
+
+    def _ensure_saved(self, doc):
+        """Linking needs the assembly on disk: ask for its file the first time."""
+        if doc.FileName:
+            return True
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self.mw, "Save the assembly first", doc.Label + ".FCStd",
+                                                        "FreeCAD files (*.FCStd)")
+        if not path:
+            return False
+        doc.saveAs(path if path.lower().endswith(".fcstd") else path + ".FCStd")
+        return True
+
+    def _back_to(self, doc):
+        """Opening part files can switch the active tab: show the assembly again."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        App.setActiveDocument(doc.Name)
+        gdoc = Gui.getDocument(doc.Name)
+        if gdoc is not None and gdoc.ActiveView is not None:
+            Gui.ActiveDocument = gdoc
+            mdi = self._mdi()
+            for sub in (mdi.subWindowList() if mdi is not None else []):
+                if sub.windowTitle().startswith(doc.Label):
+                    mdi.setActiveSubWindow(sub)
+                    break
+
+    def assembly_place(self, path=None):
+        from incad.core import assembly, safe
+        doc = self._assembly_doc()
+        if not self._ensure_saved(doc):
+            return None
+        if path is None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self.mw, "Place a part or assembly",
+                                                            os.path.dirname(doc.FileName), "FreeCAD files (*.FCStd)")
+            if not path:
+                return None
+        result = safe.run_safely("Place", lambda: assembly.place(doc, path), doc)
+        self._back_to(doc)
+        self.schedule_refresh()
+        return result.value if result.ok else None
+
+    def assembly_create(self, name=None):
+        from incad.core import assembly, safe
+        doc = self._assembly_doc()
+        if not self._ensure_saved(doc):
+            return None
+        if name is None:
+            name, ok = QtWidgets.QInputDialog.getText(self.mw, "Create component", "New part file name:",
+                                                      text="Part")
+            if not ok or not name.strip():
+                return None
+        result = safe.run_safely("Create", lambda: assembly.create_part(doc, name.strip()), doc)
+        self.schedule_refresh()
+        return result.value if result.ok else None
+
+    def assembly_ground(self, link=None):
+        import FreeCADGui as Gui
+        from incad.core import assembly, context, safe
+        from incad.features import common
+        doc = self._assembly_doc()
+        if link is None:
+            name = context.target()
+            link = doc.getObject(name) if name else None
+        if link is None:
+            for sel in Gui.Selection.getSelectionEx(doc.Name):
+                for sub in (sel.SubElementNames or ("",)):
+                    obj, _ = common.resolve(sel.Object, sub)
+                    if obj is not None and obj.TypeId == "App::Link":
+                        link = obj
+        if link is None or link not in assembly.components(doc):
+            raise ValueError("Select a component to ground or unground")
+        action = assembly.unground if assembly.is_grounded(link) else assembly.ground
+        safe.run_safely("Ground", lambda: action(link), doc)
+        self.schedule_refresh()
+
+    def open_component(self, link):
+        """Open the component's file in its own tab (Inventor: Open)."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        path = link.LinkedObject.Document.FileName
+        part = link.LinkedObject.Document
+        if Gui.getDocument(part.Name) is None or Gui.getDocument(part.Name).ActiveView is None:
+            App.closeDocument(part.Name)
+            part = App.openDocument(path)
+            link.Document.recompute()
+        App.setActiveDocument(part.Name)
+        Gui.ActiveDocument = Gui.getDocument(part.Name)
 
     def inspect(self, what):
         import FreeCADGui as Gui
@@ -1137,6 +1253,28 @@ def inspect(what):
     if _shell is None or not _shell.active:
         raise ValueError("InCad is not active")
     _shell.inspect(what)
+
+
+def _active():
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    return _shell
+
+
+def assembly_place(path=None):
+    return _active().assembly_place(path)
+
+
+def assembly_create(name=None):
+    return _active().assembly_create(name)
+
+
+def assembly_ground(link=None):
+    return _active().assembly_ground(link)
+
+
+def open_component(link):
+    return _active().open_component(link)
 
 
 def edit_feature(feature):

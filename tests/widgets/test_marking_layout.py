@@ -27,7 +27,10 @@ class MarkingLayoutTest(unittest.TestCase):
 
     def test_contexts(self):
         self.assertEqual(set(marking_layout.LAYOUT),
-                         {"part", "face", "edge", "vertex", "empty", "browser", "sketch"})
+                         {"part", "face", "edge", "vertex", "empty", "browser", "sketch", "assembly", "asm_face",
+                          "asm_edge"})
+        self.assertEqual(marking_layout.LAYOUT["assembly"]["N"], "assembly.place")
+        self.assertEqual(marking_layout.LAYOUT["asm_face"]["N"], "constrain.mate")
         self.assertEqual(marking_layout.LAYOUT["sketch"]["N"], "sketch.finish")
         self.assertEqual(marking_layout.LAYOUT["sketch"]["S"], "sketch.dimension")
         self.assertEqual(marking_layout.LAYOUT["part"]["N"], "sketch.start")

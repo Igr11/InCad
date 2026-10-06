@@ -68,15 +68,18 @@ def new_part(ask=None):
     dialog). With 'Remember my choice' on, nothing is asked and the saved units are used."""
     import FreeCAD as App
     from incad.core import document
+    kind = "part"
     if prefs.remember_new_choice():
         units = prefs.default_units()
     else:
         answer = (ask or ask_new)()
         if answer is None:
             return None
-        _kind, units, remember = answer
+        kind, units, remember = answer
         prefs.set_default_units(units)
         prefs.set_remember_new_choice(remember)
+    if kind == "assembly":
+        return new_assembly(units)
     doc = App.newDocument("Part")
     doc.UndoMode = 1
     body = document.make_part(doc, units)
@@ -148,6 +151,10 @@ def move_end_of_part_here():
 def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
+    if obj.TypeId == "App::Link":
+        from incad.ui import shell
+        shell.open_component(obj)
+        return
     if sketch.is_sketch(obj):
         _refuse_while_busy()
         from incad.ui import shell
@@ -207,6 +214,26 @@ def _refuse_while_busy():
 
 
 _GUARDED = {"file.save", "file.save_as", "file.close"}
+
+
+def new_assembly(units=None):
+    """Create an InCad Assembly in a new document (saved when the first part is placed)."""
+    import FreeCAD as App
+    from incad.core import assembly
+    doc = App.newDocument("Assembly")
+    doc.UndoMode = 1
+    assembly.make_assembly(doc, units or prefs.default_units())
+    doc.recompute()
+    doc.clearUndos()
+    if App.GuiUp:
+        view = _gui().getDocument(doc.Name).ActiveView
+        view.viewIsometric()
+    return doc
+
+
+def _assembly(action):
+    from incad.ui import shell
+    return getattr(shell, "assembly_" + action)()
 
 
 def _std(cmd_id, label, icon, shortcut=""):
@@ -288,6 +315,34 @@ def commands():
                 shortcut="F", contexts=frozenset({"part"})),
         Command(id="feature.chamfer", label="Chamfer", icon="chamfer", handler=lambda: start_feature("chamfer"),
                 contexts=frozenset({"part"})),
+        Command(id="file.new_assembly", label="New Assembly", icon="assembly", handler=lambda: new_assembly(),
+                tooltip="New assembly of part files"),
+        Command(id="assembly.place", label="Place", icon="place", handler=lambda: _assembly("place"), shortcut="P",
+                contexts=frozenset({"assembly"}), tooltip="Place a part or assembly file"),
+        Command(id="assembly.create", label="Create", icon="create_component", handler=lambda: _assembly("create"),
+                contexts=frozenset({"assembly"}), tooltip="Create a new part file in this assembly"),
+        Command(id="assembly.ground", label="Ground", icon="ground", handler=lambda: _assembly("ground"),
+                contexts=frozenset({"assembly"}), tooltip="Ground or unground the selected component"),
+        Command(id="constrain.mate", label="Mate", icon="mate", handler=lambda: start_feature("mate"), shortcut="C",
+                contexts=frozenset({"assembly"}), tooltip="Faces against each other (with an offset)"),
+        Command(id="constrain.flush", label="Flush", icon="flush", handler=lambda: start_feature("flush"),
+                contexts=frozenset({"assembly"}), tooltip="Faces side by side, same direction"),
+        Command(id="constrain.angle", label="Angle", icon="angle_c", handler=lambda: start_feature("angle_c"),
+                contexts=frozenset({"assembly"})),
+        Command(id="constrain.tangent", label="Tangent", icon="tangent", handler=lambda: start_feature("tangent"),
+                contexts=frozenset({"assembly"})),
+        Command(id="constrain.insert", label="Insert", icon="insert", handler=lambda: start_feature("insert"),
+                contexts=frozenset({"assembly"}), tooltip="Pick two round edges: axes aligned, faces together"),
+        Command(id="joint.rigid", label="Rigid", icon="rigid", handler=lambda: start_feature("rigid"), shortcut="J",
+                contexts=frozenset({"assembly"})),
+        Command(id="joint.rotational", label="Rotational", icon="rotational",
+                handler=lambda: start_feature("rotational"), contexts=frozenset({"assembly"})),
+        Command(id="joint.slider", label="Slider", icon="slider", handler=lambda: start_feature("slider"),
+                contexts=frozenset({"assembly"})),
+        Command(id="joint.cylindrical", label="Cylindrical", icon="cylindrical",
+                handler=lambda: start_feature("cylindrical"), contexts=frozenset({"assembly"})),
+        Command(id="joint.ball", label="Ball", icon="ball", handler=lambda: start_feature("ball"),
+                contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),

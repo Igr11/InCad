@@ -11,8 +11,7 @@ class NewDialog(QtWidgets.QDialog):
         self.setStyleSheet(themes.stylesheet(theme))
         col = QtWidgets.QVBoxLayout(self)
         self.part = self._tile("Part", "One part file")
-        self.assembly = self._tile("Assembly", "Arrives in a later InCad stage")
-        self.assembly.setEnabled(False)
+        self.assembly = self._tile("Assembly", "Place and constrain part files")
         self.part.setChecked(True)
         self.mm = self._tile("Millimeters", "mm · deg · ISO threads first")
         self.inch = self._tile("Inches", "in · deg · UNC/UNF threads first")
@@ -46,4 +45,5 @@ class NewDialog(QtWidgets.QDialog):
         return b
 
     def choice(self):
-        return ("part", "in" if self.inch.isChecked() else "mm", self.remember.isChecked())
+        return ("assembly" if self.assembly.isChecked() else "part", "in" if self.inch.isChecked() else "mm",
+                self.remember.isChecked())

@@ -12,7 +12,9 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "sketch.start", "sketch.finish", "feature.extrude", "feature.revolve", "feature.hole", "feature.fillet",
             "feature.chamfer", "feature.shell", "feature.rect_pattern", "feature.circ_pattern", "feature.mirror",
             "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass", "feature.thread",
-            "feature.combine"} | set(actions.SKETCHER)
+            "feature.combine", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
+            "constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent", "constrain.insert",
+            "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball"} | set(actions.SKETCHER)
 
 
 class ActionsTest(unittest.TestCase):
@@ -51,3 +53,10 @@ class ActionsTest(unittest.TestCase):
         r = Registry()
         actions.register_all(r)
         self.assertEqual((r.get("feature.hole").shortcut, r.get("feature.fillet").shortcut), ("H", "F"))
+
+    def test_assembly_shortcuts(self):
+        r = Registry()
+        actions.register_all(r)
+        self.assertEqual((r.get("assembly.place").shortcut, r.get("constrain.mate").shortcut,
+                          r.get("joint.rigid").shortcut), ("P", "C", "J"))
+        self.assertEqual(r.get("constrain.mate").contexts, frozenset({"assembly"}))

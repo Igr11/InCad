@@ -33,8 +33,19 @@ LAYOUT = {
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
                   ["Windows", ["view.parameters"]]]],
     ],
+    "assembly": [
+        ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground"]],
+                      ["Constrain", ["constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent",
+                                     "constrain.insert"]],
+                      ["Joint", ["joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical",
+                                 "joint.ball"]]]],
+        ["View", [["Appearance", ["view.theme_toggle"]],
+                  ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe"]],
+                  ["Windows", ["view.parameters"]]]],
+    ],
     "empty": [
-        ["Get Started", [["New", ["file.new", "file.open"]]]],
+        ["Get Started", [["New", ["file.new", "file.new_assembly", "file.open"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]]]],
     ],
 }

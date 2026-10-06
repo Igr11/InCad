@@ -186,6 +186,43 @@ ICONS.update({
                '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
     "chamfer": ('<path d="M5 27 V13 L12 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
                 '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "assembly": ('<path d="M3 14 L10 10 L17 14 L17 22 L10 26 L3 22 Z" fill="{F}" stroke="{S}" stroke-width="1.3"/>'
+                 '<path d="M15 9 L22 5 L29 9 L29 17 L22 21 L15 17 Z" fill="{F}" stroke="{A}" stroke-width="1.3"/>'),
+    "place": ('<path d="M5 13 L13 9 L21 13 L21 23 L13 27 L5 23 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<path d="M25 3 V13 M20 8 L25 13 L30 8" fill="none" stroke="{A}" stroke-width="2.2"/>'),
+    "create_component": ('<path d="M5 13 L13 9 L21 13 L21 23 L13 27 L5 23 Z" fill="none" stroke="{S}" '
+                         'stroke-width="1.4" stroke-dasharray="3 2"/><path d="M25 3 V13 M20 8 H30" '
+                         'stroke="{A}" stroke-width="2.2"/>'),
+    "ground": ('<path d="M16 4 V18" stroke="{S}" stroke-width="2.4"/><circle cx="16" cy="6" r="3.5" fill="{A}"/>'
+               '<path d="M6 22 H26 M9 26 H23 M12 30 H20" stroke="{S}" stroke-width="2"/>'),
+    "mate": ('<rect x="5" y="4" width="22" height="9" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+             '<rect x="9" y="19" width="14" height="9" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+             '<path d="M16 13 V19" stroke="{A}" stroke-width="2.2"/>'),
+    "flush": ('<rect x="4" y="6" width="11" height="20" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<rect x="17" y="6" width="11" height="14" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<path d="M2 6 H30" stroke="{A}" stroke-width="2" stroke-dasharray="3 2"/>'),
+    "angle_c": ('<path d="M5 27 H28 M5 27 L22 8" stroke="{S}" stroke-width="2.4"/>'
+                '<path d="M14 27 A9 9 0 0 0 11 20" fill="none" stroke="{A}" stroke-width="2"/>'),
+    "tangent": ('<circle cx="16" cy="14" r="8" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+                '<path d="M3 22 H29" stroke="{A}" stroke-width="2.4"/>'),
+    "insert": ('<rect x="10" y="3" width="12" height="15" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+               '<path d="M4 20 H12 V29 H4 Z M20 20 H28 V29 H20 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+               '<path d="M16 1 V31" stroke="{A}" stroke-width="1.6" stroke-dasharray="3 2"/>'),
+    "rigid": ('<rect x="4" y="10" width="12" height="12" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<rect x="16" y="10" width="12" height="12" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+              '<path d="M12 16 H20 M16 12 V20" stroke="{A}" stroke-width="2.4"/>'),
+    "rotational": ('<circle cx="16" cy="16" r="5" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+                   '<path d="M6 12 A11 11 0 0 1 24 7" fill="none" stroke="{A}" stroke-width="2.2"/>'
+                   '<path d="M24 3 V8 H19" fill="none" stroke="{A}" stroke-width="2"/>'),
+    "slider": ('<rect x="3" y="13" width="26" height="6" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+               '<rect x="11" y="9" width="10" height="14" fill="{F}" stroke="{A}" stroke-width="1.8"/>'
+               '<path d="M4 6 H12 M20 6 H28" stroke="{A}" stroke-width="1.8"/>'),
+    "cylindrical": ('<ellipse cx="16" cy="8" rx="8" ry="3" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                    '<path d="M8 8 V24 A8 3 0 0 0 24 24 V8" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                    '<path d="M16 2 V30" stroke="{A}" stroke-width="1.8" stroke-dasharray="3 2"/>'),
+    "ball": ('<circle cx="16" cy="12" r="8" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+             '<path d="M8 22 A10 10 0 0 0 24 22" fill="none" stroke="{A}" stroke-width="2.4"/>'
+             '<path d="M16 22 V30" stroke="{S}" stroke-width="2.4"/>'),
     "combine": ('<path d="M4 12 L14 7 L24 12 L24 24 L14 29 L4 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<circle cx="21" cy="11" r="7" fill="none" stroke="{A}" stroke-width="2"/>'
                 '<circle cx="21" cy="11" r="4.5" fill="{N}" stroke="{A}" stroke-width="1" stroke-dasharray="2 1.5"/>'),

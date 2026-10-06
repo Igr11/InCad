@@ -12,8 +12,10 @@ class NewDialogTest(unittest.TestCase):
     def test_defaults(self):
         d = NewDialog()
         self.assertEqual(d.choice(), ("part", "mm", False))
-        self.assertFalse(d.assembly.isEnabled())
         self.assertTrue(d.part.isChecked())
+        self.assertTrue(d.assembly.isEnabled())
+        d.assembly.click()
+        self.assertEqual(d.choice()[0], "assembly")
 
     def test_inch_and_remember(self):
         d = NewDialog(units="in", remember=True, theme="dark")
