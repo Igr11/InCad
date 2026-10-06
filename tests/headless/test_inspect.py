@@ -85,3 +85,17 @@ class MeasureModesTest(unittest.TestCase):
             with self.assertRaises(ValueError) as c:
                 inspect.measure([], mode)
             self.assertEqual(str(c.exception), inspect.PROMPTS[mode])
+
+
+class WholePartTest(unittest.TestCase):
+    def test_a_solid_measures_volume_surface_and_size(self):
+        doc = util.new_doc("Iw")
+        try:
+            body, pad = util.padded_part(doc, 10, incad=True)  # 20 x 10 x 10
+            rows = dict(inspect.measure([(pad, "")]))
+            self.assertEqual(rows["Volume"], "2000 mm³")
+            self.assertEqual(rows["Surface"], "1000 mm²")
+            self.assertEqual(rows["Size"], "20 mm × 10 mm × 10 mm")
+            self.assertEqual(dict(inspect.measure([(body, "")]))["Volume"], "2000 mm³")  # the part itself
+        finally:
+            App.closeDocument(doc.Name)

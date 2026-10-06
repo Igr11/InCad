@@ -133,7 +133,7 @@ def build(doc):
         return out
     primary = document.primary_body(doc)
     all_bodies = document.bodies(doc)
-    root = Node("part", doc.Label)
+    root = Node("part", doc.Label, primary.Name if primary is not None else "")  # a click on it: the solid
     if primary is not None:
         root.children.append(_origin(primary))
     if len(all_bodies) > 1:

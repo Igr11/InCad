@@ -213,7 +213,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
 
     def _on_click(self, item, _column=0):
-        if item.data(0, KIND_ROLE) in ("feature", "sketch", "origin_item"):
+        if item.data(0, KIND_ROLE) in ("feature", "sketch", "origin_item", "part") and item.data(0, NAME_ROLE):
             self.featureSelected.emit(item.data(0, NAME_ROLE))
 
     def select_row(self, name):

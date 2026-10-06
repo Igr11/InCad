@@ -15,6 +15,8 @@ def _element(obj, sub):
                                         obj.TypeId in ("PartDesign::Plane", "PartDesign::Line",
                                                        "PartDesign::Point")):
         raise ValueError("Select a face or an edge of the part (work and origin items have no size)")
+    if not sub and obj.TypeId == "PartDesign::Body" and getattr(obj, "Tip", None) is not None:
+        obj = obj.Tip  # the whole part: what it looks like now
     shape = obj.getSubObject(sub) if sub else getattr(obj, "Shape", None)
     if shape is None or shape.isNull():
         raise ValueError("Select a face or an edge of the part")
@@ -41,6 +43,10 @@ def measure(pairs, what="auto"):
     shapes = [_element(o, s) for o, s in pairs]
     if len(shapes) == 1:
         sh = shapes[0]
+        if sh.ShapeType in ("Solid", "Compound", "CompSolid", "Shell") and sh.Volume > 1e-9:
+            bb = sh.BoundBox
+            return [("Volume", _num(sh.Volume, "mm³")), ("Surface", _num(sh.Area, "mm²")),
+                    ("Size", "%s × %s × %s" % (_num(bb.XLength, "mm"), _num(bb.YLength, "mm"), _num(bb.ZLength, "mm")))]
         if sh.ShapeType == "Face":
             return [("Area", _num(sh.Area, "mm²"))]
         if sh.ShapeType == "Edge":

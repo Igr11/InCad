@@ -767,7 +767,7 @@ class Shell(QtCore.QObject):
             return
         waiting = (self.feature_session is not None and self.feature_session.dialog is not None
                    and self.feature_session.dialog.active_pick() is not None) or self._profile_pick is not None \
-            or self.sketches.picking
+            or self.sketches.picking or self._measure is not None or self._region_pick is not None
         if not waiting:
             return  # just looking at the tree: the 3D selection stays
         Gui.Selection.clearSelection()

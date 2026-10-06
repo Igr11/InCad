@@ -288,9 +288,38 @@ def test_measure_distance_stays_live_until_esc():
     assert shell.measuring() is None and sh.info_panel is None
 
 
+
+def test_measure_edge_face_and_whole_part_by_clicking():
+    """Measure, then click a rib (edge), a surface (face) and the whole part in the tree: each shows its numbers."""
+    sh = shell.instance()
+    doc = App.ActiveDocument
+    body = document.primary_body(doc)
+    tip = body.Tip
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("inspect.measure")
+    harness.pump(400)
+    assert shell.measuring() == "auto"
+    Gui.Selection.addSelection(doc.Name, body.Name, "%s.Edge1" % tip.Name)  # a 3D click on an edge
+    harness.pump(700)
+    assert sh.info_panel is not None and any(k in dict(sh.info_panel.rows()) for k in ("Length", "Radius")), sh.info_panel and sh.info_panel.rows()
+    Gui.Selection.clearSelection()
+    harness.pump(300)
+    Gui.Selection.addSelection(doc.Name, body.Name, "%s.Face1" % tip.Name)  # a 3D click on a face
+    harness.pump(700)
+    assert sh.info_panel is not None and "Area" in dict(sh.info_panel.rows()), sh.info_panel and sh.info_panel.rows()
+    Gui.Selection.clearSelection()
+    harness.pump(300)
+    assert sh.browser.select_row(body.Name), "the part row"  # a click on the part in the tree
+    harness.pump(700)
+    assert sh.info_panel is not None and "Volume" in dict(sh.info_panel.rows()), sh.info_panel and sh.info_panel.rows()
+    sh._on_escape()
+    harness.pump(300)
+    assert shell.measuring() is None
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,
              test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
-             test_section_on_and_off_twice_never_crashes])
+             test_section_on_and_off_twice_never_crashes, test_measure_edge_face_and_whole_part_by_clicking])
