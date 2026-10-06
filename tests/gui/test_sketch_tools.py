@@ -166,8 +166,25 @@ def test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there():
     assert len(tied) == 1, [(c.Type, c.First, c.FirstPos, c.Second) for c in sk.Constraints]
 
 
+
+def test_8_double_click_with_a_deleted_preselection_is_ignored():
+    """FreeCAD can hand back a preselection whose object was just deleted ('Object already deleted' in the log)."""
+    from incad.ui import shell
+
+    class Dead:
+        def __getattr__(self, name):
+            raise RuntimeError("Object already deleted")
+    real = Gui.Selection.getPreselection
+    Gui.Selection.getPreselection = lambda: Dead()
+    try:
+        assert shell.instance()._preselected_dimension() == (None, None)
+    finally:
+        Gui.Selection.getPreselection = real
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
              test_6_one_picked_side_switches_the_whole_polygon,
-             test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there])
+             test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
+             test_8_double_click_with_a_deleted_preselection_is_ignored])

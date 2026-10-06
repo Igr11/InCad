@@ -914,10 +914,13 @@ class Shell(QtCore.QObject):
     def _preselected_dimension():
         """(sketch, name) of the dimension under the cursor, or (None, None)."""
         import FreeCADGui as Gui
-        pre = Gui.Selection.getPreselection()
-        obj = getattr(pre, "Object", None)
-        subs = getattr(pre, "SubElementNames", ()) or ()
-        if obj is None or obj.TypeId != "Sketcher::SketchObject":
+        try:
+            pre = Gui.Selection.getPreselection()
+            obj = getattr(pre, "Object", None)
+            subs = getattr(pre, "SubElementNames", ()) or ()
+            if obj is None or obj.TypeId != "Sketcher::SketchObject":
+                return None, None
+        except RuntimeError:  # the preselected object was just deleted
             return None, None
         for sub in subs:
             if sub.startswith("Constraint"):
