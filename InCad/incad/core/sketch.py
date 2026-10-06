@@ -1,5 +1,6 @@
 """InCad sketches: create on a plane or a flat face, status, named dimensions (d0, d1, …) and formulas that use
 parameter and dimension names. Pure model logic: no Qt, no GUI."""
+import math
 import re
 
 import FreeCAD as App
@@ -286,3 +287,54 @@ def pin_polygon_centres(sk, first=0):
             continue
         pinned.append(i)
     return pinned
+
+
+GEO_UNDEF = -2000
+
+
+def _datum_points(sk, c):
+    """The two points a distance dimension spans (sketch coordinates), as FreeCAD gives its SoDatumLabel."""
+    if c.Second == GEO_UNDEF:  # a line's length
+        return sk.getPoint(c.First, 1), sk.getPoint(c.First, 2)
+    if c.FirstPos and c.SecondPos:
+        return sk.getPoint(c.First, c.FirstPos), sk.getPoint(c.Second, c.SecondPos)
+    if c.FirstPos and not c.SecondPos:  # point to line: the point and its foot on the line
+        p = sk.getPoint(c.First, c.FirstPos)
+        a, b = sk.getPoint(c.Second, 1), sk.getPoint(c.Second, 2)
+        d = b - a
+        t = (p - a).dot(d) / d.dot(d) if d.Length > 1e-12 else 0.0
+        return p, a + d * t
+    return None
+
+
+def label_point(sk, name):
+    """Where FreeCAD draws the text of a dimension (global), as its SoDatumLabel does: the datum line is the two
+    points moved by LabelDistance along the normal; the text sits at its middle, moved by LabelPosition along it.
+    None for an unknown name or a kind not handled (angles)."""
+    found = [c for c in sk.Constraints if c.Name == name]
+    if not found:
+        return None
+    c = found[0]
+    if c.Type in ("Distance", "DistanceX", "DistanceY"):
+        pts = _datum_points(sk, c)
+        if pts is None:
+            return None
+        p1, p2 = pts
+        if c.Type == "DistanceX":
+            d, n = App.Vector(1 if p2.x >= p1.x else -1, 0, 0), App.Vector(0, 1, 0)
+        elif c.Type == "DistanceY":
+            d, n = App.Vector(0, 1 if p2.y >= p1.y else -1, 0), App.Vector(-1, 0, 0)
+        else:
+            d = p2 - p1
+            if d.Length < 1e-12:
+                return None
+            d.normalize()
+            n = App.Vector(-d.y, d.x, 0)
+        local = (p1 + p2) * 0.5 + n * c.LabelDistance + d * c.LabelPosition
+    elif c.Type in ("Radius", "Diameter"):
+        g = sk.Geometry[c.First]
+        d = App.Vector(math.cos(c.LabelPosition), math.sin(c.LabelPosition), 0)
+        local = g.Center + d * (g.Radius + c.LabelDistance)
+    else:
+        return None
+    return sk.getGlobalPlacement().multVec(local)

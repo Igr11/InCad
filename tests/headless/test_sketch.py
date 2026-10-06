@@ -254,3 +254,45 @@ class PolygonCentreTest(unittest.TestCase):
         n = len(self.sk.Constraints)
         self.assertEqual(sketch.pin_polygon_centres(self.sk, first), [])
         self.assertEqual(len(self.sk.Constraints), n)
+
+
+class LabelPointTest(unittest.TestCase):
+    """Where FreeCAD draws a dimension's text (its SoDatumLabel): the two points moved by LabelDistance along the
+    datum normal, the text in the middle moved by LabelPosition along the datum."""
+    def setUp(self):
+        self.doc = util.new_doc("LP")
+        body = document.make_part(self.doc)
+        self.sk = sketch.make_sketch(body, plane(body, "XZ_Plane"))  # a non-trivial placement
+        pts = [App.Vector(0, 0, 0), App.Vector(20, 0, 0), App.Vector(20, 10, 0), App.Vector(0, 10, 0)]
+        for i in range(4):
+            self.sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))   # bottom, left->right
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", 1, 1, 1, 2, 10))   # right, up
+        self.sk.addConstraint(Sketcher.Constraint("Distance", 2, 20))             # top line, right->left
+        self.sk.addConstraint(Sketcher.Constraint("Distance", 0, 1, 2, 1, 22.36))  # diagonal (0,0)-(20,10)
+        self.doc.recompute()
+        sketch.name_new_dimensions(self.doc)  # d0..d3
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def local(self, name):
+        return self.sk.getGlobalPlacement().inverse().multVec(sketch.label_point(self.sk, name))
+
+    def test_distance_x_and_y(self):
+        self.assertAlmostEqual((self.local("d0") - App.Vector(10, 10, 0)).Length, 0, places=2)   # LabelDistance 10 up
+        self.assertAlmostEqual((self.local("d1") - App.Vector(10, 5, 0)).Length, 0, places=2)    # 10 to the left
+
+    def test_distance_along_a_line_and_between_points(self):
+        self.assertAlmostEqual((self.local("d2") - App.Vector(10, 0, 0)).Length, 0, places=2)  # normal of (-1,0) is (0,-1)
+        d = App.Vector(20, 10, 0); d.normalize()
+        n = App.Vector(-d.y, d.x, 0)
+        self.assertAlmostEqual((self.local("d3") - (App.Vector(10, 5, 0) + n * 10)).Length, 0, places=2)
+
+    def test_is_a_global_point(self):
+        p = sketch.label_point(self.sk, "d0")
+        self.assertAlmostEqual(p.y, 0, places=6)  # the XZ plane: sketch y is global z
+        self.assertAlmostEqual(p.z, 10, places=6)
+
+    def test_unknown_or_non_dimensional_name_is_none(self):
+        self.assertIsNone(sketch.label_point(self.sk, "nope"))

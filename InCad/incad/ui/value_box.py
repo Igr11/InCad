@@ -79,7 +79,10 @@ class ValueBox(QtWidgets.QFrame):
             pass
 
     def insert(self, name):
-        self.edit.insert(name)
+        if self._typed:
+            self.edit.insert(name)  # at the cursor: 'd0+' then a click -> 'd0+d3'
+        else:
+            self.edit.setText(name)  # the untouched value is replaced (its selection is lost to the view's click)
         self._typed = True
         self.take_keyboard()  # a click in the view or the table took the keyboard
 

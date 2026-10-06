@@ -173,7 +173,53 @@ def test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard():
     harness.pump(800)
 
 
+
+def label_screen_pos(sk, name):
+    """Viewport (logical px, top-left origin) position of a dimension's label as FreeCAD draws it."""
+    view = Gui.ActiveDocument.ActiveView
+    vs = [w for w in Gui.getMainWindow().findChildren(QtWidgets.QGraphicsView) if w.isVisible()]
+    vp = vs[0].viewport()
+    pt = sketches.label_point(sk, name)  # global 3D point of the label's text
+    x, y = view.getPointOnViewport(pt)
+    r = vp.devicePixelRatioF()
+    h = view.getSize()[1]
+    return vp, x / r, (h - y) / r
+
+
+def test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name():
+    """Inventor: box open on d1 (9.54), click d0's label (30) -> 'd0', type '/2' -> Enter -> d1 = 15.
+    Also while the Dimension tool is still running (it is, right after placing a dimension)."""
+    sk = doc().getObject(ST["a"])
+    d0, d1 = ST["a_dims"][:2]
+    sketches.set_dimension(doc(), d0, "30 mm")
+    sketches.set_dimension(doc(), d1, "9.54129 mm")
+    rmb_edit(ST["a"])
+    assert editing() is not None and editing().Name == ST["a"]
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(500)
+    commands.REGISTRY.run("sketch.dimension")  # the tool runs, as after placing a dimension
+    harness.pump(500)
+    s().open_value_box(sk, d1)
+    harness.pump(500)
+    assert focused() is box().edit
+    vp, x, y = label_screen_pos(sk, d0)
+    assert s()._click_hook(Gui.ActiveDocument.ActiveView, vp, x, y), "the click on d0's label is taken"
+    harness.pump(300)
+    assert box() is not None and box().edit.text() == d0, box() and box().edit.text()  # replaced the selection
+    assert focused() is box().edit
+    QTest.keyClicks(focused(), "/2")
+    QTest.keyClick(focused(), QtCore.Qt.Key_Return)
+    harness.pump(800)
+    assert box() is None
+    assert abs(sk.getDatum(d1).Value - 15) < 1e-6, sk.getDatum(d1)
+    QTest.keyClick(vp, QtCore.Qt.Key_Escape)  # end the tool
+    harness.pump(300)
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+
+
 harness.run([test_0_setup, test_1_rmb_edit_opens_the_sketch, test_2_rmb_edit_another_sketch_while_one_is_open,
              test_3_the_dimension_box_has_the_keyboard_and_enter_applies, test_4_esc_cancels,
              test_5_clicking_another_dimension_inserts_its_name,
-             test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard])
+             test_6_a_dimension_replaced_while_placing_keeps_its_name_and_the_keyboard,
+             test_7_clicking_a_dimension_in_the_view_replaces_the_value_with_its_name])

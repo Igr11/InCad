@@ -1009,6 +1009,10 @@ class Shell(QtCore.QObject):
         if self.value_box is None and self.feature_session is None:
             return False
         sk, name = self._preselected_dimension()
+        if name is None and self.value_box is not None:
+            # FreeCAD doesn't preselect dimensions while a Sketcher tool runs (the Dimension tool keeps running
+            # after placing one): find the label under the click ourselves
+            sk, name = self._dimension_near(view, viewport, x, y)
         if name is None:
             return False
         if self.value_box is not None:
@@ -1016,6 +1020,32 @@ class Shell(QtCore.QObject):
         elif not self.feature_session.insert(name):
             return False
         return True
+
+    LABEL_PICK_PX = 24  # logical pixels around a dimension's text
+
+    def _dimension_near(self, view, viewport, x, y):
+        from incad.core import sketch as sketches
+        sk = self.sketches.editing()
+        if sk is None or view is None or viewport is None:
+            return None, None
+        try:
+            dpr = viewport.devicePixelRatioF()
+            px, py = x * dpr, (viewport.height() - y) * dpr  # Coin: device px, bottom-left origin
+            best, best_d = None, self.LABEL_PICK_PX * dpr
+            for c in sk.Constraints:
+                if not c.Name:
+                    continue
+                pt = sketches.label_point(sk, c.Name)
+                if pt is None:
+                    continue
+                lx, ly = view.getPointOnViewport(pt)
+                d = ((lx - px) ** 2 + (ly - py) ** 2) ** 0.5
+                if d < best_d:
+                    best, best_d = c.Name, d
+            return (sk, best) if best else (None, None)
+        except Exception:
+            log.logger().exception("InCad dimension pick")
+            return None, None
 
     def _dblclick_hook(self, view, viewport, x, y):
         sk, name = self._preselected_dimension()
