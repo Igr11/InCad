@@ -398,17 +398,15 @@ def toggle_section():
     view = _gui().ActiveDocument.ActiveView if _gui().ActiveDocument is not None else None
     if view is None or not hasattr(view, "toggleClippingPlane"):
         raise ValueError("Open a part or an assembly to see a section")
+    from incad.ui import shell
     if section_on():
-        view.toggleClippingPlane(0)
-        _SECTION["on"] = False
+        shell.stop_section()
         return
     pairs = [common.resolve(sel.Object, sub) for sel in _gui().Selection.getSelectionEx(App.ActiveDocument.Name)
              for sub in (sel.SubElementNames or ("",))]
-    # no drag handle (noManip): FreeCAD crashes when the handle is destroyed on switching the plane off
-    # (probed: SoTranslate1Dragger double free); the plane is where the user picked it, as in Inventor
-    view.toggleClippingPlane(1, False, True, section.placement(pairs))
+    base = section.placement(pairs)  # raises when the picks make no plane
     _gui().Selection.clearSelection()
-    _SECTION["on"] = True
+    shell.start_section(base)
 
 
 def section_on():
@@ -421,6 +419,23 @@ def section_on():
         except Exception:
             pass
     return bool(_SECTION["on"])
+
+
+def set_clipping(placement):
+    """The section plane at `placement` (no drag handle: FreeCAD crashes destroying it — probed)."""
+    view = _gui().ActiveDocument.ActiveView
+    if section_on():
+        view.toggleClippingPlane(0)
+    view.toggleClippingPlane(1, False, True, placement)
+    _SECTION["on"] = True
+
+
+def clear_clipping():
+    gdoc = _gui().ActiveDocument
+    view = gdoc.ActiveView if gdoc is not None else None
+    if view is not None and section_on():
+        view.toggleClippingPlane(0)
+    _SECTION["on"] = False
 
 
 def _refuse_while_busy():

@@ -184,6 +184,8 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self.section_panel = None
+        self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
         self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
@@ -551,6 +553,7 @@ class Shell(QtCore.QObject):
     def _teardown(self):
         self.stop_slot_tool()
         self._stop_measuring()
+        self.stop_section(keep_cut=False)
         self._cancel_region_pick()
         self._close_feature_session(cancel=True)
         self._close_info_panel()
@@ -704,7 +707,7 @@ class Shell(QtCore.QObject):
 
     def _raise_overlays(self):
         fs = self.feature_session
-        for w in (self.strip, self.plane_panel, self.info_panel, self.value_box,
+        for w in (self.strip, self.plane_panel, self.info_panel, self.value_box, self.section_panel,
                   fs.dialog if fs is not None else None):
             try:
                 if w is not None and w.isVisible():
@@ -821,6 +824,9 @@ class Shell(QtCore.QObject):
             self._stop_measuring()
             self._close_info_panel()
             self.status.set_prompt("Ready")
+            return
+        if self.section_panel is not None:
+            self.stop_section(keep_cut=True)  # Esc = Done: the cut stays, the panel goes
             return
         if self.feature_session is not None:
             self.feature_session.cancel()
@@ -1626,7 +1632,8 @@ class Shell(QtCore.QObject):
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
                                getattr(self, "slot_tool", None) is not None or self.feature_session is not None
-                               or self._measure is not None or self._region_pick is not None)
+                               or self._measure is not None or self._region_pick is not None
+                               or self.section_panel is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -1792,6 +1799,63 @@ class Shell(QtCore.QObject):
         self.info_panel.adjustSize()
         self.info_panel.move(16, parent.height() - self.info_panel.height() - 16)
         self.info_panel.show()
+
+    # ----- section view -----
+    def start_section(self, base):
+        """Inventor's slice: the cut at the picked plane, with a panel to offset and flip it."""
+        from incad import actions
+        from incad.core import document, section
+        from incad.ui.section_panel import SectionPanel
+        self.stop_section(keep_cut=False)
+        self._section_base = base
+        actions.set_clipping(section.adjusted(base))
+        doc = self._doc()
+        body = document.primary_body(doc) if doc is not None else None
+        reach = 50.0
+        try:
+            if body is not None and not body.Shape.isNull():
+                reach = max(10.0, body.Shape.BoundBox.DiagonalLength / 2.0)
+        except Exception:
+            pass
+        parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+        panel = SectionPanel(self.theme, parent, reach=reach)
+        panel.changed.connect(self._section_changed)
+        panel.done.connect(lambda: self.stop_section(keep_cut=True))
+        panel.off.connect(lambda: self.stop_section(keep_cut=False))
+        panel.adjustSize()
+        panel.move(16, 16)
+        panel.show()
+        panel.raise_()
+        self.section_panel = panel
+        self.schedule_refresh()
+
+    def _section_changed(self, offset, flip):
+        from incad import actions
+        from incad.core import section
+        if self._section_base is None:
+            return
+        try:
+            actions.set_clipping(section.adjusted(self._section_base, offset, flip))
+        except Exception as e:
+            log.report("warning", "Could not move the section: %s" % e)
+
+    def stop_section(self, keep_cut=False):
+        """Done keeps the cut (the panel goes); Off / Section again removes it."""
+        from incad import actions
+        if self.section_panel is not None:
+            try:
+                self.section_panel.close()
+                dispose(self.section_panel)
+            except RuntimeError:
+                pass
+            self.section_panel = None
+        if not keep_cut:
+            try:
+                actions.clear_clipping()
+            except Exception as e:
+                log.report("warning", "Could not switch the section off: %s" % e)
+            self._section_base = None
+        self.schedule_refresh()
 
     def _start_measuring(self, mode):
         """Measure stays live, as in Inventor: every change of the selection measures again (Esc finishes)."""
@@ -2097,6 +2161,15 @@ def inspect(what):
 
 def measuring():
     return _shell.measuring() if _shell is not None and _shell.active else None
+
+
+def start_section(base):
+    return _active().start_section(base)
+
+
+def stop_section(keep_cut=False):
+    if _shell is not None and _shell.active:
+        _shell.stop_section(keep_cut)
 
 
 def _active():

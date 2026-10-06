@@ -32,3 +32,10 @@ def placement(pairs):
         if face is not None and face.Surface.TypeId == "Part::GeomPlane":
             return App.Placement(face.CenterOfMass, _rotation_to(face.normalAt(0, 0)))
     raise ValueError("For a section, select three points, a flat face or a plane (or nothing for XZ)")
+
+
+def adjusted(base, offset=0.0, flip=False):
+    """`base` moved `offset` along its normal; flipped = the other side is cut away."""
+    normal = base.Rotation.multVec(App.Vector(0, 0, 1))
+    rot = base.Rotation.multiply(App.Rotation(App.Vector(1, 0, 0), 180)) if flip else base.Rotation
+    return App.Placement(base.Base + normal * offset, rot)

@@ -39,3 +39,14 @@ class SectionTest(unittest.TestCase):
         vs = [(self.pad, "Vertex1"), (self.pad, "Vertex1"), (self.pad, "Vertex2")]
         with self.assertRaises(ValueError):
             section.placement(vs)  # not three different points
+
+
+class AdjustedTest(unittest.TestCase):
+    def test_offset_moves_along_the_normal_and_flip_turns_it(self):
+        from incad.core import section
+        base = App.Placement(App.Vector(1, 2, 3), App.Rotation(App.Vector(1, 0, 0), 90))  # normal +Z -> -Y
+        n = base.Rotation.multVec(App.Vector(0, 0, 1))
+        moved = section.adjusted(base, 5.0)
+        self.assertAlmostEqual((moved.Base - base.Base - n * 5.0).Length, 0, places=9)
+        flipped = section.adjusted(base, 0.0, True)
+        self.assertAlmostEqual((flipped.Rotation.multVec(App.Vector(0, 0, 1)) + n).Length, 0, places=9)
