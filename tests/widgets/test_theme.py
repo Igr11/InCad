@@ -54,3 +54,17 @@ class ThemeTest(unittest.TestCase):
         self.assertEqual(theme.sketch_params("light", "value")[theme.SKETCH_ROOT]["ShowDimensionalName"], ("Bool", False))
         for group, values in p.items():
             self.assertEqual(set(values), set(theme.SKETCH_KEYS[group]), group)
+
+
+class AxisColoursTest(unittest.TestCase):
+    def test_axis_colours_are_muted_in_both_themes(self):
+        import colorsys
+        from incad.ui import theme
+        for t in ("light", "dark"):
+            params = theme.view_params(t)
+            for key in ("AxisXColor", "AxisYColor", "AxisZColor"):
+                self.assertIn(key, params)
+                self.assertIn(key, theme.VIEW_KEYS)
+                rgba = params[key][1]
+                r, g, b = ((rgba >> 24) & 255) / 255.0, ((rgba >> 16) & 255) / 255.0, ((rgba >> 8) & 255) / 255.0
+                self.assertLess(colorsys.rgb_to_hsv(r, g, b)[1], 0.6, (t, key))  # not a loud, saturated colour

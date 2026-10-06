@@ -64,6 +64,17 @@ def test_1_place_two_parts_first_grounded():
     ST["a"], ST["b"] = a.Name, b.Name
 
 
+def test_1b_padlock_is_small_and_calm():
+    s().schedule_refresh()
+    harness.pump(600)
+    grounds = [j for j in assembly.joints(asm_doc()) if hasattr(j, "ObjectToGround")]
+    assert grounds
+    proxy = grounds[0].ViewObject.Proxy
+    assert proxy.scale.scaleFactor.getValue() <= 1.5, proxy.scale.scaleFactor.getValue()
+    r, g, b = proxy.lockpadColor.rgb[0].getValue()
+    assert not (r > 0.7 and g < 0.3 and b < 0.3), (r, g, b)  # no longer loud red
+
+
 def test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores():
     doc = asm_doc()
     a, b = doc.getObject(ST["a"]), doc.getObject(ST["b"])
@@ -96,5 +107,5 @@ def test_3_cleanup():
     shutil.rmtree(ST["dir"], ignore_errors=True)
 
 
-harness.run([test_0_setup, test_1_place_two_parts_first_grounded,
+harness.run([test_0_setup, test_1_place_two_parts_first_grounded, test_1b_padlock_is_small_and_calm,
              test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores, test_3_cleanup])

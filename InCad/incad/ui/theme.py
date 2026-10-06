@@ -44,7 +44,11 @@ QPushButton#InCadTile:disabled {{ color: {text_dim}; }}
 
 VIEW_GROUP = "User parameter:BaseApp/Preferences/View"
 VIEW_KEYS = {"Simple": "Bool", "Gradient": "Bool", "RadialGradient": "Bool", "UseBackgroundColorMid": "Bool",
-             "BackgroundColor2": "Unsigned", "BackgroundColor3": "Unsigned"}
+             "BackgroundColor2": "Unsigned", "BackgroundColor3": "Unsigned",
+             "AxisXColor": "Unsigned", "AxisYColor": "Unsigned", "AxisZColor": "Unsigned"}
+# muted axis colours (FreeCAD's pure red/green/blue were too loud); still red/green/blue for X/Y/Z
+AXIS_COLORS = {"light": {"AxisXColor": "#b86a6a", "AxisYColor": "#6a9a70", "AxisZColor": "#6a82b8"},
+               "dark": {"AxisXColor": "#a86565", "AxisYColor": "#679470", "AxisZColor": "#6a80b0"}}
 
 
 def resolve(pref, system_dark):
@@ -92,7 +96,8 @@ def view_params(theme):
     return {"Simple": ("Bool", False), "Gradient": ("Bool", True), "RadialGradient": ("Bool", False),
             "UseBackgroundColorMid": ("Bool", False),
             "BackgroundColor2": ("Unsigned", _rgba(p["view_top"])),
-            "BackgroundColor3": ("Unsigned", _rgba(p["view_bottom"]))}
+            "BackgroundColor3": ("Unsigned", _rgba(p["view_bottom"])),
+            **{k: ("Unsigned", _rgba(v)) for k, v in AXIS_COLORS[theme].items()}}
 
 
 NAVICUBE_GROUP = "User parameter:BaseApp/Preferences/NaviCube"

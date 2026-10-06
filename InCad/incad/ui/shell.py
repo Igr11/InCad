@@ -1004,6 +1004,7 @@ class Shell(QtCore.QObject):
             else:
                 self.status.set_prompt("Ready")
         elif is_asm:
+            self._tame_padlocks(doc)
             if self.feature_session is None:
                 from incad.core import asm_cut
                 try:
@@ -1127,6 +1128,25 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
+
+    PADLOCK_SCALE = 1.2
+
+    def _tame_padlocks(self, doc):
+        """FreeCAD draws the grounded padlock big (scale 3) and in loud red: smaller and in the theme's tone."""
+        from incad.core import assembly
+        p = themes.PALETTES[self.theme]
+        c = QtGui.QColor(p["text_dim"])
+        for j in assembly.joints(doc):
+            proxy = getattr(getattr(j, "ViewObject", None), "Proxy", None)
+            scale = getattr(proxy, "scale", None)
+            if scale is None:
+                continue
+            try:
+                if abs(scale.scaleFactor.getValue() - self.PADLOCK_SCALE) > 1e-6:
+                    scale.scaleFactor = self.PADLOCK_SCALE
+                proxy.lockpadColor.rgb.setValue(c.redF(), c.greenF(), c.blueF())
+            except Exception:
+                pass
 
     def _on_plane_picked(self, role):
         try:
