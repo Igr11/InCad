@@ -3,6 +3,7 @@ from incad.qt import dispose, QtCore, QtGui, QtWidgets, Signal
 from incad.ui import theme as themes
 
 SIZES = ("medium", "large")
+SIZE_LABELS = {"medium": "Small", "large": "Large"}  # the old small size was removed; medium is now called Small
 
 
 # icons of stacked groups (Constrain, Format): two rows as tall as one button with its label, readable at each size
@@ -78,7 +79,7 @@ class Ribbon(QtWidgets.QWidget):
     def size_menu(self, parent):
         menu = QtWidgets.QMenu("Ribbon Size", parent)
         for size in SIZES:
-            act = menu.addAction(size.capitalize())
+            act = menu.addAction(SIZE_LABELS[size])
             act.setCheckable(True)
             act.setChecked(size == self._size)
             act.triggered.connect(lambda _=False, s=size: self.set_size(s))

@@ -70,7 +70,7 @@ class RibbonTest(unittest.TestCase):
     def test_size_menu(self):
         m = self.rb.size_menu(None)
         acts = m.actions()
-        self.assertEqual([a.text() for a in acts], ["Medium", "Large"])
+        self.assertEqual([a.text() for a in acts], ["Small", "Large"])
         self.assertEqual([a.isChecked() for a in acts], [False, True])
         acts[0].trigger()
         self.assertEqual(self.rb.current_size(), "medium")
