@@ -65,3 +65,4 @@ kill -0 $PID 2>/dev/null && { pkill -f "$RUN/user.cfg"; sleep 1; kill -9 $PID 2>
 grep -E "ERROR|WARNING" "$RUN/incad.log" 2>/dev/null | cut -c1-160 | sed 's/^/  log: /'
 echo "== $NAME: $passes passed, $fails failed  ($RUN)"
 [[ $fails -eq 0 ]]
+"$BIN/move" 5 5 2>/dev/null || true  # park the pointer: left over a window it disturbs the QTest suites
