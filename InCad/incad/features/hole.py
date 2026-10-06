@@ -40,8 +40,11 @@ def defaults(doc, body, profile):
 
 def _helper_sketch(doc, body, values):
     """A hidden sketch on the face with a point at the circular edge's centre (fixed position)."""
-    face_obj, face = parse_picks(doc, values.get("face"))[0]
-    edge_obj, edge = parse_picks(doc, values.get("edge"))[0]
+    faces, edges = parse_picks(doc, values.get("face")), parse_picks(doc, values.get("edge"))
+    if not faces or not edges:
+        raise ValueError("Pick the flat face and the round edge the hole is centred on")
+    face_obj, face = faces[0]
+    edge_obj, edge = edges[0]
     centre = edge_obj.getSubObject(edge).Curve.Center
     sk = body.newObject("Sketcher::SketchObject", "HoleCentre")
     sk.AttachmentSupport = [resolve(face_obj, face)]

@@ -104,3 +104,38 @@ class DialogLooksTest(unittest.TestCase):
         """macOS draws native buttons in the system appearance unless the stylesheet sets them (seen live)."""
         qss = self.d.styleSheet().replace(" ", "")
         self.assertIn("QPushButton{background:", qss)
+
+
+PICK_FIELDS = (
+    Field("edges", "Edges", "picks", pick="edge"),
+    Field("plane", "Plane", "pick", pick="plane"),
+    Field("radius", "Radius", "value_length", default="1 mm"),
+)
+
+
+class PickFieldsTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Fillet", "incad", PICK_FIELDS, {"edges": "", "plane": "", "radius": "1 mm"})
+        self.seen = []
+        self.d.changed.connect(lambda v: self.seen.append(dict(v)))
+
+    def test_one_active_pick(self):
+        self.d.set_active_pick("edges")
+        self.assertEqual(self.d.active_pick(), "edges")
+        self.d.field("plane").click()
+        self.assertEqual(self.d.active_pick(), "plane")
+        self.assertFalse(self.d.field("edges").isChecked())
+
+    def test_set_pick_emits_and_labels(self):
+        self.d.set_pick("edges", "Pad:Edge1,Pad:Edge2")
+        self.assertEqual(self.seen[-1]["edges"], "Pad:Edge1,Pad:Edge2")
+        self.assertEqual(self.d.field("edges").text(), "2 edges")
+
+    def test_clicking_the_active_pick_again_ends_picking(self):
+        seen = []
+        self.d.activePickChanged.connect(seen.append)
+        self.d.field("edges").click()
+        self.d.field("edges").click()
+        self.assertIsNone(self.d.active_pick())
+        self.assertEqual(seen, ["edges", ""])

@@ -14,7 +14,7 @@ FIELDS = (
                                                ("new_solid", "New Solid")), "join"),
     Field("extent", "Extents", "choice", (("distance", "Distance"), ("to_next", "To Next"),
                                           ("through_all", "Through All"), ("to", "To")), "distance"),
-    Field("to_face", "Face", "pick", show_if=("extent", ("to",))),
+    Field("to_face", "Face", "pick", show_if=("extent", ("to",)), pick="plane"),
     Field("distance", "Distance", "value_length", default="10 mm", show_if=("extent", ("distance",))),
     Field("direction", "Direction", "choice", (("default", "→"), ("flip", "←"), ("symmetric", "⇆"),
                                                ("two_sides", "⇄ 2")), "default"),
@@ -56,7 +56,7 @@ def _apply(doc, f, values):
     extent = values.get("extent", "distance")
     f.Type = ("ThroughAll" if cut else "UpToLast") if extent == "through_all" else _TYPE.get(extent, "Length")
     if extent == "to" and values.get("to_face"):
-        obj_name, face = values["to_face"].split(":")
+        obj_name, _, face = values["to_face"].partition(":")
         f.UpToFace = (doc.getObject(obj_name), [face])
     direction = values.get("direction", "default")
     f.SideType = {"symmetric": "Symmetric", "two_sides": "Two sides"}.get(direction, "One side")
@@ -107,8 +107,9 @@ def read(doc, feature):
               "UpToLast": "through_all"}.get(f.Type, "distance")
     direction = {"Symmetric": "symmetric", "Two sides": "two_sides"}.get(f.SideType, "flip" if f.Reversed else "default")
     to_face = ""
-    if f.UpToFace and f.UpToFace[0] is not None and f.UpToFace[1]:
-        to_face = "%s:%s" % (f.UpToFace[0].Name, f.UpToFace[1][0])
+    if f.UpToFace and f.UpToFace[0] is not None:
+        sub = f.UpToFace[1][0] if f.UpToFace[1] else ""
+        to_face = "%s:%s" % (f.UpToFace[0].Name, sub) if sub else f.UpToFace[0].Name
     return {"operation": operation, "extent": extent, "direction": direction, "to_face": to_face,
             "distance": value_text(doc, f, "Length") or "10 mm",
             "distance2": value_text(doc, f, "Length2") or "5 mm",

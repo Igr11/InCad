@@ -768,6 +768,9 @@ class Shell(QtCore.QObject):
         if self.feature_session is not None:
             raise ValueError("Finish the %s dialog first" % self.feature_session.kind.TITLE)
         body = document.primary_body(doc)
+        if not getattr(kind, "NEEDS_PROFILE", True):
+            self._open_session(kind, doc, body)
+            return
         profile = self._profile_for(doc, body)
         if profile is None:
             self._begin_profile_pick(kind)

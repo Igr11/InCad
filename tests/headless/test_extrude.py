@@ -96,6 +96,16 @@ class ExtrudeTest(unittest.TestCase):
         self.assertEqual(sk2.AttachmentSupport[0][0], base)
         self.assertEqual(base.TypeId, "PartDesign::Pad")
 
+    def test_up_to_a_work_plane(self):
+        plane = self.body.newObject("PartDesign::Plane", "Limit")
+        plane.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        plane.MapMode = "FlatFace"
+        plane.AttachmentOffset = App.Placement(App.Vector(0, 0, 7), App.Rotation())
+        self.doc.recompute()
+        f = self.make(extent="to", to_face=plane.Name)
+        self.assertAlmostEqual(f.Shape.Volume, 20 * 10 * 7, places=3)
+        self.assertEqual(extrude.read(self.doc, f)["to_face"], plane.Name)
+
     def test_through_all_cut(self):
         base = self.make(distance="10 mm")
         sk2 = util.add_rect_sketch(self.body, w=4, h=4, name="Cutter")

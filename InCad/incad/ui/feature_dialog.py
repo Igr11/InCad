@@ -52,6 +52,7 @@ class FeatureDialog(QtWidgets.QFrame):
     applied = Signal()
     cancelled = Signal()
     pickRequested = Signal(str)
+    activePickChanged = Signal(str)  # "" when picking ends
 
     def __init__(self, title, icon, fields, values, theme="light", parent=None):
         super().__init__(parent)
@@ -106,7 +107,9 @@ class FeatureDialog(QtWidgets.QFrame):
             " background: {accent}; color: {selection_text}; }}"
             " QPushButton {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 6px;"
             " padding: 4px 14px; }} QPushButton:default {{ background: {accent}; color: {selection_text}; }}"
-            " QPushButton:disabled {{ color: {text_dim}; background: {panel}; }}".format(**p))
+            " QPushButton:disabled {{ color: {text_dim}; background: {panel}; }}"
+            " QPushButton#InCadPick {{ border-radius: 4px; padding: 2px 8px; text-align: left; }}"
+            " QPushButton#InCadPick:checked {{ border: 2px solid {accent}; }}".format(**p))
         self.set_values(values)
 
     # ----- building -----
@@ -128,12 +131,15 @@ class FeatureDialog(QtWidgets.QFrame):
             return w
         w = QtWidgets.QPushButton("Select…", self)
         w.setObjectName("InCadPick")
-        w.clicked.connect(lambda _=False, k=f.key: self.pickRequested.emit(k))
+        w.setCheckable(True)
+        w.clicked.connect(lambda _=False, k=f.key: self._pick_clicked(k))
         return w
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.FocusIn and isinstance(obj, ValueField):
             self._last_value_field = obj
+            if self.active_pick() is not None:
+                self.set_active_pick(None)  # typing a value ends picking (the preview shows again)
         if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Escape:
             self.cancelled.emit()
             return True
@@ -175,8 +181,7 @@ class FeatureDialog(QtWidgets.QFrame):
                     w.setChecked(bool(value))
                 else:
                     w.setProperty("pick", value or "")
-                    if not value:
-                        w.setText("Select…")
+                    w.setText(self._pick_label(f, value))
         finally:
             self._loading = False
         self._update_visibility()
@@ -206,6 +211,39 @@ class FeatureDialog(QtWidgets.QFrame):
     def set_param_name(self, key, name):
         f = self._fields[key]
         self._labels[key].setText("%s  (%s)" % (f.label, name) if name else f.label)
+
+    def _pick_label(self, f, value):
+        from incad.features.common import pick_label
+        return pick_label(f.pick or "item", value or "")
+
+    def _pick_clicked(self, key):
+        if key == self.active_pick():
+            self.set_active_pick(None)
+            return
+        self.set_active_pick(key)
+        self.pickRequested.emit(key)
+
+    def set_active_pick(self, key):
+        """The pick field that takes the next selection in the 3D view (one at a time, shown pressed)."""
+        for k, f in self._fields.items():
+            if f.kind in ("pick", "picks"):
+                self._widgets[k].setChecked(k == key)
+        changed = key != self.active_pick()
+        self._active_pick = key
+        if changed:
+            self.activePickChanged.emit(key or "")
+
+    def active_pick(self):
+        return getattr(self, "_active_pick", None)
+
+    def set_pick(self, key, text):
+        w = self._widgets[key]
+        w.setProperty("pick", text or "")
+        w.setText(self._pick_label(self._fields[key], text))
+        self._emit()
+
+    def field_def(self, key):
+        return self._fields[key]
 
     def set_pick_text(self, key, text):
         self._widgets[key].setText(text or "Select…")
