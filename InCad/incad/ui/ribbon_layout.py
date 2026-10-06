@@ -6,7 +6,7 @@ LAYOUT = {
     "part": [
         ["3D Model", [["Sketch", ["sketch.start"]],
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole"]],
-                      ["Modify", ["feature.fillet", "feature.chamfer", "feature.shell"]],
+                      ["Modify", ["feature.fillet", "feature.chamfer", "feature.shell", "feature.thread"]],
                       ["Pattern", ["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"]],
                       ["Work Features", ["work.plane", "work.axis", "work.point"]]]],
         ["Sketch", []],

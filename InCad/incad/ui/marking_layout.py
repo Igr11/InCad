@@ -11,7 +11,7 @@ LAYOUT = {
              "list": ["view.zoom_all", "view.home", "view.freecad"]},
     "face": {"N": "sketch.start", "NE": "view.look_at", "E": "view.style_shaded", "SE": "view.home",
              "S": "feature.extrude", "SW": "view.zoom_all", "W": "view.style_wireframe", "NW": "edit.undo",
-             "list": ["view.zoom_selection", "feature.hole", "feature.fillet"]},
+             "list": ["view.zoom_selection", "feature.hole", "feature.fillet", "feature.thread"]},
     "edge": dict(_EDGE, E="feature.fillet", W="feature.chamfer", list=["view.style_shaded", "view.style_wireframe"]),
     "vertex": dict(_EDGE),
     "sketch": {"N": "sketch.finish", "NE": "sketch.line", "E": "sketch.circle", "SE": "sketch.rectangle",

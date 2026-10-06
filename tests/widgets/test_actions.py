@@ -11,7 +11,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "browser.move_end_of_part", "browser.suppress", "browser.rename", "nav.orbit", "nav.pan",
             "sketch.start", "sketch.finish", "feature.extrude", "feature.revolve", "feature.hole", "feature.fillet",
             "feature.chamfer", "feature.shell", "feature.rect_pattern", "feature.circ_pattern", "feature.mirror",
-            "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass"} | set(actions.SKETCHER)
+            "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass", "feature.thread"} | set(actions.SKETCHER)
 
 
 class ActionsTest(unittest.TestCase):

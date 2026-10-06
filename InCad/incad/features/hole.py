@@ -64,6 +64,7 @@ def thread_sizes(std):
     """FreeCAD's size names for a thread type (asked once from a hidden probe Hole, then cached)."""
     kind = _THREAD_TYPES.get(std, "ISOMetricProfile")
     if kind not in _SIZES:
+        active = App.ActiveDocument.Name if App.ActiveDocument is not None else None
         doc = App.newDocument("InCadHoleSizes", hidden=True)
         try:
             h = doc.addObject("PartDesign::Hole", "Probe")
@@ -71,6 +72,8 @@ def thread_sizes(std):
             _SIZES[kind] = list(h.getEnumerationsOfProperty("ThreadSize"))
         finally:
             App.closeDocument(doc.Name)
+            if active is not None and active in App.listDocuments():
+                App.setActiveDocument(active)  # closing the probe must not leave FreeCAD without a document
     return _SIZES[kind]
 
 

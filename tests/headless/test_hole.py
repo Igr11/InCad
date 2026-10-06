@@ -133,4 +133,5 @@ class HoleTest(unittest.TestCase):
         sizes = [v for v, _ in hole.options("thread_size", {"thread_standard": "unc"})]
         self.assertIn("1/4", sizes)
         self.assertEqual(sizes[0], "")  # Auto
+        self.assertIs(App.ActiveDocument, self.doc)  # the hidden probe document leaves the active one alone
         self.assertIn("M8x1.25", [v for v, _ in hole.options("thread_size", {"thread_standard": "iso"})])
