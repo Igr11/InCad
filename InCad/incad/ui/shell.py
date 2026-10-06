@@ -1116,7 +1116,9 @@ class Shell(QtCore.QObject):
                      for sub in (sel.SubElementNames or ("",))]
             rows, title = inspect.measure(pairs), "Measure"
         else:
-            rows, title = inspect.mass_properties(document.primary_body(doc)), "Mass Properties (PLA 1.24 g/cm³)"
+            from incad.core import materials
+            rows = inspect.mass_properties(document.primary_body(doc), materials.density(doc))
+            title = "Mass Properties (%s %.2f g/cm³)" % (materials.material(doc), materials.density(doc))
         self._close_info_panel()
         parent = self._mdi().viewport() if self._mdi() is not None else self.mw
         self.info_panel = InfoPanel(title, rows, self.theme, parent)
