@@ -34,6 +34,9 @@ def friendly(message):
         return "The axis crosses the profile: choose another axis or move the profile off it"
     if "perpendicular to the sketch" in message:
         return "The axis is perpendicular to the profile: pick an axis that lies in the profile's plane"
+    if "command not done" in message or "NullObject" in message or "BRepAlgoAPI" in message:
+        return ("The revolve couldn't be built: the axis must lie IN the profile's plane and not cross or touch "
+                "the profile. Draw the profile on a plane that passes through the axis.")
     return message.split("\n")[0]
 
 

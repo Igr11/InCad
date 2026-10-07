@@ -41,6 +41,9 @@ def _broken(obj, check_shape):
     if check_shape and obj.TypeId.startswith("PartDesign::"):
         shape = getattr(obj, "Shape", None)
         if shape is not None and not shape.isNull() and not shape.isValid():
+            if obj.TypeId in ("PartDesign::Groove", "PartDesign::Revolution"):
+                return ("%s: the revolve couldn't form a valid shape — the axis must lie IN the profile's plane "
+                        "and not cross or touch the profile (draw the profile on a plane through the axis)" % obj.Label)
             return "%s produced invalid geometry" % obj.Label
         if obj.TypeId in _SUBTRACTIVE and shape is not None and (shape.isNull() or not shape.Solids
                                                                    or shape.Volume < 1e-9):

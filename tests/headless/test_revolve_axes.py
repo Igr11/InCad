@@ -148,6 +148,11 @@ class RevolveAxesTest(unittest.TestCase):
         self.assertEqual(pick_label("two_points", "0 0 0"), "1 of 2 points")
         self.assertEqual(pick_label("two_points", "0 0 0;1 1 1"), "2 points")
 
+    def test_a_revolve_that_cannot_be_built_is_said_plainly(self):
+        from incad.core import model
+        for raw in ("BRep_API: command not done", "Standard_NullObject"):
+            self.assertIn("axis must lie IN the profile's plane", model.friendly(raw))
+
     def test_axis_crossing_the_profile_is_said_plainly(self):
         from incad.core import model
         self.assertIn("crosses the profile", model.friendly("Revolve axis intersects the sketch"))
