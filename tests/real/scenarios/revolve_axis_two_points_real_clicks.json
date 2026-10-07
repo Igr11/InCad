@@ -1,0 +1,32 @@
+{
+ "name": "revolve_axis_two_points_real_clicks",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "py:ST.__setitem__('prof', (lambda sk: (sk.addGeometry(__import__('Part').LineSegment(App.Vector(6,2,0), App.Vector(10,2,0))), sk.addGeometry(__import__('Part').LineSegment(App.Vector(10,2,0), App.Vector(10,8,0))), sk.addGeometry(__import__('Part').LineSegment(App.Vector(10,8,0), App.Vector(6,8,0))), sk.addGeometry(__import__('Part').LineSegment(App.Vector(6,8,0), App.Vector(6,2,0))), App.ActiveDocument.recompute(), sk)[-1])((lambda sk: (setattr(sk, 'AttachmentSupport', [([o for o in document.primary_body(App.ActiveDocument).Origin.OriginFeatures if o.Role == 'XZ_Plane'][0], '')]), setattr(sk, 'MapMode', 'FlatFace'), sk)[-1])(document.primary_body(App.ActiveDocument).newObject('Sketcher::SketchObject', 'Prof'))))",
+  "py:(Gui.Selection.clearSelection(), Gui.Selection.addSelection(App.ActiveDocument.Name, 'Prof'))",
+  "cmd:feature.revolve",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Revolve'",
+  "py:(lambda w: w.setCurrentIndex(w.findData('two_points')))(shell.instance().feature_session.dialog.field('axis_mode'))",
+  "wait:1",
+  "py:shell.instance().feature_session.dialog.field('axis_points').click()",
+  "wait:1",
+  "expect:s['markers'] and len(s['markers']) >= 8 and s['picked'] == 0",
+  "memo:i1=next(i for i, p in enumerate(s['markers']) if i != 0 and abs(p[0]-s['markers'][0][0]) > 30)",
+  "move:marker.0",
+  "click:marker.0",
+  "wait:0.6",
+  "expect:s['picked'] == 1",
+  "move:marker.{m[i1]}",
+  "click:marker.{m[i1]}",
+  "wait:2",
+  "expect:s['markers'] is None and s['dialog'] is not None and s['dialog']['values']['axis_points'].count(';') == 1",
+  "py:(lambda f: (f.ReferenceAxis[0].TypeId, getattr(f.ReferenceAxis[0], 'InCadHelperOf', None) == f.Name))(shell.instance().feature_session.feature)",
+  "expect:s['py'] == \"('PartDesign::Line', True)\" or s['py'] == ('PartDesign::Line', True)",
+  "click:dialog.ok",
+  "wait:1.5",
+  "expect:s['dialog'] is None and s['tip'].startswith('Revolve')",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

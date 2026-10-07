@@ -119,11 +119,13 @@ class _MeasurePicker:
 
 
 class _PointPick:
-    """Section by 3 points: markers drawn on the view (never in the document) and the clicks on them."""
+    """N points clicked on markers drawn on the view (never in the document): the section plane by 3 points, a
+    revolve axis by 2. `on_done(points)` when all are picked, `on_cancel()` on Esc or another pick taking over."""
 
-    def __init__(self, view, points, kinds):
+    def __init__(self, view, points, kinds, count=3, prompt="", on_done=None, on_cancel=None):
         from pivy import coin
         self.view, self.points, self.kinds, self.picked = view, points, kinds, []
+        self.count, self.prompt, self.on_done, self.on_cancel = count, prompt, on_done, on_cancel
         self.node = coin.SoAnnotation()  # drawn on top of the part
         for kind, color in (("corner", (0.95, 0.62, 0.29)), ("other", (0.40, 0.70, 1.0))):
             pts = [p for p, k in zip(points, kinds) if (k == "corner") == (kind == "corner")]
@@ -1708,8 +1710,9 @@ class Shell(QtCore.QObject):
         if self._region_pick is not None:
             self.status.set_prompt("Click the area to %s (Esc cancels)" % self._region_pick.kind.TITLE.lower())
         if self._point_pick is not None:
-            self.status.set_prompt("Section: %d of 3 points picked — corners, edge middles, circle centres (Esc cancels)"
-                                   % len(self._point_pick.picked))
+            pick = self._point_pick
+            self.status.set_prompt(pick.prompt if not pick.picked else
+                                   "%d of %d points picked (Esc cancels)" % (len(pick.picked), pick.count))
         for cmd_id, act in self._shortcuts.items():
             if cmd_id == "_esc":
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
@@ -1920,18 +1923,41 @@ class Shell(QtCore.QObject):
         body = document.primary_body(doc) if doc is not None else None
         if body is None or body.Shape.isNull():
             raise ValueError("Open a part with a solid first")
-        self._cancel_point_pick()
         self.stop_section(keep_cut=False)
-        points = section.snap_points(body.Shape)
+
+        def done(points):
+            try:
+                self.start_section(section.through_points(*points[:3]))
+            except ValueError as e:
+                log.report("warning", str(e))
+        self.start_point_pick(section.snap_points(body.Shape), 3,
+                              "Section: click 3 points — corners, edge middles, circle centres (Esc cancels)", done)
+
+    def start_point_pick(self, points, count, prompt, on_done, on_cancel=None):
+        """Markers at `points` ([(kind, Vector)]) on the view; `count` clicks on them call on_done(points)."""
+        import FreeCADGui as Gui
+        doc = self._doc()
+        if doc is None:
+            raise ValueError("Open a part first")
+        self._cancel_point_pick()
         view = Gui.getDocument(doc.Name).ActiveView
-        self._point_pick = _PointPick(view, [p for _, p in points], [k for k, _ in points])
+        self._point_pick = _PointPick(view, [p for _, p in points], [k for k, _ in points], count, prompt,
+                                      on_done, on_cancel)
         Gui.Selection.clearSelection()
-        self.status.set_prompt("Section: click 3 points — corners, edge middles, circle centres (Esc cancels)")
+        self.status.set_prompt(prompt)
         self.schedule_refresh()
 
+    def cancel_point_pick(self, quiet=False):
+        """End a point pick from outside (the dialog's field was left); the pick's on_cancel is not called."""
+        pick = self._point_pick
+        if pick is not None:
+            pick.on_cancel = None
+        self._cancel_point_pick()
+        if not quiet:
+            self.status.set_prompt("Ready")
+
     def _point_clicked(self, viewport, x, y):
-        """A click while picking section points: on a marker it counts; elsewhere it is ignored."""
-        from incad.core import section
+        """A click while picking points: on a marker it counts; elsewhere it is ignored."""
         pick = self._point_pick
         i = pick.nearest(viewport, x, y)
         if i is None:
@@ -1941,15 +1967,18 @@ class Shell(QtCore.QObject):
             return True
         pick.picked.append(p)
         n = len(pick.picked)
-        if n < 3:
-            self.status.set_prompt("Section: %d of 3 points picked (Esc cancels)" % n)
+        if n < pick.count:
+            self.status.set_prompt("%d of %d points picked (Esc cancels)" % (n, pick.count))
+            self.schedule_refresh()
             return True
-        a, b, c = pick.picked[:3]
+        picked = list(pick.picked)
+        pick.on_cancel = None
         self._cancel_point_pick()
-        try:
-            self.start_section(section.through_points(a, b, c))
-        except ValueError as e:
-            log.report("warning", str(e))
+        if pick.on_done is not None:
+            try:
+                pick.on_done(picked)
+            except Exception as e:
+                log.report("warning", str(e), traceback.format_exc())
         return True
 
     def _cancel_point_pick(self):
@@ -1958,6 +1987,11 @@ class Shell(QtCore.QObject):
             return
         self._point_pick = None
         pick.remove()
+        if pick.on_cancel is not None:
+            try:
+                pick.on_cancel()
+            except Exception as e:
+                log.report("warning", str(e), traceback.format_exc())
         self.schedule_refresh()
 
     def _show_cut(self, body, placement):

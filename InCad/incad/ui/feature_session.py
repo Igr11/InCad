@@ -107,7 +107,11 @@ class FeatureSession(QtCore.QObject):
         for f in self.kind.FIELDS:
             if f.kind == "combo":
                 try:
-                    items = options(f.key, values)
+                    profile = self.profile if self.profile is not None else (
+                        __import__("incad.features.common", fromlist=["profile_of"]).profile_of(self.feature)
+                        if self.feature is not None else None)
+                    items = options(f.key, values, profile) if options.__code__.co_argcount >= 3 \
+                        else options(f.key, values)
                 except Exception as e:
                     log.report("warning", "Could not list %s: %s" % (f.label, e))
                     items = None
@@ -116,6 +120,7 @@ class FeatureSession(QtCore.QObject):
 
     # ----- picking from the 3D view -----
     _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge")
+    _ON_BASE = _GEOMETRY + ("two_points",)  # picks made on the shape: the base is shown while they are active
 
     def _observe(self, on):
         try:
@@ -189,6 +194,8 @@ class FeatureSession(QtCore.QObject):
         if key is None:
             return
         f = self.dialog.field_def(key)
+        if f.pick == "two_points":
+            return  # taken by clicks on the markers, not by the selection
         pairs = self._selection()
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
@@ -216,7 +223,7 @@ class FeatureSession(QtCore.QObject):
         any later features; put everything back exactly as it was afterwards."""
         want = None
         key = self.dialog.active_pick() if self.dialog is not None else None
-        if key and self.dialog.field_def(key).pick in self._GEOMETRY and self.feature is not None:
+        if key and self.dialog.field_def(key).pick in self._ON_BASE and self.feature is not None:
             want = self._expected_base()
         if want is not self._base_shown:
             self._show_base(False)
@@ -229,6 +236,56 @@ class FeatureSession(QtCore.QObject):
                     self._set_visible(o, o is want)
         if seed and key:
             self._seed_selection(key)
+        self._sync_point_pick(key)
+
+    def _sync_point_pick(self, key):
+        """A 'two points' field that becomes active shows the part's markers (corners, edge middles, circle
+        centres, the profile's points too) and takes two clicks on them; any other active field, or none, ends
+        that pick."""
+        from incad.ui import shell as shells
+        sh = shells.instance()
+        if sh is None:
+            return
+        field = self.dialog.field_def(key) if key else None
+        if field is None or field.pick != "two_points":
+            if getattr(self, "_point_key", None) is not None:
+                self._point_key = None
+                sh.cancel_point_pick(quiet=True)
+            return
+        if getattr(self, "_point_key", None) == key:
+            return
+        self._point_key = key
+        from incad.core import section
+        base = self._expected_base()
+        points = []
+        for shape in ((base.Shape if base is not None else None), (self.profile.Shape if self.profile is not None else None)):
+            if shape is not None and not shape.isNull():
+                for kind, p in section.snap_points(shape):
+                    if not any((p - q).Length < 1e-6 for _, q in points):
+                        points.append((kind, p))
+        if not points:
+            self.dialog.set_error("Nothing to click: draw the profile first")
+            self._point_key = None
+            self.dialog.set_active_pick(None)
+            return
+        sh.start_point_pick(points, 2, "Axis: click 2 points — corners, edge middles, circle centres (Esc cancels)",
+                            on_done=lambda pts, k=key: self._points_picked(k, pts),
+                            on_cancel=lambda k=key: self._points_cancelled(k))
+
+    def _points_picked(self, key, points):
+        from incad.features import revolve
+        self._point_key = None
+        if self._closed or self.dialog is None:
+            return
+        self.dialog.set_pick(key, revolve.format_points(points))  # emits changed: the preview follows
+        self.dialog.set_active_pick(None)
+
+    def _points_cancelled(self, key):
+        self._point_key = None
+        if self._closed or self.dialog is None:
+            return
+        if self.dialog.active_pick() == key:
+            self.dialog.set_active_pick(None)
 
     def _show_base(self, on):
         if not on:

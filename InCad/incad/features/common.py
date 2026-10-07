@@ -176,6 +176,9 @@ def accepts(kind, obj, sub):
 
 
 def pick_label(kind, text):
+    if kind == "two_points":
+        n = len([i for i in (text or "").split(";") if i.strip()])
+        return "Select…" if not n else ("1 of 2 points" if n == 1 else "2 points")
     items = [i for i in (text or "").split(",") if i.strip()]
     if not items:
         return "Select…"

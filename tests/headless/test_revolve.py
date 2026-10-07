@@ -27,7 +27,7 @@ class RevolveTest(unittest.TestCase):
 
     def test_full_revolve(self):
         v = revolve.defaults(self.doc, self.body, self.sk)
-        self.assertEqual((v["operation"], v["axis"], v["extent"]), ("join", "V_Axis", "full"))
+        self.assertEqual((v["operation"], v["axis_mode"], v["extent"]), ("join", "V_Axis", "full"))
         f = revolve.create(self.doc, self.body, self.sk, v)
         self.doc.recompute()
         self.assertEqual(f.TypeId, "PartDesign::Revolution")

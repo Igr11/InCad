@@ -30,6 +30,8 @@ def friendly(message):
         return "Cannot read the formula '%s'" % text
     if "cyclic" in message.lower():
         return "This formula refers back to itself (a loop)"
+    if "axis intersects the sketch" in message:
+        return "The axis crosses the profile: choose another axis or move the profile off it"
     return message.split("\n")[0]
 
 

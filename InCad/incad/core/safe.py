@@ -34,13 +34,24 @@ def _broken(obj, check_shape):
         status = _status(obj)
         if obj.TypeId == "PartDesign::Body" and status == "Tip shape is empty":
             return ""  # an empty part (everything suppressed / rolled back) is a normal state
-        return "%s: %s" % (obj.Label, status) if status and status not in ("Valid", "Touched") \
-            else "%s failed to compute" % obj.Label
+        if status and status not in ("Valid", "Touched"):
+            from incad.core import model
+            return "%s: %s" % (obj.Label, model.friendly(status))
+        return "%s failed to compute" % obj.Label
     if check_shape and obj.TypeId.startswith("PartDesign::"):
         shape = getattr(obj, "Shape", None)
         if shape is not None and not shape.isNull() and not shape.isValid():
             return "%s produced invalid geometry" % obj.Label
+        if obj.TypeId in _SUBTRACTIVE and shape is not None and (shape.isNull() or not shape.Solids
+                                                                   or shape.Volume < 1e-9):
+            base = getattr(obj, "BaseFeature", None)
+            if base is not None and not base.Shape.isNull() and base.Shape.Volume > 1e-9:
+                return "%s cuts away the whole part: choose another axis, extent or profile" % obj.Label
     return ""
+
+
+_SUBTRACTIVE = ("PartDesign::Groove", "PartDesign::Pocket", "PartDesign::SubtractiveHelix",
+                "PartDesign::SubtractivePipe", "PartDesign::SubtractiveLoft", "PartDesign::Hole")
 
 
 def edit_open():

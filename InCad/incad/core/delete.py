@@ -70,7 +70,14 @@ def delete(obj):
         raise ValueError("%s is used by a feature: delete that feature first" % obj.Label)
     if obj.getParentGeoFeatureGroup() is not None and obj.getParentGeoFeatureGroup().TypeId == "PartDesign::Body":
         prof = obj.Profile[0] if isinstance(getattr(obj, "Profile", None), (tuple, list)) and obj.Profile else None
+        body = obj.getParentGeoFeatureGroup()
+        helpers = [o for o in body.Group if getattr(o, "InCadHelperOf", None) == obj.Name
+                   and o.TypeId in ("PartDesign::Line", "PartDesign::Plane", "PartDesign::Point")]
         _remove_feature(obj)
+        for h in helpers:  # work features InCad made for it (a revolve's two-point axis)
+            if doc.getObject(h.Name) is not None:
+                body.removeObject(h)
+                doc.removeObject(h.Name)
         if prof is not None and regions.is_profile(prof) and doc.getObject(prof.Name) is not None:
             body = prof.getParentGeoFeatureGroup()
             if body is not None:
