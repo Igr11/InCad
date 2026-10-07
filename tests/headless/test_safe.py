@@ -132,3 +132,23 @@ class SafeTest(unittest.TestCase):
             self.assertIn("division", r.error)
         finally:
             self.doc = util.new_doc("Safe")
+
+class ModeledThreadHintTest(unittest.TestCase):
+    """An empty cut result is blamed on a modeled helix earlier in the part, not on 'cuts away the whole part'."""
+
+    class _F:
+        def __init__(self, name, type_id, base=None, model_thread=False):
+            self.Name, self.TypeId, self.BaseFeature, self.ModelThread = name, type_id, base, model_thread
+
+    def test_helix_or_modeled_hole_thread_in_the_base_chain_is_found(self):
+        pad = self._F("Pad", "PartDesign::Pad")
+        hole = self._F("Hole", "PartDesign::Hole", pad, model_thread=True)
+        helix = self._F("Thread", "PartDesign::SubtractiveHelix", pad)
+        self.assertTrue(safe._has_modeled_thread(self._F("Pocket", "PartDesign::Pocket", hole)))
+        self.assertTrue(safe._has_modeled_thread(self._F("Chamfer", "PartDesign::Groove", helix)))
+
+    def test_plain_or_cosmetic_chain_is_not_flagged(self):
+        pad = self._F("Pad", "PartDesign::Pad")
+        hole = self._F("Hole", "PartDesign::Hole", pad, model_thread=False)
+        self.assertFalse(safe._has_modeled_thread(self._F("Pocket", "PartDesign::Pocket", hole)))
+        self.assertFalse(safe._has_modeled_thread(None))

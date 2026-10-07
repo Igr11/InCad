@@ -49,8 +49,24 @@ def _broken(obj, check_shape):
                                                                    or shape.Volume < 1e-9):
             base = getattr(obj, "BaseFeature", None)
             if base is not None and not base.Shape.isNull() and base.Shape.Volume > 1e-9:
+                if _has_modeled_thread(base):
+                    return ("%s: the cut failed in the kernel and left nothing — a modeled (helical) thread earlier "
+                            "in the part is the usual cause. Put this cut BEFORE the thread, or make the thread "
+                            "cosmetic" % obj.Label)
                 return "%s cuts away the whole part: choose another axis, extent or profile" % obj.Label
     return ""
+
+
+def _has_modeled_thread(feature):
+    """True if feature, or a feature it is built on, carries a modeled helix (helix feature or Hole with ModelThread)."""
+    seen = set()
+    while feature is not None and feature.Name not in seen:
+        seen.add(feature.Name)
+        if feature.TypeId.endswith("Helix") or (feature.TypeId == "PartDesign::Hole"
+                                                and getattr(feature, "ModelThread", False)):
+            return True
+        feature = getattr(feature, "BaseFeature", None)
+    return False
 
 
 _SUBTRACTIVE = ("PartDesign::Groove", "PartDesign::Pocket", "PartDesign::SubtractiveHelix",
