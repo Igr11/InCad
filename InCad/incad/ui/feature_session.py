@@ -1,4 +1,6 @@
 """One feature dialog: one undo transaction around create/edit + live previews; OK commits, Cancel aborts."""
+import traceback
+
 from incad.core import log, model, safe
 from incad.qt import dispose, QtCore
 from incad.ui.feature_dialog import FeatureDialog
@@ -22,6 +24,7 @@ class FeatureSession(QtCore.QObject):
         self._pending = None
         self._applied = None
         self._closed = False
+        self._again = False
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
         self._extra = []  # other documents this dialog changes (assembly cuts): one undo step in each
         self._observing = False
@@ -81,6 +84,8 @@ class FeatureSession(QtCore.QObject):
                                 and self._shown(f) and not self.dialog.values().get(f.key)), None)
             self._pending = self.dialog.values()
             self._preview()  # first try: defaults (+ preselection) may already be enough
+            if self._closed:  # Esc or OK while that first preview computed (seconds for a thread)
+                return True
             if first_empty is not None:
                 self.dialog.set_active_pick(first_empty)
         else:
@@ -116,7 +121,7 @@ class FeatureSession(QtCore.QObject):
             import FreeCADGui as Gui
         except ImportError:
             return
-        if on and not self._observing:
+        if on and not self._observing and not self._closed:
             Gui.Selection.addObserver(self)
         elif not on and self._observing:
             Gui.Selection.removeObserver(self)
@@ -276,13 +281,18 @@ class FeatureSession(QtCore.QObject):
         if self._pending is None or self._closed:
             return
         if self._previewing:
-            return  # FreeCAD runs the event loop while it computes: a click meanwhile must not re-enter
+            self._timer.start()  # FreeCAD runs the event loop while it computes: a value changed meanwhile is
+            return               # previewed after this one, never re-entered
         self._previewing = True
         try:
             self._preview_now()
+        except Exception as e:  # nothing escapes into the timer slot; the dialog says what went wrong
+            log.report("warning", "%s preview: %s" % (self.kind.TITLE, e), traceback.format_exc())
+            if self.dialog is not None:
+                self.dialog.set_error(str(e))
         finally:
             self._previewing = False
-        after, self._after_preview = self._after_preview, None
+            after, self._after_preview = self._after_preview, None  # never kept for a later preview
         if after and not self._closed:  # OK / Apply / Cancel pressed while the preview computed
             getattr(self, after)()
 
@@ -416,7 +426,8 @@ class FeatureSession(QtCore.QObject):
             return
         kind = self.kind
         self.ok()
-        if self._closed:
+        if self._closed and not self._again:  # once: a second Apply that landed during the preview is folded in
+            self._again = True
             from incad.ui import shell
             try:
                 import FreeCADGui as Gui

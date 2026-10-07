@@ -344,7 +344,79 @@ def test_measure_edge_face_and_whole_part_by_clicking():
     assert shell.measuring() is None
 
 
+def test_preview_error_after_the_check_keeps_nothing_pending():
+    """OK pressed while a preview computes, and that preview raises after the model step: no stale OK fires on
+    the next value change, the error shows in the dialog and nothing escapes into Qt."""
+    Gui.Selection.clearSelection()
+    sk = body().newObject("Sketcher::SketchObject", "Boss")
+    sk.AttachmentSupport = [(doc().getObject(ST["pad"]), "Face6")]
+    sk.MapMode = "FlatFace"
+    sk.addGeometry(Part.Circle(App.Vector(3, 3, 0), App.Vector(0, 0, 1), 1))
+    doc().recompute()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(900)
+    fs = s().feature_session
+    assert fs is not None and dialog() is not None
+
+    def check_and_boom():
+        fs.ok()  # the user's click lands while the preview runs
+        raise RuntimeError("boom")
+    fs._check = check_and_boom
+    fs._pending = dialog().values()
+    fs._preview()  # must not raise
+    harness.pump(300)
+    assert fs._after_preview is None and not fs._previewing
+    assert dialog() is not None and "boom" in dialog().error_text(), dialog().error_text()
+    del fs._check
+    fs.cancel()
+    harness.pump(500)
+    assert s().feature_session is None
+    doc().removeObject(sk.Name)
+    doc().recompute()
+
+
+def test_escape_during_the_first_preview_closes_cleanly():
+    """Esc while the first preview of a new feature computes (Fillet/Thread preview straight from a preselection,
+    seconds for a thread): the session closes once, start() does not touch the closed dialog and no selection
+    observer is left behind."""
+    from incad import features
+    fillet = [k for k in features.kinds() if k.TITLE == "Fillet"][0]
+    tip_before = body().Tip.Name
+    Gui.Selection.clearSelection()
+    for e in top_edges(body().Tip, 0):  # the bottom edges, still square
+        Gui.Selection.addSelection(doc().Name, body().Tip.Name, e)
+    original = fillet.create
+    ST.pop("fs", None)
+
+    def create_then_escape(*a, **k):
+        feature = original(*a, **k)
+        fs = s().feature_session
+        if fs is not None and fs._previewing:
+            ST["fs"] = fs
+            fs.cancel()  # Esc lands while the preview computes
+        return feature
+    fillet.create = create_then_escape
+    try:
+        r = commands.REGISTRY.run("feature.fillet")
+    finally:
+        fillet.create = original
+    harness.pump(900)
+    assert "fs" in ST, "the first preview never reached the model step"
+    assert r is None or r.ok, r
+    assert s().feature_session is None
+    try:
+        observing = ST["fs"]._observing
+    except RuntimeError:
+        observing = False
+    assert not observing
+    assert body().Tip.Name == tip_before, body().Tip.Name  # the cancelled Fillet is gone
+    Gui.Selection.clearSelection()
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
+             test_preview_error_after_the_check_keeps_nothing_pending,
+             test_escape_during_the_first_preview_closes_cleanly,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,

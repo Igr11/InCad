@@ -133,6 +133,7 @@ class Caps:
         import MeshPart
         self.shape = shape
         self.polygons = []  # loops of the last call that became no face (drawn directly)
+        self.last_loops = []
         d = max(0.02, shape.BoundBox.DiagonalLength / 2000.0)
         try:
             self.mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=d, AngularDeflection=0.3, Relative=False)
@@ -207,7 +208,7 @@ class Caps:
     def faces(self, placement, flip=False):
         import Part
         self.polygons = []
-        loops = self.loops(placement, flip)
+        loops = self.last_loops = self.loops(placement, flip)  # kept for the hatch: sliced once per move
         if not loops:
             return cap_faces(self.shape, placement, flip)
         wires = []
@@ -307,34 +308,40 @@ def _loops(segments, tol):
 
 def hatch(loops, placement, spacing, angle_deg=45.0):
     """Hatch lines across the cut (Inventor draws material that way): 3D segments inside the loops, parallel
-    lines `spacing` apart at `angle_deg` in the plane, inside/outside by the even-odd rule."""
+    lines `spacing` apart at `angle_deg` in the plane, inside/outside by the even-odd rule. Vectorised: a
+    threaded shaft gives thousands of loop points and the slider redraws on every move."""
     import math
+    import numpy as np
+    loops = [loop for loop in (loops or []) if len(loop) >= 2]
     if not loops or spacing <= 0:
         return []
-    inv = placement.Rotation.inverted()
-    base = placement.Base
-    flat = [[inv.multVec(p - base) for p in loop] for loop in loops]
+    m = placement.inverse().toMatrix().A  # world -> plane coordinates
+    rot = np.array([[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]])
+    move = np.array([m[3], m[7], m[11]])
     a = math.radians(angle_deg)
-    d = App.Vector(math.cos(a), math.sin(a), 0)   # along the lines
-    n2 = App.Vector(-math.sin(a), math.cos(a), 0)  # across them
-    ks = [p.dot(n2) for loop in flat for p in loop]
-    lo, hi = min(ks), max(ks)
+    d = np.array([math.cos(a), math.sin(a), 0.0])   # along the lines
+    n2 = np.array([-math.sin(a), math.cos(a), 0.0])  # across them
+    kp, kq, sp, sq = [], [], [], []
+    for loop in loops:
+        pts = np.array([[v.x, v.y, v.z] for v in loop]) @ rot.T + move
+        k, s = pts @ n2, pts @ d
+        kp.append(k)
+        kq.append(np.roll(k, -1))
+        sp.append(s)
+        sq.append(np.roll(s, -1))
+    kp, kq, sp, sq = (np.concatenate(x) for x in (kp, kq, sp, sq))
+    lo, hi = float(kp.min()), float(kp.max())
+    d3, n3 = App.Vector(*d), App.Vector(*n2)
     out = []
-    k = lo + spacing / 2.0
-    while k < hi:
-        hits = []
-        for loop in flat:
-            for i in range(len(loop)):
-                p, q = loop[i], loop[(i + 1) % len(loop)]
-                dp, dq = p.dot(n2) - k, q.dot(n2) - k
-                if (dp < 0) != (dq < 0):
-                    t = dp / (dp - dq)
-                    hits.append((p + (q - p) * t).dot(d))
-        hits.sort()
+    for k in np.arange(lo + spacing / 2.0, hi, spacing):
+        dp, dq = kp - k, kq - k
+        cross = (dp < 0) != (dq < 0)
+        if not cross.any():
+            continue
+        t = dp[cross] / (dp[cross] - dq[cross])
+        hits = np.sort(sp[cross] + (sq[cross] - sp[cross]) * t)
         for i in range(0, len(hits) - 1, 2):
-            s0, s1 = hits[i], hits[i + 1]
+            s0, s1 = float(hits[i]), float(hits[i + 1])
             if s1 - s0 > 1e-6:
-                out.append((base + placement.Rotation.multVec(d * s0 + n2 * k),
-                            base + placement.Rotation.multVec(d * s1 + n2 * k)))
-        k += spacing
+                out.append((placement.multVec(d3 * s0 + n3 * float(k)), placement.multVec(d3 * s1 + n3 * float(k))))
     return out

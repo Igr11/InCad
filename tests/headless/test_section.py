@@ -156,3 +156,34 @@ class HatchTest(unittest.TestCase):
             self.assertAlmostEqual(mid.z, 5.0, places=6)
             self.assertTrue(face.isInside(mid, 1e-4, True), mid)  # never across the bore
         self.assertEqual(section.hatch([], plane, 1.0), [])
+
+    def test_faces_keep_the_loops_they_were_built_from(self):
+        """The slider redraws face and hatch on every move: the loops are sliced once, not twice."""
+        from incad.core import section
+        import Part
+        caps = section.Caps(Part.makeBox(20, 10, 10))
+        plane = App.Placement(App.Vector(0, 0, 5), App.Rotation())
+        caps.faces(plane)
+        again = caps.loops(plane)
+        self.assertEqual(len(caps.last_loops), len(again))
+        for a, b in zip(caps.last_loops, again):
+            self.assertEqual(len(a), len(b))
+            self.assertTrue(all((p - q).Length < 1e-9 for p, q in zip(a, b)))
+
+    def test_hatch_of_a_fine_loop_is_quick(self):
+        """A threaded shaft gives thousands of loop points; hatching must stay well under a slider tick."""
+        import math
+        import time
+        from incad.core import section
+        n = 20000
+        loop = [App.Vector(50 * math.cos(2 * math.pi * i / n), 50 * math.sin(2 * math.pi * i / n), 0) for i in range(n)]
+        plane = App.Placement()
+        t0 = time.time()
+        segs = section.hatch([loop], plane, 100.0 / 45.0)
+        dt = time.time() - t0
+        self.assertGreater(len(segs), 40)
+        self.assertLess(dt, 0.4, "hatch took %.2f s" % dt)
+        for a, b in segs:  # every segment inside the circle, lying along the 45° direction
+            self.assertLess(max(a.Length, b.Length), 50.0 + 1e-6)
+            d = b - a
+            self.assertAlmostEqual(d.x, d.y, places=6)
