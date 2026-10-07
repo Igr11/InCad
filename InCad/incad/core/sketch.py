@@ -238,10 +238,12 @@ def chain(sk, geo_ids):
 
 
 def toggle_construction(sk, geo_ids):
-    """Inventor's Construction on picked edges: their whole profiles become construction, or normal again when
-    already all construction."""
+    """Inventor's Construction on picked edges: their whole profiles become construction, or normal again. The
+    direction comes from the EDGES THE USER PICKED, not the expanded profile — so a construction line joined to
+    normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction')."""
+    picked = [i for i in geo_ids if 0 <= i < sk.GeometryCount]
+    make = not (picked and all(sk.getConstruction(i) for i in picked))
     ids = sorted(chain(sk, geo_ids))
-    make = not all(sk.getConstruction(i) for i in ids)
     for i in ids:
         if sk.getConstruction(i) != make:
             sk.setConstruction(i, make)

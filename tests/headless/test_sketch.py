@@ -215,6 +215,28 @@ class ConstructionChainTest(unittest.TestCase):
         self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)
         self.assertTrue(self.sk.getConstruction(self.circle))  # the polygon's guide circle stays construction
 
+    def test_a_construction_line_joined_to_normal_geometry_toggles_back_to_normal(self):
+        """The direction comes from the picked edge, not its chain: a construction line joined to a normal profile
+        used to read the mixed chain as 'make construction' and never flip back."""
+        import Part
+        cl = self.sk.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(20, 0, 0)), True)  # construction
+        self.sk.addConstraint(Sketcher.Constraint("Coincident", cl, 1, 0, 1))  # joined to the profile's corner
+        self.doc.recompute()
+        self.assertTrue(self.sk.getConstruction(cl))
+        sketch.toggle_construction(self.sk, [cl])  # construction -> normal
+        self.assertFalse(self.sk.getConstruction(cl))
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)  # the profile is left normal
+        sketch.toggle_construction(self.sk, [cl])  # normal -> construction again
+        self.assertTrue(self.sk.getConstruction(cl))
+
+    def test_a_single_construction_line_toggles_both_ways(self):
+        import Part
+        g = self.sk.addGeometry(Part.LineSegment(App.Vector(70, 0, 0), App.Vector(80, 0, 0)), True)
+        self.doc.recompute()
+        for want in (False, True, False):
+            sketch.toggle_construction(self.sk, [g])
+            self.assertEqual(self.sk.getConstruction(g), want)
+
 
 class PolygonCentreTest(unittest.TestCase):
     """A polygon's centre drawn on the origin or an axis keeps that constraint, as Inventor remembers the snap."""
