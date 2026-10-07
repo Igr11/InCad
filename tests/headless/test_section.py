@@ -156,6 +156,16 @@ class HatchTest(unittest.TestCase):
             self.assertAlmostEqual(mid.z, 5.0, places=6)
             self.assertTrue(face.isInside(mid, 1e-4, True), mid)  # never across the bore
         self.assertEqual(section.hatch([], plane, 1.0), [])
+        tilted = App.Placement(App.Vector(0, 5, 0), App.Rotation(App.Vector(1, 0, 0), 90))  # the XZ plane at y = 5
+        loops = caps.loops(tilted)
+        segs = section.hatch(loops, tilted, 1.0)
+        faces = caps.faces(tilted)  # two: the bore splits this cut
+        self.assertEqual(len(faces), 2)
+        self.assertGreater(len(segs), 20)
+        for a, b in segs:
+            mid = (a + b) * 0.5
+            self.assertAlmostEqual(mid.y, 5.0, places=6)
+            self.assertTrue(any(f.isInside(mid, 1e-4, True) for f in faces), mid)
 
     def test_faces_keep_the_loops_they_were_built_from(self):
         """The slider redraws face and hatch on every move: the loops are sliced once, not twice."""

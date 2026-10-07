@@ -2,6 +2,7 @@
 # GUI tests in a real FreeCAD window with throwaway settings (the user's user.cfg is never touched).
 # Usage: tests/run_gui.sh tests/gui/test_shell.py   (no argument = every tests/gui/test_*.py)
 REPO="${0:A:h:h}"
+if "$REPO/tests/screen_locked.sh"; then echo "NOTE: screen locked — keyboard-focus tests (parameter click, real keys) will fail; unlock the Mac for a full run"; fi
 FC=/Applications/FreeCAD.app/Contents/MacOS/FreeCAD
 PY=/Applications/FreeCAD.app/Contents/Resources/bin/python
 files=("$@"); (( $#files )) || files=("$REPO"/tests/gui/test_*.py)

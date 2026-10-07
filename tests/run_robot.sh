@@ -2,6 +2,7 @@
 # All real-input scenarios (tests/real), one FreeCAD each. The screen must be free and unlocked: real mouse and
 # keys are used. Keeps the display awake meanwhile; parks the pointer at the end. Exit 1 if any scenario fails.
 REPO="${0:A:h:h}"
+if "$REPO/tests/screen_locked.sh"; then echo "ROBOT: screen locked — unlock the Mac first, nothing ran"; exit 2; fi
 [[ -x "$REPO/tests/real/bin/click" ]] || "$REPO/tests/real/build_tools.sh" >/dev/null
 caffeinate -d -u -w $$ &
 rc=0

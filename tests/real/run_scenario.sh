@@ -3,6 +3,7 @@
 # it with REAL mouse and keyboard events (tests/real/bin). The screen must be free: don't touch the machine.
 # Usage: tests/real/run_scenario.sh tests/real/scenarios/<name>.json      (exit 1 on any FAIL)
 HERE="${0:A:h}"; REPO="${HERE:h:h}"
+if "${0:A:h:h}/screen_locked.sh"; then echo "FAIL screen locked: real input cannot run (unlock the Mac first)"; exit 2; fi
 FC=/Applications/FreeCAD.app/Contents/MacOS/FreeCAD
 SCEN="$1"; [[ -f "$SCEN" ]] || { echo "usage: $0 scenario.json"; exit 2 }
 [[ -x "$HERE/bin/click" && -x "$HERE/bin/move" && -x "$HERE/bin/keys" ]] || "$HERE/build_tools.sh" || exit 2
