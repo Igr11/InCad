@@ -59,6 +59,7 @@ Step kinds (real input, host side):
 |---|---|
 | `click:<spot>` / `dblclick:<spot>` / `rclick:<spot>` | real click at a spot |
 | `move:<spot>` | real mouse move to a spot (hover) |
+| `drag:<from>,<to>` | real left-button drag from one spot to another (End of Part onto a tree row) |
 | `keys:<code,code,…>` | real key presses by macOS keycode; `S` prefix = Shift, `C` = Command (`C12` = ⌘Q) |
 | `type:<text>` | types the text (US layout; letters, digits, `+-*/()=.,:;` etc.) |
 | `wait:<seconds>` | sleep |

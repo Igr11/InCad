@@ -70,14 +70,18 @@ def sketch_for_points():
 def tree_rows(sh):
     rows = {}
     tree = sh.browser.tree
+    from incad.ui.browser import KIND_ROLE
     for item in sh.browser._items():
         name = item.data(0, QtCore.Qt.UserRole)
+        if not name and item.data(0, KIND_ROLE) == "end_of_part":
+            name = "EndOfPart"  # the marker has no object: spot tree.EndOfPart
         if not name:
             continue
         rect = tree.visualItemRect(item)
         if rect.isValid() and rect.height() > 0:
             g = tree.viewport().mapToGlobal(rect.center())
             rows[name] = [g.x(), g.y()]
+            rows[name + ".top"] = [g.x(), g.y() - rect.height() // 3]  # upper half: End of Part before it
     return rows
 
 

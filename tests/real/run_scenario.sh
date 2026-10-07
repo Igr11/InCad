@@ -41,6 +41,12 @@ for step in "${steps[@]}"; do
       xy=$(py spot "$arg") || { echo "FAIL $step -> no such spot (state: $(py brief))"; ((fails++)); shot "fail-$passes-$fails"; continue }
       case $kind in dblclick) b=double;; rclick) b=right;; *) b=left;; esac
       "$HERE/bin/click" ${=xy} $b; sleep 1;;
+    drag)  # drag:<from>,<to> — left button held from one spot to another (End of Part in the tree)
+      py fresh
+      a="${arg%%,*}"; b="${arg#*,}"
+      xy=$(py spot "$a") || { echo "FAIL $step -> no such spot $a"; ((fails++)); continue }
+      xy2=$(py spot "$b") || { echo "FAIL $step -> no such spot $b"; ((fails++)); continue }
+      "$HERE/bin/click" ${=xy} drag ${=xy2}; sleep 1;;
     move)
       py fresh
       xy=$(py spot "$arg") || { echo "FAIL $step -> no such spot"; ((fails++)); continue }

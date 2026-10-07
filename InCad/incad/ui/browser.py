@@ -30,25 +30,63 @@ class _TypingFirst(QtCore.QObject):
 
 
 class _Tree(QtWidgets.QTreeWidget):
-    """Tree that lets the user drag the End of Part marker onto another row."""
+    """Tree that lets the user drag the End of Part marker onto another row. While dragging, a line shows where
+    it will land: on the upper half of a feature row it goes before that feature, lower half (or any of the
+    feature's child rows) after it (Inventor drops the marker between rows)."""
 
     def __init__(self, browser):
         super().__init__(browser)
         self._browser = browser
         self._dragging = False
+        self._drop = None  # (item, above) under the pointer while dragging, for the drop line
 
     def mousePressEvent(self, event):
         item = self.itemAt(event.position().toPoint())
         self._dragging = item is not None and item.data(0, KIND_ROLE) == "end_of_part"
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            self._drop = self.drop_target(event.position().toPoint())
+            self.viewport().update()
+            return  # no rubber-band selection while the marker is carried
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event):
         if self._dragging:
             self._dragging = False
-            target = self.itemAt(event.position().toPoint())
-            if target is not None and target.data(0, KIND_ROLE) != "end_of_part":
-                self._browser.drop_end_of_part_on(target)
+            self._drop = None
+            self.viewport().update()
+            target, above = self.drop_target(event.position().toPoint())
+            if target is not None:
+                self._browser.drop_end_of_part_on(target, above)
         super().mouseReleaseEvent(event)
+
+    def drop_target(self, pos):
+        """(row under pos, pointer in its upper half) for a drop of End of Part; (None, False) off the rows."""
+        item = self.itemAt(pos)
+        if item is None or item.data(0, KIND_ROLE) == "end_of_part":
+            return None, False
+        rect = self.visualItemRect(item)
+        return item, pos.y() < rect.center().y()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        item, above = self._drop or (None, False)
+        if item is None:
+            return
+        top = self._browser._top_feature(item)
+        line_item = top if (above and item is top) else item
+        rect = self.visualItemRect(line_item)
+        if not rect.isValid():
+            return
+        y = rect.top() + 1 if (above and item is top) else rect.bottom()
+        painter = QtGui.QPainter(self.viewport())
+        pen = QtGui.QPen(QtGui.QColor(themes.PALETTES.get(getattr(self._browser, "_theme", "light"),
+                                                         themes.PALETTES["light"])["accent"]), 2)
+        painter.setPen(pen)
+        painter.drawLine(rect.left(), y, self.viewport().width() - 4, y)
+        painter.end()
 
 
 class ModelBrowser(QtWidgets.QWidget):
@@ -196,14 +234,30 @@ class ModelBrowser(QtWidgets.QWidget):
             item = item.parent()
         return item
 
-    def drop_end_of_part_on(self, item):
-        """End of Part goes after the row's feature; origin/solids/part rows put it before the first feature."""
+    def drop_end_of_part_on(self, item, above=False):
+        """End of Part goes after the row's feature, or before it when dropped on the upper half of the feature's
+        own row (`above`); origin/solids/part rows put it before the first feature."""
         top = self._top_feature(item)
         kind = top.data(0, KIND_ROLE)
         if kind in ("feature", "sketch"):
-            self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
+            if above and item is top:
+                self.endOfPartMoved.emit(self._feature_before(top))
+            else:
+                self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
         elif kind in ("origin", "solids", "part"):
             self.endOfPartMoved.emit("")
+
+    @staticmethod
+    def _feature_before(top):
+        """Name of the feature row above `top` among its siblings ("" when it is the first)."""
+        parent = top.parent()
+        if parent is None:
+            return ""
+        for i in range(parent.indexOfChild(top) - 1, -1, -1):
+            sib = parent.child(i)
+            if sib.data(0, KIND_ROLE) in ("feature", "sketch") and sib.data(0, NAME_ROLE):
+                return sib.data(0, NAME_ROLE)
+        return ""
 
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)

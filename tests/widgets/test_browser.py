@@ -53,6 +53,25 @@ class BrowserTest(unittest.TestCase):
         self.assertEqual(self.events, [("endOfPartMoved", "Fillet"), ("endOfPartMoved", "Pad"),
                                        ("endOfPartMoved", "")])
 
+    def test_drop_on_the_upper_half_puts_end_of_part_before_the_feature(self):
+        """Dragging the marker up one row onto the last feature must move it (it used to land 'after' it, where
+        it already was): the upper half of a feature row means before that feature."""
+        self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"), above=True)   # before Fillet = after Pad
+        self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=True)  # before the first feature
+        self.b.drop_end_of_part_on(self.b.item_by_label("Sketch1"), above=True)  # a child row: after its feature
+        self.assertEqual(self.events, [("endOfPartMoved", "Pad"), ("endOfPartMoved", ""), ("endOfPartMoved", "Pad")])
+
+    def test_drop_target_by_row_half(self):
+        self.b.resize(260, 500)
+        self.b.show()
+        tree = self.b.tree
+        fillet = self.b.item_by_label("Fillet1")
+        rect = tree.visualItemRect(fillet)
+        self.assertEqual(tree.drop_target(rect.center() - QtCore.QPoint(0, rect.height() // 3)), (fillet, True))
+        self.assertEqual(tree.drop_target(rect.center() + QtCore.QPoint(0, rect.height() // 3)), (fillet, False))
+        self.assertEqual(tree.drop_target(tree.visualItemRect(self.b.item_by_label("End of Part")).center()),
+                         (None, False))
+
     def test_right_click_requests_marking_menu(self):
         seen = []
         self.b.markingMenuRequested.connect(lambda name, pos: seen.append(name))

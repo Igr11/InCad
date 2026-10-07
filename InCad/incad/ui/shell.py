@@ -2083,7 +2083,10 @@ class Shell(QtCore.QObject):
         body = obj.getParentGeoFeatureGroup() if obj is not None else document.primary_body(doc)
         if body is None or body.TypeId != "PartDesign::Body":
             return
-        safe.run_safely("Move End of Part", lambda: document.set_end_of_part(body, obj), doc)
+        r = safe.run_safely("Move End of Part", lambda: document.set_end_of_part(body, obj), doc)
+        if r.ok:
+            log.report("info", "End of Part moved after %s" % obj.Label if obj is not None
+                       else "End of Part moved before the first feature")
         self.schedule_refresh()
 
     def _on_browser_action(self, action):

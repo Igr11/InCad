@@ -493,11 +493,17 @@ def update_model():
     """Inventor's Update: recompute the model and redraw InCad's panels and the view (a model that got out of
     step with the tree, or a view that stopped following the document, is put right)."""
     import FreeCAD as App
+    from incad.core import log
     from incad.ui import shell
     _refuse_while_busy()
     doc = App.ActiveDocument
     if doc is not None:
         doc.recompute()
+        bad = [o.Label for o in doc.Objects if "Invalid" in o.State]
+        log.report("warning" if bad else "info", "Updated %s: %s failed" % (doc.Label, ", ".join(bad)) if bad
+                   else "Updated %s" % doc.Label)
+    else:
+        log.report("warning", "Nothing to update: no document is active")
     inst = shell.instance()
     if inst is not None:
         inst.refresh()
