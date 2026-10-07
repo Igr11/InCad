@@ -74,6 +74,17 @@ class ParametersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             document.remove_parameter(self.doc, "Gap")
 
+    def test_a_parameter_used_by_a_formula_is_not_removed(self):
+        document.set_parameter(self.doc, "Len", "5 mm")
+        document.set_parameter(self.doc, "Twice", "Len*2")
+        with self.assertRaises(ValueError) as cm:
+            document.remove_parameter(self.doc, "Len")
+        self.assertEqual(str(cm.exception), "Len is used by Twice")
+        self.assertIn("Len", rows(self.doc))
+        document.remove_parameter(self.doc, "Twice")  # nothing uses the dependent one
+        document.remove_parameter(self.doc, "Len")
+        self.assertNotIn("Len", rows(self.doc))
+
     def test_undo_after_failed_formula(self):
         safe.run_safely("Bad", lambda: document.set_parameter(self.doc, "Gap", "Nope*2"), self.doc)
         safe.run_safely("Good", lambda: document.set_parameter(self.doc, "Gap", "0.2 mm"), self.doc)

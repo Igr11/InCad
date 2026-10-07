@@ -222,9 +222,26 @@ def remove_parameter(doc, name):
     obj = parameters(doc, create=False)
     if obj is None or not _is_param(obj, name):
         raise ValueError("No parameter named %r" % name)
+    users = _users_of(doc, obj, name)
+    if users:
+        raise ValueError("%s is used by %s" % (name, ", ".join(users)))
     obj.setExpression(name, None)
     obj.removeProperty(name)
     doc.recompute()
+
+
+def _users_of(doc, params_obj, name):
+    """Labels of the other parameters and objects whose formulas use the user parameter `name`."""
+    pattern = re.compile(r"(?:%s\.|(?<![\w.]))%s(?!\w)" % (re.escape(params_obj.Name), re.escape(name)))
+    out = []
+    for obj in doc.Objects:
+        for path, expr in getattr(obj, "ExpressionEngine", []) or []:
+            if obj is params_obj and path.lstrip(".") == name:
+                continue
+            if pattern.search(expr):
+                out.append(path.lstrip(".") if obj is params_obj else obj.Label)
+                break
+    return out
 
 
 def owning_feature(obj):
