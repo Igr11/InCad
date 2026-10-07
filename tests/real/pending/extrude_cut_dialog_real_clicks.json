@@ -1,0 +1,20 @@
+{
+ "name": "extrude_cut_dialog_real_clicks",
+ "steps": [
+  "setup:block_with_top_sketch",
+  "wait:1",
+  "memo:v=s['volume']",
+  "click:tree.TopSketch",
+  "wait:0.6",
+  "cmd:feature.extrude",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Extrude'",
+  "click:dialog.operation.cut",
+  "wait:1.5",
+  "expect:s['dialog']['values'].get('operation') == 'cut' and not s['dialog']['error']",
+  "click:dialog.ok",
+  "wait:3",
+  "expect:s['dialog'] is None and s['busy'] is None and s['volume'] < m['v'] - 1",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

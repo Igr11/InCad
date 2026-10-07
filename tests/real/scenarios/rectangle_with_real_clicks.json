@@ -1,0 +1,21 @@
+{
+ "name": "rectangle_with_real_clicks",
+ "steps": [
+  "setup:empty_sketch_open",
+  "wait:2",
+  "expect:s['editing'] == 'SketchA' and s['geo'] == 0",
+  "cmd:sketch.rectangle",
+  "wait:1",
+  "move:c1",
+  "click:c1",
+  "wait:0.8",
+  "move:c2",
+  "click:c2",
+  "wait:1",
+  "expect:s['geo'] == 4",
+  "keys:53",
+  "wait:1",
+  "expect:s['editing'] == 'SketchA' and s['geo'] == 4",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

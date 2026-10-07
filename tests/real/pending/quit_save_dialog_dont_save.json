@@ -1,0 +1,12 @@
+{
+ "name": "quit_save_dialog_dont_save",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "keys:C12",
+  "wait:2",
+  "expect:s['popup'] is not None and s['popup']['name'] == 'InCadSaveDialog'",
+  "click:popup.Don't Save",
+  "exited:40"
+ ]
+}

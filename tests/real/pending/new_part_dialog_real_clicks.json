@@ -1,0 +1,19 @@
+{
+ "name": "new_part_dialog_real_clicks",
+ "steps": [
+  "py:prefs.set_remember_new_choice(False)",
+  "py:QtCore.QTimer.singleShot(0, lambda: commands.REGISTRY.run('file.new'))",
+  "wait:2",
+  "expect:s['popup'] is not None and s['popup']['name'] == 'InCadNewDialog'",
+  "click:popup.Inches",
+  "wait:0.5",
+  "click:popup.Create",
+  "wait:2",
+  "expect:s['popup'] is None and len(s['docs']) == 2 and s['incad_active']",
+  "py:prefs.default_units()",
+  "expect:s['py'] == \"'in'\"",
+  "py:[o.TypeId for o in App.ActiveDocument.Objects]",
+  "expect:'PartDesign::Body' in s['py']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

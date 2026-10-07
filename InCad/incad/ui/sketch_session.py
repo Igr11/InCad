@@ -47,7 +47,9 @@ class SketchSession:
         import FreeCADGui as Gui
         self.cancel_pick()
         body = document.primary_body(doc)
-        if body is not None:
+        if body is not None and not _has_solid(body):
+            # Inventor: an empty part offers its origin planes to click; once there is a solid its faces are what
+            # gets picked (big planes drawn in front would take the click meant for a face) and the view stays put
             vos = [body.Origin.ViewObject] + [f.ViewObject for f in body.Origin.OriginFeatures]
             self._origin = [(v, v.Visibility) for v in vos]  # the planes themselves too (a saved file may hide them)
             gdoc = Gui.getDocument(doc.Name)
@@ -241,6 +243,14 @@ def screen_box(view, view_objects):
         if not bb.isEmpty():
             box.add(App.BoundBox(App.Vector(*bb.getMin().getValue()), App.Vector(*bb.getMax().getValue())))
     return box
+
+
+def _has_solid(body):
+    try:
+        shape = body.Shape
+        return not shape.isNull() and bool(shape.Solids)
+    except Exception:
+        return False
 
 
 def _frame_planes(body, view):

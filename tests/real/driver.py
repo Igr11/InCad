@@ -93,6 +93,7 @@ def state():
     sk = editing_sketch()
     if sk is not None:
         st["editing"] = sk.Name
+        st["geo"] = len(sk.Geometry)
         st["dims"] = [[c.Name, round(c.Value, 3)] for c in sk.Constraints if c.Name]
         for c in sk.Constraints:
             if c.Name:
@@ -103,8 +104,8 @@ def state():
                 except Exception:
                     pass
     psk = sketch_for_points()
-    if psk is not None and Gui.ActiveDocument is not None:
-        pl = psk.getGlobalPlacement()
+    if Gui.ActiveDocument is not None:
+        pl = psk.getGlobalPlacement() if psk is not None else App.Placement()  # no sketch: global coordinates
         for name, (x, y, z) in ST["points"].items():
             try:
                 st["points"][name] = screen_xy(pl.multVec(App.Vector(x, y, z)))
@@ -133,6 +134,16 @@ def state():
                             st["dialog"]["buttons"]["%s.%s" % (f.key, value)] = c
                 except Exception:
                     pass
+        st["popup"] = None  # InCad's own modal dialogs (New, Save): name and button centres by text
+        for w in QtWidgets.QApplication.topLevelWidgets():
+            name = w.objectName()
+            if isinstance(w, QtWidgets.QDialog) and w.isVisible() and name.startswith("InCad") and name != "InCadFeatureDialog":
+                st["popup"] = {"name": name, "buttons": {}}
+                for b in w.findChildren(QtWidgets.QAbstractButton):
+                    c = center(b)
+                    if c and b.text():
+                        st["popup"]["buttons"][b.text().split("\n")[0].replace("&", "")] = c
+                break
         menu = sh.marking_menu
         if menu is not None:
             try:
@@ -203,6 +214,15 @@ def setup(name):
     body = document.primary_body(doc)
     if name == "empty_part":
         return
+    if name == "empty_sketch_open":  # a new XY sketch in edit, framed like Start 2D Sketch leaves it
+        sk = body.newObject("Sketcher::SketchObject", "SketchA")
+        sk.AttachmentSupport = [(doc.getObject("XY_Plane") or body.Origin.OriginFeatures[3], "")]
+        sk.MapMode = "FlatFace"
+        doc.recompute()
+        ST["sketch"] = sk
+        shell.sketch_session().edit(sk)
+        ST["points"].update({"c1": (5, 5, 0), "c2": (25, 15, 0), "away": (40, 30, 0)})
+        return
     if name in ("rect_sketch_open", "rect_sketch"):
         sk = util.add_rect_sketch(body, name="SketchA")
         doc.recompute()
@@ -267,7 +287,8 @@ def run_command(line):
             setup(arg)
         elif kind == "py":
             ST["py"] = repr(eval(arg, {"App": App, "Gui": Gui, "shell": shell, "commands": commands, "document": document,
-                                       "sketches": sketches, "ST": ST, "prefs": prefs, "safe": safe, "util": util}))
+                                       "sketches": sketches, "ST": ST, "prefs": prefs, "safe": safe, "util": util,
+                                       "QtCore": QtCore}))
         elif kind == "point":  # point:name=x,y,z  (sketch coordinates of the edited/setup sketch)
             name, _, xyz = arg.partition("=")
             ST["points"][name] = tuple(float(v) for v in xyz.split(","))

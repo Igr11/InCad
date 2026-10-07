@@ -1,0 +1,19 @@
+{
+ "name": "sketch_on_face_by_3d_click",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "point:face=10,5,10",
+  "point:edge=10,0,10",
+  "cmd:sketch.start",
+  "wait:1.5",
+  "expect:s['editing'] is None and s['error'] == ''",
+  "move:face",
+  "click:face",
+  "wait:2",
+  "expect:s['editing'] is not None and s['editing'] != 'SketchA'",
+  "py:App.ActiveDocument.getObject(ST['py_editing']).AttachmentSupport if False else [(o.Name, s) for o, s in Gui.ActiveDocument.getInEdit().Object.AttachmentSupport]",
+  "expect:'Pad' in s['py'] and 'Face' in s['py']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

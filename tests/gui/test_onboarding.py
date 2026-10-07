@@ -119,20 +119,16 @@ def test_4_origin_planes_fill_the_view_while_picking():
     cam = view.getCameraNode()
     cam.position.setValue(cam.position.getValue() + coin.SbVec3f(3000, 0, 0))  # looking somewhere else
     harness.pump(300)
+    before = tuple(cam.position.getValue())
     commands.REGISTRY.run("sketch.start")
     harness.pump(800)
-    w, h = view.getSize()
-    cx, cy = view.getPointOnViewport(App.Vector(0, 0, 0))
-    assert abs(cx - w / 2.0) < 3 and abs(cy - h / 2.0) < 3, (cx, cy, w, h)  # the origin in the middle
-    for role in ("XY_Plane", "XZ_Plane", "YZ_Plane"):
-        size, inside = plane_on_screen(role)
-        assert inside and size > 0.1, (role, size, inside)
-        plane = [o for o in document.primary_body(doc).Origin.OriginFeatures if o.Role == role][0]
-        reach = sketch_session.screen_box(view, [plane.ViewObject])
-        assert max(reach.XMax, reach.YMax, reach.ZMax) > 80, (role, reach)  # sticks out of the solid
+    # Inventor: with a solid in the part the faces are what gets picked — no origin planes drawn in front of the
+    # model (a click on the top face would land on the XZ plane), the view left where the user had it
+    assert tuple(cam.position.getValue()) == before, (before, tuple(cam.position.getValue()))
+    assert not document.primary_body(doc).Origin.ViewObject.Visibility  # the Origin group stays hidden
+    assert s().plane_panel is not None and s().plane_panel.isVisible()  # origin planes still one click away
     s().sketches.cancel_pick()
     harness.pump(300)
-
 
 
 def sketch_up(sk):

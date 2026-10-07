@@ -1,0 +1,19 @@
+{
+ "name": "marking_menu_3d_new_sketch_on_face",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "point:face=10,5,10",
+  "move:face",
+  "rclick:face",
+  "wait:0.8",
+  "expect:s['menu'] is not None",
+  "expect:any('Sketch' in k for k in s['menu'])",
+  "click:menu.Start 2D Sketch",
+  "wait:2",
+  "expect:s['editing'] is not None and s['editing'] != 'SketchA'",
+  "py:[(o.Name, s) for o, s in Gui.ActiveDocument.getInEdit().Object.AttachmentSupport]",
+  "expect:'Pad' in s['py'] and 'Face' in s['py']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

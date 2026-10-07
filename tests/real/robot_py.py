@@ -39,6 +39,8 @@ def spot(name, s, m):
         return (s.get("menu") or {}).get(name[5:])
     if name.startswith("plane."):
         return (s.get("plane_panel") or {}).get(name[6:])
+    if name.startswith("popup.") and s.get("popup"):
+        return s["popup"]["buttons"].get(name[6:])
     if name.startswith("dialog.") and s.get("dialog"):
         key = name[7:]
         return s["dialog"].get(key) or s["dialog"].get("buttons", {}).get(key)

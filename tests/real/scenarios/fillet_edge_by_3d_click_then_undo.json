@@ -1,0 +1,23 @@
+{
+ "name": "fillet_edge_by_3d_click_then_undo",
+ "steps": [
+  "setup:block",
+  "wait:1",
+  "point:edge=10,0,10",
+  "memo:v=s['volume']",
+  "move:edge",
+  "click:edge",
+  "wait:0.6",
+  "expect:any('Edge' in sub for _, subs in s['selection'] for sub in subs)",
+  "cmd:feature.fillet",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['title'] == 'Fillet' and s['dialog']['values'].get('edges')",
+  "click:dialog.ok",
+  "wait:3",
+  "expect:s['dialog'] is None and s['busy'] is None and s['volume'] < m['v'] - 0.1 and s['tip'] == 'Fillet'",
+  "keys:C6",
+  "wait:2",
+  "expect:abs(s['volume'] - m['v']) < 0.01 and s['tip'] == 'Pad'",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}
