@@ -166,8 +166,9 @@ class RevolveAxesTest(unittest.TestCase):
 
 
 class RevolveProjectedAxisTest(unittest.TestCase):
-    """Revolve around a PROJECTED line: the user projects an edge of the solid into the profile sketch and uses it
-    as the axis. It can't be referenced as 'ExternalEdgeN' (FreeCAD rejects that), so it resolves to the source."""
+    """Revolve around a PROJECTED line. A projection lies IN the sketch plane, so it is a valid in-plane axis; it
+    resolves to a helper line through the projection's own endpoints, never the 3D source edge (whose direction
+    can be perpendicular to the plane — such an edge projects to a point and is not offered)."""
 
     def setUp(self):
         self.doc = util.new_doc("RP")
@@ -180,37 +181,71 @@ class RevolveProjectedAxisTest(unittest.TestCase):
         self.sk.AttachmentSupport = [(xz, "")]
         self.sk.MapMode = "FlatFace"
         self.doc.recompute()
-        for i, (ax, ay) in enumerate([(30, 5), (38, 5), (38, 15), (30, 15)]):
-            bx, by = [(30, 5), (38, 5), (38, 15), (30, 15)][(i + 1) % 4]
-            self.sk.addGeometry(Part.LineSegment(App.Vector(ax, ay, 0), App.Vector(bx, by, 0)))
-        # project a vertical edge of the pad (runs along Z) into the sketch
+        for i in range(4):
+            a, b = [(30, 5), (38, 5), (38, 15), (30, 15)][i], [(30, 5), (38, 5), (38, 15), (30, 15)][(i + 1) % 4]
+            self.sk.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(b[0], b[1], 0)))
+        # a vertical edge of the pad runs along Z, which lies IN the XZ sketch plane, so its projection is a line
         vedge = next(i + 1 for i, e in enumerate(self.pad.Shape.Edges)
                      if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].Point.z - e.Vertexes[1].Point.z) > 1)
         self.sk.addExternal(self.pad.Name, "Edge%d" % vedge)
         self.doc.recompute()
-        self.vedge = vedge
 
     def tearDown(self):
         App.closeDocument(self.doc.Name)
 
-    def test_projected_line_is_listed_and_revolves_around_its_source(self):
+    def test_projected_line_is_listed_and_revolves_around_the_in_plane_projection(self):
         projected = revolve.projected_lines(self.sk)
         self.assertEqual(len(projected), 1, projected)
-        value, label, ref = projected[0]
+        value, label, ends = projected[0]
         self.assertTrue(value.startswith("ext") and "Projected" in label, (value, label))
-        self.assertEqual(ref, (self.pad.Name, "Edge%d" % self.vedge))
-        self.assertIn((value, label), revolve.axis_line_options(self.sk))
+        self.assertEqual(len(ends), 2)  # the projection's two global endpoints, not a (obj, sub) source ref
+        self.assertIn((value, label), [(v, l) for v, l in revolve.axis_line_options(self.sk)])
 
         values = revolve.defaults(self.doc, self.body, self.sk)
         values.update(axis_mode="construction", axis_construction=value)
         f = revolve.create(self.doc, self.body, self.sk, values)
         self.doc.recompute()
         self.assertNotIn("Invalid", f.State, f.getStatusString())
-        self.assertEqual(f.ReferenceAxis[0], self.pad)  # the source edge, not the sketch's ExternalEdge
-        self.assertEqual(f.ReferenceAxis[1], ["Edge%d" % self.vedge])
+        line = f.ReferenceAxis[0]
+        self.assertEqual(line.TypeId, "PartDesign::Line")                 # a helper through the projection
+        self.assertEqual(getattr(line, "InCadHelperOf"), f.Name)
+        self.assertFalse(line.Visibility)
         self.assertGreater(f.Shape.Volume, 1)
         back = revolve.read(self.doc, f)
-        self.assertEqual((back["axis_mode"], back["axis_construction"]), ("construction", value))
+        self.assertEqual(back["axis_mode"], "two_points")                 # the helper reads back as its axis line
+
+    def test_an_edge_perpendicular_to_the_sketch_projects_to_a_point_and_is_not_offered(self):
+        """A projection cannot be perpendicular to its own plane (the user's point). An edge whose direction IS
+        perpendicular projects to a point, so it is simply not listed — never offered as a broken axis."""
+        self.doc = util.new_doc("RP2")
+        document.make_part(self.doc, "mm")
+        body = document.primary_body(self.doc)
+        pad = util.add_pad(body, util.add_rect_sketch(body, 40, 30, name="Base"), 20)
+        self.doc.recompute()
+        top = next(i + 1 for i, f in enumerate(pad.Shape.Faces) if abs(f.CenterOfMass.z - 20) < 1e-6)
+        sk = body.newObject("Sketcher::SketchObject", "Top")
+        sk.AttachmentSupport = [(pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        for i in range(4):
+            a, b = [(10, 8), (14, 8), (14, 14), (10, 14)][i], [(10, 8), (14, 8), (14, 14), (10, 14)][(i + 1) % 4]
+            sk.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(b[0], b[1], 0)))
+        vedge = next(i + 1 for i, e in enumerate(pad.Shape.Edges)
+                     if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].Point.z - e.Vertexes[1].Point.z) > 1)
+        hedge = next(i + 1 for i, e in enumerate(pad.Shape.Edges) if e.Curve.TypeId == "Part::GeomLine"
+                     and abs(e.Vertexes[0].Point.z - 20) < 1e-6 and abs(e.Vertexes[1].Point.z - 20) < 1e-6)
+        sk.addExternal(pad.Name, "Edge%d" % vedge)   # perpendicular to the top face -> projects to a point
+        sk.addExternal(pad.Name, "Edge%d" % hedge)   # in the top face -> projects to a line
+        self.doc.recompute()
+        projected = revolve.projected_lines(sk)
+        self.assertEqual(len(projected), 1, projected)  # only the in-plane edge, not the perpendicular one
+        values = revolve.defaults(self.doc, body, sk)
+        values.update(operation="cut", axis_mode="construction", axis_construction=projected[0][0])
+        v0 = body.Shape.Volume
+        f = revolve.create(self.doc, body, sk, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())  # the projected axis cuts, no "perpendicular"
+        self.assertLess(body.Shape.Volume, v0 - 1)
 
     def test_a_single_projected_line_is_the_default_axis(self):
         values = revolve.defaults(self.doc, self.body, self.sk)

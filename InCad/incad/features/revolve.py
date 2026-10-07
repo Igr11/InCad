@@ -54,28 +54,33 @@ def construction_lines(sk):
 
 
 def projected_lines(sk):
-    """[("extK", label, (source object name, sub))] for straight PROJECTED (external) edges in the sketch — a line
-    the user brought in with Project to revolve around. It can't be referenced as 'ExternalEdgeN' (FreeCAD rejects
-    that for a revolve axis), so each resolves to its SOURCE edge, which revolves correctly."""
+    """[("extK", label, (global start, global end))] for straight PROJECTED edges that lie IN the sketch plane.
+    A projection is in the plane by definition, so it is a valid in-plane revolve axis — each resolves to a helper
+    line through the projection's own endpoints, NOT the 3D source edge (whose direction can be perpendicular to
+    the plane; such an edge projects to a point and is skipped)."""
     out = []
     if sk is None:
         return out
     try:
-        entries = list(sk.ExternalGeometry)
+        geos = list(sk.ExternalGeo)       # the external geometry AS PROJECTED, in the sketch's local frame
+        pl = sk.getGlobalPlacement()
     except Exception:
         return out
     k = 0
-    for obj, subs in entries:
-        for sub in subs:
-            try:
-                edge = obj.Shape.getElement(sub)
-                is_line = edge.Curve.TypeId == "Part::GeomLine"
-                length = edge.Length
-            except Exception:
-                is_line, length = False, 0.0
-            if is_line:
-                out.append(("ext%d" % k, "Projected · %s %s (%s)" % (obj.Label, sub, _mm(length)), (obj.Name, sub)))
-            k += 1
+    for i, g in enumerate(geos):
+        if i < 2:                          # ExternalGeo[0], [1] are the sketch's own H and V axes
+            continue
+        if getattr(g, "TypeId", "") != "Part::GeomLineSegment":
+            continue
+        try:
+            length = (g.EndPoint - g.StartPoint).Length
+            if length < 1e-6:              # a perpendicular edge projects to a point: no axis
+                continue
+            g0, g1 = pl.multVec(g.StartPoint), pl.multVec(g.EndPoint)
+        except Exception:
+            continue
+        out.append(("ext%d" % k, "Projected line · %s" % _mm(length), (g0, g1)))
+        k += 1
     return out
 
 
@@ -85,10 +90,10 @@ def axis_line_options(sk):
     return [(v, lbl) for v, lbl in construction_lines(sk)] + [(v, lbl) for v, lbl, _ in projected_lines(sk)]
 
 
-def _projected_source(sk, value):
-    for v, _lbl, ref in projected_lines(sk):
+def _projected_ends(sk, value):
+    for v, _lbl, ends in projected_lines(sk):
         if v == value:
-            return ref
+            return ends
     return None
 
 
@@ -207,14 +212,11 @@ def _axis(doc, f, values):
         wanted = values.get("axis_construction") or lines[0][0]
         if wanted not in [v for v, _ in lines]:
             wanted = lines[0][0]
-        if wanted.startswith("ext"):  # a projected line: revolve around its SOURCE edge, not 'ExternalEdgeN'
-            ref = _projected_source(profile, wanted)
-            if ref is None:
+        if wanted.startswith("ext"):  # a projected line lies IN the sketch plane: a helper through its endpoints
+            ends = _projected_ends(profile, wanted)
+            if ends is None:
                 raise ValueError("That projected line is no longer in the sketch: pick another axis")
-            src = doc.getObject(ref[0])
-            if src is None:
-                raise ValueError("The projected line's edge is gone: pick another axis")
-            return src, [ref[1]]
+            return _place_helper(doc, f, [ends[0], ends[1]]), [""]
         return profile, [wanted]
     if mode == "reference":
         pairs = parse_picks(doc, values.get("axis_ref"))
@@ -234,9 +236,14 @@ def _type(operation):
     return "PartDesign::Groove" if operation == "cut" else "PartDesign::Revolution"
 
 
+def _uses_helper(values):
+    mode = values.get("axis_mode") or "V_Axis"
+    return mode == "two_points" or (mode == "construction" and (values.get("axis_construction") or "").startswith("ext"))
+
+
 def _apply(doc, f, values):
     f.ReferenceAxis = _axis(doc, f, values)
-    if (values.get("axis_mode") or "V_Axis") != "two_points":
+    if not _uses_helper(values):
         _drop_helper(doc, f)
     extent = values.get("extent", "full")
     f.Type = "TwoAngles" if extent == "two_angles" else "Angle"
@@ -268,17 +275,14 @@ def read(doc, f):
     lines = axis_line_options(profile)
     if lines:
         values["axis_construction"] = lines[0][0]
-    projected = {(o, su): v for v, _lbl, (o, su) in projected_lines(profile)}
     if obj is None:
         pass
     elif obj is profile and sub in ("V_Axis", "H_Axis"):
         values["axis_mode"] = sub
     elif obj is profile and sub.startswith("Axis"):
         values.update(axis_mode="construction", axis_construction=axis_name(sub))
-    elif getattr(obj, HELPER, None) == f.Name:
+    elif getattr(obj, HELPER, None) == f.Name:  # a two-point or projected-line axis, both held by a helper line
         values.update(axis_mode="two_points", axis_points=getattr(obj, POINTS, ""))
-    elif (obj.Name, sub) in projected:  # the axis is a projected line of the sketch, read as a construction choice
-        values.update(axis_mode="construction", axis_construction=projected[(obj.Name, sub)])
     else:
         values.update(axis_mode="reference", axis_ref=format_picks([(obj, sub)]))
     return values

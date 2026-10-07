@@ -229,7 +229,7 @@ def test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature():
 
 def test_7_projected_line_axis_through_the_dialog():
     """Project an edge of the solid into the profile sketch, then revolve around it: the Construction / projected
-    drop-down lists it and the revolve spins around the source edge."""
+    drop-down lists the in-plane projection and the revolve spins around it (a helper through the projection)."""
     body_ = body()
     pad = util.add_pad(body_, util.add_rect_sketch(body_, 16, 16, name="Boss"), 24, name="Boss")
     doc().recompute()
@@ -255,7 +255,8 @@ def test_7_projected_line_axis_through_the_dialog():
     harness.pump(1200)
     assert error() == "", error()
     f = feature()
-    assert f.ReferenceAxis[0] is pad and f.ReferenceAxis[1] == ["Edge%d" % vedge], f.ReferenceAxis
+    line = f.ReferenceAxis[0]
+    assert line.TypeId == "PartDesign::Line" and getattr(line, "InCadHelperOf") == f.Name, f.ReferenceAxis
     assert f.Shape.Volume > 1
     QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
     harness.pump(600)
