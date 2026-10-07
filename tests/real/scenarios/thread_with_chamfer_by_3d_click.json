@@ -13,7 +13,7 @@
   "wait:1.5",
   "expect:s['dialog'] is not None and s['dialog']['title'] == 'Thread' and s['dialog']['values'].get('face')",
   "click:dialog.chamfer.start",
-  "wait:6",
+  "wait:1.2",
   "expect:s['dialog']['values'].get('chamfer') == 'start' and not s['dialog']['error']",
   "click:dialog.ok",
   "wait:8",

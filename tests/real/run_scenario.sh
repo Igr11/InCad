@@ -36,10 +36,12 @@ for step in "${steps[@]}"; do
   case "$kind" in
     cmd|setup|py|point|ribbon|quit_discard|where) driver_cmd "$step";;
     click|dblclick|rclick)
+      py fresh  # spots come from the state file: a stale one points at where a widget was before a long compute
       xy=$(py spot "$arg") || { echo "FAIL $step -> no such spot (state: $(py brief))"; ((fails++)); shot "fail-$passes-$fails"; continue }
       case $kind in dblclick) b=double;; rclick) b=right;; *) b=left;; esac
       "$HERE/bin/click" ${=xy} $b; sleep 1;;
     move)
+      py fresh
       xy=$(py spot "$arg") || { echo "FAIL $step -> no such spot"; ((fails++)); continue }
       "$HERE/bin/move" ${=xy}; sleep 0.5;;
     keys) "$HERE/bin/keys" ${(s:,:)arg}; sleep 0.8;;
@@ -48,6 +50,7 @@ for step in "${steps[@]}"; do
     memo) py memo "$arg";;
     shot) shot "$arg";;
     expect)
+      py fresh
       if py expect "$arg"; then echo "PASS $arg"; ((passes++))
       else echo "FAIL $arg"; echo "     state: $(py brief)"; ((fails++)); shot "fail-$fails"; fi;;
     exited)

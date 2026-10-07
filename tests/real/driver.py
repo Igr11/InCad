@@ -87,6 +87,7 @@ def state():
           "busy": safe.busy(), "focus": None, "editing": None, "dims": [], "labels": {}, "box": None, "dialog": None,
           "menu": None, "ribbon": {}, "tree": {}, "plane_panel": {}, "points": {}, "incad_active": bool(sh and sh.active),
           "docs": list(App.listDocuments().keys()), "log": ""}
+    st["py"] = ST.get("py")
     fw = QtWidgets.QApplication.focusWidget()
     st["focus"] = type(fw).__name__ if fw else None
     sk = editing_sketch()
@@ -121,6 +122,7 @@ def state():
             st["dialog"] = {"title": fs.kind.TITLE, "active_pick": d.active_pick(), "values": d.values(),
                             "error": d.error_text(), "feature": fs.feature.Name if fs.feature is not None else None,
                             "ok": center(d.ok_button), "cancel": center(d.cancel_button), "apply": center(d.apply_button),
+                            "preview": fs._pending is not None or fs._previewing,  # FreeCAD drops clicks while it computes
                             "buttons": {}}
             for f in fs.kind.FIELDS:  # choice buttons, e.g. "operation.cut"
                 try:

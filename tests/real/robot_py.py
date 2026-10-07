@@ -82,6 +82,16 @@ elif what == "memo":
         print("  (memo raised: %s)" % e)
     with open(MEMO, "w") as f:
         json.dump(m, f)
+elif what == "fresh":  # wait until FreeCAD's event loop writes the state again (a long compute blocks it)
+    import os, time
+    for _ in range(300):
+        if time.time() - os.path.getmtime(STATE) < 0.4:
+            d = load(STATE).get("dialog")
+            if not (d and d.get("preview")):  # a scheduled or running preview: FreeCAD's progress bar eats the click
+                break
+        time.sleep(0.1)
+    else:
+        print("  (state stale for 30 s: FreeCAD busy?)")
 elif what == "error":
     print(s.get("error") or "")
 elif what == "brief":

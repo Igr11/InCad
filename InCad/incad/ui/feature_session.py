@@ -17,6 +17,8 @@ class FeatureSession(QtCore.QObject):
         self._timer.setSingleShot(True)
         self._timer.setInterval(250)
         self._timer.timeout.connect(self._preview)
+        self._previewing = False
+        self._after_preview = None
         self._pending = None
         self._applied = None
         self._closed = False
@@ -273,6 +275,18 @@ class FeatureSession(QtCore.QObject):
     def _preview(self):
         if self._pending is None or self._closed:
             return
+        if self._previewing:
+            return  # FreeCAD runs the event loop while it computes: a click meanwhile must not re-enter
+        self._previewing = True
+        try:
+            self._preview_now()
+        finally:
+            self._previewing = False
+        after, self._after_preview = self._after_preview, None
+        if after and not self._closed:  # OK / Apply / Cancel pressed while the preview computed
+            getattr(self, after)()
+
+    def _preview_now(self):
         values, self._pending = self._pending, None
         self._applied = values
         try:
@@ -381,6 +395,9 @@ class FeatureSession(QtCore.QObject):
     def ok(self):
         """Commit what the dialog shows now: a value typed but not yet previewed (Enter, or a click on OK that
         doesn't take focus on macOS) is applied first."""
+        if self._previewing:
+            self._after_preview = "ok"  # taken when the preview (seconds for a thread) is done
+            return
         self._timer.stop()
         if self.dialog is not None:
             current = self.dialog.values()
@@ -394,6 +411,9 @@ class FeatureSession(QtCore.QObject):
         self._finish(commit=True)
 
     def apply(self):
+        if self._previewing:
+            self._after_preview = "apply"
+            return
         kind = self.kind
         self.ok()
         if self._closed:
@@ -411,6 +431,9 @@ class FeatureSession(QtCore.QObject):
             QtCore.QTimer.singleShot(0, again)
 
     def cancel(self):
+        if self._previewing:
+            self._after_preview = "cancel"
+            return
         self._timer.stop()
         self._finish(commit=False)
 
