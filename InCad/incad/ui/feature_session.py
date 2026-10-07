@@ -6,12 +6,21 @@ from incad.qt import dispose, QtCore
 from incad.ui.feature_dialog import FeatureDialog
 
 
+def _feature_alive(obj):
+    try:
+        obj.TypeId
+        return True
+    except Exception:
+        return False
+
+
 class FeatureSession(QtCore.QObject):
     def __init__(self, kind, doc, body, profile=None, feature=None, theme="light", parent=None, on_close=None):
         super().__init__(parent)
         self.kind, self.doc, self.body, self.profile = kind, doc, body, profile
         self.doc_name = doc.Name
         self.feature = feature
+        self._feature_name = feature.Name if feature is not None else None
         self.creating = feature is None
         self._theme, self._parent, self._on_close = theme, parent, on_close
         self.dialog = None
@@ -378,6 +387,7 @@ class FeatureSession(QtCore.QObject):
                 self.feature = self.kind.update(self.doc, self.feature, values)
             self.doc.recompute()
         except Exception as e:
+            self._recover_deleted_feature()  # a type-swapping update() may have deleted it then failed
             if self.creating and self.feature is None:
                 self._drop_partial()
             self.dialog.set_error(str(e))
@@ -402,6 +412,25 @@ class FeatureSession(QtCore.QObject):
                 if f.kind in ("pick", "picks") and not current.get(f.key) and read.get(f.key)}
         if fill:
             self.dialog.set_values(fill)
+
+    def _recover_deleted_feature(self):
+        """An update() that swaps a feature's type (Join<->Cut) deletes the old one, then may fail before it
+        returns the new one — self.feature is left pointing at a deleted object and the next preview would crash.
+        Put it back: None while creating (the next preview recreates), or the restored original while editing."""
+        if self.feature is None or _feature_alive(self.feature):
+            return
+        if self.creating:
+            self.feature = None
+            return
+        try:
+            self.doc.abortTransaction()
+            self.doc.recompute()
+            model.relink(self.doc)
+            self.doc.openTransaction(self.kind.TITLE)
+            self._abort_extras(reopen=True)
+        except Exception as ex:
+            log.report("warning", "Could not roll back the unfinished %s: %s" % (self.kind.TITLE, ex))
+        self.feature = self.doc.getObject(self._feature_name) if self._feature_name else None
 
     def _drop_partial(self):
         """A create that failed half-way may have left objects behind: roll them back, keep the step open."""

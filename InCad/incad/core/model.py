@@ -32,6 +32,8 @@ def friendly(message):
         return "This formula refers back to itself (a loop)"
     if "axis intersects the sketch" in message:
         return "The axis crosses the profile: choose another axis or move the profile off it"
+    if "perpendicular to the sketch" in message:
+        return "The axis is perpendicular to the profile: pick an axis that lies in the profile's plane"
     return message.split("\n")[0]
 
 

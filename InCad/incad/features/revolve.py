@@ -135,6 +135,25 @@ def _drop_helper(doc, f):
         doc.removeObject(line.Name)
 
 
+def validate_axis(values, profile):
+    """Raise a plain error if the axis choice can't be resolved, WITHOUT creating anything — called before a
+    Join<->Cut type swap so a bad axis never deletes the feature half-way (it left a dangling reference that
+    crashed the next preview with 'TypeId of deleted object')."""
+    mode = values.get("axis_mode") or "V_Axis"
+    if mode == "construction":
+        if not construction_lines(profile):
+            raise ValueError("The sketch has no construction line: draw one (Construction) or choose another axis")
+    elif mode == "reference":
+        if not (values.get("axis_ref") or "").strip():
+            raise ValueError("Pick a line of the sketch, an axis or a straight edge for the axis")
+    elif mode == "two_points":
+        points = parse_points(values.get("axis_points"))
+        if len(points) != 2:
+            raise ValueError("Click two points for the axis")
+        if (points[1] - points[0]).Length < 1e-6:
+            raise ValueError("The two points must be different")
+
+
 def _axis(doc, f, values):
     mode = values.get("axis_mode") or "V_Axis"
     profile = profile_of(f)
@@ -214,10 +233,12 @@ def read(doc, f):
 
 
 def update(doc, f, values):
-    if f.TypeId != _type(values.get("operation", "join")):
+    want = _type(values.get("operation", "join"))
+    if f.TypeId != want:
+        validate_axis(values, profile_of(f))  # before _replace deletes the old feature: a bad axis stays non-fatal
         from incad.features import extrude
         helper = axis_helper(f)
-        f = extrude._replace(doc, f, _type(values.get("operation", "join")))
+        f = extrude._replace(doc, f, want)
         if helper is not None:
             setattr(helper, HELPER, f.Name)  # the axis follows the re-made feature
     _apply(doc, f, values)

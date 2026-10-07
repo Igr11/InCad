@@ -190,7 +190,45 @@ def test_5_cut_messages_are_plain():
     harness.pump(800)
 
 
+
+
+def test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature():
+    """Join->Cut while the axis is not yet valid (Two points, none picked) deletes the old feature in the type
+    swap; update() used to fail before returning the new one, leaving a deleted reference that crashed the next
+    preview with 'TypeId of deleted object'. The axis is validated before the swap now; every preview is clean."""
+    sk = rect(ST["xz"], "", [(10, 5), (18, 5), (18, 15), (10, 15)], "Prof2")
+    open_revolve(sk)
+
+    def mode(v):
+        w = dialog().field("axis_mode")
+        w.setCurrentIndex(w.findData(v))
+        harness.pump(1000)
+
+    def op(v):
+        QTest.mouseClick(dialog().field("operation").button(v), QtCore.Qt.LeftButton)
+        harness.pump(1000)
+
+    mode("two_points")
+    assert "two points" in error().lower(), error()
+    assert feature() is not None and feature().TypeId == "PartDesign::Revolution"  # alive, not deleted
+    op("cut")
+    assert "two points" in error().lower(), error()
+    assert feature() is not None and feature().TypeId == "PartDesign::Revolution", feature()  # swap didn't run
+    op("join")
+    assert "two points" in error().lower(), error()
+    assert feature() is not None and feature().TypeId == "PartDesign::Revolution"
+    mode("V_Axis")  # a valid axis: the preview recovers with no crash
+    harness.pump(1000)
+    assert error() == "", error()
+    assert feature() is not None and feature().Shape.Volume > 1
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(800)
+    assert s().feature_session is None
+    assert body().Tip.TypeId == "PartDesign::Revolution"
+
+
 harness.run([test_0_setup, test_1_construction_lines_listed_sketch_axis_default_with_two,
              test_2_reference_pick_takes_a_sketch_line_then_an_origin_axis,
              test_3_two_points_on_the_markers_make_a_hidden_axis_under_the_revolve,
-             test_4_edit_reads_two_points_back_and_delete_removes_the_axis, test_5_cut_messages_are_plain])
+             test_4_edit_reads_two_points_back_and_delete_removes_the_axis, test_5_cut_messages_are_plain,
+             test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature])
