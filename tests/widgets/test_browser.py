@@ -59,12 +59,19 @@ class BrowserTest(unittest.TestCase):
         self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=False)
         self.assertEqual(self.events, [("endOfPartMoved", ""), ("endOfPartMoved", ""), ("endOfPartMoved", "")])
 
-    def test_drop_on_the_upper_half_puts_end_of_part_before_the_feature(self):
-        """Dragging the marker up one row onto the last feature must move it (it used to land 'after' it, where
-        it already was): the upper half of a feature row means before that feature."""
-        self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"), above=True)   # before Fillet = after Pad
-        self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=True)  # before the first feature
-        self.assertEqual(self.events, [("endOfPartMoved", "Pad"), ("endOfPartMoved", "")])
+    def test_drop_on_a_rolled_back_feature_applies_it(self):
+        """Fillet1 sits BELOW End of Part (rolled back): dropping on it, either half, brings the marker down to
+        include it (dragging the marker back down onto a rolled-back feature was landing on the upper half and
+        reading as 'before it', where the marker already was)."""
+        self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"), above=True)
+        self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"), above=False)
+        self.assertEqual(self.events, [("endOfPartMoved", "Fillet"), ("endOfPartMoved", "Fillet")])
+
+    def test_drop_on_the_upper_half_of_an_applied_feature_puts_end_of_part_before_it(self):
+        """Extrusion1 is applied (above the marker) and is the first feature: a drop on its upper half rolls back
+        to before it (empty name)."""
+        self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=True)
+        self.assertEqual(self.events, [("endOfPartMoved", "")])
 
     def test_drop_target_by_row_half(self):
         self.b.resize(260, 500)

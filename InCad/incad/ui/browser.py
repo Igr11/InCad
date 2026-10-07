@@ -240,6 +240,12 @@ class ModelBrowser(QtWidgets.QWidget):
         top = self._top_feature(item)
         kind = top.data(0, KIND_ROLE)
         if kind in ("feature", "sketch"):
+            if self._rolled_back(top):
+                # the feature sits BELOW End of Part (rolled back): a drop on it means "bring the marker here", i.e.
+                # apply up to and including it, whichever half was hit (a drag down onto it was landing on the
+                # upper half and reading as 'before it', which is where the marker already was)
+                self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
+                return
             # dropped on the feature right above the marker (any half, its sketch too): "after it" is where the
             # marker already is, so the only meaning is before it — dragging up one row must move it
             before = self._feature_before(top)
@@ -250,6 +256,16 @@ class ModelBrowser(QtWidgets.QWidget):
                 self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
         elif kind in ("origin", "solids", "part"):
             self.endOfPartMoved.emit("")
+
+    @staticmethod
+    def _rolled_back(top):
+        """True when `top` is below the End of Part marker among its siblings (a feature not yet applied)."""
+        parent = top.parent()
+        if parent is None:
+            return False
+        marker = next((i for i in range(parent.childCount())
+                       if parent.child(i).data(0, KIND_ROLE) == "end_of_part"), None)
+        return marker is not None and parent.indexOfChild(top) > marker
 
     @staticmethod
     def _is_right_above_end_of_part(top):

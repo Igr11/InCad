@@ -498,7 +498,10 @@ def update_model():
     _refuse_while_busy()
     doc = App.ActiveDocument
     if doc is not None:
+        from incad.core import document
         doc.recompute()
+        for b in document.bodies(doc):  # the display follows the tip again (a view that drifted is put right)
+            document.show_result(b)
         bad = [o.Label for o in doc.Objects if "Invalid" in o.State]
         log.report("warning" if bad else "info", "Updated %s: %s failed" % (doc.Label, ", ".join(bad)) if bad
                    else "Updated %s" % doc.Label)

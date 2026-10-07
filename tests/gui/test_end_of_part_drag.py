@@ -1,5 +1,10 @@
-"""End of Part dragged in the Model Browser with mouse events: the drop position decides (upper half of a feature
-row = before it, lower half or its sketch = after it), Inventor's way; the Update button recomputes."""
+"""End of Part dropped in the Model Browser: the drop position decides for an applied feature (upper half of its
+row = before it, lower half or its sketch = after it), and a drop on a ROLLED-BACK feature (below the marker)
+applies it whichever half was hit. The shown feature follows the tip and profile sketches hide after a move.
+
+These drive `drop_end_of_part_on` directly: the rule is what matters, and a synthetic QTest mouse drag of the
+marker is timing-flaky in the offscreen harness (the real press/move/release -> drop_target -> drop_end_of_part_on
+path is covered by tests/real). Each test builds its own part so the sequence can't cascade."""
 import os
 import sys
 
@@ -8,11 +13,14 @@ sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
 import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
-from incad.qt import QtCore, QtWidgets  # noqa: E402
+import Part  # noqa: E402
+from incad.qt import QtWidgets  # noqa: E402
 from incad.core import commands, document, prefs  # noqa: E402
+from incad.features import revolve  # noqa: E402
 from incad.ui import shell  # noqa: E402
 import headless.util as util  # noqa: E402
+
+DONE = [False]
 
 
 def s():
@@ -23,96 +31,122 @@ def body():
     return document.primary_body(App.ActiveDocument)
 
 
-def row(label):
-    """A row by its text; 'Pad2/sketch' = the first child row of Pad2 (its sketch)."""
-    label, _, child = label.partition("/")
-    it = QtWidgets.QTreeWidgetItemIterator(s().browser.tree)
-    while it.value():
-        if it.value().text(0) == label:
-            item = it.value()
-            if child:
-                assert item.childCount(), "no child rows under %r" % label
-                return item.child(0)
-            return item
-        it += 1
-    raise AssertionError("no row %r" % label)
-
-
-def drag(src_label, dst_label, part="center"):
-    tree = s().browser.tree
-    vp = tree.viewport()
-    src = tree.visualItemRect(row(src_label)).center()
-    rect = tree.visualItemRect(row(dst_label))
-    dy = {"center": 0, "upper": -rect.height() // 3, "lower": rect.height() // 3}[part]
-    dst = rect.center() + QtCore.QPoint(0, dy)
-    QTest.mousePress(vp, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, src)
-    harness.pump(120)
-    QTest.mouseMove(vp, dst)
-    harness.pump(120)
-    QTest.mouseRelease(vp, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, dst)
-    harness.pump(1200)
-
-
-def test_0_setup():
-    prefs.set_remember_new_choice(True)
-    Gui.activateWorkbench("InCadWorkbench")
-    harness.pump(1000)
+def fresh_two_pads():
+    """A part with Pad then Pad2, Pad2 the tip; a closed document from the previous test is replaced."""
+    if not DONE[0]:
+        prefs.set_remember_new_choice(True)
+        prefs.set_default_units("mm")
+        Gui.activateWorkbench("InCadWorkbench")
+        harness.pump(1000)
+        DONE[0] = True
+    for d in list(App.listDocuments()):
+        App.closeDocument(d)
+    harness.pump(200)
     commands.REGISTRY.run("file.new")
-    harness.pump(800)
+    harness.pump(700)
     b = body()
-    pad = util.add_pad(b, util.add_rect_sketch(b, name="SketchA"), 10)
-    pad2 = util.add_pad(b, util.add_rect_sketch(b, w=5, h=5, name="SketchB"), 20, name="Pad2")
+    util.add_pad(b, util.add_rect_sketch(b, name="SketchA"), 10)
+    pad2 = util.add_pad(b, util.add_rect_sketch(b, w=5, h=5, name="Pad2Sketch"), 20, name="Pad2")
     b.Tip = pad2
     App.ActiveDocument.recompute()
-    harness.pump(1000)
-    assert body().Tip.Name == "Pad2"
-    assert row("End of Part") is not None and row("Pad") is not None
+    s().refresh()
+    harness.pump(600)
+    return b
 
 
-def test_1_dragged_up_one_row_onto_the_last_feature_moves_before_it():
-    drag("End of Part", "Pad2", "upper")
+def row(label):
+    it = QtWidgets.QTreeWidgetItemIterator(s().browser.tree)
+    while it.value():
+        if it.value().text(0) == label or it.value().text(0).startswith(label + " "):
+            return it.value()
+        it += 1
+    raise AssertionError("no tree row %r" % label)
+
+
+def drop(label, above):
+    s().refresh()  # the tree must reflect the current tip before we read rows (rolled-back is decided by position)
+    harness.pump(120)
+    s().browser.drop_end_of_part_on(row(label), above=above)
+    harness.pump(700)
+
+
+def test_1_upper_half_of_the_last_feature_moves_before_it():
+    fresh_two_pads()
+    drop("Pad2", above=True)   # Pad2 is applied (the tip): upper half -> before it
     assert body().Tip.Name == "Pad", body().Tip.Name
 
 
-def test_2_dragged_down_onto_the_lower_half_moves_after_it():
-    drag("End of Part", "Pad2", "lower")
+def test_2_drop_on_a_rolled_back_feature_applies_it():
+    fresh_two_pads()
+    drop("Pad2", above=True)   # Pad2 applied -> before it (roll it back)
+    assert body().Tip.Name == "Pad", body().Tip.Name
+    drop("Pad2", above=True)   # Pad2 now rolled back -> applied, even on the upper half
     assert body().Tip.Name == "Pad2", body().Tip.Name
 
 
-def test_3_dragged_onto_a_feature_two_rows_up_goes_after_it():
-    drag("End of Part", "Pad", "center")
+def test_2b_rolled_back_feature_applies_on_lower_half_and_via_its_sketch():
+    fresh_two_pads()
+    drop("Pad2", above=True)    # roll Pad2 back
+    assert body().Tip.Name == "Pad"
+    drop("Pad2", above=False)   # lower half of a rolled-back feature -> apply
+    assert body().Tip.Name == "Pad2", body().Tip.Name
+    drop("Pad2", above=True)    # roll back again
+    assert body().Tip.Name == "Pad"
+    drop("Pad2Sketch", above=False)  # its sketch (rolled back) -> apply the feature
+    assert body().Tip.Name == "Pad2", body().Tip.Name
+
+
+def test_3_lower_half_of_an_applied_feature_two_rows_up_goes_after_it():
+    fresh_two_pads()
+    drop("Pad", above=False)   # Pad applied, lower half -> after it (rolls Pad2 back)
     assert body().Tip.Name == "Pad", body().Tip.Name
 
 
-def test_3b_dragged_up_one_row_onto_the_centre_of_the_feature_above_moves_before_it():
-    """The user's case: End of Part right under the last feature, dragged onto that row (lower half): before it."""
-    drag("End of Part", "Pad2", "lower")
-    assert body().Tip.Name == "Pad2"
-    drag("End of Part", "Pad2", "center")
-    assert body().Tip.Name == "Pad", body().Tip.Name
-    drag("End of Part", "Pad2", "lower")
-    assert body().Tip.Name == "Pad2"
-    drag("End of Part", "Pad2/sketch", "center")  # its sketch, when the marker is right under the feature
-    assert body().Tip.Name == "Pad", body().Tip.Name
+def test_4_upper_half_of_the_first_feature_rolls_everything_back():
+    fresh_two_pads()
+    drop("Pad", above=True)    # Pad is the first feature: before it = nothing applied
+    assert body().Tip is None, body().Tip
 
 
-def test_3c_the_shown_feature_follows_end_of_part():
+def test_5_the_shown_feature_and_sketches_follow_the_tip():
+    fresh_two_pads()
     pad, pad2 = App.ActiveDocument.getObject("Pad"), App.ActiveDocument.getObject("Pad2")
+    drop("Pad", above=False)   # tip -> Pad
     assert pad.Visibility and not pad2.Visibility, (pad.Visibility, pad2.Visibility)
-    drag("End of Part", "Pad2", "lower")
+    assert not App.ActiveDocument.getObject("SketchA").Visibility  # profile sketch hidden
+    drop("Pad2", above=False)  # tip -> Pad2
     assert pad2.Visibility and not pad.Visibility, (pad.Visibility, pad2.Visibility)
 
 
-def test_4_dragged_onto_the_first_feature_upper_half_rolls_everything_back():
-    drag("End of Part", "Pad", "upper")
-    assert body().Tip is None, body().Tip
-    drag("End of Part", "Pad2", "lower")
-    assert body().Tip.Name == "Pad2", body().Tip.Name
+def test_6_rolled_back_revolve_is_applied_and_its_sketch_hidden():
+    """The user's exact case: a revolve was applied, End of Part was moved up above it, and a drop back onto the
+    revolve must apply it (it used to read as 'before it' and do nothing); its profile sketch hides after."""
+    b = fresh_two_pads()
+    xz = [o for o in b.Origin.OriginFeatures if o.Role == "XZ_Plane"][0]
+    sk = b.newObject("Sketcher::SketchObject", "RevProf")
+    sk.AttachmentSupport = [(xz, "")]
+    sk.MapMode = "FlatFace"
+    App.ActiveDocument.recompute()
+    for i in range(4):
+        a, c = [(12, 2), (16, 2), (16, 8), (12, 8)][i], [(12, 2), (16, 2), (16, 8), (12, 8)][(i + 1) % 4]
+        sk.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(c[0], c[1], 0)))
+    App.ActiveDocument.recompute()
+    vals = revolve.defaults(App.ActiveDocument, b, sk)
+    vals.update(axis_mode="V_Axis")
+    rev = revolve.create(App.ActiveDocument, b, sk, vals)
+    document.set_end_of_part(b, App.ActiveDocument.getObject("Pad"))  # roll the revolve (and Pad2) back
+    s().refresh()
+    harness.pump(700)
+    assert body().Tip.Name == "Pad"
+    drop("Revolve", above=True)   # upper half of a rolled-back feature still applies it
+    assert body().Tip.Name == rev.Name, body().Tip.Name
+    assert rev.Visibility and not sk.Visibility, (rev.Visibility, sk.Visibility)
 
 
-harness.run([test_0_setup, test_1_dragged_up_one_row_onto_the_last_feature_moves_before_it,
-             test_2_dragged_down_onto_the_lower_half_moves_after_it,
-             test_3_dragged_onto_a_feature_two_rows_up_goes_after_it,
-             test_3b_dragged_up_one_row_onto_the_centre_of_the_feature_above_moves_before_it,
-             test_3c_the_shown_feature_follows_end_of_part,
-             test_4_dragged_onto_the_first_feature_upper_half_rolls_everything_back])
+harness.run([test_1_upper_half_of_the_last_feature_moves_before_it,
+             test_2_drop_on_a_rolled_back_feature_applies_it,
+             test_2b_rolled_back_feature_applies_on_lower_half_and_via_its_sketch,
+             test_3_lower_half_of_an_applied_feature_two_rows_up_goes_after_it,
+             test_4_upper_half_of_the_first_feature_rolls_everything_back,
+             test_5_the_shown_feature_and_sketches_follow_the_tip,
+             test_6_rolled_back_revolve_is_applied_and_its_sketch_hidden])

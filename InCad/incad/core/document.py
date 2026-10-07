@@ -81,6 +81,39 @@ def end_of_part(body):
     return body.Tip
 
 
+def show_result(body):
+    """Show only the feature at End of Part (the body Tip), hiding the other features and the sketches, so the 3D
+    view follows the model and isn't cluttered by profile sketches. A broken tip (invalid or no shape) would leave
+    the view blank, so the nearest earlier feature that still has a shape is shown instead."""
+    feats = [o for o in body.Group if o.isDerivedFrom("PartDesign::Feature")]
+    tip = body.Tip
+    shown = tip
+    if tip is not None and _broken_shape(tip) and tip in feats:
+        for o in reversed(feats[:feats.index(tip)]):
+            if not _broken_shape(o):
+                shown = o
+                break
+    for o in feats:
+        try:
+            o.Visibility = (o is shown)
+        except Exception:
+            pass
+    for o in body.Group:  # profile / construction sketches shouldn't linger in the model view after a tip move
+        if o.TypeId == "Sketcher::SketchObject":
+            try:
+                o.Visibility = False
+            except Exception:
+                pass
+    return shown
+
+
+def _broken_shape(obj):
+    try:
+        return "Invalid" in obj.State or obj.Shape.isNull()
+    except Exception:
+        return True
+
+
 def helpers_of(body, feature):
     """Objects InCad made for `feature` (a thread's chamfer), in body order."""
     return [o for o in body.Group if getattr(o, "InCadHelperOf", None) == feature.Name]
@@ -100,10 +133,8 @@ def set_end_of_part(body, feature):
         if later:
             tip = max(later, key=group.index)
     body.Tip = tip
-    for o in body.Group:
-        if o.isDerivedFrom("PartDesign::Feature"):
-            o.Visibility = o is tip
     body.Document.recompute()
+    show_result(body)
 
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
