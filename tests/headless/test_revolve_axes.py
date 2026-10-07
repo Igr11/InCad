@@ -68,7 +68,7 @@ class RevolveAxesTest(unittest.TestCase):
         sk = profile(self.body, self.xz)
         with self.assertRaises(ValueError) as cm:
             self.make(sk, axis_mode="construction", axis_construction="")
-        self.assertIn("construction line", str(cm.exception))
+        self.assertIn("construction or projected line", str(cm.exception))
 
     def test_sketch_line_origin_axis_and_solid_edge_as_reference(self):
         sk = profile(self.body, self.xz)
@@ -163,3 +163,56 @@ class RevolveAxesTest(unittest.TestCase):
         g = self.make(sk, axis_mode="reference", axis_ref=z.Name, operation="cut")
         found = safe.problems(self.doc, broken, {o.Name for o in self.doc.Objects})
         self.assertTrue(any("whole part" in p for p in found), found)
+
+
+class RevolveProjectedAxisTest(unittest.TestCase):
+    """Revolve around a PROJECTED line: the user projects an edge of the solid into the profile sketch and uses it
+    as the axis. It can't be referenced as 'ExternalEdgeN' (FreeCAD rejects that), so it resolves to the source."""
+
+    def setUp(self):
+        self.doc = util.new_doc("RP")
+        document.make_part(self.doc, "mm")
+        self.body = document.primary_body(self.doc)
+        self.pad = util.add_pad(self.body, util.add_rect_sketch(self.body, 20, 20, name="Base"), 30)
+        self.doc.recompute()
+        xz = [o for o in self.body.Origin.OriginFeatures if o.Role == "XZ_Plane"][0]
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Prof")
+        self.sk.AttachmentSupport = [(xz, "")]
+        self.sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        for i, (ax, ay) in enumerate([(30, 5), (38, 5), (38, 15), (30, 15)]):
+            bx, by = [(30, 5), (38, 5), (38, 15), (30, 15)][(i + 1) % 4]
+            self.sk.addGeometry(Part.LineSegment(App.Vector(ax, ay, 0), App.Vector(bx, by, 0)))
+        # project a vertical edge of the pad (runs along Z) into the sketch
+        vedge = next(i + 1 for i, e in enumerate(self.pad.Shape.Edges)
+                     if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].Point.z - e.Vertexes[1].Point.z) > 1)
+        self.sk.addExternal(self.pad.Name, "Edge%d" % vedge)
+        self.doc.recompute()
+        self.vedge = vedge
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_projected_line_is_listed_and_revolves_around_its_source(self):
+        projected = revolve.projected_lines(self.sk)
+        self.assertEqual(len(projected), 1, projected)
+        value, label, ref = projected[0]
+        self.assertTrue(value.startswith("ext") and "Projected" in label, (value, label))
+        self.assertEqual(ref, (self.pad.Name, "Edge%d" % self.vedge))
+        self.assertIn((value, label), revolve.axis_line_options(self.sk))
+
+        values = revolve.defaults(self.doc, self.body, self.sk)
+        values.update(axis_mode="construction", axis_construction=value)
+        f = revolve.create(self.doc, self.body, self.sk, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertEqual(f.ReferenceAxis[0], self.pad)  # the source edge, not the sketch's ExternalEdge
+        self.assertEqual(f.ReferenceAxis[1], ["Edge%d" % self.vedge])
+        self.assertGreater(f.Shape.Volume, 1)
+        back = revolve.read(self.doc, f)
+        self.assertEqual((back["axis_mode"], back["axis_construction"]), ("construction", value))
+
+    def test_a_single_projected_line_is_the_default_axis(self):
+        values = revolve.defaults(self.doc, self.body, self.sk)
+        self.assertEqual(values["axis_mode"], "construction")
+        self.assertTrue(values["axis_construction"].startswith("ext"))

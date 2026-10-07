@@ -30,10 +30,10 @@ Logs: ~/Library/Logs/InCad.log
 ## Features
 - E Extrude, R Revolve (also on the ribbon and the right-click menu). The only finished sketch is picked
   automatically; otherwise select one. The preview updates as you type; OK, Apply + (one more), Cancel/Esc.
-- Revolve axis: the sketch's vertical or horizontal axis, a construction line of the sketch (listed; the only one
-  is the default), a line / axis / edge picked in the view (a sketch line, an origin or work axis, a straight
-  edge), or two points clicked on the part's corners, edge middles and circle centres (a hidden Revolve axis
-  under the feature, deleted with it).
+- Revolve axis: the sketch's vertical or horizontal axis, a construction or projected line of the sketch (listed;
+  the only one is the default — project an edge of the solid into the sketch to revolve around it), a line / axis
+  / edge picked in the view (a sketch line, an origin or work axis, a straight edge), or two points clicked on the
+  part's corners, edge middles and circle centres (a hidden Revolve axis under the feature, deleted with it).
 - Values accept units, names and formulas (Width/2, d3*2); click a dimension or a parameter to insert its name.
 - Every value becomes a named parameter (d0, d1 …) in the Parameters panel. Double-click a feature to edit it.
 - H Hole (from sketch points/circles or concentric to a round edge; counterbore, countersink, through all),

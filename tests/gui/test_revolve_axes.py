@@ -227,8 +227,44 @@ def test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature():
     assert body().Tip.TypeId == "PartDesign::Revolution"
 
 
+def test_7_projected_line_axis_through_the_dialog():
+    """Project an edge of the solid into the profile sketch, then revolve around it: the Construction / projected
+    drop-down lists it and the revolve spins around the source edge."""
+    body_ = body()
+    pad = util.add_pad(body_, util.add_rect_sketch(body_, 16, 16, name="Boss"), 24, name="Boss")
+    doc().recompute()
+    xz = ST["xz"]
+    sk = body_.newObject("Sketcher::SketchObject", "ProjProf")
+    sk.AttachmentSupport = [(xz, "")]
+    sk.MapMode = "FlatFace"
+    doc().recompute()
+    for i in range(4):
+        a, b = [(40, 4), (46, 4), (46, 12), (40, 12)][i], [(40, 4), (46, 4), (46, 12), (40, 12)][(i + 1) % 4]
+        sk.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(b[0], b[1], 0)))
+    vedge = next(i + 1 for i, e in enumerate(pad.Shape.Edges)
+                 if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].Point.z - e.Vertexes[1].Point.z) > 1)
+    sk.addExternal(pad.Name, "Edge%d" % vedge)
+    doc().recompute()
+    open_revolve(sk)
+    choose("axis_mode", "construction")
+    w = dialog().field("axis_construction")
+    datas = [w.itemData(i) for i in range(w.count())]
+    assert any(d.startswith("ext") for d in datas), datas
+    ext = next(d for d in datas if d.startswith("ext"))
+    w.setCurrentIndex(w.findData(ext))
+    harness.pump(1200)
+    assert error() == "", error()
+    f = feature()
+    assert f.ReferenceAxis[0] is pad and f.ReferenceAxis[1] == ["Edge%d" % vedge], f.ReferenceAxis
+    assert f.Shape.Volume > 1
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
+
 harness.run([test_0_setup, test_1_construction_lines_listed_sketch_axis_default_with_two,
              test_2_reference_pick_takes_a_sketch_line_then_an_origin_axis,
              test_3_two_points_on_the_markers_make_a_hidden_axis_under_the_revolve,
              test_4_edit_reads_two_points_back_and_delete_removes_the_axis, test_5_cut_messages_are_plain,
-             test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature])
+             test_6_toggle_cut_with_an_invalid_axis_does_not_leave_a_deleted_feature,
+             test_7_projected_line_axis_through_the_dialog])

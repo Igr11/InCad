@@ -15,7 +15,7 @@ PROPS = {"angle": "Angle", "angle2": "Angle2"}
 HELPER = "InCadHelperOf"      # on the Work Axis InCad makes for two points: the revolve it belongs to
 POINTS = "InCadAxisPoints"    # on that axis: the two points as typed into the field ("x y z;x y z")
 AXIS_MODES = (("V_Axis", "Sketch vertical"), ("H_Axis", "Sketch horizontal"),
-              ("construction", "Construction line"), ("reference", "Line, axis or edge"),
+              ("construction", "Construction / projected line"), ("reference", "Line, axis or edge"),
               ("two_points", "Two points"))
 FIELDS = (
     Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join"),
@@ -53,6 +53,45 @@ def construction_lines(sk):
     return out
 
 
+def projected_lines(sk):
+    """[("extK", label, (source object name, sub))] for straight PROJECTED (external) edges in the sketch — a line
+    the user brought in with Project to revolve around. It can't be referenced as 'ExternalEdgeN' (FreeCAD rejects
+    that for a revolve axis), so each resolves to its SOURCE edge, which revolves correctly."""
+    out = []
+    if sk is None:
+        return out
+    try:
+        entries = list(sk.ExternalGeometry)
+    except Exception:
+        return out
+    k = 0
+    for obj, subs in entries:
+        for sub in subs:
+            try:
+                edge = obj.Shape.getElement(sub)
+                is_line = edge.Curve.TypeId == "Part::GeomLine"
+                length = edge.Length
+            except Exception:
+                is_line, length = False, 0.0
+            if is_line:
+                out.append(("ext%d" % k, "Projected · %s %s (%s)" % (obj.Label, sub, _mm(length)), (obj.Name, sub)))
+            k += 1
+    return out
+
+
+def axis_line_options(sk):
+    """Choices for the Construction / projected drop-down: the sketch's own construction lines and its projected
+    straight edges."""
+    return [(v, lbl) for v, lbl in construction_lines(sk)] + [(v, lbl) for v, lbl, _ in projected_lines(sk)]
+
+
+def _projected_source(sk, value):
+    for v, _lbl, ref in projected_lines(sk):
+        if v == value:
+            return ref
+    return None
+
+
 def axis_name(sub):
     """FreeCAD stores the first construction line as 'Axis' (index 0 dropped): the listed name is 'Axis0'."""
     return "Axis0" if sub == "Axis" else sub
@@ -66,16 +105,16 @@ def _mm(length):
 
 def options(key, values, profile=None):
     if key == "axis_construction":
-        return construction_lines(profile)
+        return axis_line_options(profile)
     return None
 
 
 def defaults(doc, body, profile):
     values = {f.key: f.default for f in FIELDS}
-    lines = construction_lines(profile)
+    lines = axis_line_options(profile)
     if lines:
         values["axis_construction"] = lines[0][0]
-        if len(lines) == 1:  # Inventor's centerline: the one construction line is what it was drawn for
+        if len(lines) == 1:  # the one construction / projected line is what it was drawn or projected for
             values["axis_mode"] = "construction"
     return values
 
@@ -141,8 +180,9 @@ def validate_axis(values, profile):
     crashed the next preview with 'TypeId of deleted object')."""
     mode = values.get("axis_mode") or "V_Axis"
     if mode == "construction":
-        if not construction_lines(profile):
-            raise ValueError("The sketch has no construction line: draw one (Construction) or choose another axis")
+        if not axis_line_options(profile):
+            raise ValueError("No construction or projected line in the sketch: draw one (Construction), project an "
+                             "edge, or choose another axis")
     elif mode == "reference":
         if not (values.get("axis_ref") or "").strip():
             raise ValueError("Pick a line of the sketch, an axis or a straight edge for the axis")
@@ -160,12 +200,21 @@ def _axis(doc, f, values):
     if mode in ("V_Axis", "H_Axis"):
         return profile, [mode]
     if mode == "construction":
-        lines = construction_lines(profile)
+        lines = axis_line_options(profile)
         if not lines:
-            raise ValueError("The sketch has no construction line: draw one (Construction) or choose another axis")
+            raise ValueError("No construction or projected line in the sketch: draw one (Construction), project an "
+                             "edge, or choose another axis")
         wanted = values.get("axis_construction") or lines[0][0]
         if wanted not in [v for v, _ in lines]:
             wanted = lines[0][0]
+        if wanted.startswith("ext"):  # a projected line: revolve around its SOURCE edge, not 'ExternalEdgeN'
+            ref = _projected_source(profile, wanted)
+            if ref is None:
+                raise ValueError("That projected line is no longer in the sketch: pick another axis")
+            src = doc.getObject(ref[0])
+            if src is None:
+                raise ValueError("The projected line's edge is gone: pick another axis")
+            return src, [ref[1]]
         return profile, [wanted]
     if mode == "reference":
         pairs = parse_picks(doc, values.get("axis_ref"))
@@ -216,9 +265,10 @@ def read(doc, f):
     ref = f.ReferenceAxis
     obj, sub = (ref[0], (ref[1][0] if ref[1] else "")) if ref else (None, "")
     profile = profile_of(f)
-    lines = construction_lines(profile)
+    lines = axis_line_options(profile)
     if lines:
         values["axis_construction"] = lines[0][0]
+    projected = {(o, su): v for v, _lbl, (o, su) in projected_lines(profile)}
     if obj is None:
         pass
     elif obj is profile and sub in ("V_Axis", "H_Axis"):
@@ -227,6 +277,8 @@ def read(doc, f):
         values.update(axis_mode="construction", axis_construction=axis_name(sub))
     elif getattr(obj, HELPER, None) == f.Name:
         values.update(axis_mode="two_points", axis_points=getattr(obj, POINTS, ""))
+    elif (obj.Name, sub) in projected:  # the axis is a projected line of the sketch, read as a construction choice
+        values.update(axis_mode="construction", axis_construction=projected[(obj.Name, sub)])
     else:
         values.update(axis_mode="reference", axis_ref=format_picks([(obj, sub)]))
     return values
