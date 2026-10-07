@@ -127,6 +127,20 @@ class RevolveAxesTest(unittest.TestCase):
         self.assertEqual([o for o in self.body.Group if o.TypeId == "PartDesign::Line"], [])
         self.assertEqual(f.ReferenceAxis[1], ["V_Axis"])
 
+    def test_two_points_off_the_profile_plane_are_projected_onto_it(self):
+        """Picked points can be anywhere on the solid; a revolve axis must lie in the profile's plane, so the two
+        points are projected onto it. An axis beside the profile then revolves (it used to fail as out-of-plane)."""
+        sk = profile(self.body, self.xz)  # profile in the XZ plane (y = 0), x from 10 to 18
+        # two points well OFF the plane (y = 7) to the LEFT of the profile; their projection is the axis
+        f = self.make(sk, operation="cut",
+                      axis_points="2 7 -5;2 7 30", axis_mode="two_points")
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        helper = f.ReferenceAxis[0]
+        pts = revolve.parse_points(getattr(helper, revolve.POINTS))
+        self.assertTrue(all(abs(p.y) < 1e-6 for p in pts), pts)  # projected onto y = 0
+        pad = util.add_pad(self.body, util.add_rect_sketch(self.body, 30, 20, name="B"), 6)  # give it something to cut
+        self.doc.recompute()
+
     def test_two_points_need_two_different_points(self):
         sk = profile(self.body, self.xz)
         with self.assertRaises(ValueError):

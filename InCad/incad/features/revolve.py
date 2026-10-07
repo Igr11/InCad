@@ -146,6 +146,24 @@ def axis_helper(f):
     return None
 
 
+def project_to_plane(points, profile):
+    """Project the picked points onto the profile's plane, so the axis always lies IN the plane (a revolve axis
+    must). The points can be clicked anywhere on the solid; what matters is the line they mark in the plane."""
+    try:
+        pl = profile.getGlobalPlacement()
+        origin = pl.Base
+        normal = pl.Rotation.multVec(App.Vector(0, 0, 1))
+        normal.normalize()
+    except Exception:
+        return points
+    out = []
+    for p in points:
+        v = App.Vector(p)
+        offset = (v - origin).dot(normal)
+        out.append(v if abs(offset) < 1e-7 else v - normal * offset)  # already in the plane: leave it exactly
+    return out
+
+
 def _place_helper(doc, f, points):
     a, b = points
     d = b - a
@@ -228,7 +246,11 @@ def _axis(doc, f, values):
         points = parse_points(values.get("axis_points"))
         if len(points) != 2:
             raise ValueError("Click two points for the axis")
-        return _place_helper(doc, f, points), [""]
+        flat = project_to_plane(points, profile)  # the axis must lie in the profile's plane
+        if (flat[1] - flat[0]).Length < 1e-6:
+            raise ValueError("Those two points are one above the other on the profile's plane: pick points that "
+                             "are apart within the plane")
+        return _place_helper(doc, f, flat), [""]
     raise ValueError("Unknown axis choice %r" % mode)
 
 
