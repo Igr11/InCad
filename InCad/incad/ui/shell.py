@@ -118,6 +118,40 @@ class _MeasurePicker:
         self._again()
 
 
+def _fit_points_in_view(view, points):
+    """Zoom out (keeping the camera direction) until every point is inside the viewport, so markers never land
+    off screen. Only ever zooms OUT — a view that already shows them is left alone."""
+    try:
+        import FreeCAD as App
+        if not points:
+            return
+        w, h = view.getSize()
+        if not w or not h:
+            return
+        margin = 0.08
+        need = False
+        for p in points:
+            x, y = view.getPointOnViewport(App.Vector(p))
+            if not (w * margin <= x <= w * (1 - margin) and h * margin <= y <= h * (1 - margin)):
+                need = True
+                break
+        if not need:
+            return
+        view.fitAll()
+        # fitAll may still clip markers right at the edge; nudge the zoom out a touch so all sit inside
+        from pivy import coin
+        cam = view.getCameraNode()
+        if cam.isOfType(coin.SoOrthographicCamera.getClassTypeId()):
+            cam.height.setValue(cam.height.getValue() * 1.15)
+        elif cam.isOfType(coin.SoPerspectiveCamera.getClassTypeId()):
+            pos = cam.position.getValue()
+            focal = cam.focalDistance.getValue()
+            cam.position.setValue(pos.getValue()[0], pos.getValue()[1], pos.getValue()[2])
+            cam.focalDistance.setValue(focal * 1.15)
+    except Exception:
+        pass
+
+
 class _PointPick:
     """N points clicked on markers drawn on the view (never in the document): the section plane by 3 points, a
     revolve axis by 2. `on_done(points)` when all are picked, `on_cancel()` on Esc or another pick taking over."""
@@ -1939,11 +1973,14 @@ class Shell(QtCore.QObject):
         doc = self._doc()
         if doc is None:
             raise ValueError("Open a part first")
+        if self._point_pick is not None:
+            self._point_pick.on_cancel = None  # replacing it, not cancelling back to a dialog field
         self._cancel_point_pick()
         view = Gui.getDocument(doc.Name).ActiveView
         self._point_pick = _PointPick(view, [p for _, p in points], [k for k, _ in points], count, prompt,
                                       on_done, on_cancel)
-        Gui.Selection.clearSelection()
+        _fit_points_in_view(view, [p for _, p in points])  # so every marker is on screen (they sit on the solid,
+        Gui.Selection.clearSelection()                     # which can be off-screen when zoomed into the sketch)
         self.status.set_prompt(prompt)
         self.schedule_refresh()
 

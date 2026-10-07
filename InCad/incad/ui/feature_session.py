@@ -261,8 +261,8 @@ class FeatureSession(QtCore.QObject):
                 self._point_key = None
                 sh.cancel_point_pick(quiet=True)
             return
-        if getattr(self, "_point_key", None) == key:
-            return
+        if getattr(self, "_point_key", None) == key and sh._point_pick is not None:
+            return  # already showing the markers for this field
         self._point_key = key
         from incad.core import section
         base = self._expected_base()
