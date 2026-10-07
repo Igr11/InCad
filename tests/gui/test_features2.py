@@ -414,9 +414,45 @@ def test_escape_during_the_first_preview_closes_cleanly():
     Gui.Selection.clearSelection()
 
 
+def test_escape_during_an_apply_means_stop():
+    """Apply with a value not previewed yet runs the preview; Esc landing meanwhile cancels — and no next dialog
+    of the same kind opens (Inventor: Esc means stop)."""
+    from incad import features
+    fillet = [k for k in features.kinds() if k.TITLE == "Fillet"][0]
+    tip_before = body().Tip.Name
+    Gui.Selection.clearSelection()
+    for e in top_edges(body().Tip, 0):
+        Gui.Selection.addSelection(doc().Name, body().Tip.Name, e)
+    commands.REGISTRY.run("feature.fillet")
+    harness.pump(900)
+    fs = s().feature_session
+    assert fs is not None and dialog() is not None
+    dialog().field("radius").setText("2 mm")  # typed, not previewed yet (no editingFinished)
+    original = fillet.update
+    ST.pop("fs", None)
+
+    def update_then_escape(*a, **k):
+        feature = original(*a, **k)
+        if fs._previewing:
+            ST["fs"] = fs
+            fs.cancel()
+        return feature
+    fillet.update = update_then_escape
+    try:
+        fs._pending = dialog().values()
+        fs.apply()
+    finally:
+        fillet.update = original
+    harness.pump(900)
+    assert "fs" in ST, "Apply's preview never reached the model step"
+    assert s().feature_session is None, "Esc during Apply must not open the next dialog"
+    assert body().Tip.Name == tip_before, body().Tip.Name
+    Gui.Selection.clearSelection()
+
+
 harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_from_sketch,
              test_preview_error_after_the_check_keeps_nothing_pending,
-             test_escape_during_the_first_preview_closes_cleanly,
+             test_escape_during_the_first_preview_closes_cleanly, test_escape_during_an_apply_means_stop,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,

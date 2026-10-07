@@ -25,6 +25,7 @@ class FeatureSession(QtCore.QObject):
         self._applied = None
         self._closed = False
         self._again = False
+        self._committed = False
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
         self._extra = []  # other documents this dialog changes (assembly cuts): one undo step in each
         self._observing = False
@@ -123,9 +124,10 @@ class FeatureSession(QtCore.QObject):
             return
         if on and not self._observing and not self._closed:
             Gui.Selection.addObserver(self)
+            self._observing = True
         elif not on and self._observing:
             Gui.Selection.removeObserver(self)
-        self._observing = on
+            self._observing = False
 
     def _apply_preselection(self):
         from incad.features import common
@@ -304,6 +306,7 @@ class FeatureSession(QtCore.QObject):
                 # roll back every document, then open all the undo steps again before changing anything
                 # (opening a step in one more document commits what is pending in the others)
                 self.doc.abortTransaction()
+                self.feature = None  # the abort removed it (before anything below can raise)
                 self._abort_extras(reopen=False)
                 self.doc.recompute()
                 model.relink(self.doc)
@@ -426,7 +429,9 @@ class FeatureSession(QtCore.QObject):
             return
         kind = self.kind
         self.ok()
-        if self._closed and not self._again:  # once: a second Apply that landed during the preview is folded in
+        # once, and only after a commit: a second Apply that landed during the preview is folded in, and an Esc
+        # that landed there means stop (Inventor), not "and now the next one"
+        if self._closed and self._committed and not self._again:
             self._again = True
             from incad.ui import shell
             try:
@@ -452,6 +457,8 @@ class FeatureSession(QtCore.QObject):
         if self._closed:
             return
         self._closed = True
+        self._committed = commit
+        self._timer.stop()  # a value edited during the last preview must not preview after the close
         self._observe(False)
         try:
             self._show_base(False)
