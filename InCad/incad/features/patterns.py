@@ -1,5 +1,6 @@
 """Rectangular / Circular Pattern and Mirror (Inventor) = PartDesign LinearPattern (two directions, Extent mode:
 probed — the second direction ignores Spacing mode), PolarPattern and Mirrored."""
+import re
 from types import SimpleNamespace
 
 from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
@@ -56,8 +57,25 @@ def _link_text(link):
     return "%s:%s" % (link[0].Name, sub) if sub else link[0].Name
 
 
+_NUMBER_WITH_UNIT = re.compile(r"^[-+]?\d+(\.\d+)?\s*[A-Za-z°\"'%]+$")
+
+
+def _check_count(text):
+    """A plain number must be a whole number >= 1 and carry no unit; names and formulas are checked by FreeCAD."""
+    text = (text or "").strip()
+    try:
+        number = float(text)
+    except ValueError:
+        if _NUMBER_WITH_UNIT.match(text):
+            raise ValueError("The count must be a whole number without a unit")
+        return
+    if number != int(number) or number < 1:
+        raise ValueError("The count must be a whole number, 1 or more")
+
+
 def _count(doc, f, prop, text):
-    value_param(doc, f, prop, text or "2", "count")
+    _check_count(text)
+    value_param(doc, f, prop, (text or "2").strip(), "count")
 
 
 def _length_from(doc, f, length_prop, count_prop, spacing_text, spacing_key):

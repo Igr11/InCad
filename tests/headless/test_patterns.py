@@ -34,6 +34,16 @@ class PatternsTest(unittest.TestCase):
         model.set_model_parameter(self.doc, name, "10 mm")  # overlapping copies now
         self.assertLess(f.Shape.Volume, 2 * 2000 - 1)
 
+    def test_a_count_must_be_a_whole_number_of_at_least_one(self):
+        for k, key in ((patterns.RECT, "count1"), (patterns.CIRC, "count")):
+            for bad in ("2.5", "0", "-3", "3 mm"):
+                with self.assertRaises(ValueError, msg="%s %r" % (key, bad)) as cm:
+                    k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), **{key: bad}))
+                self.assertIn("whole number", str(cm.exception))
+        k = patterns.CIRC  # a whole number is still fine
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="5"))
+        self.assertEqual(f.Occurrences, 5)
+
     def test_circular(self):
         k = patterns.CIRC
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="4"))
