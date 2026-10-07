@@ -240,12 +240,24 @@ class ModelBrowser(QtWidgets.QWidget):
         top = self._top_feature(item)
         kind = top.data(0, KIND_ROLE)
         if kind in ("feature", "sketch"):
-            if above and item is top:
-                self.endOfPartMoved.emit(self._feature_before(top))
+            # dropped on the feature right above the marker (any half, its sketch too): "after it" is where the
+            # marker already is, so the only meaning is before it — dragging up one row must move it
+            before = self._feature_before(top)
+            first_of_part = top.parent() is not None and top.parent().data(0, KIND_ROLE) == "part"
+            if (above and item is top) or (self._is_right_above_end_of_part(top) and (before or first_of_part)):
+                self.endOfPartMoved.emit(before)  # "" = before the first feature (of the main solid only)
             else:
                 self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
         elif kind in ("origin", "solids", "part"):
             self.endOfPartMoved.emit("")
+
+    @staticmethod
+    def _is_right_above_end_of_part(top):
+        parent = top.parent()
+        if parent is None:
+            return False
+        nxt = parent.child(parent.indexOfChild(top) + 1)
+        return nxt is not None and nxt.data(0, KIND_ROLE) == "end_of_part"
 
     @staticmethod
     def _feature_before(top):

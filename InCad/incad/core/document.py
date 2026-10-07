@@ -81,11 +81,28 @@ def end_of_part(body):
     return body.Tip
 
 
+def helpers_of(body, feature):
+    """Objects InCad made for `feature` (a thread's chamfer), in body order."""
+    return [o for o in body.Group if getattr(o, "InCadHelperOf", None) == feature.Name]
+
+
 def set_end_of_part(body, feature):
-    """Put End of Part right after `feature`; None puts it before the first feature."""
+    """Put End of Part right after `feature` — with the helpers InCad made for it, so "after Thread" includes its
+    chamfer; None puts it before the first feature. The shown solid follows: only the tip feature is displayed,
+    as FreeCAD's own Move Tip does (the 3D view otherwise keeps showing the last feature it showed, and moving
+    End of Part seems to do nothing)."""
     if feature is not None and feature not in body.Group:
         raise ValueError("%s is not part of %s" % (feature.Label, body.Label))
-    body.Tip = feature
+    tip = feature
+    if feature is not None:
+        group = list(body.Group)
+        later = [h for h in helpers_of(body, feature) if group.index(h) > group.index(feature)]
+        if later:
+            tip = max(later, key=group.index)
+    body.Tip = tip
+    for o in body.Group:
+        if o.isDerivedFrom("PartDesign::Feature"):
+            o.Visibility = o is tip
     body.Document.recompute()
 
 

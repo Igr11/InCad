@@ -24,10 +24,16 @@ def body():
 
 
 def row(label):
+    """A row by its text; 'Pad2/sketch' = the first child row of Pad2 (its sketch)."""
+    label, _, child = label.partition("/")
     it = QtWidgets.QTreeWidgetItemIterator(s().browser.tree)
     while it.value():
         if it.value().text(0) == label:
-            return it.value()
+            item = it.value()
+            if child:
+                assert item.childCount(), "no child rows under %r" % label
+                return item.child(0)
+            return item
         it += 1
     raise AssertionError("no row %r" % label)
 
@@ -78,6 +84,25 @@ def test_3_dragged_onto_a_feature_two_rows_up_goes_after_it():
     assert body().Tip.Name == "Pad", body().Tip.Name
 
 
+def test_3b_dragged_up_one_row_onto_the_centre_of_the_feature_above_moves_before_it():
+    """The user's case: End of Part right under the last feature, dragged onto that row (lower half): before it."""
+    drag("End of Part", "Pad2", "lower")
+    assert body().Tip.Name == "Pad2"
+    drag("End of Part", "Pad2", "center")
+    assert body().Tip.Name == "Pad", body().Tip.Name
+    drag("End of Part", "Pad2", "lower")
+    assert body().Tip.Name == "Pad2"
+    drag("End of Part", "Pad2/sketch", "center")  # its sketch, when the marker is right under the feature
+    assert body().Tip.Name == "Pad", body().Tip.Name
+
+
+def test_3c_the_shown_feature_follows_end_of_part():
+    pad, pad2 = App.ActiveDocument.getObject("Pad"), App.ActiveDocument.getObject("Pad2")
+    assert pad.Visibility and not pad2.Visibility, (pad.Visibility, pad2.Visibility)
+    drag("End of Part", "Pad2", "lower")
+    assert pad2.Visibility and not pad.Visibility, (pad.Visibility, pad2.Visibility)
+
+
 def test_4_dragged_onto_the_first_feature_upper_half_rolls_everything_back():
     drag("End of Part", "Pad", "upper")
     assert body().Tip is None, body().Tip
@@ -88,4 +113,6 @@ def test_4_dragged_onto_the_first_feature_upper_half_rolls_everything_back():
 harness.run([test_0_setup, test_1_dragged_up_one_row_onto_the_last_feature_moves_before_it,
              test_2_dragged_down_onto_the_lower_half_moves_after_it,
              test_3_dragged_onto_a_feature_two_rows_up_goes_after_it,
+             test_3b_dragged_up_one_row_onto_the_centre_of_the_feature_above_moves_before_it,
+             test_3c_the_shown_feature_follows_end_of_part,
              test_4_dragged_onto_the_first_feature_upper_half_rolls_everything_back])

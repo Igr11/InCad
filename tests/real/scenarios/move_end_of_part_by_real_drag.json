@@ -19,6 +19,11 @@
   "drag:tree.EndOfPart,tree.Pad001",
   "wait:1.5",
   "expect:s['tip'] == 'Pad001'",
+  "drag:tree.EndOfPart,tree.Pad001",
+  "wait:1.5",
+  "expect:s['tip'] == 'Pad' and abs(s['volume'] - 2000) < 0.5",
+  "py:[(o.Name, o.Visibility) for o in App.ActiveDocument.getObject('Body').Group if o.TypeId.startswith('PartDesign')]",
+  "expect:\"('Pad', True)\" in str(s['py']) and \"('Pad001', False)\" in str(s['py'])",
   "expect:'ERROR' not in s['log'][-600:]"
  ]
 }

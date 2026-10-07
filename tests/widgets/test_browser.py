@@ -48,18 +48,23 @@ class BrowserTest(unittest.TestCase):
 
     def test_drop_end_of_part(self):
         self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"))
-        self.b.drop_end_of_part_on(self.b.item_by_label("Sketch1"))
         self.b.drop_end_of_part_on(self.b.item_by_label("XY Plane"))
-        self.assertEqual(self.events, [("endOfPartMoved", "Fillet"), ("endOfPartMoved", "Pad"),
-                                       ("endOfPartMoved", "")])
+        self.assertEqual(self.events, [("endOfPartMoved", "Fillet"), ("endOfPartMoved", "")])
+
+    def test_drop_on_the_feature_right_above_the_marker_means_before_it(self):
+        """Extrusion1 sits right above End of Part: 'after it' is where the marker is, so a drop on it (any half,
+        or on its sketch) puts End of Part before it — the user's drag up one row that did nothing."""
+        self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"))
+        self.b.drop_end_of_part_on(self.b.item_by_label("Sketch1"))
+        self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=False)
+        self.assertEqual(self.events, [("endOfPartMoved", ""), ("endOfPartMoved", ""), ("endOfPartMoved", "")])
 
     def test_drop_on_the_upper_half_puts_end_of_part_before_the_feature(self):
         """Dragging the marker up one row onto the last feature must move it (it used to land 'after' it, where
         it already was): the upper half of a feature row means before that feature."""
         self.b.drop_end_of_part_on(self.b.item_by_label("Fillet1"), above=True)   # before Fillet = after Pad
         self.b.drop_end_of_part_on(self.b.item_by_label("Extrusion1"), above=True)  # before the first feature
-        self.b.drop_end_of_part_on(self.b.item_by_label("Sketch1"), above=True)  # a child row: after its feature
-        self.assertEqual(self.events, [("endOfPartMoved", "Pad"), ("endOfPartMoved", ""), ("endOfPartMoved", "Pad")])
+        self.assertEqual(self.events, [("endOfPartMoved", "Pad"), ("endOfPartMoved", "")])
 
     def test_drop_target_by_row_half(self):
         self.b.resize(260, 500)
