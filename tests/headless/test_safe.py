@@ -1,7 +1,8 @@
 import unittest
 
 import FreeCAD as App
-from incad.core import log, safe
+from incad.core import document, log, safe
+from incad.features import thread
 from headless import util
 
 
@@ -42,7 +43,7 @@ class SafeTest(unittest.TestCase):
         self.assertIn("boom", r.error)
         self.assertIsNone(self.doc.getObject("Body"))
         self.assertEqual(self.messages[-1][0], "error")
-        with open(log.log_path()) as f:
+        with open(log.log_path(), encoding="utf-8") as f:
             self.assertIn("boom", f.read())
 
     def test_invalid_result_rolls_back(self):
@@ -152,3 +153,48 @@ class ModeledThreadHintTest(unittest.TestCase):
         hole = self._F("Hole", "PartDesign::Hole", pad, model_thread=False)
         self.assertFalse(safe._has_modeled_thread(self._F("Pocket", "PartDesign::Pocket", hole)))
         self.assertFalse(safe._has_modeled_thread(None))
+
+
+class ModeledThreadKernelTest(unittest.TestCase):
+    """The real kernel path: a cut that removes everything is blamed on the thread only when a modeled one precedes it."""
+
+    def setUp(self):
+        from headless import test_thread
+        self.doc = util.new_doc("SafeThread")
+        self.body = document.make_part(self.doc)
+        self.shaft = test_thread.shaft(self.doc, self.body)
+        self.cyl_face = test_thread.cyl_face
+        log.set_reporter(lambda level, msg: None)
+
+    def tearDown(self):
+        log.set_reporter(None)
+        App.closeDocument(self.doc.Name)
+
+    def cut_everything(self):
+        import Part
+        def build():
+            sk = self.body.newObject("Sketcher::SketchObject", "BigSk")
+            sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+            sk.MapMode = "FlatFace"
+            sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 50))
+            pocket = self.body.newObject("PartDesign::Pocket", "Pocket")
+            pocket.Profile, pocket.Type, pocket.SideType = sk, 1, "Symmetric"
+            self.body.Tip = pocket
+            self.doc.recompute()
+            return pocket
+        return safe.run_safely("Cut everything", build, self.doc)
+
+    def test_plain_part_keeps_the_generic_message(self):
+        r = self.cut_everything()
+        self.assertFalse(r.ok)
+        self.assertIn("cuts away the whole part", r.error)
+
+    def test_modeled_thread_gets_the_thread_hint(self):
+        v = dict(thread.defaults(self.doc, self.body, None), face=self.cyl_face(self.shaft, 5),
+                 standard="iso", size="M10", clearance="0 mm")
+        thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        r = self.cut_everything()
+        self.assertFalse(r.ok)
+        self.assertIn("modeled (helical) thread", r.error)
+        self.assertNotIn("cuts away the whole part", r.error)
