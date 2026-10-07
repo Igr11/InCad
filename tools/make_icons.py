@@ -42,6 +42,9 @@ ICONS = {
     "redo": ('<path d="M20 8 L27 14 L20 20" fill="none" stroke="{S}" stroke-width="2.4" stroke-linecap="round" '
              'stroke-linejoin="round"/><path d="M27 14 H13 A7 7 0 0 0 13 28 H18" fill="none" stroke="{S}" '
              'stroke-width="2.4" stroke-linecap="round"/>'),
+    "update": ('<path d="M24.5 16 A8.5 8.5 0 1 1 22 10" fill="none" stroke="{S}" stroke-width="2.4" '
+               'stroke-linecap="round"/><path d="M23 4 V10.5 H16.5" fill="none" stroke="{S}" stroke-width="2.4" '
+               'stroke-linecap="round" stroke-linejoin="round"/>'),
     "freecad": ('<path d="M5 11 H25 M20 6 L25 11 L20 16" fill="none" stroke="{S}" stroke-width="2.4" '
                 'stroke-linecap="round" stroke-linejoin="round"/><path d="M27 21 H7 M12 16 L7 21 L12 26" '
                 'fill="none" stroke="{A}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),

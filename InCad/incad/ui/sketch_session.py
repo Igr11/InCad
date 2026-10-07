@@ -12,6 +12,7 @@ class SketchSession:
         self._last_edited = None
         self._origin = None  # (view object, was visible) while picking
         self._datum_scale = None  # FreeCAD's DatumScale before the pick enlarged the planes (None: not changed)
+        self._solid = False  # the part had a solid when the pick began (its faces win over the planes drawn)
 
     def _changed(self):
         if self._on_change is not None:
@@ -47,15 +48,18 @@ class SketchSession:
         import FreeCADGui as Gui
         self.cancel_pick()
         body = document.primary_body(doc)
-        if body is not None and not _has_solid(body):
-            # Inventor: an empty part offers its origin planes to click; once there is a solid its faces are what
-            # gets picked (big planes drawn in front would take the click meant for a face) and the view stays put
+        self._solid = body is not None and _has_solid(body)
+        if body is not None:
+            # The origin planes are offered to click, big enough to see. On an empty part the view is framed on
+            # them; with a solid the view stays where the user had it and a face under the cursor wins over a
+            # plane drawn in front of it (addSelection), so the planes never take a click meant for the model.
             vos = [body.Origin.ViewObject] + [f.ViewObject for f in body.Origin.OriginFeatures]
             self._origin = [(v, v.Visibility) for v in vos]  # the planes themselves too (a saved file may hide them)
             gdoc = Gui.getDocument(doc.Name)
             view = gdoc.ActiveView if gdoc is not None else None
             if view is not None:
-                self._datum_scale = _frame_planes(body, view)  # the size first: planes switched on below use it
+                # the size first: planes switched on below use it
+                self._datum_scale = _set_datum_scale(PICK_DATUM_SCALE) if self._solid else _frame_planes(body, view)
             # FreeCAD applies a new datum size only when a plane is shown again (clicking Origin did that for the
             # user): switch them on fresh now, and once more when the size has surely arrived
             _show_fresh(vos, view)
@@ -93,6 +97,10 @@ class SketchSession:
             return
         obj = App.getDocument(doc_name).getObject(obj_name)
         support, face = self._resolve(obj, sub)
+        if self._solid and _is_origin_plane(support):
+            hit = _face_under(doc_name, pnt)  # the planes are drawn over the model: a face there is what was meant
+            if hit is not None:
+                support, face = hit
         if sketch.valid_support(support, face):
             QtCore.QTimer.singleShot(0, lambda: self._picked(support, face))
         else:
@@ -243,6 +251,36 @@ def screen_box(view, view_objects):
         if not bb.isEmpty():
             box.add(App.BoundBox(App.Vector(*bb.getMin().getValue()), App.Vector(*bb.getMax().getValue())))
     return box
+
+
+def _is_origin_plane(obj):
+    return getattr(obj, "TypeId", "") in ("App::Plane", "App::Origin")
+
+
+def _face_under(doc_name, pnt):
+    """(feature, 'FaceN') of the model under the screen spot of a 3D pick point, or None. A pick made from code
+    (no point) is taken as it is."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    p = App.Vector(*pnt) if pnt is not None else App.Vector()
+    if p.Length < 1e-9:
+        return None
+    try:
+        view = Gui.getDocument(doc_name).ActiveView
+        x, y = view.getPointOnViewport(p)
+        hits = view.getObjectsInfo((int(round(x)), int(round(y)))) or []
+    except Exception:
+        return None
+    doc = App.getDocument(doc_name)
+    for h in hits:  # nearest first
+        comp = h.get("Component", "") or ""
+        obj = doc.getObject(h.get("Object", "") or "")
+        if obj is None or _is_origin_plane(obj):
+            continue
+        support, face = SketchSession._resolve(obj, comp)
+        if face.startswith("Face") and not _is_origin_plane(support) and sketch.valid_support(support, face):
+            return support, face
+    return None
 
 
 def _has_solid(body):

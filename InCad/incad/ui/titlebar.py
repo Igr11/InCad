@@ -4,7 +4,7 @@ from incad.ui import theme as themes
 
 
 class TitleStrip(QtWidgets.QWidget):
-    QUICK = ("file.new", "file.open", "file.save", "edit.undo", "edit.redo")
+    QUICK = ("file.new", "file.open", "file.save", "edit.undo", "edit.redo", "edit.update")
     RIGHT = ("view.theme_toggle", "view.freecad")
 
     def __init__(self, registry, theme="light", settings_menu=None, parent=None):

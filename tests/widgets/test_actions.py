@@ -5,7 +5,7 @@ from incad import actions
 from incad.core.commands import Registry
 from incad.ui import theme
 
-EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", "edit.undo", "edit.redo",
+EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", "edit.undo", "edit.redo", "edit.update",
             "view.theme_toggle", "view.freecad", "view.zoom_all", "view.home", "view.style_shaded",
             "view.style_wireframe", "view.parameters", "view.look_at", "view.zoom_selection", "browser.edit",
             "browser.move_end_of_part", "browser.suppress", "browser.rename", "nav.orbit", "nav.pan",

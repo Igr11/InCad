@@ -122,13 +122,51 @@ def test_4_origin_planes_fill_the_view_while_picking():
     before = tuple(cam.position.getValue())
     commands.REGISTRY.run("sketch.start")
     harness.pump(800)
-    # Inventor: with a solid in the part the faces are what gets picked — no origin planes drawn in front of the
-    # model (a click on the top face would land on the XZ plane), the view left where the user had it
+    # with a solid in the part the origin planes are still offered (big enough to see), the view is left where
+    # the user had it, and the plane panel is there too
     assert tuple(cam.position.getValue()) == before, (before, tuple(cam.position.getValue()))
-    assert not document.primary_body(doc).Origin.ViewObject.Visibility  # the Origin group stays hidden
+    body = document.primary_body(doc)
+    assert body.Origin.ViewObject.Visibility and all(o.ViewObject.Visibility for o in body.Origin.OriginFeatures)
+    assert App.ParamGet(sketch_session._VIEW).GetFloat("DatumScale", -1.0) >= sketch_session.PICK_DATUM_SCALE
     assert s().plane_panel is not None and s().plane_panel.isVisible()  # origin planes still one click away
     s().sketches.cancel_pick()
     harness.pump(300)
+    assert not body.Origin.ViewObject.Visibility
+    assert App.ParamGet(sketch_session._VIEW).GetFloat("DatumScale", -1.0) == -1.0  # user's setting back
+
+
+def test_4b_a_face_under_the_cursor_wins_over_a_plane():
+    """A plane drawn in front of the model must not take the click meant for a face (a real click on the top
+    face landed on the XZ plane): the pick is resolved by what is under the cursor."""
+    doc = App.ActiveDocument
+    body = document.primary_body(doc)
+    box = doc.getObject("Box")
+    view = Gui.ActiveDocument.ActiveView
+    view.viewIsometric()
+    view.fitAll()
+    harness.pump(500)
+    xz = [o for o in body.Origin.OriginFeatures if o.Role == "XZ_Plane"][0]
+    top = [i + 1 for i, f in enumerate(box.Shape.Faces) if abs(f.CenterOfMass.z - 80) < 1e-6][0]
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(800)
+    on_face = box.Shape.Faces[top - 1].CenterOfMass
+    Gui.Selection.addSelection(doc.Name, xz.Name, "", on_face.x, on_face.y, on_face.z)  # FreeCAD picked the plane
+    harness.pump(1200)
+    sk = s().sketches.editing()
+    assert sk is not None, "no sketch opened"
+    support = sk.AttachmentSupport[0]
+    assert support[0] is box and support[1][0] == "Face%d" % top, (support[0].Name, support[1])
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
+    # the same plane picked beside the model (nothing else under the cursor) is the plane
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(800)
+    Gui.Selection.addSelection(doc.Name, xz.Name, "", 300.0, 0.0, 300.0)
+    harness.pump(1200)
+    sk = s().sketches.editing()
+    assert sk is not None and sk.AttachmentSupport[0][0] is xz, sk and sk.AttachmentSupport
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(800)
 
 
 def sketch_up(sk):
@@ -163,5 +201,5 @@ def test_5_look_at_puts_an_upside_down_sketch_upright():
 harness.run([test_0_new_part_starts_near_the_origin, test_1_plane_panel_picks_a_plane,
              test_2_look_at_faces_the_sketch_while_sketching,
              test_3_double_click_a_plane_in_the_browser_starts_a_sketch,
-             test_4_origin_planes_fill_the_view_while_picking,
+             test_4_origin_planes_fill_the_view_while_picking, test_4b_a_face_under_the_cursor_wins_over_a_plane,
              test_5_look_at_puts_an_upside_down_sketch_upright])

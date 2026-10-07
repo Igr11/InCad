@@ -140,6 +140,23 @@ def test_5_move_end_of_part_up_and_back():
     assert body().Tip.Name == tip.Name, body().Tip.Name
 
 
+def test_6_update_button_recomputes_and_refreshes():
+    """Inventor's Update next to Redo: a change made without a recompute is computed and the tree follows."""
+    block = doc().getObject(ST["block"])
+    v0 = body().Shape.Volume
+    block.setExpression("Length", None)  # its parameter would win on recompute: a plain value for the test
+    block.Length = block.Length.Value + 5  # no recompute: the shape is stale
+    assert "Touched" in block.State, block.State  # stale before Update
+    s().title.button("edit.update").click()
+    harness.pump(1200)
+    assert "Touched" not in block.State and "Invalid" not in block.State, block.State  # computed by Update
+    assert body().Shape.Volume > v0 + 1, (v0, body().Shape.Volume)
+    names = [s().browser.tree.topLevelItem(0).child(i).text(0)
+             for i in range(s().browser.tree.topLevelItem(0).childCount())]
+    assert "End of Part" in names, names
+
+
 harness.run([test_0_block_and_slot_cut, test_1_edit_a_sketch_from_the_tree_menu,
              test_2_edit_a_feature_from_the_tree_menu, test_3_hole_from_a_point_sketch_picked_in_the_tree,
-             test_4_delete_a_sketch_from_the_tree_menu, test_5_move_end_of_part_up_and_back])
+             test_4_delete_a_sketch_from_the_tree_menu, test_5_move_end_of_part_up_and_back,
+             test_6_update_button_recomputes_and_refreshes])

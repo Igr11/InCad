@@ -11,7 +11,7 @@ class TitleStripTest(unittest.TestCase):
         qtapp.app()
         self.ran = []
         self.reg = Registry()
-        for i in ("file.new", "file.save", "view.freecad", "view.theme_toggle"):
+        for i in ("file.new", "file.save", "edit.undo", "edit.redo", "edit.update", "view.freecad", "view.theme_toggle"):
             self.reg.register(Command(id=i, label=i, icon="incad", handler=lambda i=i: self.ran.append(i)))
         self.made = []
 
@@ -29,6 +29,16 @@ class TitleStripTest(unittest.TestCase):
         self.ts.button("view.freecad").click()
         self.assertEqual(self.ran, ["file.save", "view.freecad"])
         self.assertIsNone(self.ts.button("file.open"))
+
+    def test_update_sits_right_after_redo(self):
+        """Inventor's Update: next to Redo in the quick-access row, recomputes the model and refreshes InCad."""
+        order = [self.ts.button(i) for i in ("edit.undo", "edit.redo", "edit.update")]
+        self.assertTrue(all(order))
+        xs = [b.geometry().x() for b in order]
+        self.assertEqual(xs, sorted(xs))
+        self.assertEqual(TitleStrip.QUICK.index("edit.update"), TitleStrip.QUICK.index("edit.redo") + 1)
+        self.ts.button("edit.update").click()
+        self.assertEqual(self.ran[-1], "edit.update")
 
     def test_freecad_button_has_text(self):
         self.assertEqual(self.ts.button("view.freecad").text(), "FreeCAD")

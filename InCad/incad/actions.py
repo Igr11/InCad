@@ -489,6 +489,27 @@ def _linked_steps(doc, step, redo):
             model.relink(other)
 
 
+def update_model():
+    """Inventor's Update: recompute the model and redraw InCad's panels and the view (a model that got out of
+    step with the tree, or a view that stopped following the document, is put right)."""
+    import FreeCAD as App
+    from incad.ui import shell
+    _refuse_while_busy()
+    doc = App.ActiveDocument
+    if doc is not None:
+        doc.recompute()
+    inst = shell.instance()
+    if inst is not None:
+        inst.refresh()
+    gdoc = _gui().ActiveDocument
+    view = gdoc.ActiveView if gdoc is not None else None
+    if view is not None:
+        try:
+            view.redraw()
+        except Exception:
+            pass
+
+
 def _undo_redo(redo):
     """Undo/Redo the active document. Sketcher's own command while a sketch is edited; otherwise straight on the
     document, so it works whatever tab is active (FreeCAD's Std_Undo talks to the active view)."""
@@ -526,6 +547,8 @@ def commands():
                 tooltip="Quit FreeCAD (asks to save changed files)"),
         Command(id="edit.undo", label="Undo", icon="undo", handler=lambda: _undo_redo(False), shortcut="Ctrl+Z"),
         Command(id="edit.redo", label="Redo", icon="redo", handler=lambda: _undo_redo(True), shortcut="Ctrl+Shift+Z"),
+        Command(id="edit.update", label="Update", icon="update", handler=update_model,
+                tooltip="Recompute the model and refresh the browser and the view"),
         Command(id="view.theme_toggle", label="Light / Dark", icon="theme_toggle", handler=toggle_theme,
                 tooltip="Switch between light and dark"),
         Command(id="view.freecad", label="Return to FreeCAD", icon="freecad", handler=return_to_freecad,
