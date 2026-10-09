@@ -75,44 +75,52 @@ after the copies are added (the preview is rolled back and the message names the
 
 ## 4. What is created in the sketch
 
-The copies are ordinary sketch geometry of the same types, placed exactly, then **tied to the original by
-hidden constraints** so that a change to the original, the spacing, the angle or the direction moves them:
+Probed on 2026-10-09: a sketch expression may use model parameters (`InCadModel.dN`) and driving constraints,
+but **never a reference (non-driving) constraint of the same sketch** ("Reference constraint from this sketch
+cannot be used in this expression"), and construction geometry cannot be hidden. So:
 
-- For every point of the original (line ends, arc ends, circle centres, points) and every copy k, two driving
-  constraints `DistanceX` and `DistanceY` from the original point to the copy's point, with expressions:
-  - rectangular: `k * S * cos(D)` and `k * S * sin(D)`, where `S` is the pattern's spacing parameter and `D`
-    is a **reference** (non-driving) `Angle` constraint between the H axis and the direction line (0° or 90°
-    constants for the axes); Flip negates k; direction 2 adds its own terms; Equal spacing stores the computed
-    spacing in `S` and re-solves it on edit from the limits.
-  - circular: `dx*cos(kA) - dy*sin(kA) - dx` and `dx*sin(kA) + dy*cos(kA) - dy`, where `A` is the step
-    angle (Angle, or Angle/(Count-1), or Angle/Count for a closed 360° ring) and `dx`, `dy` are **reference**
-    `DistanceX`/`DistanceY` constraints from the axis point to the original point; the axis point is any sketch
-    point, the origin uses `RootPoint`.
-- Circles and arcs get an `Equal` to the original (radius). An arc ties its two ends and the radius (5 DOF),
-  never its centre as well; a line ties both ends (4); a circle its centre and radius (3); a point its position
-  (2). This keeps every copy exactly constrained.
-- Construction geometry in the selection is copied as construction.
-- Every constraint the pattern adds is named `<pattern>_<n>` (e.g. `Pattern1_17`) and put in virtual space, so
-  the Constraints toggle never shows them and the user never sees or edits them. Dimensions on the original are
-  not copied: the copies have no dimensions of their own.
-- Spacing, Angle and Count are InCad model parameters named after the pattern (`Pattern1_spacing`,
-  `Pattern1_angle`, `Pattern1_count`), shown in Parameters. Spacing and Angle drive the expressions directly;
-  Count is read back by the dialog and cannot rebuild the copies from Parameters alone (a change there is applied
-  on the next Edit Pattern, and the dialog says so).
+- **Rectangular**: the copies are ordinary geometry tied to the original by hidden driving constraints: for
+  every point of the original (line ends, arc ends, circle centres, points) and every copy k, a `DistanceX`
+  and a `DistanceY` from the original's point to the copy's point with the expressions
+  `k * InCadModel.dS * cos(D)` and `k * InCadModel.dS * sin(D)`, where `dS` is the spacing parameter and `D`
+  is the direction angle **as a literal in degrees** (0 or 90 for the axes; the picked line's angle at
+  creation, read again at every Edit Pattern: a rotated direction line moves the pattern on the next edit, not
+  live). Two directions add `j * InCadModel.dS2 * cos(D2)` terms. Flip negates k. Equal spacing computes the
+  spacing from the limits, stores it in `dS` and recomputes it on edit. Circles and arcs get `Equal` to the
+  original (radius); an arc ties its two ends and the radius (5 DOF), a line both ends (4), a circle its centre
+  and radius (3), a point its position (2): every copy is exactly constrained. These constraints live in
+  virtual space (hidden) and are never shown or listed.
+- **Circular**: live association needs construction "spokes" (agreed with the user): for each reference point
+  of the original (a point, a line's start, a circle's centre, an arc's start and end) one construction line
+  from the axis point to it (`spoke0`), and for every copy k one construction line from the axis point to the
+  copy's point, with `Equal(spoke0, spoke_k)` and `Angle(spoke0, spoke_k)` whose expression is
+  `k * InCadModel.dA` (`dA` the step angle parameter; Fitted stores Angle/(Count-1), or Angle/Count for a closed
+  360° ring, and keeps the user's Angle in the record). A copy line adds `Equal` and `Angle = k * dA` to the
+  original line; a circle `Equal`; an arc `Equal` (its two end spokes fix the rest). Spokes are construction
+  geometry (visible, blue), are part of the pattern and go with it; their constraints are hidden. Moving the
+  original, the axis point or the angle parameter moves every copy at once.
+- Construction geometry in the selection is copied as construction. Dimensions on the original are not copied.
+- Every constraint the pattern adds is named `pat<n>_<i>` (`pat1_17`); `incad.core.sketch` treats names with
+  this prefix as the pattern's own: they are not dimensions (not listed in Parameters, not snapshot, not
+  auto-named) and not symbols (the Constraints toggle leaves them hidden).
+- Spacing and Angle are model parameters (`dN`, made with `model.new_feature_parameter`), shown in
+  Parameters and labelled in the dialog like the 3D patterns' spacing. Count lives only in the record: it
+  changes through Edit Pattern.
 
 ## 5. The pattern record, editing, deleting
 
 - The sketch gets `InCadPatterns` (`App::PropertyString`, JSON list). One entry per pattern: `name`, `kind`
   (`rect` | `circ` | `path`), the dialog `values`, `originals` (geometry ids), `copies` (list per copy of
-  geometry ids), `constraints` (names), `params` (model parameter names).
+  geometry ids, spokes included), `constraints` (names), `params` (model parameter names: spacing, angle).
 - Geometry ids: the original's geometry gets ids on first use (`setGeometryId`); copies get ids at creation.
   Picks are stored by id, never by index, so deleting other geometry does not break the record.
 - **Edit Pattern**: a double-click on a copy in the view (via `_dblclick_hook`, which already catches
   double-clicks in sketch mode for dimensions) or the marking menu / right-click "Edit Pattern" on a selected
   copy opens the same dialog with `read()` values. `update()` deletes the pattern's copies and constraints,
   then creates them afresh from the new values. The whole edit is one undo step.
-- **Delete Pattern** (right-click on a copy; Delete key on a selected copy asks "Delete the whole pattern?"):
-  removes copies, constraints and parameters; the original stays.
+- **Delete Pattern** (marking menu / right-click on a selected copy): removes copies, spokes, constraints and
+  parameters; the original stays. The Delete key on a selected copy deletes just that geometry, as for any
+  sketch geometry: the pattern is then *broken* (below).
 - A pattern whose copies were partly deleted by hand is *broken*: the record is kept; Edit Pattern warns
   "Some copies were deleted; the pattern will be rebuilt" and rebuilds; Delete Pattern removes what is left.
   The sketch's own tools stay usable on copies (the user can drag them: the constraints bring them back).
