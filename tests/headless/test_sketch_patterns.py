@@ -437,14 +437,16 @@ class EditAndKindsTest(unittest.TestCase):
         k.create(self.doc, self.body, self.sk, v)
         self.doc.recompute()
         back = k.read(self.doc, self.sk)
-        self.assertEqual((back["axis"], back["count"], back["angle"], back["fit"]), (self._pick("RootPoint"), "4", "360 °", "fitted"))
+        self.assertEqual((back["axis"], back["count"], back["angle"], back["fit"]), (self._pick("RootPoint"), "4", "360°", "fitted"))
         rec = sp.find(self.sk, self.sk.InCadEditing)
         self.assertEqual(len(rec["copies"]), 3)
-        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "90°")  # InCad shows angles as N°
+        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "360°")  # the dialog's angle, shown as N°
+        self.assertEqual(rec["divisor"], 4.0)  # a closed ring: 360° / 4 between copies
         k.update(self.doc, self.sk, dict(back, fit="between", angle="30 °", count="3"))
         self.doc.recompute()
         rec = sp.find(self.sk, self.sk.InCadEditing)
         self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "30°")
+        self.assertEqual(rec["divisor"], 1.0)
 
     def test_nothing_picked_asks_for_geometry_and_a_copy_cannot_be_patterned(self):
         k = self.kinds.SKETCH_RECT
@@ -480,3 +482,137 @@ class EditAndKindsTest(unittest.TestCase):
         self.assertEqual(common.pick_label("sketch_direction", self._pick("H_Axis")), "X axis")
         self.assertEqual(common.pick_label("sketch_point", self._pick("RootPoint")), "Origin")
         self.assertEqual(common.pick_label("sketch_geometry", ""), "Click the geometry to repeat…")
+
+
+class ReviewFixesTest(unittest.TestCase):
+    """The final review's findings, each pinned by a test that failed before its fix."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Rf")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)  # 'Sketch': a 20x10 rectangle, padded
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Free")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        from incad.features import sketch_patterns as kinds
+        self.kinds = kinds
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _pick(self, sk, sub):
+        return "%s:%s" % (sk.Name, sub)
+
+    def test_a_pattern_in_a_consumed_sketch_keeps_the_features_attached_to_its_pad(self):
+        """Overwriting FreeCAD's own geometry ids renames the pad's faces: a sketch attached to one went Invalid."""
+        base = self.doc.getObject("Sketch")
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        attached = self.body.newObject("Sketcher::SketchObject", "OnTop")
+        attached.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        attached.MapMode = "FlatFace"
+        attached.addGeometry(Part.Circle(App.Vector(5, 5, 0), App.Vector(0, 0, 1), 1))
+        self.doc.recompute()
+        ids_before = [base.getGeometryId(i) for i in range(base.GeometryCount)]
+        k = self.kinds.SKETCH_RECT
+        k.create(self.doc, self.body, base, dict(k.defaults(self.doc, self.body, base), geometry=self._pick(base, "Edge1"),
+                                                 count1="2", spacing1="30 mm"))
+        self.doc.recompute()
+        self.assertEqual([base.getGeometryId(i) for i in range(4)], ids_before)
+        self.assertNotIn("Invalid", attached.State, attached.getStatusString())
+
+    def test_edit_after_deleting_other_geometry_keeps_the_same_original_and_axis(self):
+        con = line(self.sk, 0, 0, 0, 10, construction=True)
+        axis_pt = self.sk.addGeometry(Part.Point(App.Vector(4, 0, 0)))
+        hole = circle(self.sk, 10, 0, 1)
+        self.doc.recompute()
+        hole_id = self.sk.getGeometryId(hole)
+        k = self.kinds.SKETCH_CIRC
+        axis_sub = "Vertex%d" % ([v for v in range(6) if tuple(self.sk.getGeoVertexIndex(v)) == (axis_pt, 1)][0] + 1)
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge%d" % (hole + 1)),
+                                                    axis=self._pick(self.sk, axis_sub), count="3", angle="90 °", fit="between"))
+        self.doc.recompute()
+        self.sk.delGeometry(con)  # every index shifts down by one
+        self.doc.recompute()
+        back = k.read(self.doc, self.sk)
+        hole_now = sp.index_of(self.sk, hole_id)
+        self.assertEqual(back["geometry"], self._pick(self.sk, "Edge%d" % (hole_now + 1)))
+        self.assertEqual(sp.element(self.sk, back["axis"].split(":")[1]), (sp.index_of(self.sk, self.sk.getGeometryId(axis_pt - 1)), 1))
+        k.update(self.doc, self.sk, dict(back, count="4"))
+        self.doc.recompute()
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        self.assertEqual(rec["originals"], [hole_id])
+        self.assertEqual(len(rec["copies"]), 3)
+        self.assertEqual(self.sk.solve(), 0)
+
+    def test_a_failed_edit_keeps_the_pattern_and_its_parameter(self):
+        hole = circle(self.sk, 10, 0, 1)
+        k = self.kinds.SKETCH_CIRC
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge1"), count="4"))
+        self.doc.recompute()
+        name = self.sk.InCadEditing
+        param = sp.find(self.sk, name)["angle_param"]
+        back = k.read(self.doc, self.sk)
+        with self.assertRaises(ValueError):
+            k.update(self.doc, self.sk, dict(back, axis=self._pick(self.sk, "Vertex1")))  # the circle's own centre
+        self.assertIsNotNone(sp.find(self.sk, name), "a failed edit must not delete the pattern")
+        self.assertEqual(sp.find(self.sk, name)["angle_param"], param)
+        k.update(self.doc, self.sk, dict(back, count="3"))
+        self.doc.recompute()
+        self.assertEqual([n for n, _, _ in model.feature_parameters(self.doc)], [param])  # no orphan parameter
+        self.assertEqual(len(sp.find(self.sk, name)["copies"]), 2)
+
+    def test_remove_and_a_narrower_edit_drop_the_parameters_they_no_longer_use(self):
+        hole = circle(self.sk, 10, 0, 1)
+        k = self.kinds.SKETCH_RECT
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge1"),
+                                                    count1="2", spacing1="12 mm", two_directions=True, count2="2", spacing2="5 mm"))
+        self.doc.recompute()
+        self.assertEqual(len(model.feature_parameters(self.doc)), 2)
+        k.update(self.doc, self.sk, dict(k.read(self.doc, self.sk), two_directions=False))
+        self.doc.recompute()
+        self.assertEqual(len(model.feature_parameters(self.doc)), 1, "spacing 2 is gone with its direction")
+        sp.remove(self.doc, self.sk, self.sk.InCadEditing)
+        self.doc.recompute()
+        self.assertEqual(model.feature_parameters(self.doc), [])
+
+    def test_a_renamed_parameter_still_drives_the_pattern_through_an_edit(self):
+        hole = circle(self.sk, 10, 0, 1)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, hole, 3, 10.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, hole, 3, 0.0))
+        k = self.kinds.SKETCH_RECT
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge1"),
+                                                    count1="2", spacing1="12 mm"))
+        self.doc.recompute()
+        old = sp.find(self.sk, self.sk.InCadEditing)["spacing_param"]
+        model.rename_model_parameter(self.doc, old, "pitch")
+        self.doc.recompute()
+        back = k.read(self.doc, self.sk)
+        self.assertEqual(back["spacing1"], "12 mm")
+        k.update(self.doc, self.sk, dict(back, count1="3"))
+        self.doc.recompute()
+        self.assertEqual([n for n, _, _ in model.feature_parameters(self.doc)], ["pitch"])
+        model.set_model_parameter(self.doc, "pitch", "20 mm")
+        self.doc.recompute()
+        last = sp.index_of(self.sk, sp.find(self.sk, self.sk.InCadEditing)["copies"][-1][0])
+        self.assertAlmostEqual(sp.point_of(self.sk, last, 3).x, 50.0, places=3)
+
+    def test_the_circular_angle_parameter_is_the_angle_the_dialog_shows(self):
+        hole = circle(self.sk, 10, 0, 1)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, hole, 3, 10.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, hole, 3, 0.0))
+        k = self.kinds.SKETCH_CIRC
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge1"),
+                                                    count="4", angle="360 °"))
+        self.doc.recompute()
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "360°")
+        model.set_model_parameter(self.doc, rec["angle_param"], "180 deg")  # the ring keeps its division (4)
+        self.doc.recompute()
+        first = sp.index_of(self.sk, [g for g in rec["copies"][0] if not self.sk.getConstruction(sp.index_of(self.sk, g))][0])
+        p = sp.point_of(self.sk, first, 3)
+        self.assertAlmostEqual(math.degrees(math.atan2(p.y, p.x)), 45.0, places=3)
+        back = k.read(self.doc, self.sk)
+        self.assertEqual(back["angle"], "180°")
+        k.update(self.doc, self.sk, back)  # an edit that changes nothing keeps the value the user set
+        self.doc.recompute()
+        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "180°")

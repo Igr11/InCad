@@ -14,6 +14,13 @@ def _editing(sk):
     return getattr(sk, EDITING_PROP, "") or ""
 
 
+def _record(sk, kind):
+    """The record of the pattern open in the dialog, if it is of this kind (a stale InCadEditing may name a
+    pattern of the other kind: then there is none to read)."""
+    rec = sp.find(sk, _editing(sk))
+    return rec if rec is not None and rec.get("kind") == kind else None
+
+
 def _set_editing(sk, name):
     if EDITING_PROP not in sk.PropertiesList:
         sk.addProperty("App::PropertyString", EDITING_PROP, "InCad", "Pattern open in the dialog")
@@ -28,6 +35,9 @@ def _picks(doc, sk, text):
     return out
 
 
+PICK_KEYS = ("geometry", "dir1", "dir2", "from1", "to1", "axis")
+
+
 def _geometry(doc, sk, text):
     picks = _picks(doc, sk, text)
     if not picks:
@@ -36,7 +46,7 @@ def _geometry(doc, sk, text):
     for geo, _ in picks:
         if geo < 0:
             continue
-        if sp.is_copy(sk, geo) and sp.pattern_of(sk, geo) != _editing(sk):
+        if sp.is_copy(sk, geo):
             raise ValueError("Pattern the original, not a copy")
         sp.ref_points(sk, geo)  # raises for splines/ellipses
         if geo not in geos:
@@ -46,17 +56,44 @@ def _geometry(doc, sk, text):
     return geos
 
 
-def _direction_angle(doc, sk, text):
+def _direction(doc, sk, text):
+    """(angle in degrees, ref) of a direction pick: a sketch line's angle now, or the X/Y axis."""
     picks = _picks(doc, sk, text)
     if not picks:
-        return 0.0
-    geo, _ = picks[0]
+        return 0.0, [-1, 0]
+    geo, pos = picks[0]
     if geo == -1:
-        return 0.0
+        return 0.0, [-1, 0]
     if geo == -2:
-        return 90.0
+        return 90.0, [-2, 0]
     a, b = sp.point_of(sk, geo, 1), sp.point_of(sk, geo, 2)
-    return math.degrees(math.atan2(b.y - a.y, b.x - a.x))
+    return math.degrees(math.atan2(b.y - a.y, b.x - a.x)), sp.ref_of(sk, geo, 0)
+
+
+def _text(sk, ref, fallback=""):
+    """The pick text of a stored ref as the sketch is now ('Sketch:Edge3'), or `fallback` when it is gone."""
+    if not ref:
+        return fallback
+    at = sp.deref(sk, ref)
+    if at is None:
+        return fallback
+    try:
+        return "%s:%s" % (sk.Name, sp.sub_of(sk, at[0], at[1]))
+    except ValueError:
+        return fallback
+
+
+def _geometry_text(sk, rec):
+    subs = []
+    for gid in rec.get("originals", []):
+        i = sp.index_of(sk, gid)
+        if i is not None:
+            subs.append("%s:Edge%d" % (sk.Name, i + 1))
+    return ",".join(subs)
+
+
+def _stored_values(values):
+    return {k: v for k, v in values.items() if k not in PICK_KEYS}
 
 
 def _count(text):
@@ -70,6 +107,8 @@ def _param(doc, rec, key, text, unit_kind):
     """The pattern's model parameter for `key` (spacing_param / angle_param): made once, then updated."""
     from incad.core import model
     name = rec.get(key)
+    if name and not model.is_model_parameter(doc, name):
+        name = rec.get(key)  # live_params (called by the kinds before this) found the renamed one, or not
     if name and model.is_model_parameter(doc, name):
         if model.parameter_text(doc, name) != text:
             model.set_model_parameter(doc, name, text)
@@ -105,8 +144,9 @@ def _rect_record(doc, sk, name, old, values):
     count = _count(values.get("count1"))
     if count < 2:
         raise ValueError("Use a count of 2 or more")
-    rec = {"name": name, "kind": "rect", "values": dict(values), "originals": [sp.ensure_id(sk, g) for g in geos],
-           "count": count, "flip": bool(values.get("flip1"))}
+    old = sp.live_params(doc, sk, dict(old)) if old else {}
+    rec = {"name": name, "kind": "rect", "values": _stored_values(values),
+           "originals": [sp.ensure_id(sk, g) for g in geos], "count": count, "flip": bool(values.get("flip1"))}
     if values.get("fit1") == "faces":
         start = _picks(doc, sk, values.get("from1"))
         end = _picks(doc, sk, values.get("to1"))
@@ -115,14 +155,15 @@ def _rect_record(doc, sk, name, old, values):
         spacing, angle = sp.equal_spacing(sk, geos, start[0], end[0], count)
         rec["spacing_param"] = _param(doc, old, "spacing_param", "%.6g mm" % spacing, "length")
         rec["angle"] = angle
+        rec["from_ref"], rec["to_ref"] = sp.ref_of(sk, *start[0]), sp.ref_of(sk, *end[0])
         rec["values"]["spacing1"] = "%.6g mm" % spacing
     else:
         rec["spacing_param"] = _param(doc, old, "spacing_param", (values.get("spacing1") or "10 mm").strip(), "length")
-        rec["angle"] = _direction_angle(doc, sk, values.get("dir1"))
+        rec["angle"], rec["dir1_ref"] = _direction(doc, sk, values.get("dir1"))
         if values.get("two_directions"):
             rec["count2"] = _count(values.get("count2"))
             rec["spacing_param2"] = _param(doc, old, "spacing_param2", (values.get("spacing2") or "10 mm").strip(), "length")
-            rec["angle2"] = _direction_angle(doc, sk, values.get("dir2"))
+            rec["angle2"], rec["dir2_ref"] = _direction(doc, sk, values.get("dir2"))
     return rec
 
 
@@ -138,18 +179,25 @@ def _rect_create(doc, body, sk, values):
 
 def _rect_update(doc, sk, values):
     name = _editing(sk)
-    old = sp.find(sk, name) or {}
+    old = _record(sk, "rect") or {}
     rec = _rect_record(doc, sk, name, old, values)
     sp.rebuild(doc, sk, rec)
     return sk
 
 
 def _rect_read(doc, sk):
-    rec = sp.find(sk, _editing(sk))
+    rec = _record(sk, "rect")
     if rec is None:
         return _rect_defaults(doc, None, sk)
     from incad.core import model
-    values = dict(_rect_defaults(doc, None, sk), **rec.get("values", {}))
+    rec = sp.live_params(doc, sk, dict(rec))
+    defaults = _rect_defaults(doc, None, sk)
+    values = dict(defaults, **_stored_values(rec.get("values", {})))
+    values["geometry"] = _geometry_text(sk, rec)
+    values["dir1"] = _text(sk, rec.get("dir1_ref"), defaults["dir1"])
+    values["dir2"] = _text(sk, rec.get("dir2_ref"), defaults["dir2"])
+    values["from1"] = _text(sk, rec.get("from_ref"))
+    values["to1"] = _text(sk, rec.get("to_ref"))
     values["spacing1"] = model.parameter_text(doc, rec["spacing_param"])
     if rec.get("spacing_param2"):
         values["spacing2"] = model.parameter_text(doc, rec["spacing_param2"])
@@ -158,9 +206,10 @@ def _rect_read(doc, sk):
 
 
 def _rect_params(sk):
-    rec = sp.find(sk, _editing(sk)) if sk is not None else None
+    rec = _record(sk, "rect") if sk is not None else None
     if rec is None:
         return {}
+    rec = sp.live_params(sk.Document, sk, dict(rec))
     out = {"spacing1": rec.get("spacing_param")}
     if rec.get("spacing_param2"):
         out["spacing2"] = rec["spacing_param2"]
@@ -206,12 +255,15 @@ def _circ_record(doc, sk, name, old, values):
     if not axis:
         raise ValueError("Pick the axis point")
     total = _angle_deg(values.get("angle"))
-    step = sp.step_angle(total, count, values.get("fit", "fitted") == "fitted")
+    fitted = values.get("fit", "fitted") == "fitted"
+    step = sp.step_angle(total, count, fitted)
     if abs(step) < 1e-9:
         raise ValueError("The copies would land on the original: give the pattern an angle")
-    return {"name": name, "kind": "circ", "values": dict(values), "originals": [sp.ensure_id(sk, g) for g in geos],
-            "count": count, "axis": list(axis[0]), "flip": bool(values.get("flip")),
-            "angle_param": _param(doc, old, "angle_param", "%.6g deg" % step, "angle")}
+    old = sp.live_params(doc, sk, dict(old)) if old else {}
+    return {"name": name, "kind": "circ", "values": _stored_values(values),
+            "originals": [sp.ensure_id(sk, g) for g in geos], "count": count, "axis_ref": sp.ref_of(sk, *axis[0]),
+            "flip": bool(values.get("flip")), "divisor": total / step,  # the parameter is the dialog's Angle
+            "angle_param": _param(doc, old, "angle_param", "%.6g deg" % total, "angle")}
 
 
 def _circ_create(doc, body, sk, values):
@@ -225,23 +277,32 @@ def _circ_create(doc, body, sk, values):
 
 def _circ_update(doc, sk, values):
     name = _editing(sk)
-    old = sp.find(sk, name) or {}
+    old = _record(sk, "circ") or {}
     sp.rebuild(doc, sk, _circ_record(doc, sk, name, old, values))
     return sk
 
 
 def _circ_read(doc, sk):
-    rec = sp.find(sk, _editing(sk))
+    rec = _record(sk, "circ")
     if rec is None:
         return _circ_defaults(doc, None, sk)
-    values = dict(_circ_defaults(doc, None, sk), **rec.get("values", {}))
+    from incad.core import model
+    rec = sp.live_params(doc, sk, dict(rec))
+    defaults = _circ_defaults(doc, None, sk)
+    values = dict(defaults, **_stored_values(rec.get("values", {})))
+    values["geometry"] = _geometry_text(sk, rec)
+    values["axis"] = _text(sk, rec.get("axis_ref"), defaults["axis"])
+    values["angle"] = model.parameter_text(doc, rec["angle_param"])
     values["count"] = str(rec["count"])
     return values
 
 
 def _circ_params(sk):
-    rec = sp.find(sk, _editing(sk)) if sk is not None else None
-    return {"angle": rec["angle_param"]} if rec else {}
+    rec = _record(sk, "circ") if sk is not None else None
+    if rec is None:
+        return {}
+    rec = sp.live_params(sk.Document, sk, dict(rec))
+    return {"angle": rec["angle_param"]}
 
 
 SKETCH_CIRC = SimpleNamespace(

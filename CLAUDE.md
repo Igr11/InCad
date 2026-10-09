@@ -15,5 +15,6 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   bottom-left origin (`incad.ui.nav.to_coin`); FreeCAD opens its 3D context menu on the right-button release, so
   InCad's gesture rules never pass a lone right release.
 - Sketcher facts: a constraint expression may use `InCadModel.dN` and driving constraints, never a reference
-  constraint of the same sketch; `setGeometryId` ids survive deletions and reload; virtual space hides
-  constraints, never geometry (sketch patterns: `incad.core.sketch_patterns`).
+  constraint of the same sketch; FreeCAD gives every geometry a permanent id (`getGeometryId`) that survives
+  deletions and reload and that the pad's element names derive from, so never `setGeometryId` on existing
+  geometry; virtual space hides constraints, never geometry (sketch patterns: `incad.core.sketch_patterns`).

@@ -1507,7 +1507,7 @@ class Shell(QtCore.QObject):
                 raise ValueError("Open a sketch first")
             if self.feature_session is not None:
                 raise self._dialog_first()
-            self.stop_slot_tool()
+            self._leave_sketch_tools()
             import FreeCADGui as Gui
             picked = [(sel.Object.Name, sub) for sel in Gui.Selection.getSelectionEx(doc.Name)
                       for sub in (sel.SubElementNames or ("",))]
@@ -1544,10 +1544,20 @@ class Shell(QtCore.QObject):
         kinds._set_editing(sk, name)
         if sp.is_broken(sk, name):
             log.report("warning", "Some copies of %s were deleted; the pattern will be rebuilt" % name)
-        self.stop_slot_tool()
+        self._leave_sketch_tools()
         import FreeCADGui as Gui
         Gui.runCommand("Sketcher_StopOperation")
         self._open_session(kind, sk.Document, document.primary_body(sk.Document), profile=sk, feature=sk)
+
+    def _leave_sketch_tools(self):
+        """A sketch pattern dialog takes the sketch over: InCad's own tools stop, and the construction drawing
+        mode ends (its hook would turn every copy the dialog adds into construction geometry)."""
+        self.stop_slot_tool()
+        if self.construction_mode:
+            self.construction_mode = False
+            log.report("info", "Construction off: normal geometry")
+            if self.ribbon is not None:
+                self.ribbon.refresh_checks()
 
     def delete_sketch_pattern(self, sk, name):
         from incad.core import safe, sketch_patterns as sp
@@ -1616,7 +1626,19 @@ class Shell(QtCore.QObject):
         fs = FeatureSession(kind, doc, body, profile=profile, feature=feature, theme=self.theme, parent=parent,
                             on_close=self._session_closed)
         self.feature_session = fs
-        if not fs.start():
+        try:
+            started = fs.start()
+        except Exception:
+            self.feature_session = None  # a start that raised must not leave a 'dialog still open' behind
+            if getattr(kind, "IN_SKETCH", False) and profile is not None:
+                try:
+                    profile.InCadEditing = ""  # nor a pattern marked as open in the dialog
+                except Exception:
+                    pass
+            dispose(fs)
+            self.schedule_refresh()
+            raise
+        if not started:
             self.feature_session = None
         self.schedule_refresh()
 

@@ -24,8 +24,10 @@ extruded as a cut, and the five holes appear in the solid. All of it drives the 
 
 ## 2. Probed facts (FreeCAD 1.1.3)
 
-- `sk.setGeometryId(i, id)` / `sk.getGeometryId(i)` give a geometry a permanent id that survives
-  `delGeometry` of earlier geometry and a save/reload (`GeometryFacadeList[i].Id`). Ids not set are `None`.
+- FreeCAD gives every sketch geometry a permanent id itself (`sk.getGeometryId(i)`: 1, 2, 3…), keeps it across
+  `delGeometry` of other geometry and a save/reload, never reuses it, and derives the element names of the
+  features built on the sketch (a pad's faces) from it. The pattern reads those ids and **never overwrites
+  them** (overwriting renamed the pad's faces and detached the sketches on them, review probe 2026-10-09).
 - `sk.renameConstraint(i, name)` names survive reload; `sk.addProperty("App::PropertyString", …)` on a sketch
   is saved with the file.
 - Sketch expressions may reference a constraint's value by name (`.Constraints.name`), driving or reference.
@@ -114,8 +116,9 @@ cannot be used in this expression"), and construction geometry cannot be hidden.
 - The sketch gets `InCadPatterns` (`App::PropertyString`, JSON list). One entry per pattern: `name`, `kind`
   (`rect` | `circ` | `path`), the dialog `values`, `originals` (geometry ids), `copies` (list per copy of
   geometry ids, spokes included), `constraints` (names), `params` (model parameter names: spacing, angle).
-- Geometry ids: the original's geometry gets ids on first use (`setGeometryId`); copies get ids at creation.
-  Picks are stored by id, never by index, so deleting other geometry does not break the record.
+- Geometry ids are FreeCAD's own; copies get theirs at creation. Every pick (geometry, direction, limits, axis)
+  is stored as an id reference and the dialog's texts are regenerated when the pattern is read, so deleting
+  other geometry does not break the record.
 - **Edit Pattern**: a double-click on a copy in the view (via `_dblclick_hook`, which already catches
   double-clicks in sketch mode for dimensions) or the marking menu / right-click "Edit Pattern" on a selected
   copy opens the same dialog with `read()` values. `update()` deletes the pattern's copies and constraints,

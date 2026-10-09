@@ -3,6 +3,7 @@
 Geometry is addressed by permanent ids (setGeometryId), never by index."""
 import json
 import math
+import re
 
 import FreeCAD as App
 import Part
@@ -12,7 +13,7 @@ from incad.core import sketch as sketches
 
 RECORD_PROP = "InCadPatterns"
 SUPPORTED = ("Part::GeomLineSegment", "Part::GeomArcOfCircle", "Part::GeomCircle", "Part::GeomPoint")
-_ID_BASE = 100000  # ids we hand out start here: FreeCAD's own ids (when any) are small
+PARAM_KEYS = ("spacing_param", "spacing_param2", "angle_param")
 
 
 # ----- records -----
@@ -24,7 +25,6 @@ def _load(sk):
         data = {}
     data.setdefault("patterns", [])
     data.setdefault("next", 1)
-    data.setdefault("next_id", _ID_BASE)
     return data
 
 
@@ -62,14 +62,47 @@ def next_name(sk):
 
 # ----- geometry ids -----
 def ensure_id(sk, index):
+    """FreeCAD's own permanent id of a geometry: it gives every geometry one, keeps it across deletions and
+    reloads and never reuses it, and its element names (the pad's faces) are derived from it, so it is never
+    overwritten. Only a geometry without one gets the next free number."""
     gid = sk.getGeometryId(index)
-    if gid is None or gid < _ID_BASE:
-        data = _load(sk)
-        gid = data["next_id"]
-        data["next_id"] += 1
-        _store(sk, data)
+    if gid is None or gid < 0:
+        used = [g for g in (sk.getGeometryId(i) for i in range(sk.GeometryCount)) if g is not None]
+        gid = max(used + [0]) + 1
         sk.setGeometryId(index, gid)
     return gid
+
+
+def ref_of(sk, geo, pos):
+    """A pick kept by id: [id, pos] for sketch geometry, [geo, pos] (negative) for the axes and the origin."""
+    return [geo, pos] if geo < 0 else [ensure_id(sk, geo), pos]
+
+
+def deref(sk, ref):
+    """(geo index, pos) of a stored ref, or None when that geometry is gone."""
+    geo, pos = ref
+    if geo < 0:
+        return geo, pos
+    i = index_of(sk, geo)
+    return None if i is None else (i, pos)
+
+
+def sub_of(sk, geo, pos):
+    """The sub-element name of (geo, pos) now: 'Edge3', 'Vertex7', 'H_Axis', 'V_Axis', 'RootPoint'."""
+    if geo == -1:
+        return "RootPoint" if pos == 1 else "H_Axis"
+    if geo == -2:
+        return "V_Axis"
+    if pos == 0:
+        return "Edge%d" % (geo + 1)
+    v = 0
+    while True:
+        g, p = sk.getGeoVertexIndex(v)
+        if g < -2:
+            raise ValueError("No vertex for geometry %d point %d" % (geo, pos))
+        if (g, p) == (geo, pos):
+            return "Vertex%d" % (v + 1)
+        v += 1
 
 
 def index_of(sk, gid):
@@ -282,9 +315,23 @@ def copies_of(sk, name):
     return [i for i in (index_of(sk, g) for g in ids) if i is not None]
 
 
-def remove(doc, sk, name):
-    """Delete a pattern's copies (spokes included) and constraints; the original stays. Missing pieces (deleted
-    by hand) are skipped."""
+def params_of(rec):
+    return [rec[k] for k in PARAM_KEYS if rec and rec.get(k)]
+
+
+def _drop_params(doc, names):
+    """Remove model parameters nothing uses any more (a deleted pattern's spacing); ones still in use stay."""
+    from incad.core import model
+    for n in names:
+        try:
+            model.remove_model_parameter(doc, n)
+        except ValueError:
+            pass
+
+
+def remove(doc, sk, name, keep_params=False):
+    """Delete a pattern's copies (spokes included), constraints and, unless kept for a rebuild, its parameters;
+    the original stays. Missing pieces (deleted by hand) are skipped."""
     rec = find(sk, name)
     if rec is None:
         return
@@ -294,6 +341,26 @@ def remove(doc, sk, name):
     for i in sorted(copies_of(sk, name), reverse=True):
         sk.delGeometry(i)
     save_records(sk, [r for r in records(sk) if r.get("name") != name])
+    if not keep_params:
+        _drop_params(doc, params_of(rec))
+
+
+def live_params(doc, sk, rec):
+    """The pattern's parameter names as they are now: a parameter renamed in Parameters is found again from the
+    pattern's own constraint expressions (FreeCAD rewrote them to the new name)."""
+    from incad.core import model
+    stale = [k for k in PARAM_KEYS if rec.get(k) and not model.is_model_parameter(doc, rec[k])]
+    if not stale:
+        return rec
+    found = set()
+    for cname in rec.get("constraints", []):
+        expr = sketches._expression_of(sk, "Constraints." + cname) or ""
+        found |= set(re.findall(r"InCadModel\.(\w+)", expr))
+    known = {rec[k] for k in PARAM_KEYS if rec.get(k) and k not in stale}
+    candidates = sorted(found - known)
+    if len(stale) == 1 and len(candidates) == 1:
+        rec[stale[0]] = candidates[0]
+    return rec
 
 
 # ----- circular -----
@@ -338,13 +405,18 @@ def build_circ(doc, sk, rec):
     lines add Equal + Angle to the original, circles and arcs Equal."""
     _begin(sk, rec)
     originals = _originals(sk, rec)
-    axis = tuple(rec["axis"])
+    axis = deref(sk, rec["axis_ref"]) if rec.get("axis_ref") else tuple(rec["axis"])
+    if axis is None:
+        raise ValueError("The axis point is gone: pick another")
     check_axis(sk, originals, axis)
     count = int(rec["count"])
     if count < 2:
         raise ValueError("Use a count of 2 or more")
     from incad.core import model
-    step = float(getattr(model._model_obj(doc), rec["angle_param"]).getValueAs("deg"))
+    divisor = float(rec.get("divisor") or 1)  # the parameter is the angle the dialog shows; the step divides it
+    step = float(getattr(model._model_obj(doc), rec["angle_param"]).getValueAs("deg")) / divisor
+    if abs(step) < 1e-9:
+        raise ValueError("The copies would land on the original: give the pattern an angle")
     sign = -1 if rec.get("flip") else 1
     alias = _coincident_points(sk, originals)
     centre = point_of(sk, axis[0], axis[1])
@@ -375,11 +447,12 @@ def build_circ(doc, sk, rec):
                 copy_ids.append(ensure_id(sk, s))
                 _add(sk, rec, Sketcher.Constraint("Equal", spoke0[src], s))
                 _add(sk, rec, Sketcher.Constraint("Angle", spoke0[src], s, angle),
-                     "%d * InCadModel.%s" % (sign * k, rec["angle_param"]))
+                     "%d * InCadModel.%s / %r" % (sign * k, rec["angle_param"], divisor))
             t = geometry_type(sk, g)
             if t == "Part::GeomLineSegment":
                 _add(sk, rec, Sketcher.Constraint("Equal", g, c))
-                _add(sk, rec, Sketcher.Constraint("Angle", g, c, angle), "%d * InCadModel.%s" % (sign * k, rec["angle_param"]))
+                _add(sk, rec, Sketcher.Constraint("Angle", g, c, angle),
+                     "%d * InCadModel.%s / %r" % (sign * k, rec["angle_param"], divisor))
             elif t in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
                 _add(sk, rec, Sketcher.Constraint("Equal", g, c))
         rec["copies"].append(copy_ids)
@@ -456,10 +529,21 @@ def is_broken(sk, name):
 
 
 def rebuild(doc, sk, rec):
-    """Remove the pattern's copies (whatever is left of them) and build them again from `rec`."""
-    remove(doc, sk, rec["name"])
-    rec = dict(rec, copies=[], constraints=[], spokes0=[])
-    return build_rect(doc, sk, rec) if rec["kind"] == "rect" else build_circ(doc, sk, rec)
+    """Remove the pattern's copies (whatever is left of them) and build them again from `rec`. A build that
+    fails puts the old record back (copies emptied: the pattern is then *broken*, its parameters kept) so the
+    next attempt reuses them; a build that succeeds drops the parameters the new record no longer uses."""
+    old = find(sk, rec["name"])
+    remove(doc, sk, rec["name"], keep_params=True)
+    fresh = dict(rec, copies=[], constraints=[], spokes0=[])
+    try:
+        built = build_rect(doc, sk, fresh) if fresh["kind"] == "rect" else build_circ(doc, sk, fresh)
+    except Exception:
+        if old is not None:
+            save_records(sk, [r for r in records(sk) if r.get("name") != old["name"]]
+                         + [dict(old, copies=[], constraints=[], spokes0=[])])
+        raise
+    _drop_params(doc, set(params_of(old)) - set(params_of(built)))
+    return built
 
 
 def pattern_of(sk, index):

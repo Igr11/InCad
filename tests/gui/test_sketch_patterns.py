@@ -174,7 +174,64 @@ def test_6_delete_pattern_leaves_the_original():
     harness.pump(500)
 
 
+def test_7_construction_drawing_mode_does_not_turn_the_copies_into_construction():
+    k = sk()
+    Gui.Selection.clearSelection()
+    s().toggle_construction()  # nothing selected: the drawing mode goes on (new geometry would be construction)
+    harness.pump(300)
+    assert s().construction_mode
+    before = k.GeometryCount
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (ST["hole"] + 1))
+    commands.REGISTRY.run("sketch.rect_pattern")
+    harness.pump(1500)
+    assert dialog() is not None and not dialog().error_text(), dialog() and dialog().error_text()
+    assert not s().construction_mode, "the pattern dialog ends the construction drawing mode"
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+    assert k.GeometryCount == before + 1
+    assert not k.getConstruction(before), "the copy is normal geometry like its original"
+    rec = sp.records(k)[-1]
+    s().delete_sketch_pattern(k, rec["name"])
+    harness.pump(500)
+
+
+def test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session():
+    from incad.features import sketch_patterns as kinds
+    k = sk()
+    rec = sp.records(k)[0] if sp.records(k) else None
+    if rec is None:  # make one to edit
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (ST["hole"] + 1))
+        commands.REGISTRY.run("sketch.rect_pattern")
+        harness.pump(1200)
+        QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+        harness.pump(800)
+        rec = sp.records(k)[-1]
+    real_read = kinds.SKETCH_RECT.read
+
+    def broken_read(doc, sketch):
+        raise ValueError("simulated: the pattern's values cannot be read")
+    kinds.SKETCH_RECT.read = broken_read
+    try:
+        try:
+            s().edit_sketch_pattern(k, rec["name"])
+        except ValueError:
+            pass
+        harness.pump(800)
+    finally:
+        kinds.SKETCH_RECT.read = real_read
+    assert s().feature_session is None, "a session whose start failed must not stay registered"
+    Gui.Selection.clearSelection()
+    res = commands.REGISTRY.run("sketch.circ_pattern")  # the next dialog opens: nothing is 'still open'
+    harness.pump(1000)
+    assert res.ok, res.error
+    assert dialog() is not None
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(600)
+
+
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
              test_4_the_ribbon_has_one_pattern_split_button_like_the_part, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
-             test_6_delete_pattern_leaves_the_original])
+             test_6_delete_pattern_leaves_the_original, test_7_construction_drawing_mode_does_not_turn_the_copies_into_construction,
+             test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session])
