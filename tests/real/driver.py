@@ -98,6 +98,9 @@ def state():
     if sk is not None:
         st["editing"] = sk.Name
         st["geo"] = len(sk.Geometry)
+        st["constr"] = [bool(sk.getConstruction(i)) for i in range(sk.GeometryCount)]
+        st["cmode"] = bool(getattr(sh, "construction_mode", False))
+        st["sel"] = [(o.Object.Name, list(o.SubElementNames)) for o in Gui.Selection.getSelectionEx("")]
         st["dims"] = [[c.Name, round(c.Value, 3)] for c in sk.Constraints if c.Name]
         for c in sk.Constraints:
             if c.Name:
