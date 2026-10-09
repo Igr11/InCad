@@ -130,6 +130,29 @@ def test_5_construction_button_toggles_the_drawing_mode():
 
 
 
+def test_5b_one_click_on_a_picked_construction_line_makes_it_normal_and_ends_the_mode():
+    import Part
+    sh = shell.instance()
+    sk = Gui.ActiveDocument.getInEdit().Object
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("sketch.construction")
+    harness.pump(300)
+    assert sh.construction_mode
+    g = sk.addGeometry(Part.LineSegment(App.Vector(50, 10, 0), App.Vector(60, 10, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(500)
+    assert sk.getConstruction(g)
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (g + 1))
+    commands.REGISTRY.run("sketch.construction")  # ONE click
+    harness.pump(500)
+    assert not sk.getConstruction(g), "the picked line is normal"
+    assert not sh.construction_mode and not sh.ribbon.button("sketch.construction").isChecked(), "mode ended"
+    g2 = sk.addGeometry(Part.LineSegment(App.Vector(50, 15, 0), App.Vector(60, 15, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(500)
+    assert not sk.getConstruction(g2), "new geometry is normal after the single click"
+
+
 def test_6_one_picked_side_switches_the_whole_polygon():
     from ProfileLib import RegularPolygon
     sk = Gui.ActiveDocument.getInEdit().Object
@@ -228,6 +251,7 @@ def test_10_delete_removes_selected_dimension_and_feature():
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
+             test_5b_one_click_on_a_picked_construction_line_makes_it_normal_and_ends_the_mode,
              test_6_one_picked_side_switches_the_whole_polygon,
              test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
              test_8_double_click_with_a_deleted_preselection_is_ignored,

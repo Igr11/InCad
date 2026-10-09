@@ -972,20 +972,26 @@ class Shell(QtCore.QObject):
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
 
     def toggle_construction(self):
-        """Inventor's Construction button: with sketch geometry selected, switch it; otherwise turn the drawing
-        mode on/off (new geometry becomes construction while on)."""
+        """Inventor's Construction button: with sketch geometry selected, switch it (and end the drawing mode if it
+        was on); otherwise turn the drawing mode on/off (new geometry becomes construction while on)."""
         import FreeCADGui as Gui
         from incad.core import log
         sk = self.sketches.editing()
         if sk is None:
             raise ValueError("Open a sketch first")
         picked = [sub for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
-                  for sub in sel.SubElementNames if sub.startswith("Edge")]
+                  for sub in sel.SubElementNames if sub.startswith(("Edge", "ExternalEdge"))]
         if picked:  # the whole profile of each picked edge (a polygon's sides), not one edge at a time
             from incad.core import safe, sketch
-            ids = [int(sub[4:]) - 1 for sub in picked]
+            ids = [-int(sub[len("ExternalEdge"):]) - 2 if sub.startswith("ExternalEdge") else int(sub[4:]) - 1
+                   for sub in picked]
+            was_on, self.construction_mode = self.construction_mode, False  # the same click ends the drawing mode
             safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document)
             Gui.Selection.clearSelection()
+            if was_on:
+                log.report("info", "Construction off: normal geometry")
+            if self.ribbon is not None:
+                self.ribbon.refresh_checks()
             return
         self.construction_mode = not self.construction_mode
         self._construction_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount

@@ -237,6 +237,36 @@ class ConstructionChainTest(unittest.TestCase):
             sketch.toggle_construction(self.sk, [g])
             self.assertEqual(self.sk.getConstruction(g), want)
 
+    def test_a_projected_line_becomes_a_normal_line_tied_to_it(self):
+        """External (projected) geometry is always construction in FreeCAD and cannot be switched, so the
+        Construction button puts a NORMAL line of the same size and place on it, joined at both ends."""
+        doc = util.new_doc("Proj")
+        try:
+            body, pad = util.padded_part(doc, 10, incad=True)
+            sk = sketch.make_sketch(body, plane(body, "XY_Plane"))
+            edge = [i + 1 for i, e in enumerate(pad.Shape.Edges)
+                    if all(abs(v.Z) < 1e-6 for v in e.Vertexes) and e.Curve.TypeId == "Part::GeomLine"][0]
+            sk.addExternal(pad.Name, "Edge%d" % edge)
+            doc.recompute()
+            ext = -3  # the first projected item after the two axes
+            self.assertTrue(sk.getConstruction(ext))
+            before = sk.GeometryCount
+            new = sketch.toggle_construction(sk, [ext])
+            self.assertEqual(sk.GeometryCount, before + 1)
+            self.assertEqual(new, [before])
+            line, src = sk.Geometry[before], sk.ExternalGeo[2]
+            self.assertFalse(sk.getConstruction(before))
+            self.assertLess(line.StartPoint.distanceToPoint(src.StartPoint), 1e-6)
+            self.assertLess(line.EndPoint.distanceToPoint(src.EndPoint), 1e-6)
+            tied = {(c.First, c.FirstPos, c.Second, c.SecondPos) for c in sk.Constraints if c.Type == "Coincident"}
+            self.assertIn((before, 1, ext, 1), tied)
+            self.assertIn((before, 2, ext, 2), tied)
+            # picking the new (normal) line switches it to construction and back as usual
+            sketch.toggle_construction(sk, [before])
+            self.assertTrue(sk.getConstruction(before))
+        finally:
+            App.closeDocument(doc.Name)
+
 
 class PolygonCentreTest(unittest.TestCase):
     """A polygon's centre drawn on the origin or an axis keeps that constraint, as Inventor remembers the snap."""

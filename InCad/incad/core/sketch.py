@@ -240,15 +240,43 @@ def chain(sk, geo_ids):
 def toggle_construction(sk, geo_ids):
     """Inventor's Construction on picked edges: their whole profiles become construction, or normal again. The
     direction comes from the EDGES THE USER PICKED, not the expanded profile — so a construction line joined to
-    normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction')."""
-    picked = [i for i in geo_ids if 0 <= i < sk.GeometryCount]
-    make = not (picked and all(sk.getConstruction(i) for i in picked))
-    ids = sorted(chain(sk, geo_ids))
-    for i in ids:
-        if sk.getConstruction(i) != make:
-            sk.setConstruction(i, make)
+    normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction').
+    A projected (external) edge, always construction in FreeCAD, gets a normal copy tied to it instead."""
+    external = [i for i in geo_ids if i < -2]
+    geo_ids = [i for i in geo_ids if i >= 0]
+    made = [_normal_copy_of_external(sk, i) for i in external]
+    picked = [i for i in geo_ids if i < sk.GeometryCount]
+    ids = []
+    if picked:
+        make = not all(sk.getConstruction(i) for i in picked)
+        ids = sorted(chain(sk, geo_ids))
+        for i in ids:
+            if sk.getConstruction(i) != make:
+                sk.setConstruction(i, make)
     sk.Document.recompute()
-    return ids
+    return ids + [m for m in made if m is not None]
+
+
+def _normal_copy_of_external(sk, geo_id):
+    """A normal line/arc/circle of the same size and place as the projected edge, joined to its ends (centre for a
+    circle). Returns the new geometry index, or None for a point or an unknown index."""
+    import Part
+    import Sketcher
+    index = -geo_id - 1
+    if index >= len(sk.ExternalGeo):
+        return None
+    src = sk.ExternalGeo[index]
+    kind = src.TypeId
+    if kind not in ("Part::GeomLineSegment", "Part::GeomArcOfCircle", "Part::GeomCircle"):
+        return None
+    new = sk.addGeometry(src.copy(), False)
+    sk.setConstruction(new, False)  # the copy keeps the projected edge's construction flag otherwise
+    if kind == "Part::GeomCircle":
+        sk.addConstraint(Sketcher.Constraint("Coincident", new, 3, geo_id, 3))
+    else:
+        sk.addConstraint(Sketcher.Constraint("Coincident", new, 1, geo_id, 1))
+        sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, geo_id, 2))
+    return new
 
 
 SNAP_TOL = 1e-6
