@@ -276,6 +276,8 @@ def accepts(kind, obj, sub):
             return True
         parent = obj.getParentGeoFeatureGroup()
         return parent is not None and parent.TypeId == "PartDesign::Body" and tid.startswith("PartDesign::")
+    if kind.startswith("sketch_"):
+        return _accepts_sketch(kind, obj, sub)
     el = _element(obj, sub)
     if kind == "edge":
         return sub.startswith("Edge") and el is not None
@@ -311,8 +313,52 @@ def accepts(kind, obj, sub):
     return False
 
 
+def _accepts_sketch(kind, sk, sub):
+    """Picks inside the sketch being edited: its own lines/arcs/circles/points, axes and origin."""
+    from incad.core import sketch_patterns as sp
+    if sk is None or sk.TypeId != "Sketcher::SketchObject" or not sub:
+        return False
+    try:
+        geo, pos = sp.element(sk, sub)
+    except (ValueError, IndexError):
+        return False
+    if kind == "sketch_point":
+        return pos != 0  # any vertex, the origin ('RootPoint' is (-1, 1))
+    if geo < 0:  # H_Axis / V_Axis / RootPoint
+        return kind == "sketch_direction" and pos == 0
+    t = sp.geometry_type(sk, geo)
+    if kind == "sketch_geometry":
+        return pos == 0 and t in sp.SUPPORTED
+    if kind == "sketch_direction":
+        return pos == 0 and t == "Part::GeomLineSegment"
+    if kind == "sketch_limit":
+        return pos != 0 or t == "Part::GeomLineSegment"
+    return False
+
+
 _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
-               "limit": "Click a face, edge or work plane…"}
+               "limit": "Click a face, edge or work plane…", "sketch_geometry": "Click the geometry to repeat…",
+               "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
+               "sketch_limit": "Click a line or a point…"}
+_PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items"})
+_SKETCH_NAMES = {"H_Axis": "X axis", "V_Axis": "Y axis", "RootPoint": "Origin"}
+
+
+def _sketch_element_label(sk, sub):
+    from incad.core import sketch_patterns as sp
+    if sub in _SKETCH_NAMES:
+        return _SKETCH_NAMES[sub]
+    try:
+        geo, pos = sp.element(sk, sub)
+        kind = {"Part::GeomLineSegment": "Line", "Part::GeomArcOfCircle": "Arc", "Part::GeomCircle": "Circle",
+                "Part::GeomPoint": "Point"}.get(sp.geometry_type(sk, geo), "Curve")
+    except Exception:
+        return sub
+    if pos == 3:
+        return "%s %d centre" % (kind, geo + 1)
+    if pos in (1, 2):
+        return "%s %d %s" % (kind, geo + 1, "start" if pos == 1 else "end")
+    return "%s %d" % (kind, geo + 1)
 
 
 def pick_label(kind, text):
@@ -329,6 +375,8 @@ def pick_label(kind, text):
             obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
         except Exception:
             obj = None
+        if kind.startswith("sketch_") and sub and obj is not None:
+            return _sketch_element_label(obj, sub)
         label = obj.Label if obj is not None else name
         return "%s · %s" % (label, sub) if sub else label
     if kind == "feature" and len(items) <= 3:  # names say what is picked; a bare count doesn't

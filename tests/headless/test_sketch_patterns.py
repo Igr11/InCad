@@ -348,3 +348,135 @@ class EqualSpacingTest(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             sp.equal_spacing(self.sk, [self.hole], (self.left, 0), (self.left, 0), 3)
         self.assertIn("From and To", str(cm.exception))
+
+
+class EditAndKindsTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Sk")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.hole = circle(self.sk, 6, 5, 2)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, self.hole, 3, 6.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, self.hole, 3, 5.0))
+        self.doc.recompute()
+        from incad.features import sketch_patterns as kinds
+        self.kinds = kinds
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _pick(self, sub):
+        return "%s:%s" % (self.sk.Name, sub)
+
+    def test_rect_kind_creates_reads_and_updates(self):
+        k = self.kinds.SKETCH_RECT
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), count1="3", spacing1="12 mm")
+        f = k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        self.assertIs(f, self.sk)
+        name = self.sk.InCadEditing
+        rec = sp.find(self.sk, name)
+        self.assertEqual(len(rec["copies"]), 2)
+        back = k.read(self.doc, self.sk)
+        self.assertEqual((back["geometry"], back["count1"], back["spacing1"], back["fit1"], back["dir1"]),
+                         (self._pick("Edge1"), "3", "12 mm", "spacing", self._pick("H_Axis")))
+        self.assertIn("spacing1", k.param_names(self.sk))
+        k.update(self.doc, self.sk, dict(back, count1="5"))
+        self.doc.recompute()
+        self.assertEqual(len(sp.find(self.sk, name)["copies"]), 4)
+        self.assertEqual(self.sk.GeometryCount, 5)
+        self.assertEqual(self.sk.solve(), 0)
+
+    def test_edit_with_fewer_copies_removes_the_surplus(self):
+        k = self.kinds.SKETCH_RECT
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), count1="5", spacing1="12 mm")
+        k.create(self.doc, self.body, self.sk, v)
+        k.update(self.doc, self.sk, dict(k.read(self.doc, self.sk), count1="3"))
+        self.doc.recompute()
+        self.assertEqual(self.sk.GeometryCount, 3)
+        self.assertEqual(len([c for c in self.sk.Constraints if sketch.is_pattern_name(c.Name)]), 2 * 2 + 2)
+
+    def test_a_hand_deleted_copy_does_not_break_edit(self):
+        k = self.kinds.SKETCH_RECT
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), count1="4", spacing1="12 mm")
+        k.create(self.doc, self.body, self.sk, v)
+        name = self.sk.InCadEditing
+        gone = sp.index_of(self.sk, sp.find(self.sk, name)["copies"][1][0])
+        self.sk.delGeometry(gone)  # FreeCAD drops that geometry's constraints with it
+        self.doc.recompute()
+        self.assertTrue(sp.is_broken(self.sk, name))
+        k.update(self.doc, self.sk, dict(k.read(self.doc, self.sk), count1="4"))
+        self.doc.recompute()
+        self.assertFalse(sp.is_broken(self.sk, name))
+        self.assertEqual(self.sk.GeometryCount, 4)
+        self.assertEqual(self.sk.solve(), 0)
+
+    def test_equal_spacing_in_the_rect_kind_stores_the_spacing_and_direction(self):
+        left = line(self.sk, 0, 0, 0, 10, construction=True)
+        right = line(self.sk, 40, 0, 40, 10, construction=True)
+        self.doc.recompute()
+        k = self.kinds.SKETCH_RECT
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), fit1="faces", count1="3",
+                 from1=self._pick("Edge%d" % (left + 1)), to1=self._pick("Edge%d" % (right + 1)))
+        k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        back = k.read(self.doc, self.sk)
+        self.assertEqual(back["spacing1"], "14 mm")
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        last = sp.index_of(self.sk, rec["copies"][-1][0])
+        self.assertAlmostEqual(sp.point_of(self.sk, last, 3).x, 34.0, places=3)
+        with self.assertRaises(ValueError) as cm:
+            k.update(self.doc, self.sk, dict(back, from1=back["to1"], to1=back["from1"]))
+        self.assertIn("pick the other end as From", str(cm.exception))
+
+    def test_circ_kind_with_fitted_ring_and_axis_on_the_origin(self):
+        k = self.kinds.SKETCH_CIRC
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), count="4", angle="360 °")
+        k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        back = k.read(self.doc, self.sk)
+        self.assertEqual((back["axis"], back["count"], back["angle"], back["fit"]), (self._pick("RootPoint"), "4", "360 °", "fitted"))
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        self.assertEqual(len(rec["copies"]), 3)
+        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "90°")  # InCad shows angles as N°
+        k.update(self.doc, self.sk, dict(back, fit="between", angle="30 °", count="3"))
+        self.doc.recompute()
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "30°")
+
+    def test_nothing_picked_asks_for_geometry_and_a_copy_cannot_be_patterned(self):
+        k = self.kinds.SKETCH_RECT
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, self.sk, k.defaults(self.doc, self.body, self.sk))
+        self.assertIn("Click the geometry to repeat", str(cm.exception))
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick("Edge1"), count1="2", spacing1="12 mm")
+        k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        self.assertTrue(sp.is_copy(self.sk, 1))
+        self.assertEqual(sp.pattern_of(self.sk, 1), self.sk.InCadEditing)
+        self.assertEqual(sp.pattern_of(self.sk, 0), self.sk.InCadEditing)  # the original belongs to it too
+        self.sk.InCadEditing = ""
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, self.sk, dict(v, geometry=self._pick("Edge2")))
+        self.assertIn("Pattern the original, not a copy", str(cm.exception))
+
+    def test_picks_accept_the_right_elements(self):
+        from incad.features import common
+        ln = line(self.sk, 0, 0, 4, 0)
+        e = self.sk.addGeometry(Part.Ellipse(App.Vector(20, 20, 0), 3, 2))
+        self.doc.recompute()
+        self.assertTrue(common.accepts("sketch_geometry", self.sk, "Edge1"))
+        self.assertFalse(common.accepts("sketch_geometry", self.sk, "Edge%d" % (e + 1)))
+        self.assertTrue(common.accepts("sketch_direction", self.sk, "Edge%d" % (ln + 1)))
+        self.assertFalse(common.accepts("sketch_direction", self.sk, "Edge1"))  # a circle is no direction
+        self.assertTrue(common.accepts("sketch_direction", self.sk, "H_Axis"))
+        self.assertTrue(common.accepts("sketch_point", self.sk, "RootPoint"))
+        self.assertTrue(common.accepts("sketch_point", self.sk, "Vertex1"))
+        self.assertTrue(common.accepts("sketch_limit", self.sk, "Edge%d" % (ln + 1)))
+        self.assertTrue(common.accepts("sketch_limit", self.sk, "Vertex1"))
+        self.assertFalse(common.accepts("sketch_limit", self.sk, "Edge1"))
+        self.assertEqual(common.pick_label("sketch_direction", self._pick("H_Axis")), "X axis")
+        self.assertEqual(common.pick_label("sketch_point", self._pick("RootPoint")), "Origin")
+        self.assertEqual(common.pick_label("sketch_geometry", ""), "Click the geometry to repeat…")

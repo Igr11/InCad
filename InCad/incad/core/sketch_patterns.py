@@ -444,3 +444,35 @@ def equal_spacing(sk, originals, start, end, count):
                          "the limits, or pick the other end as From" % (width, margin, count,
                                                                        count * width + 2 * margin, room))
     return spacing, math.degrees(math.atan2(direction.y, direction.x))
+
+
+# ----- edit -----
+def is_broken(sk, name):
+    rec = find(sk, name)
+    if rec is None:
+        return False
+    ids = [g for ids in rec.get("copies", []) for g in ids] + list(rec.get("spokes0", []))
+    return any(index_of(sk, g) is None for g in ids)
+
+
+def rebuild(doc, sk, rec):
+    """Remove the pattern's copies (whatever is left of them) and build them again from `rec`."""
+    remove(doc, sk, rec["name"])
+    rec = dict(rec, copies=[], constraints=[], spokes0=[])
+    return build_rect(doc, sk, rec) if rec["kind"] == "rect" else build_circ(doc, sk, rec)
+
+
+def pattern_of(sk, index):
+    """The pattern a geometry belongs to (original, copy or spoke), or None."""
+    gid = sk.getGeometryId(index)
+    if gid is None:
+        return None
+    for r in records(sk):
+        if gid in r.get("originals", []) or gid in r.get("spokes0", []) or any(gid in ids for ids in r.get("copies", [])):
+            return r["name"]
+    return None
+
+
+def is_copy(sk, index):
+    gid = sk.getGeometryId(index)
+    return gid is not None and any(gid in ids for r in records(sk) for ids in r.get("copies", []))
