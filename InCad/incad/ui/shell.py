@@ -981,6 +981,7 @@ class Shell(QtCore.QObject):
             raise ValueError("Open a sketch first")
         picked = [sub for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
                   for sub in sel.SubElementNames if sub.startswith(("Edge", "ExternalEdge"))]
+        log.logger().info("Construction pressed: picked=%s mode=%s", picked, self.construction_mode)
         if picked:  # the whole profile of each picked edge (a polygon's sides), not one edge at a time
             from incad.core import safe, sketch
             ids = [-int(sub[len("ExternalEdge"):]) - 2 if sub.startswith("ExternalEdge") else int(sub[4:]) - 1
@@ -993,12 +994,23 @@ class Shell(QtCore.QObject):
             if self.ribbon is not None:
                 self.ribbon.refresh_checks()
             return
+        log.logger().info("Construction pressed with no edge picked; selection=%s preselection=%s",
+                          [(sel.Object.Name, list(sel.SubElementNames)) for sel in Gui.Selection.getSelectionEx("")],
+                          self._preselection_text(Gui))
         self.construction_mode = not self.construction_mode
         self._construction_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
         log.report("info", "Construction on: new geometry is construction (click again to stop)"
                    if self.construction_mode else "Construction off: normal geometry")
         if self.ribbon is not None:
             self.ribbon.refresh_checks()
+
+    @staticmethod
+    def _preselection_text(Gui):
+        try:
+            pre = Gui.Selection.getPreselection()
+            return "%s.%s" % (getattr(getattr(pre, "Object", None), "Name", None), getattr(pre, "SubElementName", ""))
+        except Exception as e:
+            return "n/a (%s)" % e
 
     def _make_construction(self, sk):
         if not _alive(sk):
