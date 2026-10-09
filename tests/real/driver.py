@@ -99,6 +99,7 @@ def state():
         st["editing"] = sk.Name
         st["geo"] = len(sk.Geometry)
         st["constr"] = [bool(sk.getConstruction(i)) for i in range(sk.GeometryCount)]
+        st["ext"] = len(sk.ExternalGeo) - 2
         st["cmode"] = bool(getattr(sh, "construction_mode", False))
         st["sel"] = [(o.Object.Name, list(o.SubElementNames)) for o in Gui.Selection.getSelectionEx("")]
         st["dims"] = [[c.Name, round(c.Value, 3)] for c in sk.Constraints if c.Name]
@@ -261,6 +262,22 @@ def setup(name):
         ST["sketch"] = crossing_sketch(body)
         doc.recompute()
         Gui.SendMsgToActiveView("ViewFit")
+        return
+    if name == "projected_sketch_open":  # a block, and an XY sketch in edit with its top edge (y = 10) projected
+        pad = util.add_pad(body, util.add_rect_sketch(body, name="SketchA"), 10)
+        body.Tip = pad
+        doc.recompute()
+        ST["pad"] = pad
+        edge = [i + 1 for i, e in enumerate(pad.Shape.Edges) if e.Curve.TypeId == "Part::GeomLine"
+                and all(abs(v.Z) < 1e-6 and abs(v.Y - 10) < 1e-6 for v in e.Vertexes)][0]
+        sk = body.newObject("Sketcher::SketchObject", "ProjSk")
+        sk.AttachmentSupport = [(doc.getObject("XY_Plane") or body.Origin.OriginFeatures[3], "")]
+        sk.MapMode = "FlatFace"
+        sk.addExternal(pad.Name, "Edge%d" % edge)
+        doc.recompute()
+        ST["sketch"] = sk
+        shell.sketch_session().edit(sk)
+        ST["points"].update({"proj": (10, 10, 0), "away": (40, 30, 0)})
         return
     if name in ("block", "block_with_top_sketch"):
         pad = util.add_pad(body, util.add_rect_sketch(body, name="SketchA"), 10)

@@ -264,6 +264,17 @@ class ConstructionChainTest(unittest.TestCase):
             # picking the new (normal) line switches it to construction and back as usual
             sketch.toggle_construction(sk, [before])
             self.assertTrue(sk.getConstruction(before))
+            sketch.toggle_construction(sk, [before])
+            self.assertFalse(sk.getConstruction(before))
+            # the copy lies exactly on the projected line, so a click can pick the projected one again: that
+            # toggles back (the copy goes), never piles up more copies
+            sketch.toggle_construction(sk, [ext])
+            self.assertEqual(sk.GeometryCount, before)
+            sketch.toggle_construction(sk, [ext])
+            self.assertEqual(sk.GeometryCount, before + 1)
+            self.assertFalse(sk.getConstruction(before))
+            sketch.toggle_construction(sk, [ext])
+            self.assertEqual(sk.GeometryCount, before)
         finally:
             App.closeDocument(doc.Name)
 

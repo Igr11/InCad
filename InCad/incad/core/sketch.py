@@ -244,7 +244,15 @@ def toggle_construction(sk, geo_ids):
     A projected (external) edge, always construction in FreeCAD, gets a normal copy tied to it instead."""
     external = [i for i in geo_ids if i < -2]
     geo_ids = [i for i in geo_ids if i >= 0]
-    made = [_normal_copy_of_external(sk, i) for i in external]
+    made = []
+    for ext in external:
+        copies = _copies_of_external(sk, ext)
+        if copies:  # already normal: toggling the projected line again puts it back to construction only
+            for i in sorted(copies, reverse=True):
+                sk.delGeometry(i)
+            geo_ids = [g - sum(1 for c in copies if c < g) for g in geo_ids if g not in copies]
+        else:
+            made.append(_normal_copy_of_external(sk, ext))
     picked = [i for i in geo_ids if i < sk.GeometryCount]
     ids = []
     if picked:
@@ -255,6 +263,19 @@ def toggle_construction(sk, geo_ids):
                 sk.setConstruction(i, make)
     sk.Document.recompute()
     return ids + [m for m in made if m is not None]
+
+
+def _copies_of_external(sk, geo_id):
+    """Indices of the normal copies made by _normal_copy_of_external (joined to the projected edge's ends/centre)."""
+    tied = {}
+    for c in sk.Constraints:
+        if c.Type != "Coincident":
+            continue
+        if c.Second == geo_id and c.First >= 0:
+            tied.setdefault(c.First, set()).add(c.FirstPos)
+        elif c.First == geo_id and c.Second >= 0:
+            tied.setdefault(c.Second, set()).add(c.SecondPos)
+    return [i for i, ends in tied.items() if ends in ({1, 2}, {3})]
 
 
 def _normal_copy_of_external(sk, geo_id):
