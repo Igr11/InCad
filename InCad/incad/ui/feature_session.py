@@ -48,8 +48,9 @@ class FeatureSession(QtCore.QObject):
         if doc.HasPendingTransaction:
             doc.commitTransaction()
         self._broken = safe.snapshot_broken(doc)
-        if not self.creating:  # every document's undo step opens before anything changes
-            self._join_documents(self.kind.read(doc, self.feature))
+        self._undo_mark = doc.UndoCount  # Cancel undoes back to here: a Sketcher command run meanwhile (Delete
+        if not self.creating:  # every document's undo step opens before anything changes   on a copy) makes
+            self._join_documents(self.kind.read(doc, self.feature))  # FreeCAD commit the dialog's own pending step
         doc.openTransaction(self.kind.TITLE)
         safe.set_busy(self.kind.TITLE)
         try:
@@ -697,6 +698,9 @@ class FeatureSession(QtCore.QObject):
                 self._extra = []
             else:
                 self.doc.abortTransaction()
+                mark = getattr(self, "_undo_mark", None)
+                while mark is not None and self.doc.UndoCount > mark:  # steps committed under the dialog
+                    self.doc.undo()
                 self.doc.recompute()
                 model.relink(self.doc)  # objects restored by the abort lose their formula links (FreeCAD quirk)
                 self._abort_extras(reopen=False)

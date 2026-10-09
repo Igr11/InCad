@@ -230,8 +230,39 @@ def test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session():
     harness.pump(600)
 
 
+def test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between():
+    """Deleting a copy with the Delete key while the dialog is open runs the Sketcher's own command: FreeCAD
+    commits the dialog's pending undo step under it. Cancel must still put the sketch back as it was."""
+    k = sk()
+    before = k.GeometryCount
+    records = len(sp.records(k))
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (ST["hole"] + 1))
+    commands.REGISTRY.run("sketch.rect_pattern")
+    harness.pump(1200)
+    w = dialog().field("count1")
+    w.setText("3")
+    w.editingFinished.emit()
+    harness.pump(900)
+    assert k.GeometryCount == before + 2, k.GeometryCount
+    rec = sp.records(k)[-1]
+    gone = sp.index_of(k, rec["copies"][0][0])
+    App.ActiveDocument.openTransaction("Delete sketch geometry")  # what the Sketcher's Delete does
+    k.delGeometry(gone)
+    App.ActiveDocument.commitTransaction()
+    App.ActiveDocument.recompute()
+    harness.pump(900)
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    assert dialog() is None
+    assert k.GeometryCount == before, (k.GeometryCount, before)
+    assert len(sp.records(k)) == records, sp.records(k)
+    assert s().feature_session is None
+
+
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
              test_4_the_ribbon_has_one_pattern_split_button_and_mirror_on_its_own, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
              test_6_delete_pattern_leaves_the_original, test_7_construction_drawing_mode_does_not_turn_the_copies_into_construction,
-             test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session])
+             test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session,
+             test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between])
