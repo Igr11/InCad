@@ -310,10 +310,29 @@ def build_rect(doc, sk, rec):
                     rec["_points"][(src, k, j)] = True
                     _add(sk, rec, Sketcher.Constraint("DistanceX", g, pos, c, pos, offset.x), ex)
                     _add(sk, rec, Sketcher.Constraint("DistanceY", g, pos, c, pos, offset.y), ey)
-                if geometry_type(sk, g) in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+                t = geometry_type(sk, g)
+                if t == "Part::GeomCircle":
                     _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+                elif t == "Part::GeomArcOfCircle":  # both ends are tied: one equation on the centre fixes the bulge
+                    b = _bisector(sk, g)
+                    if abs(b.x) >= abs(b.y):
+                        _add(sk, rec, Sketcher.Constraint("DistanceX", g, 3, c, 3, offset.x), ex)
+                    else:
+                        _add(sk, rec, Sketcher.Constraint("DistanceY", g, 3, c, 3, offset.y), ey)
             rec["copies"].append(copy_ids)
     return _end(sk, rec)
+
+
+def _bisector(sk, arc):
+    """Unit vector from the middle of an arc's chord to its centre: the direction the centre moves in when the
+    arc's bulge changes with its ends held. The one equation that pins the centre must have a component along it
+    (a semicircle's chord already fixes the radius, so an Equal on the radius would be redundant)."""
+    a, b, c = point_of(sk, arc, 1), point_of(sk, arc, 2), point_of(sk, arc, 3)
+    d = c - (a + b) * 0.5
+    if d.Length < 1e-9:  # a semicircle: the centre is on the chord; take the chord's normal
+        ch = b - a
+        d = App.Vector(-ch.y, ch.x, 0)
+    return d.normalize()
 
 
 def copies_of(sk, name):
@@ -384,13 +403,6 @@ def step_angle(total_deg, count, fitted):
     return float(total_deg) / (count - 1)
 
 
-def _circ_points(sk, geo):
-    """Points a circular copy is tied by: a line's start (its direction and length come from Equal + Angle),
-    an arc's two ends, a circle's centre, a point."""
-    t = geometry_type(sk, geo)
-    return [1] if t == "Part::GeomLineSegment" else ref_points(sk, geo)
-
-
 def check_axis(sk, originals, axis):
     centre = point_of(sk, axis[0], axis[1])
     for g in originals:
@@ -433,7 +445,7 @@ def build_circ(doc, sk, rec):
     centre = point_of(sk, axis[0], axis[1])
     spoke0 = {}
     for g in originals:
-        for pos in _circ_points(sk, g):
+        for pos in ref_points(sk, g) + ([3] if geometry_type(sk, g) == "Part::GeomArcOfCircle" else []):
             src = alias.get((g, pos), (g, pos))
             if src not in spoke0:
                 spoke0[src] = _spoke(sk, rec, axis, src[0], src[1])
@@ -446,9 +458,10 @@ def build_circ(doc, sk, rec):
             new[g] = c
             copy_ids.append(ensure_id(sk, c))
         done = {}
+        turn = "%d * InCadModel.%s / %r" % (sign * k, rec["angle_param"], divisor)
         for g in originals:
             c = new[g]
-            for pos in _circ_points(sk, g):
+            for pos in ref_points(sk, g):  # every point of the copy on a spoke: same length, k steps round
                 src = alias.get((g, pos), (g, pos))
                 if src in done:
                     _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
@@ -457,15 +470,20 @@ def build_circ(doc, sk, rec):
                 done[src] = s
                 copy_ids.append(ensure_id(sk, s))
                 _add(sk, rec, Sketcher.Constraint("Equal", spoke0[src], s))
-                _add(sk, rec, Sketcher.Constraint("Angle", spoke0[src], s, angle),
-                     "%d * InCadModel.%s / %r" % (sign * k, rec["angle_param"], divisor))
+                _add(sk, rec, Sketcher.Constraint("Angle", spoke0[src], s, angle), turn)
             t = geometry_type(sk, g)
-            if t == "Part::GeomLineSegment":
+            if t == "Part::GeomCircle":
                 _add(sk, rec, Sketcher.Constraint("Equal", g, c))
-                _add(sk, rec, Sketcher.Constraint("Angle", g, c, angle),
-                     "%d * InCadModel.%s / %r" % (sign * k, rec["angle_param"], divisor))
-            elif t in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
-                _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+            elif t == "Part::GeomArcOfCircle":  # both ends on spokes: one equation on the centre fixes the bulge
+                s = _spoke(sk, rec, axis, c, 3)
+                copy_ids.append(ensure_id(sk, s))
+                b = _bisector(sk, g)
+                u = (point_of(sk, g, 3) - centre)
+                u = u.normalize() if u.Length > 1e-9 else App.Vector(1, 0, 0)
+                if abs(b.dot(u)) >= abs(b.x * u.y - b.y * u.x):  # the centre moves radially: hold its distance
+                    _add(sk, rec, Sketcher.Constraint("Equal", spoke0[(g, 3)], s))
+                else:                                            # it moves sideways: hold its angle
+                    _add(sk, rec, Sketcher.Constraint("Angle", spoke0[(g, 3)], s, angle), turn)
         rec["copies"].append(copy_ids)
     return _end(sk, rec)
 

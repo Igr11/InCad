@@ -646,3 +646,58 @@ class ReviewFixesTest(unittest.TestCase):
         self.doc.recompute()
         c = self.sk.Geometry[other]
         self.assertEqual((round(c.Center.x, 6), round(c.Center.y, 6), round(c.Radius, 6)), (20.0, 0.0, 1.0))
+
+
+class SlotPatternTest(unittest.TestCase):
+    """A slot's ends are semicircles: with both ends of an arc tied, an Equal on its radius is numerically
+    redundant (the chord already fixes it). The pattern must leave the sketch without redundant constraints."""
+
+    def setUp(self):
+        from incad.core import slots
+        self.doc = util.new_doc("Sl")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.slots = slots
+        from incad.features import sketch_patterns as kinds
+        self.kinds = kinds
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _slot(self, a, b, r=1.5):
+        first = self.sk.GeometryCount
+        self.slots.add(self.sk, App.Vector(*a), App.Vector(*b), r)
+        self.doc.recompute()
+        return ",".join("%s:Edge%d" % (self.sk.Name, i + 1) for i in range(first, self.sk.GeometryCount)
+                        if not self.sk.getConstruction(i))
+
+    def _clean(self, tag):
+        self.doc.recompute()
+        self.assertEqual(self.sk.solve(), 0, (tag, self.sk.getStatusString()))
+        self.assertNotIn("redundant", self.sk.getStatusString().lower(), tag)
+        self.assertEqual(list(self.sk.RedundantConstraints), [], tag)
+        self.assertEqual(list(self.sk.ConflictingConstraints), [], tag)
+
+    def test_a_slot_patterned_along_x_has_no_redundant_constraints(self):
+        geo = self._slot((0, 0, 0), (0, 5, 0))
+        k = self.kinds.SKETCH_RECT
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=geo, count1="4", spacing1="6 mm"))
+        self._clean("rect slot")
+        self.assertEqual(self.sk.GeometryCount, 16)
+        last = self.sk.Geometry[self.sk.GeometryCount - 1]  # a copy keeps its shape: the arc radius and the chord
+        arcs = [g for g in self.sk.Geometry if g.TypeId == "Part::GeomArcOfCircle"]
+        self.assertTrue(all(abs(g.Radius - 1.5) < 1e-6 for g in arcs), [g.Radius for g in arcs])
+
+    def test_a_radial_and_a_tangential_slot_patterned_round_the_origin_have_no_redundant_constraints(self):
+        k = self.kinds.SKETCH_CIRC
+        radial = self._slot((10, 0, 0), (15, 0, 0))
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=radial, count="6", angle="360 °"))
+        self._clean("radial slot")
+        self.sk.InCadEditing = ""
+        tangential = self._slot((0, -2.5, 25), (0, 2.5, 25)) if False else self._slot((25, -2.5, 0), (25, 2.5, 0))
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=tangential, count="6", angle="360 °"))
+        self._clean("tangential slot")
+        arcs = [g for g in self.sk.Geometry if g.TypeId == "Part::GeomArcOfCircle"]
+        self.assertTrue(all(abs(g.Radius - 1.5) < 1e-6 for g in arcs), sorted(set(round(g.Radius, 4) for g in arcs)))
