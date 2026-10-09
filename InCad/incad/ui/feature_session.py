@@ -730,6 +730,11 @@ class FeatureSession(QtCore.QObject):
                 self.profile.InCadEditing = ""  # the pattern is no longer open in a dialog
             except Exception:
                 pass
+            try:
+                import FreeCADGui as Gui
+                Gui.Selection.clearSelection()  # the copies were rebuilt: a selection by name would point past them
+            except Exception:
+                pass
         safe.set_busy(None)
         if self.dialog is not None:
             self.dialog.close()

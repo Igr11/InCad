@@ -358,13 +358,53 @@ def delete_target():
             d.recompute()
 
 
+def _sketch_selection(sk):
+    """[(geo, pos, sub)] of the sketch elements selected now, dropping names that point past the geometry the
+    sketch has (a stale selection after a pattern rebuild made FreeCAD's own delete crash)."""
+    from incad.core import sketch_patterns as sp
+    out = []
+    for sel in _gui().Selection.getSelectionEx(sk.Document.Name):
+        if sel.Object is not sk:
+            continue
+        for sub in sel.SubElementNames or ():
+            try:
+                geo, pos = sp.element(sk, sub)
+            except (ValueError, IndexError):
+                continue
+            if geo >= sk.GeometryCount or geo < -2 - len(sk.ExternalGeo):
+                continue
+            out.append((geo, pos, sub))
+    return out
+
+
+def _delete_in_sketch(sk):
+    """Delete in a sketch: a pattern's copies and spokes go through InCad (the pattern is then broken and rebuilt
+    on its next edit); everything else through the Sketcher's own delete, with a selection cleaned of stale names."""
+    from incad.core import safe, sketch_patterns as sp
+    picked = _sketch_selection(sk)
+    mine = sorted({geo for geo, _, _ in picked if geo >= 0 and sp.pattern_of(sk, geo)
+                   and sp.index_of(sk, sp.getGeometryId(sk, geo)) is not None and not sp.is_original(sk, geo)}, reverse=True)
+    rest = [sub for geo, _, sub in picked if geo not in mine]
+    if mine:
+        r = safe.run_safely("Delete", lambda: [sk.delGeometry(g) for g in mine], sk.Document)
+        if not r.ok:
+            raise ValueError(r.error)
+        sk.Document.recompute()
+    _gui().Selection.clearSelection()
+    if rest:
+        for sub in rest:
+            _gui().Selection.addSelection(sk.Document.Name, sk.Name, sub)
+        run_std("Std_Delete")
+
+
 def delete_selection():
     """Delete / Backspace: in a sketch the selected geometry and dimensions (Sketcher's own delete, whose key
     died with FreeCAD's hidden Edit menu); otherwise the selected objects, or the model-tree row in focus."""
     from incad.core import context
     from incad.ui import shell
-    if shell.sketch_session().editing() is not None:
-        run_std("Std_Delete")
+    sk = shell.sketch_session().editing()
+    if sk is not None:
+        _delete_in_sketch(sk)
         return
     from incad.features import common
     names = []

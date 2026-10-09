@@ -589,6 +589,16 @@ def pattern_of(sk, index):
     return None
 
 
+def getGeometryId(sk, index):
+    return sk.getGeometryId(index)
+
+
+def is_original(sk, index):
+    """True when the geometry is an original a pattern repeats (never deleted as part of a pattern)."""
+    gid = sk.getGeometryId(index)
+    return gid is not None and any(gid in r.get("originals", []) for r in records(sk))
+
+
 def is_copy(sk, index):
     gid = sk.getGeometryId(index)
     return gid is not None and any(gid in ids for r in records(sk) for ids in r.get("copies", []))
