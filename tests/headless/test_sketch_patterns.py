@@ -196,3 +196,155 @@ class RectangularTest(unittest.TestCase):
         self.assertEqual([c.Name for c in self.sk.Constraints if sketch.is_pattern_name(c.Name)], [])
         self.assertIsNone(sp.find(self.sk, rec["name"]))
         self.assertEqual(sp.copies_of(self.sk, rec["name"]), [])
+
+
+class CircularTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Sc")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _circ(self, originals, count=4, step="90 deg", axis=(-1, 1), flip=False):
+        name = sp.next_name(self.sk)
+        rec = {"name": name, "kind": "circ", "originals": [sp.ensure_id(self.sk, g) for g in originals],
+               "count": count, "axis": list(axis), "flip": flip,
+               "angle_param": model.new_feature_parameter(self.doc, step, "angle")}
+        rec = sp.build_circ(self.doc, self.sk, rec)
+        self.doc.recompute()
+        return rec
+
+    def _xy(self, geo, pos):
+        p = sp.point_of(self.sk, geo, pos)
+        return round(p.x, 3), round(p.y, 3)
+
+    def _plain(self, ids):
+        return [sp.index_of(self.sk, g) for g in ids if not self.sk.getConstruction(sp.index_of(self.sk, g))]
+
+    def test_a_circle_goes_round_the_origin_on_spokes(self):
+        c = circle(self.sk, 10, 0, 1)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, c, 3, 10.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, c, 3, 0.0))
+        rec = self._circ([c], count=4, step="90 deg")
+        self.assertEqual(len(rec["copies"]), 3)
+        centres = sorted(self._xy(self._plain(ids)[0], 3) for ids in rec["copies"])
+        self.assertEqual(centres, [(-10.0, 0.0), (0.0, -10.0), (0.0, 10.0)])
+        spokes = [i for ids in rec["copies"] for i in map(lambda g: sp.index_of(self.sk, g), ids)
+                  if self.sk.getConstruction(i)]
+        self.assertEqual(len(spokes), 3)  # one per copy; the original's own spoke is listed too
+        self.assertEqual(len([i for i in range(self.sk.GeometryCount) if self.sk.getConstruction(i)]), 4)
+        self.assertEqual(self.sk.solve(), 0)
+        self.assertTrue(all(self.sk.getVirtualSpace(i) for i, k in enumerate(self.sk.Constraints)
+                            if sketch.is_pattern_name(k.Name)))
+
+    def test_copies_follow_the_original_the_axis_and_the_angle(self):
+        c = circle(self.sk, 10, 0, 1)
+        dx = self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, c, 3, 10.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, c, 3, 0.0))
+        rec = self._circ([c], count=2, step="90 deg")
+        k = self._plain(rec["copies"][0])[0]
+        self.assertEqual(self._xy(k, 3), (0.0, 10.0))
+        self.sk.setDatum(dx, App.Units.Quantity("5 mm"))
+        self.doc.recompute()
+        self.assertEqual(self._xy(k, 3), (0.0, 5.0))
+        model.set_model_parameter(self.doc, rec["angle_param"], "180 deg")
+        self.doc.recompute()
+        self.assertEqual(self._xy(k, 3), (-5.0, 0.0))
+
+    def test_axis_on_a_sketch_point_and_flip(self):
+        c = circle(self.sk, 10, 0, 1)
+        p = self.sk.addGeometry(Part.Point(App.Vector(4, 0, 0)))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, p, 1, 4.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, p, 1, 0.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, c, 3, 10.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, c, 3, 0.0))
+        rec = self._circ([c], count=2, step="90 deg", axis=(p, 1), flip=True)
+        k = self._plain(rec["copies"][0])[0]
+        self.assertEqual(self._xy(k, 3), (4.0, -6.0))  # 6 mm from the point, turned the other way
+
+    def test_a_line_and_an_arc_turn_with_their_shape(self):
+        ln = line(self.sk, 10, 0, 14, 0)
+        arc = self.sk.addGeometry(Part.ArcOfCircle(Part.Circle(App.Vector(20, 0, 0), App.Vector(0, 0, 1), 2),
+                                                   0.0, math.pi / 2))
+        for g, pos, x, y in ((ln, 1, 10.0, 0.0), (ln, 2, 14.0, 0.0), (arc, 3, 20.0, 0.0)):
+            self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, g, pos, x))
+            self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, g, pos, y))
+        self.sk.addConstraint(Sketcher.Constraint("Radius", arc, 2.0))
+        rec = self._circ([ln, arc], count=2, step="90 deg")
+        l2, a2 = self._plain(rec["copies"][0])
+        self.assertEqual(self._xy(l2, 1), (0.0, 10.0))
+        self.assertEqual(self._xy(l2, 2), (0.0, 14.0))
+        self.assertEqual(self._xy(a2, 1), (0.0, 22.0))  # the arc's start (22, 0) turned by 90°
+        self.assertAlmostEqual(self.sk.Geometry[a2].Radius, 2.0, places=6)
+        self.assertEqual(self.sk.solve(), 0)
+
+    def test_step_angle_and_closed_ring(self):
+        self.assertAlmostEqual(sp.step_angle(360.0, 4, True), 90.0)
+        self.assertAlmostEqual(sp.step_angle(180.0, 4, True), 60.0)
+        self.assertAlmostEqual(sp.step_angle(30.0, 4, False), 30.0)
+
+    def test_axis_on_the_geometry_is_refused(self):
+        c = circle(self.sk, 10, 0, 1)
+        with self.assertRaises(ValueError) as cm:
+            self._circ([c], count=3, axis=(c, 3))
+        self.assertIn("away from the geometry", str(cm.exception))
+        self.assertEqual(self.sk.GeometryCount, 1)  # nothing half-built is left behind
+
+    def test_remove_takes_the_spokes_too(self):
+        c = circle(self.sk, 10, 0, 1)
+        rec = self._circ([c], count=5)
+        sp.remove(self.doc, self.sk, rec["name"])
+        self.doc.recompute()
+        self.assertEqual(self.sk.GeometryCount, 1)
+        self.assertEqual([k.Name for k in self.sk.Constraints if sketch.is_pattern_name(k.Name)], [])
+
+
+class EqualSpacingTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Se")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.left = line(self.sk, 0, 0, 0, 10, construction=True)    # x = 0
+        self.right = line(self.sk, 40, 0, 40, 10, construction=True)  # x = 40
+        self.hole = circle(self.sk, 6, 5, 2)                           # x 4..8, near the left limit
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_from_the_near_line_toward_the_far_one_leaves_equal_margins(self):
+        spacing, angle = sp.equal_spacing(self.sk, [self.hole], (self.left, 0), (self.right, 0), 3)
+        self.assertAlmostEqual(spacing, 14.0, places=6)   # 4 mm margins: holes at 4..8, 18..22, 32..36
+        self.assertAlmostEqual(angle, 0.0, places=6)
+
+    def test_from_the_far_line_says_to_pick_the_other_end(self):
+        with self.assertRaises(ValueError) as cm:
+            sp.equal_spacing(self.sk, [self.hole], (self.right, 0), (self.left, 0), 3)
+        self.assertIn("pick the other end as From", str(cm.exception))
+
+    def test_no_room_names_the_sizes(self):
+        with self.assertRaises(ValueError) as cm:
+            sp.equal_spacing(self.sk, [self.hole], (self.left, 0), (self.right, 0), 12)
+        self.assertIn("no room", str(cm.exception).lower())
+        self.assertIn("4.0 mm wide", str(cm.exception))
+
+    def test_points_as_limits_set_the_direction(self):
+        a = self.sk.addGeometry(Part.Point(App.Vector(0, 0, 0)))
+        b = self.sk.addGeometry(Part.Point(App.Vector(0, 30, 0)))
+        c = circle(self.sk, 0, 3, 1)  # y 2..4
+        self.doc.recompute()
+        spacing, angle = sp.equal_spacing(self.sk, [c], (a, 1), (b, 1), 2)
+        self.assertAlmostEqual(angle, 90.0, places=6)
+        self.assertAlmostEqual(spacing, 24.0, places=6)  # 2 mm margins: 2..4 and 26..28
+
+    def test_coinciding_limits_are_refused(self):
+        with self.assertRaises(ValueError) as cm:
+            sp.equal_spacing(self.sk, [self.hole], (self.left, 0), (self.left, 0), 3)
+        self.assertIn("From and To", str(cm.exception))

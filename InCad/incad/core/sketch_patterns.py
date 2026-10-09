@@ -274,10 +274,12 @@ def build_rect(doc, sk, rec):
 
 
 def copies_of(sk, name):
+    """Geometry indexes of everything a pattern added: the copies and their spokes (circular)."""
     rec = find(sk, name)
     if rec is None:
         return []
-    return [i for ids in rec.get("copies", []) for i in [index_of(sk, g) for g in ids] if i is not None]
+    ids = [g for ids in rec.get("copies", []) for g in ids] + list(rec.get("spokes0", []))
+    return [i for i in (index_of(sk, g) for g in ids) if i is not None]
 
 
 def remove(doc, sk, name):
@@ -292,3 +294,153 @@ def remove(doc, sk, name):
     for i in sorted(copies_of(sk, name), reverse=True):
         sk.delGeometry(i)
     save_records(sk, [r for r in records(sk) if r.get("name") != name])
+
+
+# ----- circular -----
+def step_angle(total_deg, count, fitted):
+    """The angle between neighbouring copies. Fitted spreads the copies within `total`; a full 360° ring
+    closes without a copy on the original."""
+    if not fitted:
+        return float(total_deg)
+    if abs(total_deg - 360.0) < 1e-9:
+        return 360.0 / count
+    return float(total_deg) / (count - 1)
+
+
+def _circ_points(sk, geo):
+    """Points a circular copy is tied by: a line's start (its direction and length come from Equal + Angle),
+    an arc's two ends, a circle's centre, a point."""
+    t = geometry_type(sk, geo)
+    return [1] if t == "Part::GeomLineSegment" else ref_points(sk, geo)
+
+
+def check_axis(sk, originals, axis):
+    centre = point_of(sk, axis[0], axis[1])
+    for g in originals:
+        for pos in ref_points(sk, g):
+            if (point_of(sk, g, pos) - centre).Length < 1e-7:
+                raise ValueError("Pick the axis point away from the geometry being repeated")
+
+
+def _spoke(sk, rec, axis, geo, pos):
+    """A construction line from the axis point to (geo, pos), both ends coincident."""
+    a = point_of(sk, axis[0], axis[1])
+    b = point_of(sk, geo, pos)
+    s = sk.addGeometry(Part.LineSegment(a, b), True)
+    _add(sk, rec, Sketcher.Constraint("Coincident", s, 1, axis[0], axis[1]))
+    _add(sk, rec, Sketcher.Constraint("Coincident", s, 2, geo, pos))
+    return s
+
+
+def build_circ(doc, sk, rec):
+    """Copies turned about the axis point: every reference point of a copy sits at the end of a construction
+    spoke Equal to the original's spoke and at k × step angle from it (an expression on the angle parameter);
+    lines add Equal + Angle to the original, circles and arcs Equal."""
+    _begin(sk, rec)
+    originals = _originals(sk, rec)
+    axis = tuple(rec["axis"])
+    check_axis(sk, originals, axis)
+    count = int(rec["count"])
+    if count < 2:
+        raise ValueError("Use a count of 2 or more")
+    from incad.core import model
+    step = float(getattr(model._model_obj(doc), rec["angle_param"]).getValueAs("deg"))
+    sign = -1 if rec.get("flip") else 1
+    alias = _coincident_points(sk, originals)
+    centre = point_of(sk, axis[0], axis[1])
+    spoke0 = {}
+    for g in originals:
+        for pos in _circ_points(sk, g):
+            src = alias.get((g, pos), (g, pos))
+            if src not in spoke0:
+                spoke0[src] = _spoke(sk, rec, axis, src[0], src[1])
+    rec["spokes0"] = [ensure_id(sk, s) for s in spoke0.values()]
+    for k in range(1, count):
+        angle = math.radians(sign * k * step)
+        new, copy_ids = {}, []
+        for g in originals:
+            c = _copy_geometry(sk, g, rotate=(centre, angle))
+            new[g] = c
+            copy_ids.append(ensure_id(sk, c))
+        done = {}
+        for g in originals:
+            c = new[g]
+            for pos in _circ_points(sk, g):
+                src = alias.get((g, pos), (g, pos))
+                if src in done:
+                    _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
+                    continue
+                s = _spoke(sk, rec, axis, c, pos)
+                done[src] = s
+                copy_ids.append(ensure_id(sk, s))
+                _add(sk, rec, Sketcher.Constraint("Equal", spoke0[src], s))
+                _add(sk, rec, Sketcher.Constraint("Angle", spoke0[src], s, angle),
+                     "%d * InCadModel.%s" % (sign * k, rec["angle_param"]))
+            t = geometry_type(sk, g)
+            if t == "Part::GeomLineSegment":
+                _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+                _add(sk, rec, Sketcher.Constraint("Angle", g, c, angle), "%d * InCadModel.%s" % (sign * k, rec["angle_param"]))
+            elif t in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+                _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+        rec["copies"].append(copy_ids)
+    return _end(sk, rec)
+
+
+# ----- equal spacing between two limits -----
+def _limit(sk, limit):
+    """(point, normal) of a limit: a line gives a point on it and its normal; a point gives itself and None."""
+    geo, pos = limit
+    if geo >= 0 and geometry_type(sk, geo) == "Part::GeomLineSegment" and pos == 0:
+        a, b = point_of(sk, geo, 1), point_of(sk, geo, 2)
+        d = b - a
+        return a, App.Vector(-d.y, d.x, 0).normalize()
+    if geo == -1 and pos == 0:
+        return App.Vector(0, 0, 0), App.Vector(0, 1, 0)
+    if geo == -2 and pos == 0:
+        return App.Vector(0, 0, 0), App.Vector(1, 0, 0)
+    return point_of(sk, geo, pos), None
+
+
+def _extent(sk, originals, direction):
+    lo = hi = None
+    for g in originals:
+        shape = sk.Geometry[g].toShape()
+        for v in shape.Vertexes:
+            t = v.Point.dot(direction)
+            lo = t if lo is None else min(lo, t)
+            hi = t if hi is None else max(hi, t)
+        if geometry_type(sk, g) in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+            c = sk.Geometry[g].Center.dot(direction)
+            r = sk.Geometry[g].Radius
+            lo, hi = min(lo if lo is not None else c - r, c - r), max(hi if hi is not None else c + r, c + r)
+    return lo, hi
+
+
+def equal_spacing(sk, originals, start, end, count):
+    """(spacing in mm, direction angle in degrees) that puts the first copy as far from the From limit as the
+    last is from the To limit. From is the start; the copies run toward To."""
+    p0, n0 = _limit(sk, start)
+    p1, n1 = _limit(sk, end)
+    direction = n0 if n0 is not None else (n1 if n1 is not None else (p1 - p0))
+    if direction.Length < 1e-9:
+        raise ValueError("From and To coincide: pick two different limits")
+    direction = App.Vector(direction).normalize()
+    t0, t1 = p0.dot(direction), p1.dot(direction)
+    if abs(t1 - t0) < 1e-9:
+        raise ValueError("From and To coincide: pick two different limits")
+    if t1 < t0:
+        direction, t0, t1 = -direction, -t0, -t1
+    lo, hi = _extent(sk, originals, direction)
+    width, margin, room = hi - lo, lo - t0, t1 - t0
+    if count < 2:
+        raise ValueError("Use a count of 2 or more to space the copies between the limits")
+    if margin < -1e-6:
+        raise ValueError("The picked geometry lies %.1f mm behind the start (the From pick): pick the other end "
+                         "as From, or move the limit" % -margin)
+    spacing = (t1 - margin - hi) / (count - 1)  # the part's rule: (end - margin - far edge) / (count - 1)
+    if spacing < width - 1e-6:
+        raise ValueError("There is no room: the picked geometry is %.1f mm wide and %.1f mm from the start, so %d "
+                         "copies need %.1f mm, but only %.1f mm lie between the limits. Use fewer copies, move "
+                         "the limits, or pick the other end as From" % (width, margin, count,
+                                                                       count * width + 2 * margin, room))
+    return spacing, math.degrees(math.atan2(direction.y, direction.x))
