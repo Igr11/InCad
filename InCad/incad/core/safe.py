@@ -49,6 +49,9 @@ def _broken(obj, check_shape):
             return ("%s: the pattern produced nothing — the picked feature can't be repeated here (a feature that "
                     "changes nothing, or a cut that can't be moved). Pick another feature, or put the pattern "
                     "right after it" % obj.Label)
+        if obj.TypeId in _TRANSFORMED and _changes_nothing(obj, shape):
+            return ("%s: the pattern changes nothing — its copies fall where the part has no material, or the "
+                    "picked feature (a thread, for example) can't be repeated. Pick another feature" % obj.Label)
         if obj.TypeId in _SUBTRACTIVE and shape is not None and (shape.isNull() or not shape.Solids
                                                                    or shape.Volume < 1e-9):
             base = getattr(obj, "BaseFeature", None)
@@ -71,6 +74,23 @@ def _has_modeled_thread(feature):
             return True
         feature = getattr(feature, "BaseFeature", None)
     return False
+
+
+def _changes_nothing(pattern, shape):
+    """True if the pattern's result has the same volume as what it was built on (it added or removed nothing)."""
+    try:
+        base = getattr(pattern, "BaseFeature", None)
+        if base is None:
+            group = pattern.getParentGeoFeatureGroup()
+            earlier = [o for o in (group.Group if group is not None else [])
+                       if o.isDerivedFrom("PartDesign::Feature")]
+            earlier = earlier[:earlier.index(pattern)] if pattern in earlier else []
+            base = earlier[-1] if earlier else None
+        if base is None or base.Shape.isNull() or shape.isNull():
+            return False
+        return abs(shape.Volume - base.Shape.Volume) < 0.01  # mm3: nothing a pattern could be meant to make
+    except Exception:
+        return False
 
 
 _TRANSFORMED = ("PartDesign::LinearPattern", "PartDesign::PolarPattern", "PartDesign::Mirrored",

@@ -268,3 +268,36 @@ class EmptyPatternTest(unittest.TestCase):
         shape = self._Shape(False, solids=[object()])
         shape.Volume = 5.0
         self.assertEqual(safe._broken(self._Obj("PartDesign::LinearPattern", shape), True), "")
+
+
+class NoOpPatternTest(unittest.TestCase):
+    """A pattern that leaves the part exactly as it was (a thread's copies cut empty air) is reported."""
+
+    def setUp(self):
+        from headless import test_thread
+        from incad.core import document
+        self.doc = util.new_doc("NoOp")
+        self.body = document.make_part(self.doc)
+        self.shaft = test_thread.shaft(self.doc, self.body)
+        v = dict(thread.defaults(self.doc, self.body, None), face=test_thread.cyl_face(self.shaft, 5), size="M10",
+                 clearance="0 mm")
+        self.thread = thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        log.set_reporter(lambda level, msg: None)
+
+    def tearDown(self):
+        log.set_reporter(None)
+        App.closeDocument(self.doc.Name)
+
+    def pattern(self, feature, direction):
+        from incad.features import common, patterns
+        k = patterns.RECT
+        vals = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(feature, "")]),
+                    count1="2", spacing1="40 mm", dir1=direction)
+        return safe.run_safely("Pattern", lambda: k.create(self.doc, self.body, None, vals), self.doc)
+
+    def test_a_pattern_of_a_thread_that_changes_nothing_says_so(self):
+        r = self.pattern(self.thread, "Y_Axis")  # the copy of the groove lands 40 mm beside the shaft
+        self.assertFalse(r.ok)
+        self.assertIn("changes nothing", r.error)
+        self.assertIn("Pick another feature", r.error)

@@ -208,7 +208,10 @@ def test_8_pattern_without_selection_shows_and_keeps_its_feature():
     w.setText("3")
     w.editingFinished.emit()
     harness.pump(700)
-    assert not dialog().error_text(), dialog().error_text()
+    # the holes turned about the origin axis land outside this block: the dialog may say the pattern changes
+    # nothing, but never anything else
+    err = dialog().error_text()
+    assert not err or "changes nothing" in err, err
     QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
     harness.pump(600)
 
