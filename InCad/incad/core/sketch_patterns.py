@@ -179,21 +179,32 @@ def PREFIX_OF(name):
     return sketches.PATTERN_PREFIX + name[len("Pattern"):]
 
 
-def _name_constraint(sk, rec, index):
+def _add(sk, rec, constraint, expression=None, hidden=True):
+    """Queue a constraint of the pattern; _flush adds the whole queue in ONE addConstraint call (each single call
+    solves the growing sketch again: a ring of slots took seconds per preview). Returns the name it will get."""
     name = "%s_%d" % (rec["_prefix"], rec["_next"])
     rec["_next"] += 1
-    sk.renameConstraint(index, name)
-    rec["constraints"].append(name)
+    rec["_pending"].append((constraint, name, expression, hidden))
     return name
 
 
-def _add(sk, rec, constraint, expression=None, hidden=True):
-    i = sk.addConstraint(constraint)
-    if expression is not None:
-        sk.setExpression("Constraints[%d]" % i, expression)
+def _flush(sk, rec):
+    pending, rec["_pending"] = rec["_pending"], []
+    if not pending:
+        return
+    indexes = sk.addConstraint([c for c, _, _, _ in pending])
+    if isinstance(indexes, int):
+        indexes = (indexes,)
+    hidden = []
+    for i, (_, name, expression, hide) in zip(indexes, pending):
+        sk.renameConstraint(i, name)
+        rec["constraints"].append(name)
+        if expression is not None:
+            sk.setExpression("Constraints[%d]" % i, expression)
+        if hide:
+            hidden.append(i)
     if hidden:
-        sk.setVirtualSpace(i, True)
-    return _name_constraint(sk, rec, i)
+        sk.setVirtualSpace(hidden, True)
 
 
 def _begin(sk, rec):
@@ -201,6 +212,7 @@ def _begin(sk, rec):
     rec.setdefault("constraints", [])
     rec["_prefix"] = PREFIX_OF(rec["name"])
     rec["_next"] = 0
+    rec["_pending"] = []
     rec["_points"] = {}  # (orig geo, pos) -> True once tied for this copy: shared corners are tied once
 
 
@@ -214,7 +226,8 @@ def _apply_params(doc, rec):
 
 
 def _end(sk, rec):
-    for key in ("_prefix", "_next", "_points", "_doc", "param_values"):
+    _flush(sk, rec)
+    for key in ("_prefix", "_next", "_points", "_doc", "param_values", "_pending"):
         rec.pop(key, None)
     recs = [r for r in records(sk) if r.get("name") != rec["name"]]
     recs.append(rec)

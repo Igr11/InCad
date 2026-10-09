@@ -774,3 +774,39 @@ class ExternalGeometryTest(unittest.TestCase):
         first = sp.index_of(self.sk, rec["copies"][0][0])
         self.assertAlmostEqual(sp.point_of(self.sk, first, 3).x, 13.0, places=3)
         self.assertEqual(k.read(self.doc, self.sk)["dir1"], "%s:ExternalEdge2" % self.sk.Name)
+
+
+class SpeedTest(unittest.TestCase):
+    """Every addConstraint solves the sketch again, and the sketch grows with the copies: the pattern adds its
+    constraints in one batch, or a ring of slots takes seconds per preview (the user saw 'huge delays')."""
+
+    def setUp(self):
+        from incad.core import slots
+        self.doc = util.new_doc("Sx")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        slots.add(self.sk, App.Vector(20, 0, 0), App.Vector(26, 0, 0), 1.5)
+        self.doc.recompute()
+        from incad.features import sketch_patterns as kinds
+        self.kinds = kinds
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_a_ring_of_eight_slots_rebuilds_in_well_under_a_second(self):
+        import time
+        geo = ",".join("Sketch:Edge%d" % (i + 1) for i in range(self.sk.GeometryCount) if not self.sk.getConstruction(i))
+        k = self.kinds.SKETCH_CIRC
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=geo, count="8", angle="360 °"))
+        self.doc.recompute()
+        t = time.time()
+        k.update(self.doc, self.sk, dict(k.read(self.doc, self.sk), count="9"))
+        self.doc.recompute()
+        dt = time.time() - t
+        self.assertLess(dt, 1.0, "rebuild to 9 copies took %.2f s" % dt)
+        self.assertEqual(self.sk.solve(), 0)
+        names = [c.Name for c in self.sk.Constraints if sketch.is_pattern_name(c.Name)]
+        self.assertEqual(len(names), len(set(names)), "every pattern constraint keeps its own name")
+        self.assertTrue(all(self.sk.getVirtualSpace(i) for i, c in enumerate(self.sk.Constraints) if sketch.is_pattern_name(c.Name)))
