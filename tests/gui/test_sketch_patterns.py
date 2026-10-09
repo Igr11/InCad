@@ -121,10 +121,12 @@ def test_3_equal_spacing_between_the_two_lines():
     assert abs(sp.point_of(sk(), last, 3).x - 34.0) < 1e-3, sp.point_of(sk(), last, 3)
 
 
-def test_4_the_ribbon_has_both_next_to_mirror():
+def test_4_the_ribbon_has_one_pattern_split_button_like_the_part():
     rb = s().ribbon
-    for cid in ("sketch.rect_pattern", "sketch.circ_pattern", "sketch.mirror"):
-        assert rb.button(cid) is not None, cid
+    b = rb.button("sketch.rect_pattern")
+    assert b is not None and b.menu() is not None, "one split button for the Pattern group"
+    labels = [a.text() for a in b.menu().actions()]
+    assert labels == ["Rectangular", "Circular", "Mirror"], labels
 
 
 def test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes():
@@ -174,5 +176,5 @@ def test_6_delete_pattern_leaves_the_original():
 
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
-             test_4_the_ribbon_has_both_next_to_mirror, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
+             test_4_the_ribbon_has_one_pattern_split_button_like_the_part, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
              test_6_delete_pattern_leaves_the_original])
