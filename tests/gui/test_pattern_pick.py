@@ -110,6 +110,8 @@ def test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature
     w.editingFinished.emit()
     harness.pump(900)
     assert not dialog().error_text(), dialog().error_text()
+    shown = dialog().field("features").text()
+    assert pad.Label in shown and "+1 dependent" in shown, shown  # names, and what the switch added
     ok()
     pattern = body().Tip
     assert pattern.TypeId == "PartDesign::LinearPattern", pattern.TypeId
@@ -169,6 +171,36 @@ def test_3_even_distribution_between_two_faces_in_the_dialog():
     assert "Invalid" not in pattern.State, pattern.getStatusString()
 
 
+def test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up():
+    pad, pocket = doc().getObject(ST["pad"]), doc().getObject(ST["pocket"])
+    for o in [o for o in body().Group if o.TypeId == "PartDesign::LinearPattern"]:
+        doc().removeObject(o.Name)
+    body().Tip = pocket
+    doc().recompute()
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.rect_pattern")
+    harness.pump(900)
+    assert dialog().values()["features"] == pocket.Name, "the default is the newest feature"
+    assert dialog().active_pick() == "features"
+
+    def click_row(obj):
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(doc().Name, obj.Name)
+        harness.pump(700)
+
+    click_row(pad)
+    assert dialog().values()["features"] == pad.Name, "the default must go, not stay beside the pick: %s" % (
+        dialog().values()["features"],)
+    click_row(pocket)
+    assert sorted(dialog().values()["features"].split(",")) == sorted([pad.Name, pocket.Name]), \
+        dialog().values()["features"]
+    click_row(pocket)  # a plain click on a picked one takes it off again
+    assert dialog().values()["features"] == pad.Name, dialog().values()["features"]
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+
+
 harness.run([test_0_setup, test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it,
              test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature,
-             test_3_even_distribution_between_two_faces_in_the_dialog])
+             test_3_even_distribution_between_two_faces_in_the_dialog,
+             test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up])

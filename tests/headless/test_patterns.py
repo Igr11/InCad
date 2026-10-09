@@ -277,6 +277,11 @@ class PatternsTest(unittest.TestCase):
             k.create(self.doc, self.body, None, dict(base, count1="30", from1=self._face_at_x(self.pad, 0),
                                                      to1=self._face_at_x(self.pad, 20)))
         self.assertIn("room", str(cm.exception))
+        # the message gives the sizes: the feature's width, what the copies need and what the limits allow
+        msg = str(cm.exception)
+        self.assertIn("2.0 mm wide", msg)   # the boss
+        self.assertIn("30 copies need", msg)
+        self.assertIn("20.0 mm", msg)       # the space between the limits
 
     def test_circular(self):
         k = patterns.CIRC

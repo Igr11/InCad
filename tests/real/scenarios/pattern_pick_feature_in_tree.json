@@ -1,0 +1,19 @@
+{
+ "name": "pattern_pick_feature_in_tree",
+ "steps": [
+  "setup:block_with_boss",
+  "wait:1.5",
+  "cmd:feature.rect_pattern",
+  "wait:1.5",
+  "expect:s['dialog'] is not None and s['dialog']['values']['features'] == 'Boss'",
+  "click:tree.Pad",
+  "wait:1.5",
+  "expect:s['dialog']['values']['features'] == 'Pad'",
+  "click:tree.Boss",
+  "wait:1.5",
+  "expect:sorted(s['dialog']['values']['features'].split(',')) == ['Boss', 'Pad']",
+  "click:dialog.cancel",
+  "wait:1",
+  "expect:s['dialog'] is None and 'ERROR' not in s['log'][-600:]"
+ ]
+}

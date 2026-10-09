@@ -78,6 +78,17 @@ def _patternable(obj):
     return obj.TypeId in _PATTERNABLE or obj.TypeId.startswith(("PartDesign::Additive", "PartDesign::Subtractive"))
 
 
+def _summary(doc, f):
+    """What the Features field shows after a preview: the picked features by name and how many dependents the
+    'Include dependent features' switch added (they are not picks, so the field would not mention them)."""
+    from incad.features.common import pick_label
+    picks, children = _picks_and_children(f)
+    roots = len([x for x in picks.split(",") if x])
+    deps = len(list(f.Originals)) - roots if children else 0
+    text = pick_label("feature", picks)
+    return {"features": "%s (+%d dependent)" % (text, deps) if deps else text}
+
+
 def _picks_and_children(f):
     """(the originals that are not built on another original, True if some are): the toggle stands for the rest."""
     originals = list(f.Originals)
@@ -290,9 +301,14 @@ def _fit_spacing(doc, body, f, values):
     if count < 2:
         raise ValueError("Use a count of 2 or more to space the copies between the faces")
     spacing = (e - margin - u_hi) / (count - 1)
-    if margin < -1e-6 or spacing < (u_hi - u_lo) - 1e-6:  # copies would overlap each other, or start outside
-        raise ValueError("There is no room: %d copies don't fit between the two limits — use fewer, or move them"
-                         % count)
+    width, space = u_hi - u_lo, e - s
+    if margin < -1e-6:
+        raise ValueError("The picked feature lies outside the From/To limits (%.1f mm before the start): move a "
+                         "limit, or pick the other end as From" % -margin)
+    if spacing < width - 1e-6:  # the copies would overlap each other
+        raise ValueError("There is no room: the picked feature is %.1f mm wide, so %d copies need %.1f mm, but "
+                         "only %.1f mm lie between the limits — use fewer copies or move the limits"
+                         % (width, count, count * width + 2 * margin, space))
     return "%.6g mm" % spacing
 
 
@@ -384,7 +400,7 @@ RECT = SimpleNamespace(
                                          "dir2": _origin_name(body, "Y_Axis"), "count2": "2", "spacing2": "10 mm"},
     param_names=lambda f: {k: spacing_param_from(f, k) for k in ("spacing1", "spacing2")
                            if spacing_param_from(f, k)},
-    create=_rect_create, read=_rect_read, update=_rect_update, _pad_of=lambda f: f)
+    create=_rect_create, read=_rect_read, update=_rect_update, summary=_summary, _pad_of=lambda f: f)
 
 
 def _circ_apply(doc, body, f, values):
@@ -424,7 +440,7 @@ CIRC = SimpleNamespace(
             Field("angle", "Angle", "value_angle", default="360 °")),
     defaults=lambda doc, body, profile: {"features": "", "children": False, "axis": _origin_name(body, "Z_Axis"), "count": "4",
                                          "angle": "360 °"},
-    create=_circ_create, read=_circ_read, update=_circ_update, _pad_of=lambda f: f)
+    create=_circ_create, read=_circ_read, update=_circ_update, summary=_summary, _pad_of=lambda f: f)
 
 
 def _mirror_apply(doc, body, f, values):
@@ -456,4 +472,4 @@ MIRROR = SimpleNamespace(
             Field("children", "Include dependent features", "bool", default=False),
             Field("plane", "Mirror plane", "pick", pick="plane")),
     defaults=lambda doc, body, profile: {"features": "", "children": False, "plane": _origin_name(body, "YZ_Plane")},
-    create=_mirror_create, read=_mirror_read, update=_mirror_update, _pad_of=lambda f: f)
+    create=_mirror_create, read=_mirror_read, update=_mirror_update, summary=_summary, _pad_of=lambda f: f)

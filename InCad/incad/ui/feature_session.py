@@ -325,6 +325,12 @@ class FeatureSession(QtCore.QObject):
         held = QtWidgets.QApplication.keyboardModifiers() & (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier
                                                              | QtCore.Qt.MetaModifier)
         current = common.parse_picks(self.doc, self.dialog.values().get(key))
+        auto = getattr(self, "_auto_picks", set())
+        if key in auto:  # what the dialog put there by default is replaced by the first pick, never kept beside it
+            auto.discard(key)
+            clicked = [p for p in clicked if (p[0].Name, p[1]) not in {(o.Name, s) for o, s in current}] or clicked
+            self._reselect(clicked)
+            return clicked
         if held or not current:
             return clicked
         mine = {(o.Name, s) for o, s in current}
@@ -341,7 +347,7 @@ class FeatureSession(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.features import common
         key = self.dialog.active_pick() if self.dialog is not None else None
-        if not key or self.dialog.field_def(key).kind != "picks":
+        if not key or self.dialog.field_def(key).kind != "picks" or key in getattr(self, "_auto_picks", set()):
             return False
         if QtWidgets.QApplication.keyboardModifiers() & (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier
                                                          | QtCore.Qt.MetaModifier):
@@ -466,12 +472,25 @@ class FeatureSession(QtCore.QObject):
         self._check()
         self._label_params()
         self._fill_empty_picks()
+        self._show_summary()
         key = self.dialog.active_pick()
         if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
             self._show_base(False)
             self._sync_pick_view()
         elif key and self.dialog.field_def(key).pick in self._ON_BASE:
             self._sync_pick_view()  # the first pick just made the feature: show the base again for the next pick
+
+    def _show_summary(self):
+        """A kind may describe what its pick fields now stand for (names, dependents) beyond the picks themselves."""
+        summary = getattr(self.kind, "summary", None)
+        if summary is None or self.feature is None or not _feature_alive(self.feature):
+            return
+        try:
+            for key, text in summary(self.doc, self.feature).items():
+                if self.dialog.values().get(key):
+                    self.dialog.set_pick_text(key, text)
+        except Exception:
+            log.logger().exception("pick summary")
 
     def _fill_empty_picks(self):
         """Show what a default picked for an empty field (e.g. the feature a pattern repeats)."""
@@ -486,6 +505,8 @@ class FeatureSession(QtCore.QObject):
                 if f.kind in ("pick", "picks") and not current.get(f.key) and read.get(f.key)}
         if fill:
             self.dialog.set_values(fill)
+            self._auto_picks = getattr(self, "_auto_picks", set()) | {k for k in fill
+                                                                       if self.dialog.field_def(k).kind == "picks"}
 
     def _recover_deleted_feature(self):
         """An update() that swaps a feature's type (Join<->Cut) deletes the old one, then may fail before it

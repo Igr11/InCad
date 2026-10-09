@@ -218,6 +218,15 @@ def pick_label(kind, text):
             obj = None
         label = obj.Label if obj is not None else name
         return "%s · %s" % (label, sub) if sub else label
+    if kind == "feature" and len(items) <= 3:  # names say what is picked; a bare count doesn't
+        try:
+            import FreeCAD as App
+            doc = App.ActiveDocument
+            names = [(doc.getObject(i.partition(":")[0]).Label if doc is not None and doc.getObject(
+                i.partition(":")[0]) is not None else i.partition(":")[0]) for i in items]
+        except Exception:
+            names = [i.partition(":")[0] for i in items]
+        return " + ".join(names)
     return "%d %s" % (len(items), _PLURAL.get(kind, "items"))
 
 

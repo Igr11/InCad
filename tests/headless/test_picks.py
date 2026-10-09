@@ -46,6 +46,11 @@ class PicksTest(unittest.TestCase):
         text = common.format_picks([(self.pad, "Edge1"), (self.pad, "Edge2"), (self.pad, "Edge3")])
         self.assertEqual(common.pick_label("edge", text), "3 edges")
         self.assertEqual(common.pick_label("face", "%s:Face6" % self.pad.Name), "%s · Face6" % self.pad.Label)
+        # several features are listed by name (a count alone doesn't say what is picked)
+        names = "%s,%s" % (self.pad.Name, self.pad.Name)
+        self.assertEqual(common.pick_label("feature", names), "%s + %s" % (self.pad.Label, self.pad.Label))
+        four = ",".join([self.pad.Name] * 4)
+        self.assertEqual(common.pick_label("feature", four), "4 features")
 
     def test_link_sub(self):
         self.assertEqual(common.link_sub([(self.pad, "Edge1"), (self.pad, "Edge2")]), (self.pad, ["Edge1", "Edge2"]))
