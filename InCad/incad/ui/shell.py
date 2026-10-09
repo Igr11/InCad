@@ -1792,6 +1792,15 @@ class Shell(QtCore.QObject):
             self.status.show_message(level, message)
 
     # ----- panels -----
+    @staticmethod
+    def _body_hidden(doc):
+        from incad.core import document
+        try:
+            body = document.primary_body(doc)
+            return body is not None and not body.Visibility and body.Tip is not None
+        except Exception:
+            return False
+
     def schedule_refresh(self):
         if self._refresh_pending or self.ribbon is None:
             return
@@ -1827,6 +1836,8 @@ class Shell(QtCore.QObject):
         is_asm = assemblies.is_assembly(doc)
         editing = self.sketches.editing() if is_part else None
         self.sketches.sync()
+        if is_part and editing is None and fs is None and self._body_hidden(doc):
+            document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)

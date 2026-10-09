@@ -142,3 +142,23 @@ class DocumentTest(unittest.TestCase):
         other = self.doc.addObject("PartDesign::Body", "Other")
         with self.assertRaises(ValueError):
             document.set_end_of_part(other, pad)
+
+
+class ShownBodyTest(unittest.TestCase):
+    """A file saved while a sketch was being edited keeps its Body hidden (FreeCAD hides it in sketch edit mode):
+    showing the model's result must show the Body too, or the view stays blank after the file is reopened."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Sb")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_show_result_shows_a_hidden_body(self):
+        self.body.Visibility = False
+        self.pad.Visibility = False
+        shown = document.show_result(self.body)
+        self.assertIs(shown, self.pad)
+        self.assertTrue(self.body.Visibility, "the Body itself is shown, not just its tip")
+        self.assertTrue(self.pad.Visibility)

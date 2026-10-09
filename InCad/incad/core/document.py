@@ -93,6 +93,10 @@ def show_result(body):
             if not _broken_shape(o):
                 shown = o
                 break
+    try:
+        body.Visibility = True  # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides
+    except Exception:           # it in sketch edit mode): shown features inside a hidden Body show nothing
+        pass
     for o in feats:
         try:
             o.Visibility = (o is shown)
