@@ -90,17 +90,20 @@ cannot be used in this expression"), and construction geometry cannot be hidden.
   is the direction angle **as a literal in degrees** (0 or 90 for the axes; the picked line's angle at
   creation, read again at every Edit Pattern: a rotated direction line moves the pattern on the next edit, not
   live). Two directions add `j * InCadModel.dS2 * cos(D2)` terms. Flip negates k. Equal spacing computes the
-  spacing from the limits, stores it in `dS` and recomputes it on edit. Circles and arcs get `Equal` to the
-  original (radius); an arc ties its two ends and the radius (5 DOF), a line both ends (4), a circle its centre
-  and radius (3), a point its position (2): every copy is exactly constrained. These constraints live in
+  spacing from the limits, stores it in `dS` and recomputes it on edit. A circle gets `Equal` to the original
+  (radius); an arc ties its two ends plus ONE equation on its centre (DistanceX or DistanceY, whichever has a
+  component along the chord's bisector: a semicircle's chord already fixes the radius, so an `Equal` would be
+  redundant there); a line ties both ends (4), a circle its centre and radius (3), a point its position (2):
+  every copy is exactly constrained and the sketch reports no redundant constraints. These constraints live in
   virtual space (hidden) and are never shown or listed.
 - **Circular**: live association needs construction "spokes" (agreed with the user): for each reference point
   of the original (a point, a line's start, a circle's centre, an arc's start and end) one construction line
   from the axis point to it (`spoke0`), and for every copy k one construction line from the axis point to the
   copy's point, with `Equal(spoke0, spoke_k)` and `Angle(spoke0, spoke_k)` whose expression is
-  `k * InCadModel.dA` (`dA` the step angle parameter; Fitted stores Angle/(Count-1), or Angle/Count for a closed
-  360° ring, and keeps the user's Angle in the record). A copy line adds `Equal` and `Angle = k * dA` to the
-  original line; a circle `Equal`; an arc `Equal` (its two end spokes fix the rest). Spokes are construction
+  `k * InCadModel.dA / divisor` (`dA` is the Angle the dialog shows; the divisor is Count-1 for Fitted, Count for
+  a closed 360° ring, 1 for Between copies). Every point of a copy (line ends, arc ends, a circle's centre, a
+  point) sits on such a spoke; a circle adds `Equal` (radius); an arc adds a spoke to its centre with ONE
+  constraint, `Equal` when the centre moves radially with the bulge or `Angle` when sideways. Spokes are construction
   geometry (visible, blue), are part of the pattern and go with it; their constraints are hidden. Moving the
   original, the axis point or the angle parameter moves every copy at once.
 - Construction geometry in the selection is copied as construction. Dimensions on the original are not copied.
