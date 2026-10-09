@@ -122,5 +122,45 @@ def test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature
     harness.pump(700)
 
 
+def test_3_even_distribution_between_two_faces_in_the_dialog():
+    pad, pocket = doc().getObject(ST["pad"]), doc().getObject(ST["pocket"])  # block x 0..40, hole x 6..10
+    for o in [o for o in body().Group if o.TypeId == "PartDesign::LinearPattern"]:  # earlier tests' patterns
+        doc().removeObject(o.Name)
+    body().Tip = pocket
+    doc().recompute()
+    base = body().Tip
+    assert base is pocket
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, pocket.Name)
+    commands.REGISTRY.run("feature.rect_pattern")
+    harness.pump(900)
+    assert dialog().values()["features"] == pocket.Name, dialog().values()
+    dialog().set_values({"fit1": "faces", "count1": "3"})
+    harness.pump(500)
+    assert dialog().field("from1").isVisible() and dialog().field("to1").isVisible()
+    assert not dialog().field("spacing1").isVisible()
+
+    def face_at(x):
+        return "Face%d" % ([i + 1 for i, f in enumerate(base.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+                            and abs(f.CenterOfMass.x - x) < 1e-6 and abs(f.Surface.Axis.x) > 0.99][0])
+
+    for key, x in (("from1", 0), ("to1", 40)):
+        if dialog().active_pick() != key:  # the first pick hands over to the next empty field by itself
+            dialog().field(key).click()
+            harness.pump(500)
+        assert dialog().active_pick() == key, dialog().active_pick()
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(doc().Name, base.Name, face_at(x))
+        harness.pump(700)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    pattern = body().Tip
+    assert pattern.TypeId == "PartDesign::LinearPattern", pattern.TypeId
+    # hole x 6..10 (margin 6 from the left face): last far edge at 40 - 6 = 34 -> spacing (34 - 10) / 2 = 12
+    assert abs(pattern.Length.Value - 24.0) < 1e-3, pattern.Length.Value
+    assert "Invalid" not in pattern.State, pattern.getStatusString()
+
+
 harness.run([test_0_setup, test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it,
-             test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature])
+             test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature,
+             test_3_even_distribution_between_two_faces_in_the_dialog])

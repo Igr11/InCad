@@ -238,3 +238,33 @@ class KernelFailureMessageTest(unittest.TestCase):
         from incad.core import model
         self.assertIn("revolve", model.friendly("BRep_API: command not done", "PartDesign::Revolution"))
         self.assertIn("revolve", model.friendly("BRep_API: command not done", "PartDesign::Groove"))
+
+
+class EmptyPatternTest(unittest.TestCase):
+    """A pattern whose result is empty (FreeCAD calls it Valid) is reported, not left as 'nothing happened'."""
+
+    class _Shape:
+        def __init__(self, null, solids=()):
+            self._null, self.Solids = null, list(solids)
+            self.Volume = 0.0
+
+        def isNull(self):
+            return self._null
+
+        def isValid(self):
+            return True
+
+    class _Obj:
+        def __init__(self, type_id, shape):
+            self.TypeId, self.Shape, self.State, self.Label, self.BaseFeature = type_id, shape, [], "RectangularPattern", None
+
+    def test_an_empty_pattern_says_what_to_do(self):
+        for type_id in ("PartDesign::LinearPattern", "PartDesign::PolarPattern", "PartDesign::Mirrored"):
+            msg = safe._broken(self._Obj(type_id, self._Shape(True)), True)
+            self.assertIn("pattern produced nothing", msg, type_id)
+            self.assertIn("another feature", msg)
+
+    def test_a_working_pattern_is_fine(self):
+        shape = self._Shape(False, solids=[object()])
+        shape.Volume = 5.0
+        self.assertEqual(safe._broken(self._Obj("PartDesign::LinearPattern", shape), True), "")

@@ -125,6 +125,70 @@ class PatternsTest(unittest.TestCase):
         for kind in (patterns.CIRC, patterns.MIRROR):
             self.assertIn("children", [f.key for f in kind.FIELDS])
 
+    def _small_boss(self, x=3):
+        """A 2 mm wide boss on the block's top (x-1..x+1; 2..4 by default), the block being x 0..20."""
+        import Part
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "SmallSk")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(x, 5, 0), App.Vector(0, 0, 1), 1))
+        boss = util.add_pad(self.body, sk, 2, name="SmallBoss")
+        self.body.Tip = boss
+        self.doc.recompute()
+        return boss
+
+    def _face_at_x(self, shape_obj, x):
+        return "%s:Face%d" % (shape_obj.Name, [i + 1 for i, f in enumerate(shape_obj.Shape.Faces)
+                                                if f.Surface.TypeId == "Part::GeomPlane"
+                                                and abs(f.CenterOfMass.x - x) < 1e-6 and abs(f.Surface.Axis.x) > 0.99][0])
+
+    def test_even_distribution_between_two_faces_leaves_equal_margins(self):
+        """Count 4 between the block's two end faces: the first copy is as far from the left face as the last one is
+        from the right face (2 mm here, the boss's own distance from the left face)."""
+        boss = self._boss = self._small_boss()
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(
+            k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="4",
+            fit1="faces", from1=self._face_at_x(self.pad, 0), to1=self._face_at_x(self.pad, 20)))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertAlmostEqual(f.Length.Value / 3.0, 14.0 / 3.0, places=3)  # (20 - 2 - 4) / 3
+        bosses = f.Shape.cut(self.pad.Shape)
+        self.assertAlmostEqual(bosses.BoundBox.XMin, 2.0, places=3)
+        self.assertAlmostEqual(bosses.BoundBox.XMax, 18.0, places=3)  # 20 - 2: the same margin on both sides
+        self.assertEqual(len(bosses.Solids), 4)
+        back = k.read(self.doc, f)
+        self.assertEqual(back["fit1"], "faces")
+        self.assertEqual(back["to1"], self._face_at_x(self.pad, 20))
+
+    def test_the_end_face_behind_the_start_face_runs_the_pattern_backwards(self):
+        boss = self._small_boss(17)  # near the right face; the copies go left to the left face
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(
+            k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="3",
+            fit1="faces", from1=self._face_at_x(self.pad, 20), to1=self._face_at_x(self.pad, 0)))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertTrue(f.Reversed)
+        bosses = f.Shape.cut(self.pad.Shape)
+        self.assertAlmostEqual(bosses.BoundBox.XMin, 2.0, places=3)   # 2 mm from the left face
+        self.assertAlmostEqual(bosses.BoundBox.XMax, 18.0, places=3)  # and the original, 2 mm from the right one
+        self.assertEqual(len(bosses.Solids), 3)
+
+    def test_even_distribution_needs_an_end_face_and_room(self):
+        boss = self._small_boss()
+        k = patterns.RECT
+        base = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="4",
+                    fit1="faces")
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, None, dict(base))
+        self.assertIn("To face", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, None, dict(base, count1="30", from1=self._face_at_x(self.pad, 0),
+                                                     to1=self._face_at_x(self.pad, 20)))
+        self.assertIn("room", str(cm.exception))
+
     def test_circular(self):
         k = patterns.CIRC
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="4"))

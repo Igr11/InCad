@@ -192,13 +192,16 @@ def accepts(kind, obj, sub):
     return False
 
 
+_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…"}
+
+
 def pick_label(kind, text):
     if kind == "two_points":
         n = len([i for i in (text or "").split(";") if i.strip()])
         return "Select…" if not n else ("1 of 2 points" if n == 1 else "2 points")
     items = [i for i in (text or "").split(",") if i.strip()]
     if not items:
-        return "Select…"
+        return _EMPTY_HINT.get(kind, "Select…")
     if len(items) == 1:
         name, _, sub = items[0].partition(":")
         try:

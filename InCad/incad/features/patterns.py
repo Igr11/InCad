@@ -1,5 +1,6 @@
 """Rectangular / Circular Pattern and Mirror (Inventor) = PartDesign LinearPattern (two directions, Extent mode:
 probed — the second direction ignores Spacing mode), PolarPattern and Mirrored."""
+import json
 import re
 from types import SimpleNamespace
 
@@ -161,12 +162,121 @@ def spacing_param_from(f, key):
     return None
 
 
+def _direction_vector(link):
+    """Unit vector of a pattern direction: an origin/work axis, a sketch axis, or a straight edge."""
+    import FreeCAD as App
+    obj, subs = link
+    sub = subs[0] if subs else ""
+    if sub.startswith("Edge"):
+        v = obj.getSubObject(sub).Curve.Direction
+    elif sub in ("H_Axis", "V_Axis"):
+        v = obj.Placement.Rotation.multVec(App.Vector(1, 0, 0) if sub == "H_Axis" else App.Vector(0, 1, 0))
+    else:
+        v = obj.Placement.Rotation.multVec(App.Vector(1, 0, 0))  # an axis object runs along its own X
+    v = App.Vector(v)
+    v.normalize()
+    return v
+
+
+def _plane_position(doc, text, direction):
+    """Where the picked plane (a planar face or a work plane) lies along `direction`; None for no pick."""
+    picks = parse_picks(doc, text)
+    if not picks:
+        return None
+    obj, sub = resolve(*picks[0])
+    if sub:
+        point = obj.getSubObject(sub).CenterOfMass
+    else:
+        point = obj.Placement.Base
+    return point.dot(direction)
+
+
+def _extent_along(originals, direction):
+    """(lo, hi) of what the originals add or remove, measured along `direction`."""
+    lo, hi = None, None
+    for o in originals:
+        base = getattr(o, "BaseFeature", None)
+        if base is None or base.Shape.isNull() or o.Shape.isNull():
+            continue
+        region = o.Shape.cut(base.Shape) if o.Shape.Volume > base.Shape.Volume else base.Shape.cut(o.Shape)
+        if region.isNull() or not region.Solids:
+            continue
+        try:
+            box = region.optimalBoundingBox()  # tight on round shapes (a boss has no vertices at its sides)
+        except Exception:
+            box = region.BoundBox
+        import FreeCAD as App
+        for x in (box.XMin, box.XMax):
+            for y in (box.YMin, box.YMax):
+                for z in (box.ZMin, box.ZMax):
+                    t = App.Vector(x, y, z).dot(direction)
+                    lo = t if lo is None else min(lo, t)
+                    hi = t if hi is None else max(hi, t)
+    if lo is None:
+        raise ValueError("The picked feature changes nothing here: nothing to space between the faces")
+    return lo, hi
+
+
+def _fit_spacing(doc, f, values):
+    """Spacing that puts the first copy as far from the From face as the last copy is from the To face (no From
+    face: the original's own near edge is the start). Runs the pattern backwards if the To face is behind."""
+    to_text = (values.get("to1") or "").strip()
+    if not to_text:
+        raise ValueError("Pick the To face: the plane the last copy is spaced from")
+    direction = _direction_vector(f.Direction)
+    start = _plane_position(doc, values.get("from1"), direction)
+    end = _plane_position(doc, to_text, direction)
+    reverse = (end < start) if start is not None else False
+    if start is None:
+        lo0, hi0 = _extent_along(list(f.Originals), direction)
+        reverse = end < lo0
+    if reverse:
+        direction = -direction
+        start = _plane_position(doc, values.get("from1"), direction)
+        end = _plane_position(doc, to_text, direction)
+    f.Reversed = bool(reverse)
+    lo, hi = _extent_along(list(f.Originals), direction)
+    start = lo if start is None else start
+    margin = lo - start
+    count = int(round(f.Occurrences))
+    if count < 2:
+        raise ValueError("Use a count of 2 or more to space the copies between the faces")
+    spacing = (end - margin - hi) / (count - 1)
+    if margin < -1e-6 or spacing < (hi - lo) - 1e-6:  # copies would overlap each other, or start outside the faces
+        raise ValueError("There is no room: %d copies don't fit between the two faces — use fewer, or move the faces"
+                         % count)
+    return "%.6g mm" % spacing
+
+
+def _store_fit(f, values):
+    if "InCadFit" not in f.PropertiesList:
+        f.addProperty("App::PropertyString", "InCadFit", "InCad", "How direction 1 is spaced")
+    f.InCadFit = json.dumps({"fit1": values.get("fit1") or "spacing", "from1": values.get("from1") or "",
+                             "to1": values.get("to1") or ""})
+
+
+def _load_fit(f):
+    try:
+        data = json.loads(f.InCadFit) if "InCadFit" in f.PropertiesList else {}
+    except ValueError:
+        data = {}
+    return {"fit1": data.get("fit1", "spacing"), "from1": data.get("from1", ""), "to1": data.get("to1", "")}
+
+
 def _rect_apply(doc, body, f, values):
     f.Originals = _features(doc, body, values.get("features"), f, bool(values.get("children")))
     f.Direction = _dir_link(doc, body, values.get("dir1"), "X_Axis")
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count1"))
-    _length_from(doc, f, "Length", "Occurrences", values.get("spacing1") or "10 mm", "spacing1")
+    spacing1 = values.get("spacing1") or "10 mm"
+    if values.get("fit1") == "faces":
+        f.Reversed = False
+        doc.recompute()
+        spacing1 = _fit_spacing(doc, f, values)
+    else:
+        f.Reversed = False
+    _length_from(doc, f, "Length", "Occurrences", spacing1, "spacing1")
+    _store_fit(f, values)
     if values.get("two_directions"):
         f.Direction2 = _dir_link(doc, body, values.get("dir2"), "Y_Axis")
         f.Mode2 = "Extent"
@@ -191,7 +301,7 @@ def _rect_read(doc, f):
         return model.parameter_text(doc, name) if name else "10 mm"
     two = f.Occurrences2 > 1 or model.bound_parameter(f, "Occurrences2") is not None
     picks, children = _picks_and_children(f)
-    return {"features": picks, "children": children, "dir1": _link_text(f.Direction),
+    return {"features": picks, "children": children, **_load_fit(f), "dir1": _link_text(f.Direction),
             "count1": value_text(doc, f, "Occurrences") or "2", "spacing1": spacing("spacing1"),
             "two_directions": bool(two), "dir2": _link_text(f.Direction2),
             "count2": value_text(doc, f, "Occurrences2") or "2", "spacing2": spacing("spacing2")}
@@ -210,13 +320,17 @@ RECT = SimpleNamespace(
             Field("children", "Include dependent features", "bool", default=False),
             Field("dir1", "Direction 1", "pick", pick="axis"),
             Field("count1", "Count", "value_length", default="2"),
-            Field("spacing1", "Spacing", "value_length", default="10 mm"),
+            Field("fit1", "Distribution", "choice", (("spacing", "By spacing"), ("faces", "Evenly between faces")),
+                  "spacing"),
+            Field("spacing1", "Spacing", "value_length", default="10 mm", show_if=("fit1", ("spacing",))),
+            Field("from1", "From face", "pick", pick="plane", show_if=("fit1", ("faces",))),
+            Field("to1", "To face", "pick", pick="plane", show_if=("fit1", ("faces",))),
             Field("two_directions", "Two directions", "bool", default=False),
             Field("dir2", "Direction 2", "pick", pick="axis", show_if=("two_directions", (True,))),
             Field("count2", "Count 2", "value_length", default="2", show_if=("two_directions", (True,))),
             Field("spacing2", "Spacing 2", "value_length", default="10 mm", show_if=("two_directions", (True,)))),
     defaults=lambda doc, body, profile: {"features": "", "children": False, "dir1": _origin_name(body, "X_Axis"), "count1": "2",
-                                         "spacing1": "10 mm", "two_directions": False,
+                                         "fit1": "spacing", "from1": "", "to1": "", "spacing1": "10 mm", "two_directions": False,
                                          "dir2": _origin_name(body, "Y_Axis"), "count2": "2", "spacing2": "10 mm"},
     param_names=lambda f: {k: spacing_param_from(f, k) for k in ("spacing1", "spacing2")
                            if spacing_param_from(f, k)},
