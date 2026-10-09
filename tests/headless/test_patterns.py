@@ -162,6 +162,33 @@ class PatternsTest(unittest.TestCase):
         self.assertEqual(back["fit1"], "faces")
         self.assertEqual(back["to1"], self._face_at_x(self.pad, 20))
 
+    def _edge_at_x(self, x):
+        """A straight block edge lying in the plane x = const (a vertical one, on the left or right face)."""
+        i = [i + 1 for i, e in enumerate(self.pad.Shape.Edges)
+             if e.Curve.TypeId == "Part::GeomLine" and abs(e.BoundBox.XMin - x) < 1e-6 and abs(e.BoundBox.XMax - x) < 1e-6
+             and e.BoundBox.ZLength > 1][0]
+        return "%s:Edge%d" % (self.pad.Name, i)
+
+    def test_equal_spacing_works_from_edge_to_edge_and_from_a_face_to_an_edge(self):
+        boss = self._small_boss()
+        k = patterns.RECT
+        for frm, to in ((self._edge_at_x(0), self._edge_at_x(20)), (self._face_at_x(self.pad, 0), self._edge_at_x(20))):
+            f = k.create(self.doc, self.body, None, dict(
+                k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="4",
+                fit1="faces", from1=frm, to1=to))
+            self.doc.recompute()
+            self.assertNotIn("Invalid", f.State, f.getStatusString())
+            bosses = f.Shape.cut(self.pad.Shape)
+            self.assertAlmostEqual(bosses.BoundBox.XMin, 2.0, places=3)
+            self.assertAlmostEqual(bosses.BoundBox.XMax, 18.0, places=3)
+            self.assertEqual(len(bosses.Solids), 4)
+        self.assertTrue(common.accepts("limit", self.pad, self._edge_at_x(0).split(":")[1]))
+        self.assertTrue(common.accepts("limit", self.pad, self._face_at_x(self.pad, 0).split(":")[1]))
+        self.assertFalse(common.accepts("limit", self.pad, "Vertex1"))
+        field_keys = {f.key: f for f in k.FIELDS}
+        self.assertEqual(field_keys["fit1"].choices[1][1], "Equal spacing")
+        self.assertEqual((field_keys["from1"].pick, field_keys["to1"].pick), ("limit", "limit"))
+
     def test_the_end_face_behind_the_start_face_runs_the_pattern_backwards(self):
         boss = self._small_boss(17)  # near the right face; the copies go left to the left face
         k = patterns.RECT

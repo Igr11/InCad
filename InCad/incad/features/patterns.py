@@ -179,7 +179,7 @@ def _direction_vector(link):
 
 
 def _plane_position(doc, text, direction):
-    """Where the picked plane (a planar face or a work plane) lies along `direction`; None for no pick."""
+    """Where the picked face, edge or work plane lies along `direction`; None for no pick."""
     picks = parse_picks(doc, text)
     if not picks:
         return None
@@ -222,7 +222,7 @@ def _fit_spacing(doc, f, values):
     face: the original's own near edge is the start). Runs the pattern backwards if the To face is behind."""
     to_text = (values.get("to1") or "").strip()
     if not to_text:
-        raise ValueError("Pick the To face: the plane the last copy is spaced from")
+        raise ValueError("Pick the To face or edge: where the last copy is spaced from")
     direction = _direction_vector(f.Direction)
     start = _plane_position(doc, values.get("from1"), direction)
     end = _plane_position(doc, to_text, direction)
@@ -320,11 +320,11 @@ RECT = SimpleNamespace(
             Field("children", "Include dependent features", "bool", default=False),
             Field("dir1", "Direction 1", "pick", pick="axis"),
             Field("count1", "Count", "value_length", default="2"),
-            Field("fit1", "Distribution", "choice", (("spacing", "By spacing"), ("faces", "Evenly between faces")),
+            Field("fit1", "Distribution", "choice", (("spacing", "By spacing"), ("faces", "Equal spacing")),
                   "spacing"),
             Field("spacing1", "Spacing", "value_length", default="10 mm", show_if=("fit1", ("spacing",))),
-            Field("from1", "From face", "pick", pick="plane", show_if=("fit1", ("faces",))),
-            Field("to1", "To face", "pick", pick="plane", show_if=("fit1", ("faces",))),
+            Field("from1", "From", "pick", pick="limit", show_if=("fit1", ("faces",))),
+            Field("to1", "To", "pick", pick="limit", show_if=("fit1", ("faces",))),
             Field("two_directions", "Two directions", "bool", default=False),
             Field("dir2", "Direction 2", "pick", pick="axis", show_if=("two_directions", (True,))),
             Field("count2", "Count 2", "value_length", default="2", show_if=("two_directions", (True,))),

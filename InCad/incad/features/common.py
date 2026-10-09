@@ -185,6 +185,12 @@ def accepts(kind, obj, sub):
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomLine"
+    if kind == "limit":  # where a spaced pattern starts or ends: a flat face, an edge, or a work plane
+        if not sub:
+            return tid in ("App::Plane", "PartDesign::Plane")
+        if sub.startswith("Edge"):
+            return el is not None
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
     if kind == "plane":
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
@@ -192,7 +198,8 @@ def accepts(kind, obj, sub):
     return False
 
 
-_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…"}
+_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
+               "limit": "Click a face, edge or work plane…"}
 
 
 def pick_label(kind, text):

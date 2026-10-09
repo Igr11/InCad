@@ -144,13 +144,19 @@ def test_3_even_distribution_between_two_faces_in_the_dialog():
         return "Face%d" % ([i + 1 for i, f in enumerate(base.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
                             and abs(f.CenterOfMass.x - x) < 1e-6 and abs(f.Surface.Axis.x) > 0.99][0])
 
+    def edge_at(x):  # a vertical block edge on the far end face
+        return "Edge%d" % ([i + 1 for i, e in enumerate(base.Shape.Edges) if e.Curve.TypeId == "Part::GeomLine"
+                            and abs(e.BoundBox.XMin - x) < 1e-6 and abs(e.BoundBox.XMax - x) < 1e-6
+                            and e.BoundBox.ZLength > 1][0])
+
     for key, x in (("from1", 0), ("to1", 40)):
         if dialog().active_pick() != key:  # the first pick hands over to the next empty field by itself
             dialog().field(key).click()
             harness.pump(500)
         assert dialog().active_pick() == key, dialog().active_pick()
         Gui.Selection.clearSelection()
-        Gui.Selection.addSelection(doc().Name, base.Name, face_at(x))
+        # the start is a face, the end an edge: both are accepted
+        Gui.Selection.addSelection(doc().Name, base.Name, face_at(x) if key == "from1" else edge_at(x))
         harness.pump(700)
     assert not dialog().error_text(), dialog().error_text()
     ok()
