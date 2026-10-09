@@ -195,19 +195,25 @@ def _fillet():
     return [o for o in body().Group if o.TypeId == "PartDesign::Fillet"][0]
 
 
-def test_8_pattern_without_selection_shows_and_keeps_its_feature():
+def test_8_pattern_without_selection_starts_empty_and_asks_for_a_feature():
+    hole = doc().getObject("Hole")  # the Tip is test_4's pattern by now
     Gui.Selection.clearSelection()
     fs0 = s().feature_session
     commands.REGISTRY.run("feature.circ_pattern")
-    harness.pump(900)
+    harness.pump(1200)
     fs = s().feature_session
     assert fs is not None and "features" in dialog()._widgets, (
         fs0 and fs0.kind.TITLE, fs and fs.kind.TITLE, open(os.environ["INCAD_LOG"]).read()[-600:])
-    assert dialog().field("features").text() not in ("", "Select…"), dialog().field("features").text()
-    w = dialog().field("count")
-    w.setText("3")
-    w.editingFinished.emit()
-    harness.pump(700)
+    assert dialog().values()["features"] == "", "no guess at a feature: %s" % dialog().values()
+    assert "Click a feature" in dialog().error_text(), dialog().error_text()
+    assert not dialog().ok_button.isEnabled()
+    if dialog().active_pick() != "features":
+        dialog().field("features").click()
+        harness.pump(500)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, hole.Name)
+    harness.pump(900)
+    assert dialog().values()["features"] == hole.Name, dialog().values()
     # the holes turned about the origin axis land outside this block: the dialog may say the pattern changes
     # nothing, but never anything else
     err = dialog().error_text()
@@ -494,7 +500,7 @@ harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_fr
              test_escape_during_the_first_preview_closes_cleanly, test_escape_during_an_apply_means_stop,
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
-             test_8_pattern_without_selection_shows_and_keeps_its_feature,
+             test_8_pattern_without_selection_starts_empty_and_asks_for_a_feature,
              test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
              test_10_plain_clicks_collect_edges_and_a_click_on_a_picked_one_removes_it,
              test_section_on_and_off_twice_never_crashes, test_section_by_three_marked_points,

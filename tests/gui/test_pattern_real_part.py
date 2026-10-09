@@ -1,0 +1,172 @@
+"""The user's real part in a real FreeCAD window: a threaded shaft near one end of a block, with a pocket, a hole
+and a groove elsewhere. A click on the thread picks the shaft with its thread; 'Equal spacing' from the block's
+near end to the far one spaces three shafts; Flip puts the copies on the other side; From at the far end says so.
+The part is copied first: the user's file is never touched. INCAD_REAL_PART overrides the path."""
+import os
+import shutil
+import sys
+
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
+import harness  # noqa: E402
+import FreeCAD as App  # noqa: E402
+import FreeCADGui as Gui  # noqa: E402
+from pivy import coin  # noqa: E402,F401
+from PySide6.QtTest import QTest  # noqa: E402
+from incad.qt import QtCore  # noqa: E402
+from incad.core import commands, document, prefs  # noqa: E402
+from incad.ui import shell  # noqa: E402
+
+PART = os.environ.get("INCAD_REAL_PART", "/Volumes/Docs/Plasticity_projects/p2_test_reordered.FCStd")
+ST = {}
+
+
+def s():
+    return shell.instance()
+
+
+def doc():
+    return App.ActiveDocument
+
+
+def body():
+    return document.primary_body(doc())
+
+
+def dialog():
+    fs = s().feature_session
+    return fs.dialog if fs is not None else None
+
+
+def ok():
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+
+
+def cancel():
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+
+
+def tip():
+    return body().Tip
+
+
+def end_face(shape_obj, x):
+    """The block's end face at x: a plane whose normal is X."""
+    return "Face%d" % ([i + 1 for i, f in enumerate(shape_obj.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+                        and abs(f.CenterOfMass.x - x) < 0.05 and abs(f.Surface.Axis.x) > 0.99][0])
+
+
+def thread_face(shape_obj):
+    """A flank of the thread cut into the shaft (the shaft hangs below y = -7.2): neither a plane nor a cylinder."""
+    return "Face%d" % ([i + 1 for i, f in enumerate(shape_obj.Shape.Faces)
+                        if f.Surface.TypeId not in ("Part::GeomPlane", "Part::GeomCylinder")
+                        and f.CenterOfMass.y < -8][0])
+
+
+def pick(key, obj, sub):
+    if dialog().active_pick() != key:
+        dialog().field(key).click()
+        harness.pump(500)
+    assert dialog().active_pick() == key, dialog().active_pick()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, obj.Name, sub)
+    harness.pump(900)
+
+
+def test_0_open_a_copy_of_the_real_part():
+    assert os.path.exists(PART), "real part missing: " + PART
+    prefs.set_remember_new_choice(True)
+    prefs.set_default_units("mm")
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    copy = os.path.join(os.environ["FREECAD_USER_TEMP"], "real_part.FCStd")
+    shutil.copyfile(PART, copy)
+    App.openDocument(copy)  # Gui.open answers "File type 'fcstd' not supported" when run as a script
+    harness.pump(2500)
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(500)
+    assert doc() is not None and doc().FileName == copy, getattr(doc(), "FileName", None)
+    shaft, thread = doc().getObject("Extrude002"), doc().getObject("Thread")
+    assert shaft is not None and thread is not None and tip().Name == "Chamfer", tip().Name
+    b = tip().Shape.BoundBox
+    assert abs(b.XMin + 12.26) < 0.05 and abs(b.XMax - 17.74) < 0.05, b
+    ST["base_volume"] = tip().Shape.Volume
+    ST["base"] = tip().Name
+
+
+def test_1_clicking_the_thread_spaces_three_shafts_equally_from_the_near_end():
+    base = doc().getObject(ST["base"])
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.rect_pattern")
+    harness.pump(1000)
+    assert dialog() is not None
+    pick("features", base, thread_face(base))
+    vals = dialog().values()
+    assert vals["features"] == "Extrude002", vals["features"]
+    assert vals["children"] is True, "the thread comes along with the shaft"
+    dialog().set_values({"fit1": "faces", "count1": "3"})
+    harness.pump(600)
+    pick("from1", base, end_face(base, 17.74))  # the end the shaft is near: the start
+    pick("to1", base, end_face(base, -12.26))
+    assert not dialog().error_text(), dialog().error_text()
+    shown = dialog().field("features").text()
+    assert "dependent" in shown, shown
+    ok()
+    p = tip()
+    assert p.TypeId == "PartDesign::LinearPattern", p.TypeId
+    assert "Invalid" not in p.State, p.getStatusString()
+    assert [o.Name for o in p.Originals] == ["Extrude002", "Thread", "ThreadChamfer"], [o.Name for o in p.Originals]
+    assert abs(p.Length.Value - 14.0) < 0.05 and p.Reversed, (p.Length.Value, p.Reversed)  # 7 mm steps, leftward
+    b = p.Shape.BoundBox
+    assert abs(b.XMin + 12.26) < 0.05 and abs(b.XMax - 17.74) < 0.05, b  # the copies stay on the block
+    assert p.Shape.Volume > ST["base_volume"] + 100, (p.Shape.Volume, ST["base_volume"])  # two more shafts
+    ST["pattern"] = p.Name
+
+
+def test_2_flip_puts_the_copies_on_the_other_side_of_the_shaft():
+    p = doc().getObject(ST["pattern"])
+    shell.edit_feature(p)
+    harness.pump(1000)
+    assert dialog() is not None and dialog().values()["fit1"] == "faces", dialog().values()
+    dialog().field("flip1").setChecked(True)
+    harness.pump(1500)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    assert "Invalid" not in p.State, p.getStatusString()
+    assert not p.Reversed and abs(p.Length.Value - 14.0) < 0.05, (p.Reversed, p.Length.Value)
+    assert p.Shape.BoundBox.XMax > 25, p.Shape.BoundBox  # the copies hang past the right end, in the air
+    shell.edit_feature(p)
+    harness.pump(1000)
+    dialog().field("flip1").setChecked(False)
+    harness.pump(1500)
+    ok()
+    assert p.Reversed and abs(p.Shape.BoundBox.XMax - 17.74) < 0.05, p.Shape.BoundBox
+
+
+def test_3_from_the_far_end_says_to_pick_the_other_end():
+    base = doc().getObject(ST["base"])
+    p = doc().getObject(ST["pattern"])
+    doc().removeObject(p.Name)
+    body().Tip = base
+    doc().recompute()
+    harness.pump(500)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.rect_pattern")
+    harness.pump(1000)
+    pick("features", base, thread_face(base))
+    dialog().set_values({"fit1": "faces", "count1": "3"})
+    harness.pump(600)
+    pick("from1", base, end_face(base, -12.26))  # the far end first
+    pick("to1", base, end_face(base, 17.74))
+    err = dialog().error_text()
+    assert "pick the other end as From" in err, err
+    cancel()
+    assert tip() is base, tip().Name
+
+
+harness.run([test_0_open_a_copy_of_the_real_part,
+             test_1_clicking_the_thread_spaces_three_shafts_equally_from_the_near_end,
+             test_2_flip_puts_the_copies_on_the_other_side_of_the_shaft,
+             test_3_from_the_far_end_says_to_pick_the_other_end])

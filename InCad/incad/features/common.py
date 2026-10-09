@@ -144,9 +144,9 @@ def is_stand_in(obj):
     return obj.TypeId.endswith("Helix") or obj.TypeId in _STAND_IN_TYPES
 
 
-def support_features(owner):
-    """The solid features a feature's profile sketch stands on (through datum planes too)."""
-    found, todo, seen = [], [getattr(owner, "Profile", None)], set()
+def _profile_supports(owner):
+    """(feature, sub-element names) pairs a feature's profile sketch is attached to, through datum planes too."""
+    todo, seen = [getattr(owner, "Profile", None)], set()
     while todo:
         x = todo.pop()
         if isinstance(x, (tuple, list)):
@@ -155,13 +155,31 @@ def support_features(owner):
             continue
         seen.add(x.Name)
         for support in getattr(x, "AttachmentSupport", None) or []:
-            obj = support[0] if isinstance(support, (tuple, list)) else support
+            obj, subs = (support[0], support[1]) if isinstance(support, (tuple, list)) else (support, ())
             if obj is None:
                 continue
             if obj.isDerivedFrom("PartDesign::Feature"):
-                found.append(obj)
+                yield obj, [s for s in (subs if isinstance(subs, (tuple, list)) else [subs]) if s]
             else:
                 todo.append(obj)
+
+
+def support_features(owner):
+    """The solid features a feature's profile sketch NAMES in its attachment: whatever feature was the Tip when the
+    sketch was drawn. See built_on_features for the features that made the faces it stands on."""
+    return [obj for obj, _ in _profile_supports(owner)]
+
+
+def built_on_features(owner):
+    """The solid features a feature is BUILT ON: for each face or edge its profile sketch is attached to, the
+    feature that created that face (a sketch drawn on the block's top while a boss was the Tip names the boss,
+    but stands on the block). A support that names no face or edge stands for the feature itself."""
+    found = []
+    for obj, subs in _profile_supports(owner):
+        for sub in subs or [""]:
+            made = raw_feature_of(obj, sub)
+            if made is not None and all(made is not f for f in found):
+                found.append(made)
     return found
 
 
@@ -201,7 +219,48 @@ def raw_feature_of(obj, sub):
     except Exception:
         return obj
     made_by = [o for o, _, _ in ((h[0], h[1], h[2]) for h in history) if o.isDerivedFrom("PartDesign::Feature")]
-    return made_by[-1] if made_by else obj
+    made = made_by[-1] if made_by else obj
+    if sub.startswith("Face"):
+        made = _older_maker(made, _element(obj, sub))
+    return made
+
+
+def _older_maker(made, face):
+    """The element history stops where a feature kept no element names (a thread's helix): walk on down the
+    BaseFeature chain while the face was already there, the same surface overlapping this face."""
+    if face is None:
+        return made
+    base = getattr(made, "BaseFeature", None)
+    while base is not None and not base.Shape.isNull() and _carries_face(base.Shape, face):
+        made, base = base, getattr(base, "BaseFeature", None)
+    return made
+
+
+def _carries_face(shape, face):
+    """True when `shape` has a face on the same plane or cylinder as `face` that overlaps it. Other surfaces are
+    left to the element history."""
+    s = face.Surface
+    for g in shape.Faces:
+        t = g.Surface
+        if t.TypeId != s.TypeId:
+            continue
+        if s.TypeId == "Part::GeomPlane":
+            if abs(abs(s.Axis.dot(t.Axis)) - 1) > 1e-6 or abs((t.Position - s.Position).dot(s.Axis)) > 1e-5:
+                continue
+        elif s.TypeId == "Part::GeomCylinder":
+            if abs(s.Radius - t.Radius) > 1e-6 or abs(abs(s.Axis.dot(t.Axis)) - 1) > 1e-6:
+                continue
+            d = t.Center - s.Center
+            if (d - s.Axis * d.dot(s.Axis)).Length > 1e-5:
+                continue
+        else:
+            continue
+        try:
+            if face.common(g).Area > 1e-6:
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def accepts(kind, obj, sub):

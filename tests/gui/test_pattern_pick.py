@@ -163,6 +163,13 @@ def test_3_even_distribution_between_two_faces_in_the_dialog():
         Gui.Selection.addSelection(doc().Name, base.Name, face_at(x) if key == "from1" else edge_at(x))
         harness.pump(700)
     assert not dialog().error_text(), dialog().error_text()
+    # Flip direction turns the copies the other way round the original: the holes then land outside the block
+    dialog().field("flip1").setChecked(True)  # the real switch, as a click on it
+    harness.pump(1500)
+    assert "changes nothing" in dialog().error_text(), (dialog().error_text(), dialog().values().get("flip1"))
+    dialog().field("flip1").setChecked(False)
+    harness.pump(1500)
+    assert not dialog().error_text(), dialog().error_text()
     ok()
     pattern = body().Tip
     assert pattern.TypeId == "PartDesign::LinearPattern", pattern.TypeId
@@ -171,7 +178,7 @@ def test_3_even_distribution_between_two_faces_in_the_dialog():
     assert "Invalid" not in pattern.State, pattern.getStatusString()
 
 
-def test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up():
+def test_4_the_field_starts_empty_and_asks_for_a_feature_then_picks_add_up():
     pad, pocket = doc().getObject(ST["pad"]), doc().getObject(ST["pocket"])
     for o in [o for o in body().Group if o.TypeId == "PartDesign::LinearPattern"]:
         doc().removeObject(o.Name)
@@ -179,8 +186,10 @@ def test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up():
     doc().recompute()
     Gui.Selection.clearSelection()
     commands.REGISTRY.run("feature.rect_pattern")
-    harness.pump(900)
-    assert dialog().values()["features"] == pocket.Name, "the default is the newest feature"
+    harness.pump(1200)
+    assert dialog().values()["features"] == "", "nothing picked, nothing guessed: %s" % dialog().values()
+    assert "Click a feature" in dialog().error_text(), dialog().error_text()
+    assert not dialog().ok_button.isEnabled()
     assert dialog().active_pick() == "features"
 
     def click_row(obj):
@@ -189,8 +198,9 @@ def test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up():
         harness.pump(700)
 
     click_row(pad)
-    assert dialog().values()["features"] == pad.Name, "the default must go, not stay beside the pick: %s" % (
-        dialog().values()["features"],)
+    assert dialog().values()["features"] == pad.Name, dialog().values()["features"]
+    assert not dialog().error_text(), dialog().error_text()
+    assert dialog().ok_button.isEnabled()
     click_row(pocket)
     assert sorted(dialog().values()["features"].split(",")) == sorted([pad.Name, pocket.Name]), \
         dialog().values()["features"]
@@ -203,4 +213,4 @@ def test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up():
 harness.run([test_0_setup, test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it,
              test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature,
              test_3_even_distribution_between_two_faces_in_the_dialog,
-             test_4_the_first_pick_replaces_the_default_feature_then_picks_add_up])
+             test_4_the_field_starts_empty_and_asks_for_a_feature_then_picks_add_up])

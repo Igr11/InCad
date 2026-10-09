@@ -4,7 +4,7 @@ import json
 import re
 from types import SimpleNamespace
 
-from incad.features.common import (Field, format_picks, parse_picks, repeatable_of, resolve, support_features,
+from incad.features.common import (Field, built_on_features, format_picks, parse_picks, repeatable_of, resolve,
                                    value_param, value_text)
 
 
@@ -20,8 +20,9 @@ def _origin_name(body, role):
 
 
 def _features(doc, body, text, f, children=False):
-    """Picked features (plus the features built on them when `children`); else the ones it already patterns; else
-    the Tip (never the pattern itself)."""
+    """Picked features (plus the features built on them when `children`); else the ones it already patterns. A new
+    pattern with nothing picked asks for a feature: the field starts empty (a feature selected before the command
+    is seeded into it), never with a guess at what the user wants to repeat."""
     picks = []
     for o, s in parse_picks(doc, text):
         feature = repeatable_of(resolve(o, s)[0])  # a thread, fillet… stands for the feature it modifies
@@ -32,7 +33,7 @@ def _features(doc, body, text, f, children=False):
     elif list(f.Originals):
         chosen = list(f.Originals)
     else:
-        chosen = [x for x in [_last_shape_feature(body, f)] if x is not None]
+        raise ValueError("Click a feature (tree or view) to repeat")
     if children:
         chosen = chosen + _dependents(body, chosen, f)
         group = list(body.Group)
@@ -40,7 +41,7 @@ def _features(doc, body, text, f, children=False):
     return chosen
 
 
-_support_features = support_features
+_support_features = built_on_features
 
 
 def _dependents(body, roots, pattern):
@@ -87,17 +88,6 @@ def _picks_and_children(f):
 
 _PATTERNABLE = ("PartDesign::Pad", "PartDesign::Pocket", "PartDesign::Revolution", "PartDesign::Groove",
                 "PartDesign::Hole")
-
-
-def _last_shape_feature(body, f):
-    """The newest feature FreeCAD can pattern (patterns and dress-ups can't be), walking back from the Tip."""
-    x = body.Tip
-    while x is not None:
-        if x is not f and (x.TypeId in _PATTERNABLE or x.TypeId.startswith(("PartDesign::Additive",
-                                                                           "PartDesign::Subtractive"))):
-            return x
-        x = getattr(x, "BaseFeature", None)
-    return None
 
 
 def _dir_link(doc, body, text, default_role):
@@ -257,9 +247,10 @@ def _extent_centre(originals):
 
 
 def _fit_spacing(doc, body, f, values):
-    """Spacing that puts the first copy as far from the start as the last copy is from the end (the original's own
-    near edge is the start when there is no From). The pattern runs along the axis the two limits lie on, from the
-    end the original is nearer to toward the other; Flip direction swaps the ends."""
+    """Spacing that puts the first copy as far from the start as the last copy is from the end. The FIRST pick (From)
+    is the start and the copies run toward the SECOND (To), whichever end the original is nearer to; without a From
+    the original's own edge facing To is the start. Flip direction puts the copies on the other side of the original
+    (same spacing); it never changes which pick is the start."""
     end = _limit(doc, values.get("to1"))
     if end is None:
         raise ValueError("Pick the To face or edge: where the last copy is spaced from")
@@ -267,35 +258,28 @@ def _fit_spacing(doc, body, f, values):
     originals = list(f.Originals)
     link, direction = _fit_direction(doc, body, f, values, start, end, originals)
     lo, hi = _extent_along(originals, direction)
-    t_start = start[2].dot(direction) if start is not None else None
     t_end = end[2].dot(direction)
-    centre = (lo + hi) / 2.0
-    if start is not None and abs(centre - t_end) < abs(centre - t_start):
-        t_start, t_end = t_end, t_start  # the original sits at the To end: run from there
-    if values.get("flip1"):
-        if t_start is None:
-            raise ValueError("Pick a From face or edge to flip the distribution")
-        t_start, t_end = t_end, t_start
-    if t_start is None:
-        t_start = lo if t_end > lo else hi
-    sign = 1.0 if t_end >= t_start else -1.0
+    t_start = start[2].dot(direction) if start is not None else (lo if t_end > (lo + hi) / 2.0 else hi)
+    sign = 1.0 if t_end >= t_start else -1.0  # the copies run from the start toward the end
     f.Direction = link
-    f.Reversed = sign < 0
-    s, e = sign * t_start, sign * t_end
+    f.Reversed = (sign < 0) != bool(values.get("flip1"))
+    s = sign * t_start
+    e = s + abs(t_end - t_start)
     u_lo, u_hi = (lo, hi) if sign > 0 else (-hi, -lo)
-    margin = u_lo - s
+    margin = u_lo - s  # how far the original's near edge is from the start, toward the end
     count = int(round(f.Occurrences))
     if count < 2:
         raise ValueError("Use a count of 2 or more to space the copies between the faces")
-    spacing = (e - margin - u_hi) / (count - 1)
-    width, space = u_hi - u_lo, e - s
+    width = u_hi - u_lo
     if margin < -1e-6:
-        raise ValueError("The picked feature lies outside the From/To limits (%.1f mm before the start): move a "
-                         "limit, or pick the other end as From" % -margin)
+        raise ValueError("The picked feature lies %.1f mm behind the start (the From pick): pick the other end as "
+                         "From, or move the limit" % -margin)
+    spacing = (e - margin - u_hi) / (count - 1)
     if spacing < width - 1e-6:  # the copies would overlap each other
-        raise ValueError("There is no room: the picked feature is %.1f mm wide, so %d copies need %.1f mm, but "
-                         "only %.1f mm lie between the limits — use fewer copies or move the limits"
-                         % (width, count, count * width + 2 * margin, space))
+        raise ValueError("There is no room: the picked feature is %.1f mm wide and %.1f mm from the start, so %d "
+                         "copies need %.1f mm, but only %.1f mm lie between the limits. Use fewer copies, move the "
+                         "limits, or pick the other end as From" % (width, margin, count, count * width + 2 * margin,
+                                                                    e - s))
     return "%.6g mm" % spacing
 
 

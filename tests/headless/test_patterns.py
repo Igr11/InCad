@@ -10,13 +10,15 @@ class PatternsTest(unittest.TestCase):
     def setUp(self):
         self.doc = util.new_doc("Pt")
         self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        self.pad_pick = common.format_picks([(self.pad, "")])
 
     def tearDown(self):
         App.closeDocument(self.doc.Name)
 
     def test_rectangular_two_directions(self):
         k = patterns.RECT
-        v = dict(k.defaults(self.doc, self.body, None), count1="3", spacing1="30 mm", two_directions=True,
+        v = dict(k.defaults(self.doc, self.body, None), features=self.pad_pick, count1="3", spacing1="30 mm",
+                 two_directions=True,
                  count2="2", spacing2="20 mm")
         f = k.create(self.doc, self.body, None, v)
         self.doc.recompute()
@@ -27,8 +29,8 @@ class PatternsTest(unittest.TestCase):
 
     def test_spacing_parameter_drives_the_pattern(self):
         k = patterns.RECT
-        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count1="2",
-                                                     spacing1="30 mm"))
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick,
+                                                     count1="2", spacing1="30 mm"))
         self.doc.recompute()
         name = model.bound_parameter(f, "Offset") or k.spacing_param(f, 1)
         model.set_model_parameter(self.doc, name, "10 mm")  # overlapping copies now
@@ -38,10 +40,12 @@ class PatternsTest(unittest.TestCase):
         for k, key in ((patterns.RECT, "count1"), (patterns.CIRC, "count")):
             for bad in ("2.5", "0", "-3", "3 mm"):
                 with self.assertRaises(ValueError, msg="%s %r" % (key, bad)) as cm:
-                    k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), **{key: bad}))
+                    k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None),
+                                                             features=self.pad_pick, **{key: bad}))
                 self.assertIn("whole number", str(cm.exception))
         k = patterns.CIRC  # a whole number is still fine
-        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="5"))
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick,
+                                                     count="5"))
         self.assertEqual(f.Occurrences, 5)
 
     def test_a_face_or_edge_clicked_in_3d_stands_for_the_feature_that_made_it(self):
@@ -124,6 +128,90 @@ class PatternsTest(unittest.TestCase):
         self.assertEqual([o.Name for o in only.Originals], ["BossHole"])
         for kind in (patterns.CIRC, patterns.MIRROR):
             self.assertIn("children", [f.key for f in kind.FIELDS])
+
+    def test_a_feature_on_a_face_merely_named_through_a_dependent_is_not_a_dependent(self):
+        """A sketch is attached to a face through whatever feature was the Tip at the time. A pocket drawn on the
+        block's top while the boss's hole was the Tip names the hole's feature, but stands on the block: it is not
+        built on the boss and must not come along with 'Include dependent features' (it would widen the picked
+        feature across the block and leave no room for an equal spacing)."""
+        import Part
+        boss, hole = self._boss_with_a_hole()
+        top = [i + 1 for i, f in enumerate(hole.Shape.Faces)
+               if abs(f.CenterOfMass.z - 10) < 1e-6 and f.Surface.TypeId == "Part::GeomPlane"][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "SideSk")
+        sk.AttachmentSupport = [(hole, "Face%d" % top)]  # the block's top, named through the hole feature
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(3, 5, 0), App.Vector(0, 0, 1), 1))
+        side = self.body.newObject("PartDesign::Pocket", "SidePocket")
+        side.Profile, side.Type, side.Length = sk, 0, 2
+        self.body.Tip = side
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in common.support_features(side)], ["BossHole"])  # what the file says
+        k = patterns.RECT
+        both = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None),
+                                                        features=common.format_picks([(boss, "")]),
+                                                        children=True, count1="2", spacing1="30 mm"))
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in both.Originals], ["Boss", "BossHole"])
+        # the pocket's own dependents are judged the same way: it stands on the block, not on the hole
+        self.assertEqual(k.read(self.doc, both)["children"], True)
+        # a feature drawn on the boss's hole bottom IS a dependent of the boss, whichever feature named the face
+        bottom = [i + 1 for i, f in enumerate(side.Shape.Faces)
+                  if abs(f.CenterOfMass.z - 13) < 1e-6 and f.Surface.TypeId == "Part::GeomPlane"][0]
+        dsk = self.body.newObject("Sketcher::SketchObject", "DeepSk")
+        dsk.AttachmentSupport = [(side, "Face%d" % bottom)]  # the hole's bottom, named through the side pocket
+        dsk.MapMode = "FlatFace"
+        dsk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 0.5))
+        deep = self.body.newObject("PartDesign::Pocket", "DeepHole")
+        deep.Profile, deep.Type, deep.Length = dsk, 0, 1
+        self.body.Tip = deep
+        self.doc.recompute()
+        k.update(self.doc, both, dict(k.read(self.doc, both), children=True))
+        self.assertEqual([o.Name for o in both.Originals], ["Boss", "BossHole", "DeepHole"])
+
+    def test_a_face_named_through_a_thread_still_belongs_to_the_feature_that_made_it(self):
+        """FreeCAD keeps no element names through a thread's helix, so the element history of any face named
+        through the thread ends at the thread. The block's top is still the block's: a pocket drawn on it while
+        the thread was the Tip is not a dependent of the threaded shaft, and the shaft (with its thread) can be
+        spaced equally between the block's ends."""
+        import Part
+        from incad.features import thread
+        from headless.test_thread import cyl_face
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "ShaftSk")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(17, 5, 0), App.Vector(0, 0, 1), 2.5))
+        shaft = util.add_pad(self.body, sk, 8, name="Shaft")  # x 14.5..19.5, near the right face
+        self.body.Tip = shaft
+        self.doc.recompute()
+        th = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                           face=cyl_face(shaft, 2.5), standard="iso", size="M5",
+                                                           clearance="0 mm"))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", th.State, th.getStatusString())
+        block_top = [i + 1 for i, f in enumerate(th.Shape.Faces)
+                     if f.Surface.TypeId == "Part::GeomPlane" and abs(f.CenterOfMass.z - 10) < 0.5
+                     and f.Area > 100][0]
+        self.assertEqual(common.raw_feature_of(th, "Face%d" % block_top).Name, self.pad.Name)
+        psk = self.body.newObject("Sketcher::SketchObject", "SideSk")
+        psk.AttachmentSupport = [(th, "Face%d" % block_top)]  # the block's top, named through the thread
+        psk.MapMode = "FlatFace"
+        psk.addGeometry(Part.Circle(App.Vector(3, 5, 0), App.Vector(0, 0, 1), 1))
+        side = self.body.newObject("PartDesign::Pocket", "SidePocket")
+        side.Profile, side.Type, side.Length = psk, 0, 2
+        self.body.Tip = side
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in patterns._dependents(self.body, [shaft], None)], [th.Name])
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None),
+                                                     features=common.format_picks([(shaft, "")]), children=True,
+                                                     count1="3", fit1="faces", from1=self._face_at_x(self.pad, 20),
+                                                     to1=self._face_at_x(self.pad, 0)))
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in f.Originals], [shaft.Name, th.Name])
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertAlmostEqual(f.Length.Value, 14.0, places=3)  # first to last copy: x 14.5, 7.5, 0.5 (0.5 mm margins)
 
     def _small_boss(self, x=3):
         """A 2 mm wide boss on the block's top (x-1..x+1; 2..4 by default), the block being x 0..20."""
@@ -225,13 +313,25 @@ class PatternsTest(unittest.TestCase):
         self.assertAlmostEqual(box.XMin, 9.0, places=3)
         self.assertAlmostEqual(box.XMax, 11.0, places=3)  # nothing moved in X
 
-    def test_equal_spacing_starts_from_the_end_the_original_is_nearer_to(self):
-        boss = self._small_boss(17)  # x 16..18, near the right face
-        f, box = self._equal(boss, self._face_at_x(self.pad, 0), self._face_at_x(self.pad, 20), 3)
+    def test_the_first_pick_is_the_start_and_the_copies_run_toward_the_second(self):
+        """From is where the pattern starts, To where it runs toward — whichever end the original is nearer to."""
+        boss = self._small_boss(17)  # x 16..18, close to the right face
+        k = patterns.RECT
+        # From the right face toward the left one: the original is at the start, the copies run left
+        f, box = self._equal(boss, self._face_at_x(self.pad, 20), self._face_at_x(self.pad, 0), 3)
+        self.assertTrue(f.Reversed)
         self.assertAlmostEqual(box.XMin, 2.0, places=3)
         self.assertAlmostEqual(box.XMax, 18.0, places=3)
+        # From the left face toward the right one: the original is 16 mm from the start, so nothing fits - and it says
+        # which side the start is (no silent turning round to the other end)
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, None, dict(
+                k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="3",
+                fit1="faces", from1=self._face_at_x(self.pad, 0), to1=self._face_at_x(self.pad, 20)))
+        self.assertIn("from the start", str(cm.exception))
+        self.assertIn("pick the other end as From", str(cm.exception))
 
-    def test_flip_direction_reverses_a_spaced_pattern_and_swaps_the_ends_of_an_equal_one(self):
+    def test_flip_direction_puts_the_copies_on_the_other_side_of_the_original_in_both_modes(self):
         boss = self._small_boss(5)  # x 4..6
         k = patterns.RECT
         base = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="2",
@@ -244,12 +344,22 @@ class PatternsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertTrue(back.Reversed)
         self.assertEqual(k.read(self.doc, back)["flip1"], True)
-        self.assertAlmostEqual(back.Shape.cut(self.pad.Shape).BoundBox.XMin, -4.0, places=3)  # copies off the block
-        # equal spacing: the original (x 4..6) is nearer to the left face; flipped, the right face is the start
-        with self.assertRaises(ValueError) as cm:
-            k.create(self.doc, self.body, None, dict(base, fit1="faces", from1=self._face_at_x(self.pad, 0),
-                                                     to1=self._face_at_x(self.pad, 20), flip1=True, count1="3"))
-        self.assertIn("room", str(cm.exception))
+        self.assertAlmostEqual(back.Shape.cut(self.pad.Shape).BoundBox.XMin, -4.0, places=3)  # 8 mm to the left
+        # equal spacing, 3 copies from the left face toward the right one: x 4..6, 9..11, 14..16 (4 mm margins)
+        eq_args = dict(from1=self._face_at_x(self.pad, 0), to1=self._face_at_x(self.pad, 20), count1="3")
+        f, box = self._equal(boss, eq_args["from1"], eq_args["to1"], 3)
+        self.assertFalse(f.Reversed)
+        self.assertAlmostEqual(box.XMax, 16.0, places=3)
+        spacing = f.Length.Value / 2.0
+        self.doc.removeObject(f.Name)  # the flipped one is built on the boss alone, not on the first pattern
+        self.body.Tip = boss
+        self.doc.recompute()
+        # Flip: the same spacing, the copies on the other side of the original (x -6..-4 at the far end)
+        g, gbox = self._equal(boss, eq_args["from1"], eq_args["to1"], 3, flip1=True)
+        self.assertTrue(g.Reversed)
+        self.assertAlmostEqual(g.Length.Value / 2.0, spacing, places=6)
+        self.assertAlmostEqual(gbox.XMin, 4.0 - 2 * spacing, places=3)
+        self.assertAlmostEqual(gbox.XMax, 6.0, places=3)
 
     def test_the_end_face_behind_the_start_face_runs_the_pattern_backwards(self):
         boss = self._small_boss(17)  # near the right face; the copies go left to the left face
@@ -285,20 +395,21 @@ class PatternsTest(unittest.TestCase):
 
     def test_circular(self):
         k = patterns.CIRC
-        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="4"))
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick,
+                                                     count="4"))
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.Volume, 8000, places=1)
 
     def test_mirror(self):
         k = patterns.MIRROR
-        f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick))
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.Volume, 4000, places=1)
         self.assertEqual(common.parse_picks(self.doc, k.read(self.doc, f)["features"]), [(self.pad, "")])
 
     def test_new_pattern_becomes_the_tip(self):
         for k in (patterns.RECT, patterns.CIRC, patterns.MIRROR):
-            f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+            f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick))
             self.doc.recompute()
             self.assertIs(self.body.Tip, f, k.TITLE)
 
@@ -311,16 +422,25 @@ class PatternsTest(unittest.TestCase):
 
     def test_spacing_parameters_are_named_for_the_dialog(self):
         k = patterns.RECT
-        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), two_directions=True))
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick, two_directions=True))
         self.doc.recompute()
         names = k.param_names(f)
         self.assertEqual(set(names), {"spacing1", "spacing2"})
         self.assertTrue(all(names.values()))
 
-    def test_default_feature_survives_an_edit(self):
+    def test_without_a_pick_a_new_pattern_asks_for_a_feature(self):
+        """The Features field starts empty: no guess at the newest feature (on a real part that is whatever was
+        made last, a groove at the other end). A feature selected before the command is seeded by the dialog."""
+        for k in (patterns.RECT, patterns.CIRC, patterns.MIRROR):
+            with self.assertRaises(ValueError, msg=k.TITLE) as cm:
+                k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+            self.assertIn("Click a feature", str(cm.exception))
+            self.assertIs(self.body.Tip, self.pad, k.TITLE)
+
+    def test_the_picked_features_survive_an_edit_with_an_empty_field(self):
         for k in (patterns.RECT, patterns.CIRC, patterns.MIRROR):
             tip = self.body.Tip
-            f = k.create(self.doc, self.body, None, k.defaults(self.doc, self.body, None))
+            f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick))
             self.doc.recompute()
             f = k.update(self.doc, f, k.defaults(self.doc, self.body, None))
             self.doc.recompute()
@@ -330,16 +450,6 @@ class PatternsTest(unittest.TestCase):
             self.doc.removeObject(f.Name)
             self.body.Tip = tip
             self.doc.recompute()
-
-    def test_default_skips_back_over_patterns_and_dressups(self):
-        r = patterns.RECT.create(self.doc, self.body, None, patterns.RECT.defaults(self.doc, self.body, None))
-        self.doc.recompute()
-        self.assertIs(self.body.Tip, r)
-        c = patterns.CIRC.create(self.doc, self.body, None, patterns.CIRC.defaults(self.doc, self.body, None))
-        self.doc.recompute()
-        self.assertEqual(list(c.Originals), [self.pad])
-        self.assertNotIn("Invalid", c.State)
-
 
 class PickingWhatCannotBeRepeatedTest(unittest.TestCase):
     """A thread (or a fillet) can't be repeated by itself; picking one stands for the feature it modifies."""
