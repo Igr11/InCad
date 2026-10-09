@@ -155,10 +155,22 @@ class FeatureSession(QtCore.QObject):
             return
         pairs = self._selection()
         for key, pick in wanted.items():
-            ok = common.whole(pick, [p for p in pairs if common.accepts(pick, *p)])
+            ok = common.whole(pick, [p for p in self._as_picks(pick, pairs) if common.accepts(pick, *p)])
             if ok:
                 field = self.dialog.field_def(key)
                 self.dialog.set_pick(key, common.format_picks(ok[-1:] if field.kind == "pick" else ok))
+
+    @staticmethod
+    def _as_picks(pick, pairs):
+        """A feature pick also takes a face/edge clicked in the view: it stands for the feature that created it."""
+        from incad.features import common
+        if pick != "feature":
+            return pairs
+        out = []
+        for o, el in pairs:
+            made = common.feature_of(o, el)
+            out.append((made, "") if made is not None else (o, el))
+        return out
 
     def _selection(self):
         import FreeCADGui as Gui
@@ -205,7 +217,7 @@ class FeatureSession(QtCore.QObject):
         f = self.dialog.field_def(key)
         if f.pick == "two_points":
             return  # taken by clicks on the markers, not by the selection
-        pairs = self._selection()
+        pairs = self._as_picks(f.pick, self._selection())
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return
@@ -338,6 +350,8 @@ class FeatureSession(QtCore.QObject):
             pre = Gui.Selection.getPreselection()
             subs = [x for x in (getattr(pre, "SubElementNames", ()) or ()) if x]
             under = common.resolve(pre.Object, subs[0]) if pre.Object is not None and subs else (None, "")
+            if self.dialog.field_def(key).pick == "feature" and under[0] is not None:
+                under = (common.feature_of(*under), "")
         except Exception as e:
             log.logger().info("unpick: no preselection (%s)", e)
             return False

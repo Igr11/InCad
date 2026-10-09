@@ -44,6 +44,38 @@ class PatternsTest(unittest.TestCase):
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="5"))
         self.assertEqual(f.Occurrences, 5)
 
+    def test_a_face_or_edge_clicked_in_3d_stands_for_the_feature_that_made_it(self):
+        """Pattern's Features field takes a feature from the tree, or any face/edge of it clicked in the view: the
+        feature that created that face (the Pad for its walls, the Pocket for the hole's wall)."""
+        import Part
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "HoleSk")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
+        self.doc.recompute()
+        pocket = self.body.newObject("PartDesign::Pocket", "Pocket")
+        pocket.Profile, pocket.Type = sk, 1
+        self.body.Tip = pocket
+        self.doc.recompute()
+        wall = [i + 1 for i, f in enumerate(pocket.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"][0]
+        side = [i + 1 for i, f in enumerate(pocket.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+                and abs(f.CenterOfMass.x) < 1e-6][0]
+        self.assertIs(common.feature_of(pocket, "Face%d" % wall), pocket)
+        self.assertIs(common.feature_of(pocket, "Face%d" % side), self.pad)
+        self.assertIs(common.feature_of(self.pad, ""), self.pad)  # a tree row is the feature itself
+        self.assertIs(common.feature_of(sk, ""), None)  # a sketch is not a feature to pattern
+        self.assertTrue(common.accepts("feature", pocket, "Face%d" % wall))
+        self.assertFalse(common.accepts("feature", sk, ""))
+        # and the pattern really repeats the clicked feature
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None),
+                                                     features=common.format_picks([(pocket, "")]),
+                                                     count1="3", spacing1="4 mm"))
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in f.Originals], ["Pocket"])
+        self.assertNotIn("Invalid", f.State)
+
     def test_circular(self):
         k = patterns.CIRC
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="4"))

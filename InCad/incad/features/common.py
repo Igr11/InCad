@@ -133,12 +133,29 @@ def _element(obj, sub):
         return None
 
 
+def feature_of(obj, sub):
+    """The solid feature a pick stands for: a feature itself (a tree row), or the feature that CREATED the face/edge
+    clicked in the view (a hole's wall -> its Hole/Pocket, a block's side -> its Pad). None for anything else."""
+    if obj is None or not obj.isDerivedFrom("PartDesign::Feature"):
+        return None
+    if not sub:
+        return obj
+    if not sub.startswith(("Face", "Edge")):
+        return None
+    try:
+        history = obj.getElementHistory(sub)
+    except Exception:
+        return obj
+    made_by = [o for o, _, _ in ((h[0], h[1], h[2]) for h in history) if o.isDerivedFrom("PartDesign::Feature")]
+    return made_by[-1] if made_by else obj
+
+
 def accepts(kind, obj, sub):
     if obj is None:
         return False
     tid = obj.TypeId
     if kind == "feature":
-        return not sub and tid.startswith("PartDesign::") and tid not in ("PartDesign::Body",)
+        return feature_of(obj, sub) is not None
     if kind == "sketch":  # the sketch itself, or any point/line of it clicked in the view
         return tid == "Sketcher::SketchObject"
     if kind == "body":
