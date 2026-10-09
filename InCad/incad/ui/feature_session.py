@@ -101,6 +101,8 @@ class FeatureSession(QtCore.QObject):
                 self.dialog.set_active_pick(first_empty)
         else:
             self._check()
+        if self.dialog is not None:
+            self.dialog.reset_history()  # seeding is not the user's change: Undo stops (and drops the dialog) here
         self._observe(True)
         return True
 
@@ -630,8 +632,11 @@ class FeatureSession(QtCore.QObject):
         if self.dialog is None:
             return
         done = self.dialog.redo_change() if redo else self.dialog.undo_change()
-        if not done:
-            log.report("info", "Nothing to %s in this dialog (Cancel drops it, OK keeps it)" % ("redo" if redo else "undo"))
+        if done or redo:
+            return
+        log.report("info", "%s dropped: Undo went past the values it opened with" % self.kind.TITLE)
+        self.cancel()  # Undo never refuses: past the floor it drops the dialog, as Cancel would; the next Undo
+        #                is the model's own
 
     def insert(self, name):
         field = self.dialog.focused_value_field() if self.dialog is not None else None

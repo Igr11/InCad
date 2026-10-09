@@ -236,6 +236,11 @@ class FeatureDialog(QtWidgets.QFrame):
             self.changed.emit(values)
 
     # ----- Undo / Redo inside the dialog -----
+    def reset_history(self):
+        """The values now become the floor: what the dialog 'opened with' once its seeding (the selection made
+        before the command, a kind's defaults) is in."""
+        self._history, self._future = [self.values()], []
+
     def undo_change(self):
         """Back to the values before the last change made in this dialog (previews like any change). False when
         the dialog is at the values it opened with."""

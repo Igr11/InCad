@@ -282,9 +282,16 @@ def test_10_undo_inside_the_dialog_reverts_its_last_change():
     res = commands.REGISTRY.run("edit.redo")
     harness.pump(1200)
     assert res.ok and dialog().values()["count1"] == "4", (res.error, dialog().values())
-    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
-    harness.pump(1200)
-    assert k.GeometryCount == before
+    for expect in ("3", "2"):  # back down to the values the dialog opened with
+        commands.REGISTRY.run("edit.undo")
+        harness.pump(1200)
+        assert dialog() is not None and dialog().values()["count1"] == expect, dialog() and dialog().values()
+    res = commands.REGISTRY.run("edit.undo")  # Undo never refuses: at the floor it drops the dialog like Cancel
+    harness.pump(1500)
+    assert res.ok, res.error
+    assert dialog() is None, "the dialog is gone"
+    assert s().feature_session is None
+    assert k.GeometryCount == before, (k.GeometryCount, before)
 
 
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
