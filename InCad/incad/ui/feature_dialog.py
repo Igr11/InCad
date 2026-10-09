@@ -60,6 +60,11 @@ class FeatureDialog(QtWidgets.QFrame):
         self._fields = {f.key: f for f in fields}
         self._widgets, self._labels, self._rows = {}, {}, {}
         self._loading = False
+        self._sent = {}  # the value fields' texts at the last change signal
+        self._type_timer = QtCore.QTimer(self)  # a value typed previews by itself after a pause: no Enter, no
+        self._type_timer.setSingleShot(True)    # focus change (a click in the 3D view takes no Qt focus)
+        self._type_timer.setInterval(600)
+        self._type_timer.timeout.connect(self._emit)
         col = QtWidgets.QVBoxLayout(self)
         col.setContentsMargins(10, 8, 10, 8)
         head = QtWidgets.QHBoxLayout()
@@ -117,7 +122,8 @@ class FeatureDialog(QtWidgets.QFrame):
         if f.kind in ("value_length", "value_angle"):
             w = ValueField(self)
             w.setMinimumWidth(130)
-            w.editingFinished.connect(self._emit)
+            w.textChanged.connect(lambda _t: self._typed())
+            w.editingFinished.connect(self._finished)
             w.returnPressed.connect(self.accepted.emit)
             w.installEventFilter(self)
             return w
@@ -197,11 +203,30 @@ class FeatureDialog(QtWidgets.QFrame):
                     w.setText(self._pick_label(f, value))
         finally:
             self._loading = False
+            self._sent = self._value_texts()
         self._update_visibility()
 
+    def _value_texts(self):
+        return {k: w.text() for k, w in self._widgets.items() if self._fields[k].kind.startswith("value")}
+
+    def _typed(self):
+        if not self._loading:
+            self._type_timer.start()
+
+    def _finished(self):
+        """Enter or a focus change: preview now if a typed value is still waiting, or if the text changed since
+        the last signal; a value already previewed is not previewed again."""
+        if self._type_timer.isActive():
+            self._type_timer.stop()
+            self._emit()
+        elif self._value_texts() != self._sent:
+            self._emit()
+
     def _emit(self):
+        self._type_timer.stop()
         self._update_visibility()
         if not self._loading:
+            self._sent = self._value_texts()
             self.changed.emit(self.values())
 
     def _update_visibility(self):

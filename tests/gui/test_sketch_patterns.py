@@ -136,13 +136,14 @@ def test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes():
     rec = sp.find(k, ST["pattern"])
     copy = sp.index_of(k, rec["copies"][0][0])
     Gui.Selection.clearSelection()
-    # a double-click in the view lands on a preselected element: emulate FreeCAD's preselection, then the hook
-    Gui.Selection.setPreselection(k, "Edge%d" % (copy + 1))  # setPreselection(obj, subName, x=0, y=0, z=0, type=1)
-    harness.pump(200)
+    # a double-click selects the element with its first click; FreeCAD's preselection may still hold an object
+    # gone with an earlier Cancel, so the hook falls back to that selection
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (copy + 1))
+    harness.pump(300)
     view = Gui.ActiveDocument.ActiveView
     handled = s()._dblclick_hook(view, None, 10, 10)
     harness.pump(1200)
-    assert handled, "the double-click on a copy is taken"
+    assert handled, "the double-click on a copy is taken (copy=%r is_copy=%r)" % (copy, sp.is_copy(k, copy))
     assert dialog() is not None and dialog().values()["count1"] == "3", dialog().values()
     w = dialog().field("count1")
     w.setText("5")

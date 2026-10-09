@@ -1590,25 +1590,32 @@ class Shell(QtCore.QObject):
                         return sk, name
         return None, None
 
-    @staticmethod
-    def _preselected_pattern_copy():
+    def _preselected_pattern_copy(self):
+        """(sketch, pattern) of the pattern copy under the cursor: the preselection, or, when FreeCAD still holds a
+        stale one (an object gone with an earlier Cancel), the selection the double-click's first click made."""
         import FreeCADGui as Gui
         from incad.core import sketch_patterns as sp
+        candidates = []
         try:
             pre = Gui.Selection.getPreselection()
             obj = getattr(pre, "Object", None)
-            subs = getattr(pre, "SubElementNames", ()) or ()
-            if obj is None or obj.TypeId != "Sketcher::SketchObject":
-                return None, None
+            if obj is not None and obj.TypeId == "Sketcher::SketchObject":
+                candidates.append((obj, list(getattr(pre, "SubElementNames", ()) or ())))
         except RuntimeError:
-            return None, None
-        for sub in subs:
-            try:
-                geo, _ = sp.element(obj, sub)
-            except ValueError:
-                continue
-            if geo >= 0 and sp.is_copy(obj, geo):
-                return obj, sp.pattern_of(obj, geo)
+            pass
+        sk = self.sketches.editing()
+        if sk is not None:
+            for sel in Gui.Selection.getSelectionEx(sk.Document.Name):
+                if sel.Object is sk:
+                    candidates.append((sk, list(sel.SubElementNames or ())))
+        for obj, subs in candidates:
+            for sub in subs:
+                try:
+                    geo, _ = sp.element(obj, sub)
+                except ValueError:
+                    continue
+                if geo >= 0 and sp.is_copy(obj, geo):
+                    return obj, sp.pattern_of(obj, geo)
         return None, None
 
     def edit_feature(self, feature):

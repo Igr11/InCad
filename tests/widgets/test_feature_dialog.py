@@ -40,6 +40,29 @@ class FeatureDialogTest(unittest.TestCase):
         self.d.field("distance").editingFinished.emit()
         self.assertEqual(self.seen[-1]["distance"], "25 mm")
 
+    def _wait(self, ms):
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(ms, loop.quit)
+        loop.exec()
+
+    def test_typing_a_value_emits_after_a_pause_without_enter(self):
+        """A value typed into a field previews by itself: no Enter, no focus change (a click in the 3D view takes
+        no Qt focus, so editingFinished never came and the preview stayed stale)."""
+        w = self.d.field("distance")
+        w.setText("2")  # the keystrokes of '25 mm', one text change each
+        w.setText("25")
+        w.setText("25 mm")
+        self.assertEqual(self.seen, [], "nothing while still typing")
+        self._wait(900)
+        self.assertEqual([v["distance"] for v in self.seen], ["25 mm"], "once, after the pause")
+        w.editingFinished.emit()
+        self.assertEqual(len(self.seen), 1, "Enter after a previewed value does not preview again")
+
+    def test_a_programmatic_value_does_not_emit(self):
+        self.d.set_values({"distance": "30 mm"})
+        self._wait(900)
+        self.assertEqual(self.seen, [])
+
     def test_show_if_hides_rows(self):
         self.assertTrue(self.d.row_visible("distance"))
         self.assertFalse(self.d.row_visible("to_face"))
