@@ -115,6 +115,28 @@ class DocumentTest(unittest.TestCase):
         document.set_end_of_part(body, pad2)
         self.assertIs(body.Tip, pad2)
 
+    def test_end_of_part_never_lands_on_a_non_solid_object(self):
+        """A Work Axis InCad made for a revolve (a helper) or a Work Plane in the part is not a solid feature:
+        Body.Tip refuses it ('Linked object is not a PartDesign feature') and End of Part did not move."""
+        body, pad = util.padded_part(self.doc, 10, incad=True)
+        axis = body.newObject("PartDesign::Line", "HelperAxis")
+        axis.addProperty("App::PropertyString", "InCadHelperOf", "InCad", "")
+        axis.InCadHelperOf = pad.Name
+        plane = body.newObject("PartDesign::Plane", "WorkPlane")
+        pad2 = util.add_pad(body, util.add_rect_sketch(body, w=3, h=3, name="SketchC"), 2, name="Pad2")
+        body.Tip = pad2
+        self.doc.recompute()
+        document.set_end_of_part(body, pad)  # its helper is only an axis: stays on the pad
+        self.assertIs(body.Tip, pad)
+        document.set_end_of_part(body, pad2)
+        document.set_end_of_part(body, plane)  # a plane after the pad (and the axis): the last solid before it
+        self.assertIs(body.Tip, pad)
+        document.set_end_of_part(body, axis)
+        self.assertIs(body.Tip, pad)
+        document.set_end_of_part(body, [o for o in body.Group if o.TypeId == "Sketcher::SketchObject"][-1])
+        self.assertTrue(body.Tip.isDerivedFrom("PartDesign::Feature"))
+        self.assertNotIn("Invalid", body.State)
+
     def test_end_of_part_rejects_foreign_feature(self):
         body, pad = util.padded_part(self.doc, 10, incad=True)
         other = self.doc.addObject("PartDesign::Body", "Other")

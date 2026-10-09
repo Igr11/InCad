@@ -119,6 +119,11 @@ def helpers_of(body, feature):
     return [o for o in body.Group if getattr(o, "InCadHelperOf", None) == feature.Name]
 
 
+def _is_solid_feature(obj):
+    """Only a PartDesign solid feature can be the tip (work planes/axes and sketches are refused or empty)."""
+    return obj.isDerivedFrom("PartDesign::Feature")
+
+
 def set_end_of_part(body, feature):
     """Put End of Part right after `feature` — with the helpers InCad made for it, so "after Thread" includes its
     chamfer; None puts it before the first feature. The shown solid follows: only the tip feature is displayed,
@@ -129,9 +134,14 @@ def set_end_of_part(body, feature):
     tip = feature
     if feature is not None:
         group = list(body.Group)
-        later = [h for h in helpers_of(body, feature) if group.index(h) > group.index(feature)]
-        if later:
-            tip = max(later, key=group.index)
+        here = group.index(feature)
+        chain = [feature] + [h for h in helpers_of(body, feature) if group.index(h) > here]
+        solids = [o for o in chain if _is_solid_feature(o)]
+        if solids:
+            tip = max(solids, key=group.index)
+        else:  # a work plane/axis/sketch cannot be the tip: the last solid feature before it
+            before = [o for o in group[:here] if _is_solid_feature(o)]
+            tip = before[-1] if before else None
     body.Tip = tip
     body.Document.recompute()
     show_result(body)
