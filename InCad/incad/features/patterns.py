@@ -4,7 +4,8 @@ import json
 import re
 from types import SimpleNamespace
 
-from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
+from incad.features.common import (Field, format_picks, parse_picks, repeatable_of, resolve, support_features,
+                                   value_param, value_text)
 
 
 def _origin(body, role):
@@ -21,7 +22,11 @@ def _origin_name(body, role):
 def _features(doc, body, text, f, children=False):
     """Picked features (plus the features built on them when `children`); else the ones it already patterns; else
     the Tip (never the pattern itself)."""
-    picks = [resolve(o, s)[0] for o, s in parse_picks(doc, text)]
+    picks = []
+    for o, s in parse_picks(doc, text):
+        feature = repeatable_of(resolve(o, s)[0])  # a thread, fillet… stands for the feature it modifies
+        if feature is not None and feature not in picks:
+            picks.append(feature)
     if picks:
         chosen = [p for p in picks if p is not f]
     elif list(f.Originals):
@@ -35,25 +40,7 @@ def _features(doc, body, text, f, children=False):
     return chosen
 
 
-def _support_features(sketch_owner):
-    """The solid features a feature's profile sketch stands on (through datum planes too)."""
-    found, todo, seen = [], [getattr(sketch_owner, "Profile", None)], set()
-    while todo:
-        x = todo.pop()
-        if isinstance(x, (tuple, list)):
-            x = x[0] if x else None
-        if x is None or x.Name in seen:
-            continue
-        seen.add(x.Name)
-        for support in getattr(x, "AttachmentSupport", None) or []:
-            obj = support[0] if isinstance(support, (tuple, list)) else support
-            if obj is None:
-                continue
-            if obj.isDerivedFrom("PartDesign::Feature"):
-                found.append(obj)
-            else:
-                todo.append(obj)
-    return found
+_support_features = support_features
 
 
 def _dependents(body, roots, pattern):

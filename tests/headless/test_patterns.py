@@ -1,7 +1,7 @@
 import unittest
 
 import FreeCAD as App
-from incad.core import model
+from incad.core import document, model
 from incad.features import common, kind_for, patterns
 from headless import util
 
@@ -339,3 +339,40 @@ class PatternsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertEqual(list(c.Originals), [self.pad])
         self.assertNotIn("Invalid", c.State)
+
+
+class PickingWhatCannotBeRepeatedTest(unittest.TestCase):
+    """A thread (or a fillet) can't be repeated by itself; picking one stands for the feature it modifies."""
+
+    def setUp(self):
+        from headless import test_thread
+        from incad.features import thread
+        self.doc = util.new_doc("Rp")
+        self.body = document.make_part(self.doc)
+        self.shaft = test_thread.shaft(self.doc, self.body)
+        v = dict(thread.defaults(self.doc, self.body, None), face=test_thread.cyl_face(self.shaft, 5), size="M10",
+                 clearance="0 mm")
+        self.thread = thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_a_thread_row_or_its_face_stands_for_the_shaft_it_cuts(self):
+        self.assertIs(common.feature_of(self.thread, ""), self.shaft)
+        wall = [i + 1 for i, f in enumerate(self.thread.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"
+                or f.Surface.TypeId != "Part::GeomPlane"][0]
+        self.assertIs(common.feature_of(self.thread, "Face%d" % wall), self.shaft)
+        self.assertTrue(common.accepts("feature", self.thread, ""))
+        self.assertTrue(common.is_stand_in(self.thread))
+        self.assertFalse(common.is_stand_in(self.shaft))
+
+    def test_the_shaft_pattern_with_dependents_carries_the_thread(self):
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(
+            k.defaults(self.doc, self.body, None), features=common.format_picks([(self.thread, "")]), children=True,
+            count1="2", spacing1="30 mm", dir1="Y_Axis"))
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in f.Originals], [self.shaft.Name, self.thread.Name])
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertGreater(f.Shape.BoundBox.YLength, 30)  # the second shaft stands 30 mm beside the first

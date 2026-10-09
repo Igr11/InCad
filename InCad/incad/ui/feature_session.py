@@ -159,6 +159,9 @@ class FeatureSession(QtCore.QObject):
             if ok:
                 field = self.dialog.field_def(key)
                 self.dialog.set_pick(key, common.format_picks(ok[-1:] if field.kind == "pick" else ok))
+                if pick == "feature" and self._picked_a_thread(pairs) and any(
+                        g.key == "children" for g in self.kind.FIELDS):
+                    self.dialog.set_values({"children": True})
 
     @staticmethod
     def _as_picks(pick, pairs):
@@ -171,6 +174,16 @@ class FeatureSession(QtCore.QObject):
             made = common.feature_of(o, el)
             out.append((made, "") if made is not None else (o, el))
         return out
+
+    def _picked_a_thread(self, pairs):
+        """True if any raw pick is a thread (its row, or a face its helix made): the thread comes along with the
+        shaft it stands for, so the pattern's 'Include dependent features' is switched on."""
+        from incad.features import common
+        for o, el in pairs:
+            raw = common.raw_feature_of(o, el)
+            if raw is not None and raw.TypeId.endswith("Helix"):
+                return True
+        return False
 
     def _selection(self):
         import FreeCADGui as Gui
@@ -217,7 +230,8 @@ class FeatureSession(QtCore.QObject):
         f = self.dialog.field_def(key)
         if f.pick == "two_points":
             return  # taken by clicks on the markers, not by the selection
-        pairs = self._as_picks(f.pick, self._selection())
+        raw_pairs = self._selection()
+        pairs = self._as_picks(f.pick, raw_pairs)
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return
@@ -236,6 +250,9 @@ class FeatureSession(QtCore.QObject):
         if f.kind == "picks":
             ok = self._collect_picks(key, ok)
         self.dialog.set_pick(key, common.format_picks(ok[-1:] if f.kind == "pick" else ok))
+        if f.pick == "feature" and self._picked_a_thread(raw_pairs) and any(
+                g.key == "children" for g in self.kind.FIELDS) and not self.dialog.values().get("children"):
+            self.dialog.set_values({"children": True})
         if f.kind == "pick":  # a single pick is done: go on to the next empty one, or stop picking
             nxt = next((g.key for g in self.kind.FIELDS if g.kind in ("pick", "picks") and g.key != key
                         and self._shown(g) and not self.dialog.values().get(g.key)), None)

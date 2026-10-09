@@ -133,7 +133,61 @@ def _element(obj, sub):
         return None
 
 
+_STAND_IN_TYPES = ("PartDesign::Fillet", "PartDesign::Chamfer", "PartDesign::Thickness", "PartDesign::Draft",
+                   "PartDesign::LinearPattern", "PartDesign::PolarPattern", "PartDesign::Mirrored",
+                   "PartDesign::MultiTransform")
+
+
+def is_stand_in(obj):
+    """Features that can't be repeated themselves (a thread's helix, fillets, chamfers, shells, other patterns):
+    picking one stands for the feature it modifies."""
+    return obj.TypeId.endswith("Helix") or obj.TypeId in _STAND_IN_TYPES
+
+
+def support_features(owner):
+    """The solid features a feature's profile sketch stands on (through datum planes too)."""
+    found, todo, seen = [], [getattr(owner, "Profile", None)], set()
+    while todo:
+        x = todo.pop()
+        if isinstance(x, (tuple, list)):
+            x = x[0] if x else None
+        if x is None or x.Name in seen:
+            continue
+        seen.add(x.Name)
+        for support in getattr(x, "AttachmentSupport", None) or []:
+            obj = support[0] if isinstance(support, (tuple, list)) else support
+            if obj is None:
+                continue
+            if obj.isDerivedFrom("PartDesign::Feature"):
+                found.append(obj)
+            else:
+                todo.append(obj)
+    return found
+
+
+def repeatable_of(obj):
+    """The feature that can be repeated for `obj`: itself, or for a thread the shaft/hole it is cut into, for a
+    fillet/chamfer/shell/pattern the feature it was made on."""
+    seen = set()
+    while obj is not None and is_stand_in(obj) and obj.Name not in seen:
+        seen.add(obj.Name)
+        nxt = None
+        if obj.TypeId.endswith("Helix"):
+            sup = support_features(obj)
+            nxt = sup[0] if sup else None
+        if nxt is None:
+            nxt = getattr(obj, "BaseFeature", None)
+        obj = nxt
+    return obj
+
+
 def feature_of(obj, sub):
+    """What a pick means for a pattern: the feature made repeatable (see raw_feature_of and repeatable_of)."""
+    raw = raw_feature_of(obj, sub)
+    return repeatable_of(raw) if raw is not None else None
+
+
+def raw_feature_of(obj, sub):
     """The solid feature a pick stands for: a feature itself (a tree row), or the feature that CREATED the face/edge
     clicked in the view (a hole's wall -> its Hole/Pocket, a block's side -> its Pad). None for anything else."""
     if obj is None or not obj.isDerivedFrom("PartDesign::Feature"):

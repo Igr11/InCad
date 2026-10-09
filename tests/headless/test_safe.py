@@ -271,17 +271,21 @@ class EmptyPatternTest(unittest.TestCase):
 
 
 class NoOpPatternTest(unittest.TestCase):
-    """A pattern that leaves the part exactly as it was (a thread's copies cut empty air) is reported."""
+    """A pattern that leaves the part exactly as it was (a hole's copies land outside the material) is reported."""
 
     def setUp(self):
-        from headless import test_thread
-        from incad.core import document
+        import Part
         self.doc = util.new_doc("NoOp")
-        self.body = document.make_part(self.doc)
-        self.shaft = test_thread.shaft(self.doc, self.body)
-        v = dict(thread.defaults(self.doc, self.body, None), face=test_thread.cyl_face(self.shaft, 5), size="M10",
-                 clearance="0 mm")
-        self.thread = thread.create(self.doc, self.body, None, v)
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "HoleSk")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
+        self.pocket = self.body.newObject("PartDesign::Pocket", "Hole2")
+        self.pocket.Profile, self.pocket.Type = sk, 0
+        self.pocket.Length = 3
+        self.body.Tip = self.pocket
         self.doc.recompute()
         log.set_reporter(lambda level, msg: None)
 
@@ -289,15 +293,19 @@ class NoOpPatternTest(unittest.TestCase):
         log.set_reporter(None)
         App.closeDocument(self.doc.Name)
 
-    def pattern(self, feature, direction):
+    def pattern(self, spacing):
         from incad.features import common, patterns
         k = patterns.RECT
-        vals = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(feature, "")]),
-                    count1="2", spacing1="40 mm", dir1=direction)
+        vals = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(self.pocket, "")]),
+                    count1="2", spacing1=spacing)
         return safe.run_safely("Pattern", lambda: k.create(self.doc, self.body, None, vals), self.doc)
 
-    def test_a_pattern_of_a_thread_that_changes_nothing_says_so(self):
-        r = self.pattern(self.thread, "Y_Axis")  # the copy of the groove lands 40 mm beside the shaft
+    def test_a_pattern_whose_copies_miss_the_part_says_so(self):
+        r = self.pattern("100 mm")  # the copy of the hole lands 100 mm beside the block
         self.assertFalse(r.ok)
         self.assertIn("changes nothing", r.error)
         self.assertIn("Pick another feature", r.error)
+
+    def test_a_pattern_whose_copies_land_on_the_part_is_fine(self):
+        r = self.pattern("6 mm")
+        self.assertTrue(r.ok, r.error)
