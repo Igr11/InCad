@@ -1361,6 +1361,13 @@ class Shell(QtCore.QObject):
     def _dblclick_hook(self, view, viewport, x, y):
         if self.sketches.editing() is None:
             return False
+        sk, name = self._preselected_pattern_copy()  # a copy opens its pattern; the original keeps its meaning
+        if name is not None:
+            try:
+                self.edit_sketch_pattern(sk, name)
+            except ValueError as e:
+                log.report("warning", str(e))
+            return True
         sk, name = self._preselected_dimension()
         if name is None:
             sk, name = self._dimension_near(view, viewport, x, y)  # FreeCAD preselects nothing while a tool runs
@@ -1524,6 +1531,75 @@ class Shell(QtCore.QObject):
             self._profile_from_areas(kind, doc, body, profile)
             return
         self._open_session(kind, doc, body, profile=profile)
+
+    def edit_sketch_pattern(self, sk, name):
+        from incad.features import sketch_patterns as kinds
+        from incad.core import document, sketch_patterns as sp
+        rec = sp.find(sk, name)
+        if rec is None:
+            raise ValueError("No pattern named %s in %s" % (name, sk.Label))
+        if self.feature_session is not None:
+            raise self._dialog_first()
+        kind = kinds.SKETCH_RECT if rec["kind"] == "rect" else kinds.SKETCH_CIRC
+        kinds._set_editing(sk, name)
+        if sp.is_broken(sk, name):
+            log.report("warning", "Some copies of %s were deleted; the pattern will be rebuilt" % name)
+        self.stop_slot_tool()
+        import FreeCADGui as Gui
+        Gui.runCommand("Sketcher_StopOperation")
+        self._open_session(kind, sk.Document, document.primary_body(sk.Document), profile=sk, feature=sk)
+
+    def delete_sketch_pattern(self, sk, name):
+        from incad.core import safe, sketch_patterns as sp
+        if self.feature_session is not None:
+            raise self._dialog_first()
+        r = safe.run_safely("Delete Pattern", lambda: sp.remove(sk.Document, sk, name), sk.Document)
+        if not r.ok:
+            raise ValueError(r.error)
+        sk.Document.recompute()
+        self.schedule_refresh()
+
+    def selected_sketch_pattern(self):
+        """(sketch, pattern name) of the pattern whose geometry is selected in the sketch being edited."""
+        import FreeCADGui as Gui
+        from incad.core import sketch_patterns as sp
+        sk = self.sketches.editing()
+        if sk is None:
+            return None, None
+        for sel in Gui.Selection.getSelectionEx(sk.Document.Name):
+            if sel.Object is not sk:
+                continue
+            for sub in sel.SubElementNames or ():
+                try:
+                    geo, _ = sp.element(sk, sub)
+                except ValueError:
+                    continue
+                if geo >= 0:
+                    name = sp.pattern_of(sk, geo)
+                    if name:
+                        return sk, name
+        return None, None
+
+    @staticmethod
+    def _preselected_pattern_copy():
+        import FreeCADGui as Gui
+        from incad.core import sketch_patterns as sp
+        try:
+            pre = Gui.Selection.getPreselection()
+            obj = getattr(pre, "Object", None)
+            subs = getattr(pre, "SubElementNames", ()) or ()
+            if obj is None or obj.TypeId != "Sketcher::SketchObject":
+                return None, None
+        except RuntimeError:
+            return None, None
+        for sub in subs:
+            try:
+                geo, _ = sp.element(obj, sub)
+            except ValueError:
+                continue
+            if geo >= 0 and sp.is_copy(obj, geo):
+                return obj, sp.pattern_of(obj, geo)
+        return None, None
 
     def edit_feature(self, feature):
         from incad import features

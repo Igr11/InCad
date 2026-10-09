@@ -17,7 +17,7 @@ LAYOUT = {
     "sketch": {"N": "sketch.finish", "NE": "sketch.line", "E": "sketch.circle", "SE": "sketch.rectangle",
                "S": "sketch.dimension", "SW": "sketch.arc", "W": "edit.undo", "NW": "sketch.trim",
                "list": ["sketch.stop", "edit.delete", "sketch.constraints_toggle", "view.look_at",
-                        "sketch.construction", "sketch.project"]},
+                        "sketch.construction", "sketch.project", "sketch.edit_pattern", "sketch.delete_pattern"]},
     "assembly": {"N": "assembly.place", "S": "constrain.mate", "E": "joint.rigid", "W": "assembly.create",
                  "NE": "view.zoom_all", "NW": "edit.undo", "SE": "view.home", "SW": "assembly.ground",
                  "list": ["constrain.flush", "constrain.insert", "view.freecad"]},

@@ -127,6 +127,52 @@ def test_4_the_ribbon_has_both_next_to_mirror():
         assert rb.button(cid) is not None, cid
 
 
+def test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes():
+    k = sk()
+    rec = sp.find(k, ST["pattern"])
+    copy = sp.index_of(k, rec["copies"][0][0])
+    Gui.Selection.clearSelection()
+    # a double-click in the view lands on a preselected element: emulate FreeCAD's preselection, then the hook
+    set_ok = Gui.Selection.setPreselection(k, "Edge%d" % (copy + 1))  # setPreselection(obj, subName, x=0, y=0, z=0, type=1)
+    harness.pump(200)
+    pre = Gui.Selection.getPreselection()
+    seen = (getattr(pre, "Object", None) and pre.Object.Name, list(getattr(pre, "SubElementNames", ()) or ()),
+            set_ok, sp.is_copy(k, copy), sp.pattern_of(k, copy))
+    view = Gui.ActiveDocument.ActiveView
+    handled = s()._dblclick_hook(view, None, 10, 10)
+    harness.pump(1200)
+    assert handled, "the double-click on a copy is taken; preselection seen: %r" % (seen,)
+    assert dialog() is not None and dialog().values()["count1"] == "3", dialog().values()
+    w = dialog().field("count1")
+    w.setText("5")
+    w.editingFinished.emit()
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(800)
+    assert len(sp.find(k, ST["pattern"])["copies"]) == 4
+
+
+def test_6_delete_pattern_leaves_the_original():
+    k = sk()
+    rec = sp.find(k, ST["pattern"])
+    copy = sp.index_of(k, rec["copies"][0][0])
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (copy + 1))
+    harness.pump(300)
+    res = commands.REGISTRY.run("sketch.delete_pattern")
+    harness.pump(800)
+    assert res.ok, res.error
+    assert sp.find(k, ST["pattern"]) is None
+    assert k.getGeometryId(ST["hole"]) is not None and k.Geometry[ST["hole"]].TypeId == "Part::GeomCircle"
+    App.ActiveDocument.undo()
+    harness.pump(500)
+    assert sp.find(k, ST["pattern"]) is not None, "Delete Pattern is one undo step"
+    App.ActiveDocument.redo()
+    harness.pump(500)
+
+
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
-             test_4_the_ribbon_has_both_next_to_mirror])
+             test_4_the_ribbon_has_both_next_to_mirror, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
+             test_6_delete_pattern_leaves_the_original])

@@ -255,6 +255,22 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def _edit_sketch_pattern():
+    from incad.ui import shell
+    sk, name = shell.instance().selected_sketch_pattern()
+    if name is None:
+        raise ValueError("Select a copy of a pattern first")
+    shell.instance().edit_sketch_pattern(sk, name)
+
+
+def _delete_sketch_pattern():
+    from incad.ui import shell
+    sk, name = shell.instance().selected_sketch_pattern()
+    if name is None:
+        raise ValueError("Select a copy of a pattern first")
+    shell.instance().delete_sketch_pattern(sk, name)
+
+
 def _inspect(what):
     from incad.ui import shell
     shell.inspect(what)
@@ -676,6 +692,10 @@ def commands():
         Command(id="sketch.circ_pattern", label="Circular", icon="circ_pattern",
                 handler=lambda: start_feature("sketch_circ"), contexts=frozenset({"sketch"}),
                 tooltip="Repeat sketch geometry around a point"),
+        Command(id="sketch.edit_pattern", label="Edit Pattern", icon="rect_pattern", handler=_edit_sketch_pattern,
+                contexts=frozenset({"sketch"}), tooltip="Change the selected pattern (or double-click a copy)"),
+        Command(id="sketch.delete_pattern", label="Delete Pattern", icon="delete", handler=_delete_sketch_pattern,
+                contexts=frozenset({"sketch"}), tooltip="Remove the copies; the original stays"),
         Command(id="feature.rect_pattern", label="Rectangular", icon="rect_pattern3d",
                 handler=lambda: start_feature("rect_pattern"), contexts=frozenset({"part"})),
         Command(id="feature.circ_pattern", label="Circular", icon="circ_pattern",
