@@ -9,6 +9,13 @@ from incad.core import document
 
 DIMENSIONAL = ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter", "Angle")
 _DNAME = re.compile(r"^d(\d+)$")
+PATTERN_PREFIX = "pat"
+_PATNAME = re.compile(r"^pat\d+_\d+$")
+
+
+def is_pattern_name(name):
+    """Constraints a sketch pattern added (pat<n>_<i>): never dimensions, never symbols, never auto-named."""
+    return bool(name) and _PATNAME.match(name) is not None
 _TOKEN = re.compile(r"(?<![\w.<>])([A-Za-z_][A-Za-z0-9_]*)(?![\w(.])")
 
 
@@ -65,7 +72,7 @@ def dimensions(doc):
     out = []
     for sk in _sketches(doc):
         for i, c in enumerate(sk.Constraints):
-            if c.Type in DIMENSIONAL and c.Name:
+            if c.Type in DIMENSIONAL and c.Name and not is_pattern_name(c.Name):
                 out.append((c.Name, sk, i))
     return out
 
@@ -192,7 +199,7 @@ def model_parameters(doc):
 
 
 def _symbol_constraints(sk):
-    return [i for i, c in enumerate(sk.Constraints) if c.Type not in DIMENSIONAL]
+    return [i for i, c in enumerate(sk.Constraints) if c.Type not in DIMENSIONAL and not is_pattern_name(c.Name)]
 
 
 def constraints_hidden(sk):
@@ -396,14 +403,14 @@ def dimension_snapshot(sk):
     is compared with it (FreeCAD's Dimension tool replaces a dimension when it is placed)."""
     out = {}
     for c in sk.Constraints:
-        if c.Name and c.Type in DIMENSIONAL and c.Driving:
+        if c.Name and c.Type in DIMENSIONAL and c.Driving and not is_pattern_name(c.Name):
             out[c.Name] = {"type": c.Type, "value": c.Value, "expr": _expression_of(sk, "Constraints." + c.Name)}
     return out
 
 
 def vanished_dimensions(sk, known):
     names = {c.Name for c in sk.Constraints if c.Name}
-    return [n for n in known if n not in names]
+    return [n for n in known if n not in names and not is_pattern_name(n)]
 
 
 def _fresh_dimensions(sk):
