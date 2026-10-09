@@ -94,11 +94,11 @@ def sub_of(sk, geo, pos):
     if geo == -2:
         return "V_Axis"
     if pos == 0:
-        return "Edge%d" % (geo + 1)
+        return "ExternalEdge%d" % (-geo - 2) if geo < -2 else "Edge%d" % (geo + 1)
     v = 0
     while True:
         g, p = sk.getGeoVertexIndex(v)
-        if g < -2:
+        if p == 0:  # past the last vertex: FreeCAD answers (-2000, 0)
             raise ValueError("No vertex for geometry %d point %d" % (geo, pos))
         if (g, p) == (geo, pos):
             return "Vertex%d" % (v + 1)
@@ -122,18 +122,21 @@ def element(sk, sub):
         return -2, 0
     if sub == "RootPoint":
         return -1, 1
+    if sub.startswith("ExternalEdge"):  # projected geometry: ExternalGeo index n -> geo id -(n + 1), 'ExternalEdge1' is -3
+        return -int(sub[12:]) - 2, 0
     if sub.startswith("Edge"):
         return int(sub[4:]) - 1, 0
     if sub.startswith("Vertex"):
         geo, pos = sk.getGeoVertexIndex(int(sub[6:]) - 1)
-        if geo < -2:  # FreeCAD answers (-2000, 0) for a vertex that does not exist
+        if pos == 0:  # FreeCAD answers (-2000, 0) for a vertex that does not exist; real ones have a PointPos
             raise ValueError("Not a sketch element: %s" % sub)
         return geo, pos
     raise ValueError("Not a sketch element: %s" % sub)
 
 
 def geometry_type(sk, geo):
-    return sk.Geometry[geo].TypeId
+    """The geometry's type; projected (external) geometry has ids -3 and below."""
+    return sk.ExternalGeo[-geo - 1].TypeId if geo < -2 else sk.Geometry[geo].TypeId
 
 
 def ref_points(sk, geo):
@@ -492,7 +495,7 @@ def build_circ(doc, sk, rec):
 def _limit(sk, limit):
     """(point, normal) of a limit: a line gives a point on it and its normal; a point gives itself and None."""
     geo, pos = limit
-    if geo >= 0 and geometry_type(sk, geo) == "Part::GeomLineSegment" and pos == 0:
+    if geo not in (-1, -2) and pos == 0 and geometry_type(sk, geo) == "Part::GeomLineSegment":
         a, b = point_of(sk, geo, 1), point_of(sk, geo, 2)
         d = b - a
         return a, App.Vector(-d.y, d.x, 0).normalize()

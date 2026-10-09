@@ -701,3 +701,74 @@ class SlotPatternTest(unittest.TestCase):
         self._clean("tangential slot")
         arcs = [g for g in self.sk.Geometry if g.TypeId == "Part::GeomArcOfCircle"]
         self.assertTrue(all(abs(g.Radius - 1.5) < 1e-6 for g in arcs), sorted(set(round(g.Radius, 4) for g in arcs)))
+
+
+class ExternalGeometryTest(unittest.TestCase):
+    """Projected geometry (external, negative ids) is as good a pick as the sketch's own: a projected point is
+    an axis or a limit, a projected line a direction or a limit."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Ex")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        self.sk = self.body.newObject("Sketcher::SketchObject", "S")
+        self.sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        self.sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        v = [i + 1 for i, x in enumerate(self.pad.Shape.Vertexes) if abs(x.Z - 10) < 1e-6 and x.X < 1 and x.Y < 1][0]
+        self.sk.addExternal(self.pad.Name, "Vertex%d" % v)  # the block's corner at the origin: ExternalGeo -3
+        e = [i + 1 for i, ed in enumerate(self.pad.Shape.Edges) if abs(ed.BoundBox.ZMin - 10) < 1e-6
+             and abs(ed.BoundBox.ZMax - 10) < 1e-6 and ed.BoundBox.YLength < 1e-6 and ed.BoundBox.YMin < 1e-6][0]
+        self.sk.addExternal(self.pad.Name, "Edge%d" % e)  # the block's front top edge along X: ExternalGeo -4
+        self.hole = circle(self.sk, 5, 0, 1)
+        self.sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, self.hole, 3, 5.0))
+        self.sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, self.hole, 3, 0.0))
+        self.doc.recompute()
+        from incad.features import common, sketch_patterns as kinds
+        self.common, self.kinds = common, kinds
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _vertex_of(self, geo, pos):
+        return "Vertex%d" % ([v for v in range(60) if tuple(self.sk.getGeoVertexIndex(v)) == (geo, pos)][0] + 1)
+
+    def test_external_elements_are_named_mapped_and_accepted(self):
+        pt = self._vertex_of(-3, 1)
+        self.assertEqual(sp.element(self.sk, pt), (-3, 1))
+        self.assertEqual(sp.element(self.sk, "ExternalEdge2"), (-4, 0))
+        self.assertEqual(sp.sub_of(self.sk, -3, 1), pt)
+        self.assertEqual(sp.sub_of(self.sk, -4, 0), "ExternalEdge2")
+        self.assertEqual(sp.geometry_type(self.sk, -4), "Part::GeomLineSegment")
+        self.assertTrue(self.common.accepts("sketch_point", self.sk, pt))
+        self.assertTrue(self.common.accepts("sketch_limit", self.sk, pt))
+        self.assertTrue(self.common.accepts("sketch_direction", self.sk, "ExternalEdge2"))
+        self.assertTrue(self.common.accepts("sketch_limit", self.sk, "ExternalEdge2"))
+        self.assertFalse(self.common.accepts("sketch_geometry", self.sk, "ExternalEdge2"), "projected edges are not repeated")
+
+    def test_a_projected_point_is_the_axis_of_a_circular_pattern(self):
+        k = self.kinds.SKETCH_CIRC
+        pt = self._vertex_of(-3, 1)
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry="%s:Edge1" % self.sk.Name, axis="%s:%s" % (self.sk.Name, pt),
+                 count="4", angle="360 °")
+        k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        self.assertEqual(self.sk.solve(), 0, self.sk.getStatusString())
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        centres = sorted((round(sp.point_of(self.sk, sp.index_of(self.sk, ids[0]), 3).x, 3),
+                          round(sp.point_of(self.sk, sp.index_of(self.sk, ids[0]), 3).y, 3)) for ids in rec["copies"])
+        self.assertEqual(centres, [(-5.0, 0.0), (0.0, -5.0), (0.0, 5.0)])  # round the corner at the origin
+        now = self._vertex_of(-3, 1)  # the copies and spokes renumbered the vertices: the record gives today's name
+        self.assertNotEqual(now, pt)
+        self.assertEqual(k.read(self.doc, self.sk)["axis"], "%s:%s" % (self.sk.Name, now))
+
+    def test_a_projected_edge_is_a_direction_and_a_limit(self):
+        k = self.kinds.SKETCH_RECT
+        v = dict(k.defaults(self.doc, self.body, self.sk), geometry="%s:Edge1" % self.sk.Name, dir1="%s:ExternalEdge2" % self.sk.Name,
+                 count1="2", spacing1="8 mm")
+        k.create(self.doc, self.body, self.sk, v)
+        self.doc.recompute()
+        rec = sp.find(self.sk, self.sk.InCadEditing)
+        first = sp.index_of(self.sk, rec["copies"][0][0])
+        self.assertAlmostEqual(sp.point_of(self.sk, first, 3).x, 13.0, places=3)
+        self.assertEqual(k.read(self.doc, self.sk)["dir1"], "%s:ExternalEdge2" % self.sk.Name)

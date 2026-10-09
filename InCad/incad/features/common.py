@@ -323,12 +323,12 @@ def _accepts_sketch(kind, sk, sub):
     except (ValueError, IndexError):
         return False
     if kind == "sketch_point":
-        return pos != 0  # any vertex, the origin ('RootPoint' is (-1, 1))
-    if geo < 0:  # H_Axis / V_Axis / RootPoint
+        return pos != 0  # any vertex, a projected point, the origin ('RootPoint' is (-1, 1))
+    if geo in (-1, -2):  # H_Axis / V_Axis
         return kind == "sketch_direction" and pos == 0
     t = sp.geometry_type(sk, geo)
     if kind == "sketch_geometry":
-        return pos == 0 and t in sp.SUPPORTED
+        return geo >= 0 and pos == 0 and t in sp.SUPPORTED  # the sketch's own geometry, never a projection
     if kind == "sketch_direction":
         return pos == 0 and t == "Part::GeomLineSegment"
     if kind == "sketch_limit":
