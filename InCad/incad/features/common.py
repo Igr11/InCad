@@ -354,6 +354,11 @@ def _sketch_element_label(sk, sub):
                 "Part::GeomPoint": "Point"}.get(sp.geometry_type(sk, geo), "Curve")
     except Exception:
         return sub
+    if geo < -2:  # projected (external) geometry: numbered as FreeCAD shows it, points without a number
+        if kind == "Point" or pos != 0:
+            return "Projected point" if kind == "Point" else "Projected %s %d %s" % (
+                kind.lower(), -geo - 2, {1: "start", 2: "end", 3: "centre"}.get(pos, ""))
+        return "Projected %s %d" % (kind.lower(), -geo - 2)
     if pos == 3:
         return "%s %d centre" % (kind, geo + 1)
     if pos in (1, 2):

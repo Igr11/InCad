@@ -745,6 +745,8 @@ class ExternalGeometryTest(unittest.TestCase):
         self.assertTrue(self.common.accepts("sketch_direction", self.sk, "ExternalEdge2"))
         self.assertTrue(self.common.accepts("sketch_limit", self.sk, "ExternalEdge2"))
         self.assertFalse(self.common.accepts("sketch_geometry", self.sk, "ExternalEdge2"), "projected edges are not repeated")
+        self.assertEqual(self.common.pick_label("sketch_point", "%s:%s" % (self.sk.Name, pt)), "Projected point")
+        self.assertEqual(self.common.pick_label("sketch_direction", "%s:ExternalEdge2" % self.sk.Name), "Projected line 2")
 
     def test_a_projected_point_is_the_axis_of_a_circular_pattern(self):
         k = self.kinds.SKETCH_CIRC
