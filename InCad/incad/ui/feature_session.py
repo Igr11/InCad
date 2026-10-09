@@ -624,6 +624,15 @@ class FeatureSession(QtCore.QObject):
             self._set_visible(self.feature, True)
             self._set_visible(base, False)
 
+    def undo_in_dialog(self, redo=False):
+        """Undo/Redo pressed while this dialog is open: step through the changes made in the dialog (the model's
+        own undo waits until the dialog is finished or cancelled)."""
+        if self.dialog is None:
+            return
+        done = self.dialog.redo_change() if redo else self.dialog.undo_change()
+        if not done:
+            log.report("info", "Nothing to %s in this dialog (Cancel drops it, OK keeps it)" % ("redo" if redo else "undo"))
+
     def insert(self, name):
         field = self.dialog.focused_value_field() if self.dialog is not None else None
         if field is not None:

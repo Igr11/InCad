@@ -260,9 +260,37 @@ def test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between():
     assert s().feature_session is None
 
 
+def test_10_undo_inside_the_dialog_reverts_its_last_change():
+    k = sk()
+    before = k.GeometryCount
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (ST["hole"] + 1))
+    commands.REGISTRY.run("sketch.rect_pattern")
+    harness.pump(1200)
+    for n in ("3", "4"):
+        w = dialog().field("count1")
+        w.setText(n)
+        w.editingFinished.emit()
+        harness.pump(900)
+    assert k.GeometryCount == before + 3, k.GeometryCount
+    res = commands.REGISTRY.run("edit.undo")
+    harness.pump(1200)
+    assert res.ok, res.error
+    assert dialog() is not None, "Undo inside the dialog is not Cancel"
+    assert dialog().values()["count1"] == "3", dialog().values()
+    assert k.GeometryCount == before + 2, k.GeometryCount
+    res = commands.REGISTRY.run("edit.redo")
+    harness.pump(1200)
+    assert res.ok and dialog().values()["count1"] == "4", (res.error, dialog().values())
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    assert k.GeometryCount == before
+
+
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
              test_4_the_ribbon_has_one_pattern_split_button_and_mirror_on_its_own, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
              test_6_delete_pattern_leaves_the_original, test_7_construction_drawing_mode_does_not_turn_the_copies_into_construction,
              test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session,
-             test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between])
+             test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between,
+             test_10_undo_inside_the_dialog_reverts_its_last_change])

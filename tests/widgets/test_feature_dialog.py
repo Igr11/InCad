@@ -63,6 +63,28 @@ class FeatureDialogTest(unittest.TestCase):
         self._wait(900)
         self.assertEqual(self.seen, [])
 
+    def test_undo_and_redo_step_through_the_changes_made_in_the_dialog(self):
+        """Undo while a dialog is open reverts the last change made in it (Inventor's dialogs), redo puts it back;
+        the values the dialog opened with are the floor."""
+        w = self.d.field("distance")
+        w.setText("25 mm")
+        w.editingFinished.emit()
+        self.d.field("operation").button("cut").click()
+        self.assertEqual(len(self.seen), 2)
+        self.assertTrue(self.d.undo_change())
+        self.assertEqual(self.d.values()["operation"], "join")
+        self.assertEqual(self.seen[-1]["operation"], "join", "the undo previews like any change")
+        self.assertTrue(self.d.undo_change())
+        self.assertEqual(self.d.values()["distance"], "10 mm")
+        self.assertFalse(self.d.undo_change(), "nothing before the values the dialog opened with")
+        self.assertTrue(self.d.redo_change())
+        self.assertEqual(self.d.values()["distance"], "25 mm")
+        w.setText("40 mm")
+        w.editingFinished.emit()
+        self.assertFalse(self.d.redo_change(), "a new change drops the redo trail")
+        self.assertTrue(self.d.undo_change())
+        self.assertEqual(self.d.values()["distance"], "25 mm")
+
     def test_show_if_hides_rows(self):
         self.assertTrue(self.d.row_visible("distance"))
         self.assertFalse(self.d.row_visible("to_face"))

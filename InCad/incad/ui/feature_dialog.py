@@ -61,6 +61,7 @@ class FeatureDialog(QtWidgets.QFrame):
         self._widgets, self._labels, self._rows = {}, {}, {}
         self._loading = False
         self._sent = {}  # the value fields' texts at the last change signal
+        self._history, self._future, self._stepping = [], [], False  # Undo/Redo inside the dialog: its changes
         self._type_timer = QtCore.QTimer(self)  # a value typed previews by itself after a pause: no Enter, no
         self._type_timer.setSingleShot(True)    # focus change (a click in the 3D view takes no Qt focus)
         self._type_timer.setInterval(600)
@@ -116,6 +117,7 @@ class FeatureDialog(QtWidgets.QFrame):
             " QPushButton#InCadPick {{ border-radius: 4px; padding: 2px 8px; text-align: left; }}"
             " QPushButton#InCadPick:checked {{ border: 2px solid {accent}; }}".format(**p))
         self.set_values(values)
+        self._history = [self.values()]  # the floor: what the dialog opened with
 
     # ----- building -----
     def _make(self, f):
@@ -227,7 +229,36 @@ class FeatureDialog(QtWidgets.QFrame):
         self._update_visibility()
         if not self._loading:
             self._sent = self._value_texts()
-            self.changed.emit(self.values())
+            values = self.values()
+            if not self._stepping and (not self._history or values != self._history[-1]):
+                self._history.append(values)
+                self._future = []  # a new change drops the redo trail
+            self.changed.emit(values)
+
+    # ----- Undo / Redo inside the dialog -----
+    def undo_change(self):
+        """Back to the values before the last change made in this dialog (previews like any change). False when
+        the dialog is at the values it opened with."""
+        if len(self._history) < 2:
+            return False
+        self._future.append(self._history.pop())
+        return self._step_to(self._history[-1])
+
+    def redo_change(self):
+        if not self._future:
+            return False
+        values = self._future.pop()
+        self._history.append(values)
+        return self._step_to(values)
+
+    def _step_to(self, values):
+        self._stepping = True
+        try:
+            self.set_values(values)
+            self._emit()
+        finally:
+            self._stepping = False
+        return True
 
     def _update_visibility(self):
         from incad.features.common import shown as _shown

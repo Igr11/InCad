@@ -538,6 +538,12 @@ def _undo_redo(redo):
     """Undo/Redo the active document. Sketcher's own command while a sketch is edited; otherwise straight on the
     document, so it works whatever tab is active (FreeCAD's Std_Undo talks to the active view)."""
     import FreeCAD as App
+    from incad.ui import shell
+    sh = shell.instance()
+    fs = sh.feature_session if sh is not None else None
+    if fs is not None and fs.dialog is not None:  # inside a dialog: step through its own changes
+        fs.undo_in_dialog(redo)
+        return
     _refuse_while_busy()
     gdoc = _gui().ActiveDocument
     if gdoc is not None and gdoc.getInEdit() is not None:
