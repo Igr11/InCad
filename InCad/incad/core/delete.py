@@ -25,6 +25,20 @@ def documents(obj):
 
 
 def delete(obj):
+    """Delete obj with what InCad made for it, then show the part's new End of Part (FreeCAD shows only the newest
+    feature, so the one before it was hidden and the view went blank when the newest was deleted)."""
+    body = obj.getParentGeoFeatureGroup() if obj is not None else None
+    _delete(obj)
+    from incad.core import document
+    if body is not None and body.TypeId == "PartDesign::Body" and body.Document.getObject(body.Name) is not None:
+        try:
+            body.Document.recompute()
+            document.show_result(body)
+        except Exception:
+            pass
+
+
+def _delete(obj):
     from incad import features
     from incad.core import asm_cut, assembly, document
     from incad.features import combine, thread

@@ -72,3 +72,48 @@ class DeleteKeptFitTest(CombineTest):
         self.assertTrue(res.ok, res.error)
         self.assertIsNotNone(self.doc.getObject(fit.Name))
         self.assertTrue(self.doc.getObject(fit.Name).Shape.isValid())
+
+
+class DeleteKeepsThePartOnScreenTest(unittest.TestCase):
+    """Deleting a feature must leave the new End of Part shown: FreeCAD hides every feature but the newest, so the
+    one before it was hidden and the view went blank."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Dv")
+        self.body = document.make_part(self.doc)
+        sk = util.add_rect_sketch(self.body, name="SkA")
+        self.pad = util.add_pad(self.body, sk, 10, name="PadA")
+        self.pad2 = util.add_pad(self.body, util.add_rect_sketch(self.body, w=5, h=5, name="SkB"), 5, name="PadB")
+        self.pad3 = util.add_pad(self.body, util.add_rect_sketch(self.body, w=3, h=3, name="SkC"), 2, name="PadC")
+        self.body.Tip = self.pad3
+        self.doc.recompute()
+        for o in (self.pad, self.pad2):
+            o.Visibility = False  # as FreeCAD leaves them
+        self.pad3.Visibility = True
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def shown(self):
+        return [o.Name for o in self.body.Group if o.isDerivedFrom("PartDesign::Feature") and o.Visibility]
+
+    def test_deleting_the_last_feature_shows_the_one_before(self):
+        delete.delete(self.pad3)
+        self.doc.recompute()
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertEqual(self.shown(), ["PadB"])
+
+    def test_deleting_a_middle_feature_keeps_the_tip_shown(self):
+        delete.delete(self.pad2)
+        self.doc.recompute()
+        self.assertIs(self.body.Tip, self.pad3)
+        self.assertEqual(self.shown(), ["PadC"])
+
+    def test_deleting_a_sketch_keeps_the_tip_shown_and_only_it(self):
+        delete.delete(self.doc.getObject("SkA")) if False else None  # a profile in use can't be deleted: use a free one
+        free = self.body.newObject("Sketcher::SketchObject", "Free")
+        free.Visibility = True
+        self.doc.recompute()
+        delete.delete(free)
+        self.doc.recompute()
+        self.assertEqual(self.shown(), ["PadC"])

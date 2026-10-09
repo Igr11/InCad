@@ -1,0 +1,18 @@
+{
+ "name": "delete_the_last_feature_keeps_the_part_shown",
+ "steps": [
+  "setup:block_with_boss",
+  "wait:1.5",
+  "expect:s['tip'] == 'Boss' and s['shown'] == ['Boss']",
+  "rclick:tree.Boss",
+  "wait:0.6",
+  "click:menu.Delete",
+  "wait:2",
+  "expect:'Boss' not in s['tree'] and s['tip'] == 'Pad'",
+  "expect:s['shown'] == ['Pad']",
+  "keys:C6",
+  "wait:2",
+  "expect:s['tip'] == 'Boss' and s['shown'] == ['Boss']",
+  "expect:'ERROR' not in s['log'][-600:]"
+ ]
+}

@@ -199,6 +199,8 @@ def state():
     if body is not None:
         try:
             st["tip"] = body.Tip.Name if body.Tip is not None else None
+            st["shown"] = [o.Name for o in body.Group if o.isDerivedFrom("PartDesign::Feature")
+                           and getattr(o, "ViewObject", None) is not None and o.ViewObject.Visibility]
             st["volume"] = round(body.Shape.Volume, 3) if not body.Shape.isNull() else 0.0
             st["features"] = [o.Name for o in body.Group]
         except Exception:
