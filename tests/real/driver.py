@@ -133,9 +133,13 @@ def state():
                             "ok": center(d.ok_button), "cancel": center(d.cancel_button), "apply": center(d.apply_button),
                             "preview": fs._pending is not None or fs._previewing,  # FreeCAD drops clicks while it computes
                             "buttons": {}}
-            for f in fs.kind.FIELDS:  # choice buttons, e.g. "operation.cut"
+            for f in fs.kind.FIELDS:  # choice buttons, e.g. "operation.cut"; pick buttons as "pick.<field>"
                 try:
                     w = d.field(f.key)
+                    if f.kind in ("pick", "picks") and w.isVisible():
+                        c = center(w)
+                        if c:
+                            st["dialog"]["buttons"]["pick." + f.key] = c
                     for value, b in getattr(w, "_buttons", {}).items():
                         c = center(b)
                         if c:
@@ -278,6 +282,22 @@ def setup(name):
         ST["sketch"] = sk
         shell.sketch_session().edit(sk)
         ST["points"].update({"proj": (10, 10, 0), "away": (40, 30, 0)})
+        return
+    if name == "block_with_boss":  # the 20x10x10 block and a 2 mm boss on its top at x 10, y 1.5..3.5
+        import Part
+        pad = util.add_pad(body, util.add_rect_sketch(body, name="SketchA"), 10)
+        body.Tip = pad
+        doc.recompute()
+        top = [i + 1 for i, fc in enumerate(pad.Shape.Faces) if abs(fc.CenterOfMass.z - 10) < 1e-6][0]
+        sk = body.newObject("Sketcher::SketchObject", "BossSk")
+        sk.AttachmentSupport = [(pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(10, 2.5, 0), App.Vector(0, 0, 1), 1))
+        boss = util.add_pad(body, sk, 2, name="Boss")
+        body.Tip = boss
+        doc.recompute()
+        ST["pad"] = pad
+        ST["boss"] = boss
         return
     if name in ("block", "block_with_top_sketch"):
         pad = util.add_pad(body, util.add_rect_sketch(body, name="SketchA"), 10)

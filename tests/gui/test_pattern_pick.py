@@ -139,6 +139,8 @@ def test_3_even_distribution_between_two_faces_in_the_dialog():
     harness.pump(500)
     assert dialog().field("from1").isVisible() and dialog().field("to1").isVisible()
     assert not dialog().field("spacing1").isVisible()
+    assert not dialog().field("dir1").isVisible(), "the direction follows the faces in Equal spacing"
+    assert dialog().field("flip1").isVisible()
 
     def face_at(x):
         return "Face%d" % ([i + 1 for i, f in enumerate(base.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"

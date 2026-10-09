@@ -189,6 +189,68 @@ class PatternsTest(unittest.TestCase):
         self.assertEqual(field_keys["fit1"].choices[1][1], "Equal spacing")
         self.assertEqual((field_keys["from1"].pick, field_keys["to1"].pick), ("limit", "limit"))
 
+    def _face_at(self, axis, value):
+        i = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+             and abs(getattr(f.CenterOfMass, axis) - value) < 1e-6
+             and abs(getattr(f.Surface.Axis, axis)) > 0.99][0]
+        return "%s:Face%d" % (self.pad.Name, i)
+
+    def _boss_at(self, x, y):
+        import Part
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "BossSk%d" % len(self.body.Group))
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(x, y, 0), App.Vector(0, 0, 1), 1))
+        boss = util.add_pad(self.body, sk, 2, name="Boss%d" % len(self.body.Group))
+        self.body.Tip = boss
+        self.doc.recompute()
+        return boss
+
+    def _equal(self, boss, frm, to, count, **more):
+        k = patterns.RECT
+        f = k.create(self.doc, self.body, None, dict(
+            k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1=str(count),
+            fit1="faces", from1=frm, to1=to, **more))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        return f, f.Shape.cut(self.pad.Shape).BoundBox
+
+    def test_equal_spacing_takes_its_direction_from_the_picked_faces(self):
+        """Faces on Y: the pattern runs along Y whatever Direction 1 says (X by default)."""
+        boss = self._boss_at(10, 2)  # y 1..3 on the 10 mm deep block
+        f, box = self._equal(boss, self._face_at("y", 0), self._face_at("y", 10), 3)
+        self.assertAlmostEqual(box.YMin, 1.0, places=3)
+        self.assertAlmostEqual(box.YMax, 9.0, places=3)  # 10 - 1: equal margins along Y
+        self.assertAlmostEqual(box.XMin, 9.0, places=3)
+        self.assertAlmostEqual(box.XMax, 11.0, places=3)  # nothing moved in X
+
+    def test_equal_spacing_starts_from_the_end_the_original_is_nearer_to(self):
+        boss = self._small_boss(17)  # x 16..18, near the right face
+        f, box = self._equal(boss, self._face_at_x(self.pad, 0), self._face_at_x(self.pad, 20), 3)
+        self.assertAlmostEqual(box.XMin, 2.0, places=3)
+        self.assertAlmostEqual(box.XMax, 18.0, places=3)
+
+    def test_flip_direction_reverses_a_spaced_pattern_and_swaps_the_ends_of_an_equal_one(self):
+        boss = self._small_boss(5)  # x 4..6
+        k = patterns.RECT
+        base = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]), count1="2",
+                    spacing1="8 mm")
+        fwd = k.create(self.doc, self.body, None, dict(base))
+        self.doc.recompute()
+        self.assertFalse(fwd.Reversed)
+        self.assertAlmostEqual(fwd.Shape.cut(self.pad.Shape).BoundBox.XMax, 14.0, places=3)
+        back = k.create(self.doc, self.body, None, dict(base, flip1=True))
+        self.doc.recompute()
+        self.assertTrue(back.Reversed)
+        self.assertEqual(k.read(self.doc, back)["flip1"], True)
+        self.assertAlmostEqual(back.Shape.cut(self.pad.Shape).BoundBox.XMin, -4.0, places=3)  # copies off the block
+        # equal spacing: the original (x 4..6) is nearer to the left face; flipped, the right face is the start
+        with self.assertRaises(ValueError) as cm:
+            k.create(self.doc, self.body, None, dict(base, fit1="faces", from1=self._face_at_x(self.pad, 0),
+                                                     to1=self._face_at_x(self.pad, 20), flip1=True, count1="3"))
+        self.assertIn("room", str(cm.exception))
+
     def test_the_end_face_behind_the_start_face_runs_the_pattern_backwards(self):
         boss = self._small_boss(17)  # near the right face; the copies go left to the left face
         k = patterns.RECT
