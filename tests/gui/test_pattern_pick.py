@@ -95,4 +95,32 @@ def test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it():
     assert "Invalid" not in pattern.State, pattern.getStatusString()
 
 
-harness.run([test_0_setup, test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it])
+def test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature():
+    pad, pocket = doc().getObject(ST["pad"]), doc().getObject(ST["pocket"])
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, pad.Name)
+    commands.REGISTRY.run("feature.rect_pattern")
+    harness.pump(900)
+    assert dialog().values()["features"] == pad.Name, dialog().values()
+    box = dialog().field("children")
+    box.setChecked(True)
+    harness.pump(300)
+    w = dialog().field("count1")
+    w.setText("2")
+    w.editingFinished.emit()
+    harness.pump(900)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    pattern = body().Tip
+    assert pattern.TypeId == "PartDesign::LinearPattern", pattern.TypeId
+    assert [o.Name for o in pattern.Originals] == [pad.Name, pocket.Name], [o.Name for o in pattern.Originals]
+    assert "Invalid" not in pattern.State, pattern.getStatusString()
+    shell.edit_feature(pattern)  # editing shows the pad with the toggle on, not the pocket as a second pick
+    harness.pump(900)
+    assert dialog().values()["features"] == pad.Name and dialog().values()["children"] is True, dialog().values()
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+
+
+harness.run([test_0_setup, test_1_a_face_clicked_in_the_view_picks_the_feature_that_made_it,
+             test_2_include_dependent_features_takes_the_hole_cut_into_the_picked_feature])

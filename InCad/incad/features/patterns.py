@@ -17,14 +17,73 @@ def _origin_name(body, role):
         return ""
 
 
-def _features(doc, body, text, f):
-    """Picked features; else the ones it already patterns; else the Tip (never the pattern itself)."""
+def _features(doc, body, text, f, children=False):
+    """Picked features (plus the features built on them when `children`); else the ones it already patterns; else
+    the Tip (never the pattern itself)."""
     picks = [resolve(o, s)[0] for o, s in parse_picks(doc, text)]
     if picks:
-        return [p for p in picks if p is not f]
-    if list(f.Originals):
-        return list(f.Originals)
-    return [x for x in [_last_shape_feature(body, f)] if x is not None]
+        chosen = [p for p in picks if p is not f]
+    elif list(f.Originals):
+        chosen = list(f.Originals)
+    else:
+        chosen = [x for x in [_last_shape_feature(body, f)] if x is not None]
+    if children:
+        chosen = chosen + _dependents(body, chosen, f)
+        group = list(body.Group)
+        chosen.sort(key=lambda o: group.index(o) if o in group else 0)
+    return chosen
+
+
+def _support_features(sketch_owner):
+    """The solid features a feature's profile sketch stands on (through datum planes too)."""
+    found, todo, seen = [], [getattr(sketch_owner, "Profile", None)], set()
+    while todo:
+        x = todo.pop()
+        if isinstance(x, (tuple, list)):
+            x = x[0] if x else None
+        if x is None or x.Name in seen:
+            continue
+        seen.add(x.Name)
+        for support in getattr(x, "AttachmentSupport", None) or []:
+            obj = support[0] if isinstance(support, (tuple, list)) else support
+            if obj is None:
+                continue
+            if obj.isDerivedFrom("PartDesign::Feature"):
+                found.append(obj)
+            else:
+                todo.append(obj)
+    return found
+
+
+def _dependents(body, roots, pattern):
+    """Patternable features later in the body whose profile stands on one of `roots` (or on another dependent):
+    the hole cut into a boss, the boss on a block. In body order."""
+    known = {o.Name for o in roots}
+    found = []
+    changed = True
+    while changed:
+        changed = False
+        for g in body.Group:
+            if g is pattern or g.Name in known or not _patternable(g):
+                continue
+            if any(s.Name in known for s in _support_features(g)):
+                known.add(g.Name)
+                found.append(g)
+                changed = True
+    return found
+
+
+def _patternable(obj):
+    return obj.TypeId in _PATTERNABLE or obj.TypeId.startswith(("PartDesign::Additive", "PartDesign::Subtractive"))
+
+
+def _picks_and_children(f):
+    """(the originals that are not built on another original, True if some are): the toggle stands for the rest."""
+    originals = list(f.Originals)
+    names = {o.Name for o in originals}
+    built_on = [o for o in originals if _patternable(o) and any(s.Name in names for s in _support_features(o))]
+    roots = [o for o in originals if o not in built_on]
+    return format_picks([(o, "") for o in roots]), bool(built_on)
 
 
 _PATTERNABLE = ("PartDesign::Pad", "PartDesign::Pocket", "PartDesign::Revolution", "PartDesign::Groove",
@@ -103,7 +162,7 @@ def spacing_param_from(f, key):
 
 
 def _rect_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"), f)
+    f.Originals = _features(doc, body, values.get("features"), f, bool(values.get("children")))
     f.Direction = _dir_link(doc, body, values.get("dir1"), "X_Axis")
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count1"))
@@ -131,7 +190,8 @@ def _rect_read(doc, f):
         name = spacing_param_from(f, key)
         return model.parameter_text(doc, name) if name else "10 mm"
     two = f.Occurrences2 > 1 or model.bound_parameter(f, "Occurrences2") is not None
-    return {"features": format_picks([(o, "") for o in f.Originals]), "dir1": _link_text(f.Direction),
+    picks, children = _picks_and_children(f)
+    return {"features": picks, "children": children, "dir1": _link_text(f.Direction),
             "count1": value_text(doc, f, "Occurrences") or "2", "spacing1": spacing("spacing1"),
             "two_directions": bool(two), "dir2": _link_text(f.Direction2),
             "count2": value_text(doc, f, "Occurrences2") or "2", "spacing2": spacing("spacing2")}
@@ -147,6 +207,7 @@ RECT = SimpleNamespace(
     TYPES=("PartDesign::LinearPattern",), NEEDS_PROFILE=False, PROPS={"count1": "Occurrences", "count2": "Occurrences2"},
     PRESELECT={"features": "feature"}, spacing_param=lambda f, n: spacing_param_from(f, "spacing%d" % n),
     FIELDS=(Field("features", "Features", "picks", pick="feature"),
+            Field("children", "Include dependent features", "bool", default=False),
             Field("dir1", "Direction 1", "pick", pick="axis"),
             Field("count1", "Count", "value_length", default="2"),
             Field("spacing1", "Spacing", "value_length", default="10 mm"),
@@ -154,7 +215,7 @@ RECT = SimpleNamespace(
             Field("dir2", "Direction 2", "pick", pick="axis", show_if=("two_directions", (True,))),
             Field("count2", "Count 2", "value_length", default="2", show_if=("two_directions", (True,))),
             Field("spacing2", "Spacing 2", "value_length", default="10 mm", show_if=("two_directions", (True,)))),
-    defaults=lambda doc, body, profile: {"features": "", "dir1": _origin_name(body, "X_Axis"), "count1": "2",
+    defaults=lambda doc, body, profile: {"features": "", "children": False, "dir1": _origin_name(body, "X_Axis"), "count1": "2",
                                          "spacing1": "10 mm", "two_directions": False,
                                          "dir2": _origin_name(body, "Y_Axis"), "count2": "2", "spacing2": "10 mm"},
     param_names=lambda f: {k: spacing_param_from(f, k) for k in ("spacing1", "spacing2")
@@ -163,7 +224,7 @@ RECT = SimpleNamespace(
 
 
 def _circ_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"), f)
+    f.Originals = _features(doc, body, values.get("features"), f, bool(values.get("children")))
     f.Axis = _dir_link(doc, body, values.get("axis"), "Z_Axis")
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count"))
@@ -178,7 +239,8 @@ def _circ_create(doc, body, profile, values):
 
 
 def _circ_read(doc, f):
-    return {"features": format_picks([(o, "") for o in f.Originals]), "axis": _link_text(f.Axis),
+    picks, children = _picks_and_children(f)
+    return {"features": picks, "children": children, "axis": _link_text(f.Axis),
             "count": value_text(doc, f, "Occurrences") or "4", "angle": value_text(doc, f, "Angle") or "360°"}
 
 
@@ -192,16 +254,17 @@ CIRC = SimpleNamespace(
     TYPES=("PartDesign::PolarPattern",), NEEDS_PROFILE=False, PROPS={"count": "Occurrences", "angle": "Angle"},
     PRESELECT={"features": "feature"},
     FIELDS=(Field("features", "Features", "picks", pick="feature"),
+            Field("children", "Include dependent features", "bool", default=False),
             Field("axis", "Axis", "pick", pick="axis"),
             Field("count", "Count", "value_length", default="4"),
             Field("angle", "Angle", "value_angle", default="360 °")),
-    defaults=lambda doc, body, profile: {"features": "", "axis": _origin_name(body, "Z_Axis"), "count": "4",
+    defaults=lambda doc, body, profile: {"features": "", "children": False, "axis": _origin_name(body, "Z_Axis"), "count": "4",
                                          "angle": "360 °"},
     create=_circ_create, read=_circ_read, update=_circ_update, _pad_of=lambda f: f)
 
 
 def _mirror_apply(doc, body, f, values):
-    f.Originals = _features(doc, body, values.get("features"), f)
+    f.Originals = _features(doc, body, values.get("features"), f, bool(values.get("children")))
     f.MirrorPlane = _dir_link(doc, body, values.get("plane"), "YZ_Plane")
 
 
@@ -213,7 +276,8 @@ def _mirror_create(doc, body, profile, values):
 
 
 def _mirror_read(doc, f):
-    return {"features": format_picks([(o, "") for o in f.Originals]), "plane": _link_text(f.MirrorPlane)}
+    picks, children = _picks_and_children(f)
+    return {"features": picks, "children": children, "plane": _link_text(f.MirrorPlane)}
 
 
 def _mirror_update(doc, f, values):
@@ -225,6 +289,7 @@ MIRROR = SimpleNamespace(
     __name__="incad.features.mirror", TITLE="Mirror", ICON="mirror3d", TYPES=("PartDesign::Mirrored",),
     NEEDS_PROFILE=False, PROPS={}, PRESELECT={"features": "feature"},
     FIELDS=(Field("features", "Features", "picks", pick="feature"),
+            Field("children", "Include dependent features", "bool", default=False),
             Field("plane", "Mirror plane", "pick", pick="plane")),
-    defaults=lambda doc, body, profile: {"features": "", "plane": _origin_name(body, "YZ_Plane")},
+    defaults=lambda doc, body, profile: {"features": "", "children": False, "plane": _origin_name(body, "YZ_Plane")},
     create=_mirror_create, read=_mirror_read, update=_mirror_update, _pad_of=lambda f: f)

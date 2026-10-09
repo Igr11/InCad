@@ -76,6 +76,55 @@ class PatternsTest(unittest.TestCase):
         self.assertEqual([o.Name for o in f.Originals], ["Pocket"])
         self.assertNotIn("Invalid", f.State)
 
+    def _boss_with_a_hole(self):
+        """A second Pad (the boss) on the first, a Pocket (a hole in the boss) on the boss's top face, and an
+        unrelated Pocket on the base."""
+        import Part
+        def top_of(feature, z):
+            return [i + 1 for i, f in enumerate(feature.Shape.Faces)
+                    if abs(f.CenterOfMass.z - z) < 1e-6 and f.Surface.TypeId == "Part::GeomPlane"][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "BossSk")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % top_of(self.pad, 10))]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 3))
+        boss = util.add_pad(self.body, sk, 5, name="Boss")
+        self.body.Tip = boss
+        self.doc.recompute()
+        hsk = self.body.newObject("Sketcher::SketchObject", "BossHoleSk")
+        hsk.AttachmentSupport = [(boss, "Face%d" % top_of(boss, 15))]
+        hsk.MapMode = "FlatFace"
+        hsk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 1))
+        hole = self.body.newObject("PartDesign::Pocket", "BossHole")
+        hole.Profile, hole.Type = hsk, 0
+        hole.Length = 2
+        self.body.Tip = hole
+        self.doc.recompute()
+        return boss, hole
+
+    def test_the_pattern_can_take_the_features_built_on_the_picked_one(self):
+        boss, hole = self._boss_with_a_hole()
+        k = patterns.RECT
+        base = dict(k.defaults(self.doc, self.body, None), features=common.format_picks([(boss, "")]),
+                    count1="2", spacing1="30 mm")
+        plain = k.create(self.doc, self.body, None, base)
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in plain.Originals], ["Boss"])
+        self.assertEqual(k.read(self.doc, plain)["children"], False)
+        both = k.create(self.doc, self.body, None, dict(base, children=True))
+        self.doc.recompute()
+        self.assertEqual([o.Name for o in both.Originals], ["Boss", "BossHole"])
+        self.assertNotIn("Invalid", both.State, both.getStatusString())
+        back = k.read(self.doc, both)  # the dependents are not listed as picks: the toggle stands for them
+        self.assertEqual((back["features"], back["children"]), ("Boss", True))
+        k.update(self.doc, both, dict(back, children=False))
+        self.assertEqual([o.Name for o in both.Originals], ["Boss"])
+        # an unrelated feature is not taken; picking the hole alone with the toggle keeps just the hole
+        only = k.create(self.doc, self.body, None, dict(base, features=common.format_picks([(hole, "")]),
+                                                        children=True))
+        self.assertEqual([o.Name for o in only.Originals], ["BossHole"])
+        for kind in (patterns.CIRC, patterns.MIRROR):
+            self.assertIn("children", [f.key for f in kind.FIELDS])
+
     def test_circular(self):
         k = patterns.CIRC
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), count="4"))
