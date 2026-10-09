@@ -1,7 +1,8 @@
 """The user's real part in a real FreeCAD window: a threaded shaft near one end of a block, with a pocket, a hole
 and a groove elsewhere. A click on the thread picks the shaft with its thread; 'Equal spacing' from the block's
 near end to the far one spaces three shafts; Flip puts the copies on the other side; From at the far end says so.
-The part is copied first: the user's file is never touched. INCAD_REAL_PART overrides the path."""
+The part is a frozen copy of the user's file as it was on 2026-10-09 15:20 (tests/gui/data), so the test does
+not drift with the user's later work on the live file; INCAD_REAL_PART points it at another file."""
 import os
 import shutil
 import sys
@@ -17,7 +18,8 @@ from incad.qt import QtCore  # noqa: E402
 from incad.core import commands, document, prefs  # noqa: E402
 from incad.ui import shell  # noqa: E402
 
-PART = os.environ.get("INCAD_REAL_PART", "/Volumes/Docs/Plasticity_projects/p2_test_reordered.FCStd")
+PART = os.environ.get("INCAD_REAL_PART", os.path.join(os.environ["INCAD_REPO"], "tests", "gui", "data",
+                                                        "p2_test_reordered.FCStd"))
 ST = {}
 
 

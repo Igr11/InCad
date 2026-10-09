@@ -201,8 +201,17 @@ def _begin(sk, rec):
     rec["_points"] = {}  # (orig geo, pos) -> True once tied for this copy: shared corners are tied once
 
 
+def _apply_params(doc, rec):
+    """Write the values the dialog asked for into the pattern's existing parameters. Called by the builds, so
+    it runs after the old copies are removed: with no live ties left, nothing but the parameter changes."""
+    from incad.core import model
+    for name, text in (rec.pop("param_values", None) or {}).items():
+        if model.parameter_text(doc, name) != text:
+            model.set_model_parameter(doc, name, text)
+
+
 def _end(sk, rec):
-    for key in ("_prefix", "_next", "_points", "_doc"):
+    for key in ("_prefix", "_next", "_points", "_doc", "param_values"):
         rec.pop(key, None)
     recs = [r for r in records(sk) if r.get("name") != rec["name"]]
     recs.append(rec)
@@ -271,6 +280,7 @@ def build_rect(doc, sk, rec):
     original's by DistanceX/DistanceY with expressions, round geometry Equal to the original."""
     rec["_doc"] = doc
     _begin(sk, rec)
+    _apply_params(doc, rec)
     originals = _originals(sk, rec)
     alias = _coincident_points(sk, originals)
     count, count2 = int(rec["count"]), int(rec.get("count2") or 1)
@@ -404,6 +414,7 @@ def build_circ(doc, sk, rec):
     spoke Equal to the original's spoke and at k × step angle from it (an expression on the angle parameter);
     lines add Equal + Angle to the original, circles and arcs Equal."""
     _begin(sk, rec)
+    _apply_params(doc, rec)
     originals = _originals(sk, rec)
     axis = deref(sk, rec["axis_ref"]) if rec.get("axis_ref") else tuple(rec["axis"])
     if axis is None:

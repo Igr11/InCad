@@ -103,15 +103,14 @@ def _count(text):
     return int(t)
 
 
-def _param(doc, rec, key, text, unit_kind):
-    """The pattern's model parameter for `key` (spacing_param / angle_param): made once, then updated."""
+def _param(doc, old, key, text, unit_kind, pending):
+    """The pattern's model parameter for `key` (spacing_param / angle_param): made once with its value; an
+    existing one is NOT set here but noted in `pending`: its value is written by the build, after the old copies
+    are gone (changing a live tie's value lets the solver move the original toward the copies)."""
     from incad.core import model
-    name = rec.get(key)
-    if name and not model.is_model_parameter(doc, name):
-        name = rec.get(key)  # live_params (called by the kinds before this) found the renamed one, or not
+    name = old.get(key)
     if name and model.is_model_parameter(doc, name):
-        if model.parameter_text(doc, name) != text:
-            model.set_model_parameter(doc, name, text)
+        pending[name] = text
         return name
     return model.new_feature_parameter(doc, text, unit_kind)
 
@@ -145,7 +144,8 @@ def _rect_record(doc, sk, name, old, values):
     if count < 2:
         raise ValueError("Use a count of 2 or more")
     old = sp.live_params(doc, sk, dict(old)) if old else {}
-    rec = {"name": name, "kind": "rect", "values": _stored_values(values),
+    pending = {}
+    rec = {"name": name, "kind": "rect", "values": _stored_values(values), "param_values": pending,
            "originals": [sp.ensure_id(sk, g) for g in geos], "count": count, "flip": bool(values.get("flip1"))}
     if values.get("fit1") == "faces":
         start = _picks(doc, sk, values.get("from1"))
@@ -153,16 +153,18 @@ def _rect_record(doc, sk, name, old, values):
         if not start or not end:
             raise ValueError("Pick the From and To limits: where the first and last copies are spaced from")
         spacing, angle = sp.equal_spacing(sk, geos, start[0], end[0], count)
-        rec["spacing_param"] = _param(doc, old, "spacing_param", "%.6g mm" % spacing, "length")
+        rec["spacing_param"] = _param(doc, old, "spacing_param", "%.6g mm" % spacing, "length", pending)
         rec["angle"] = angle
         rec["from_ref"], rec["to_ref"] = sp.ref_of(sk, *start[0]), sp.ref_of(sk, *end[0])
         rec["values"]["spacing1"] = "%.6g mm" % spacing
     else:
-        rec["spacing_param"] = _param(doc, old, "spacing_param", (values.get("spacing1") or "10 mm").strip(), "length")
+        rec["spacing_param"] = _param(doc, old, "spacing_param", (values.get("spacing1") or "10 mm").strip(), "length",
+                                      pending)
         rec["angle"], rec["dir1_ref"] = _direction(doc, sk, values.get("dir1"))
         if values.get("two_directions"):
             rec["count2"] = _count(values.get("count2"))
-            rec["spacing_param2"] = _param(doc, old, "spacing_param2", (values.get("spacing2") or "10 mm").strip(), "length")
+            rec["spacing_param2"] = _param(doc, old, "spacing_param2", (values.get("spacing2") or "10 mm").strip(),
+                                           "length", pending)
             rec["angle2"], rec["dir2_ref"] = _direction(doc, sk, values.get("dir2"))
     return rec
 
@@ -260,10 +262,11 @@ def _circ_record(doc, sk, name, old, values):
     if abs(step) < 1e-9:
         raise ValueError("The copies would land on the original: give the pattern an angle")
     old = sp.live_params(doc, sk, dict(old)) if old else {}
-    return {"name": name, "kind": "circ", "values": _stored_values(values),
+    pending = {}
+    return {"name": name, "kind": "circ", "values": _stored_values(values), "param_values": pending,
             "originals": [sp.ensure_id(sk, g) for g in geos], "count": count, "axis_ref": sp.ref_of(sk, *axis[0]),
             "flip": bool(values.get("flip")), "divisor": total / step,  # the parameter is the dialog's Angle
-            "angle_param": _param(doc, old, "angle_param", "%.6g deg" % total, "angle")}
+            "angle_param": _param(doc, old, "angle_param", "%.6g deg" % total, "angle", pending)}
 
 
 def _circ_create(doc, body, sk, values):

@@ -616,3 +616,33 @@ class ReviewFixesTest(unittest.TestCase):
         k.update(self.doc, self.sk, back)  # an edit that changes nothing keeps the value the user set
         self.doc.recompute()
         self.assertEqual(model.parameter_text(self.doc, rec["angle_param"]), "180°")
+
+    def test_an_unconstrained_original_never_moves_when_the_dialog_changes_spacing_or_count(self):
+        """A tie is an equation between two points: changing its value while both exist lets the solver move
+        the original. The dialog must remove the copies first, then set the value, then place the copies anew."""
+        hole = circle(self.sk, 6, 5, 2)  # nothing pins it
+        self.doc.recompute()
+        k = self.kinds.SKETCH_RECT
+        k.create(self.doc, self.body, self.sk, dict(k.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge1"),
+                                                    count1="3", spacing1="12 mm"))
+        self.doc.recompute()
+        for change in ({"spacing1": "20 mm"}, {"count1": "4"}, {"spacing1": "7 mm", "count1": "2"}, {"flip1": True}):
+            k.update(self.doc, self.sk, dict(k.read(self.doc, self.sk), **change))
+            self.doc.recompute()
+            c = self.sk.Geometry[hole]
+            self.assertEqual((round(c.Center.x, 6), round(c.Center.y, 6), round(c.Radius, 6)), (6.0, 5.0, 2.0), change)
+            rec = sp.find(self.sk, self.sk.InCadEditing)
+            first = sp.index_of(self.sk, rec["copies"][0][0])
+            step = float(model.parameter_text(self.doc, rec["spacing_param"]).split()[0]) * (-1 if change.get("flip1") else 1)
+            self.assertAlmostEqual(self.sk.Geometry[first].Center.x, 6.0 + step, places=6, msg=str(change))
+        k2 = self.kinds.SKETCH_CIRC
+        self.sk.InCadEditing = ""
+        other = circle(self.sk, 20, 0, 1)
+        self.doc.recompute()
+        k2.create(self.doc, self.body, self.sk, dict(k2.defaults(self.doc, self.body, self.sk), geometry=self._pick(self.sk, "Edge%d" % (other + 1)),
+                                                     count="4", angle="360 °"))
+        self.doc.recompute()
+        k2.update(self.doc, self.sk, dict(k2.read(self.doc, self.sk), angle="180 °", count="3"))
+        self.doc.recompute()
+        c = self.sk.Geometry[other]
+        self.assertEqual((round(c.Center.x, 6), round(c.Center.y, 6), round(c.Radius, 6)), (20.0, 0.0, 1.0))
