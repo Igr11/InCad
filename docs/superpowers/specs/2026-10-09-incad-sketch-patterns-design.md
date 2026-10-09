@@ -1,5 +1,7 @@
 # InCad — Sketch Patterns (design)
 
+Status: implemented (phase 1: rectangular + circular, branch `sketch-patterns`); phase 2 (along path) open.
+
 Base: stage-1 spec `2026-10-05-incad-stage1-design.md` (sketch tab, Pattern group: "Mirror, Rectangular/Circular
 sketch pattern"). Agreed with the user on 2026-10-09 after the FreeCAD route was ruled out: FreeCAD's sketch
 array tools keep their parameters in the Tasks panel that InCad hides, and the Sketcher has no circular array.

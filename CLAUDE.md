@@ -14,3 +14,6 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
 - 1b facts: `view.getCameraNode()` needs `from pivy import coin` first; Coin pixel positions are device px with a
   bottom-left origin (`incad.ui.nav.to_coin`); FreeCAD opens its 3D context menu on the right-button release, so
   InCad's gesture rules never pass a lone right release.
+- Sketcher facts: a constraint expression may use `InCadModel.dN` and driving constraints, never a reference
+  constraint of the same sketch; `setGeometryId` ids survive deletions and reload; virtual space hides
+  constraints, never geometry (sketch patterns: `incad.core.sketch_patterns`).
