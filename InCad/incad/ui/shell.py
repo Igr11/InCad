@@ -1304,6 +1304,8 @@ class Shell(QtCore.QObject):
             return self._point_clicked(viewport, x, y)
         if self.value_box is None and self.feature_session is None:
             return False
+        if self.feature_session is not None and self.feature_session.unpick_under_cursor():
+            return True
         sk, name = self._preselected_dimension()
         if name is None and self.value_box is not None and not self._geometry_under_cursor():
             # FreeCAD doesn't preselect dimensions while a Sketcher tool runs (the Dimension tool keeps running

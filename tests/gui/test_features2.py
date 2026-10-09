@@ -252,6 +252,42 @@ def test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibilit
 
 
 
+def test_10_plain_clicks_collect_edges_and_a_click_on_a_picked_one_removes_it():
+    """Fillet/Chamfer: edges are added one plain click after another (no Cmd needed); clicking a picked edge again
+    takes it off; the 3D selection keeps showing exactly the picked set."""
+    tip = body().Tip
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.fillet")
+    harness.pump(900)
+    assert dialog() is not None
+    if dialog().active_pick() != "edges":
+        dialog().field("edges").click()
+        harness.pump(500)
+    assert dialog().active_pick() == "edges"
+
+    def plain_click(edge):
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(doc().Name, tip.Name, edge)
+        harness.pump(600)
+
+    def picked():
+        return [p.split(":")[1] for p in dialog().values()["edges"].split(",") if p]
+
+    def selected():
+        return sorted(sub for x in Gui.Selection.getSelectionEx(doc().Name) for sub in x.SubElementNames)
+
+    for i, edge in enumerate(("Edge1", "Edge2", "Edge3"), 1):
+        plain_click(edge)
+        assert len(picked()) == i, (edge, picked())
+    assert sorted(picked()) == ["Edge1", "Edge2", "Edge3"] and selected() == ["Edge1", "Edge2", "Edge3"], \
+        (picked(), selected())
+    plain_click("Edge2")  # already picked: off again
+    assert sorted(picked()) == ["Edge1", "Edge3"] and selected() == ["Edge1", "Edge3"], (picked(), selected())
+    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+    harness.pump(700)
+    Gui.Selection.clearSelection()
+
+
 def test_section_on_and_off_twice_never_crashes():
     """Section at the selection with its panel: offset, flip, Done keeps the cut, Section again switches off."""
     from incad import actions
@@ -457,5 +493,6 @@ harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_fr
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_shows_and_keeps_its_feature,
              test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
+             test_10_plain_clicks_collect_edges_and_a_click_on_a_picked_one_removes_it,
              test_section_on_and_off_twice_never_crashes, test_section_by_three_marked_points,
              test_measure_edge_face_and_whole_part_by_clicking])

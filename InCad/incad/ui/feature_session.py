@@ -2,7 +2,7 @@
 import traceback
 
 from incad.core import log, model, safe
-from incad.qt import dispose, QtCore
+from incad.qt import dispose, QtCore, QtWidgets
 from incad.ui.feature_dialog import FeatureDialog
 
 
@@ -221,6 +221,8 @@ class FeatureSession(QtCore.QObject):
             self._pick_error = False
         if not ok:
             return
+        if f.kind == "picks":
+            ok = self._collect_picks(key, ok)
         self.dialog.set_pick(key, common.format_picks(ok[-1:] if f.kind == "pick" else ok))
         if f.kind == "pick":  # a single pick is done: go on to the next empty one, or stop picking
             nxt = next((g.key for g in self.kind.FIELDS if g.kind in ("pick", "picks") and g.key != key
@@ -302,6 +304,61 @@ class FeatureSession(QtCore.QObject):
                 self._set_visible(o, visible)
             self._saved_visibility = []
             self._base_shown = None
+
+    def _collect_picks(self, key, clicked):
+        """A plain click adds the edge/face to the ones already picked, and a plain click on a picked one takes it
+        off again (Inventor); with Cmd/Ctrl/Shift held, or the first pick, the selection is the whole set (a Cmd-click
+        already adds or removes in FreeCAD's own selection). The 3D selection is kept equal to the picks."""
+        from incad.features import common
+        held = QtWidgets.QApplication.keyboardModifiers() & (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier
+                                                             | QtCore.Qt.MetaModifier)
+        current = common.parse_picks(self.doc, self.dialog.values().get(key))
+        if held or not current:
+            return clicked
+        mine = {(o.Name, s) for o, s in current}
+        if len(clicked) == 1 and (clicked[0][0].Name, clicked[0][1]) in mine:
+            merged = [p for p in current if (p[0].Name, p[1]) != (clicked[0][0].Name, clicked[0][1])]
+        else:
+            merged = current + [p for p in clicked if (p[0].Name, p[1]) not in mine]
+        self._reselect(merged)
+        return merged
+
+    def unpick_under_cursor(self):
+        """A plain click on an edge/face that is already picked takes it off. FreeCAD sends no selection event
+        for that click (it keeps the selected set), so the shell asks here first. True = the click is used."""
+        import FreeCADGui as Gui
+        from incad.features import common
+        key = self.dialog.active_pick() if self.dialog is not None else None
+        if not key or self.dialog.field_def(key).kind != "picks":
+            return False
+        if QtWidgets.QApplication.keyboardModifiers() & (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier
+                                                         | QtCore.Qt.MetaModifier):
+            return False
+        try:
+            pre = Gui.Selection.getPreselection()
+            subs = [x for x in (getattr(pre, "SubElementNames", ()) or ()) if x]
+            under = common.resolve(pre.Object, subs[0]) if pre.Object is not None and subs else (None, "")
+        except Exception as e:
+            log.logger().info("unpick: no preselection (%s)", e)
+            return False
+        current = common.parse_picks(self.doc, self.dialog.values().get(key))
+        mine = (getattr(under[0], "Name", None), under[1])
+        if mine[0] is None or not mine[1] or mine not in {(o.Name, s) for o, s in current}:
+            return False
+        merged = [p for p in current if (p[0].Name, p[1]) != mine]
+        self.dialog.set_pick(key, common.format_picks(merged))
+        self._reselect(merged)
+        return True
+
+    def _reselect(self, pairs):
+        import FreeCADGui as Gui
+        self._seeding = True
+        try:
+            Gui.Selection.clearSelection()
+            for obj, sub in pairs:
+                Gui.Selection.addSelection(self.doc_name, obj.Name, sub)
+        finally:
+            QtCore.QTimer.singleShot(0, self._end_seeding)
 
     def _seed_selection(self, key):
         """A picks field that becomes active shows its current items selected, so a click adds or removes one."""
@@ -395,9 +452,12 @@ class FeatureSession(QtCore.QObject):
         self._check()
         self._label_params()
         self._fill_empty_picks()
+        key = self.dialog.active_pick()
         if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
             self._show_base(False)
             self._sync_pick_view()
+        elif key and self.dialog.field_def(key).pick in self._ON_BASE:
+            self._sync_pick_view()  # the first pick just made the feature: show the base again for the next pick
 
     def _fill_empty_picks(self):
         """Show what a default picked for an empty field (e.g. the feature a pattern repeats)."""
