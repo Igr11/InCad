@@ -166,7 +166,73 @@ def test_3_from_the_far_end_says_to_pick_the_other_end():
     assert tip() is base, tip().Name
 
 
+def top_face(shape_obj):
+    return "Face%d" % ([i + 1 for i, f in enumerate(shape_obj.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+                        and abs(f.CenterOfMass.z - 10) < 0.05 and f.Area > 100][0])
+
+
+def test_4_a_hole_sketched_on_the_top_is_patterned_four_times_in_the_sketch():
+    import Part
+    import Sketcher
+    from incad.core import sketch_patterns as sp
+    base = doc().getObject(ST["base"])
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, base.Name, top_face(base))
+    commands.REGISTRY.run("sketch.start")
+    harness.pump(1500)
+    sk = Gui.ActiveDocument.getInEdit().Object
+    hole = sk.addGeometry(Part.Circle(App.Vector(-1, 1, 0), App.Vector(0, 0, 1), 1.0))  # a row clear of the
+    sk.addConstraint(Sketcher.Constraint("Radius", hole, 1.0))                            # part's other features
+    doc().recompute()
+    harness.pump(300)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name, "Edge%d" % (hole + 1))
+    commands.REGISTRY.run("sketch.rect_pattern")
+    harness.pump(1200)
+    assert dialog() is not None and dialog().values()["geometry"].endswith("Edge%d" % (hole + 1)), dialog().values()
+    dialog().set_values({"count1": "4", "spacing1": "3.5 mm"})
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    assert len(sp.records(sk)) == 1 and len(sp.records(sk)[0]["copies"]) == 3
+    ST["sketch"], ST["hole"] = sk.Name, hole
+
+
+def test_5_edit_to_five_then_cut_gives_five_holes_in_the_solid():
+    import math
+    from incad.core import sketch_patterns as sp
+    sk = doc().getObject(ST["sketch"])
+    name = sp.records(sk)[0]["name"]
+    shell.instance().edit_sketch_pattern(sk, name)
+    harness.pump(1200)
+    w = dialog().field("count1")
+    w.setText("5")
+    w.editingFinished.emit()
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    assert len(sp.find(sk, name)["copies"]) == 4
+    commands.REGISTRY.run("sketch.finish")
+    harness.pump(1000)
+    before = tip().Shape.Volume
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(1500)
+    dialog().set_values({"operation": "cut", "extent": "through_all"})  # incad/features/extrude.py FIELDS
+    harness.pump(1500)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    cut = tip()
+    assert cut.TypeId == "PartDesign::Pocket", cut.TypeId
+    assert "Invalid" not in cut.State, cut.getStatusString()
+    removed = before - cut.Shape.Volume
+    assert abs(removed - 5 * math.pi * 1.0 ** 2 * 10) < 5.0, removed  # five Ø2 holes through 10 mm
+
+
 harness.run([test_0_open_a_copy_of_the_real_part,
              test_1_clicking_the_thread_spaces_three_shafts_equally_from_the_near_end,
              test_2_flip_puts_the_copies_on_the_other_side_of_the_shaft,
-             test_3_from_the_far_end_says_to_pick_the_other_end])
+             test_3_from_the_far_end_says_to_pick_the_other_end,
+             test_4_a_hole_sketched_on_the_top_is_patterned_four_times_in_the_sketch,
+             test_5_edit_to_five_then_cut_gives_five_holes_in_the_solid])
