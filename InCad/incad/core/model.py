@@ -16,8 +16,18 @@ _TOKEN = re.compile(r"(?<![\w.<>])([A-Za-z_][A-Za-z0-9_]*)(?![\w(.])")
 UNIT_WORDS = {"mm", "cm", "m", "in", "ft", "deg", "rad", "um", "km", "mil", "thou", "yd"}
 
 
-def friendly(message):
-    """FreeCAD's expression errors in plain words (no internal paths)."""
+_REVOLVE_TYPES = ("PartDesign::Revolution", "PartDesign::Groove")
+_KERNEL_FAILURE = {
+    "PartDesign::Chamfer": "The chamfer couldn't be made: use a smaller distance, or pick other edges",
+    "PartDesign::Fillet": "The fillet couldn't be made: use a smaller radius, or pick other edges",
+    "PartDesign::Thickness": "The shell couldn't be made: use a smaller thickness, or remove other faces",
+    "PartDesign::Draft": "The draft couldn't be made: use a smaller angle, or pick other faces",
+}
+
+
+def friendly(message, type_id=None):
+    """FreeCAD's expression errors in plain words (no internal paths). type_id (of the feature that failed) lets a
+    kernel failure be explained for that feature instead of as a revolve."""
     m = re.search(r"Property '([^']+)' not found", message)
     if m:
         return "Unknown name '%s' (not a parameter or dimension)" % m.group(1)
@@ -35,6 +45,9 @@ def friendly(message):
     if "perpendicular to the sketch" in message:
         return "The axis is perpendicular to the profile: pick an axis that lies in the profile's plane"
     if "command not done" in message or "NullObject" in message or "BRepAlgoAPI" in message:
+        if type_id is not None and type_id not in _REVOLVE_TYPES:
+            return _KERNEL_FAILURE.get(type_id, "The shape couldn't be built: the values are too large for the "
+                                                "geometry, or the picks don't fit it")
         return ("The revolve couldn't be built: the axis must lie IN the profile's plane and not cross or touch "
                 "the profile. Draw the profile on a plane that passes through the axis.")
     return message.split("\n")[0]

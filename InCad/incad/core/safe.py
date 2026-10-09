@@ -36,7 +36,7 @@ def _broken(obj, check_shape):
             return ""  # an empty part (everything suppressed / rolled back) is a normal state
         if status and status not in ("Valid", "Touched"):
             from incad.core import model
-            return "%s: %s" % (obj.Label, model.friendly(status))
+            return "%s: %s" % (obj.Label, model.friendly(status, obj.TypeId))
         return "%s failed to compute" % obj.Label
     if check_shape and obj.TypeId.startswith("PartDesign::"):
         shape = getattr(obj, "Shape", None)

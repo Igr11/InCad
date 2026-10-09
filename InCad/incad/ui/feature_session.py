@@ -543,6 +543,22 @@ class FeatureSession(QtCore.QObject):
     def _check(self):
         found = safe.problems(self.doc, self._broken, {o.Name for o in self.doc.Objects})
         self.dialog.set_error("; ".join(found))
+        self._show_base_while_broken(bool(found))
+
+    def _show_base_while_broken(self, broken):
+        """A preview that failed shows nothing: keep the part (the shape the feature starts from) on screen until the
+        values work again, then show the preview. A geometry pick already shows the base itself."""
+        if self._base_shown is not None or self.feature is None or not _feature_alive(self.feature):
+            return
+        base = getattr(self.feature, "BaseFeature", None)
+        if broken and base is not None and base is not getattr(self, "_error_base", None):
+            self._error_base = base
+            self._set_visible(base, True)
+            self._set_visible(self.feature, False)
+        elif not broken and getattr(self, "_error_base", None) is not None:
+            base, self._error_base = self._error_base, None
+            self._set_visible(self.feature, True)
+            self._set_visible(base, False)
 
     def insert(self, name):
         field = self.dialog.focused_value_field() if self.dialog is not None else None
@@ -623,6 +639,11 @@ class FeatureSession(QtCore.QObject):
                 self._abort_extras(reopen=False)
         except Exception as e:
             log.report("warning", "Could not close the %s step cleanly: %s" % (self.kind.TITLE, e))
+        base, self._error_base = getattr(self, "_error_base", None), None
+        if base is not None and not commit and not self.creating and self.feature is not None \
+                and _feature_alive(self.feature):  # an edit cancelled while it was failing: the feature shows again
+            self._set_visible(self.feature, True)
+            self._set_visible(base, False)
         safe.set_busy(None)
         if self.dialog is not None:
             self.dialog.close()

@@ -198,3 +198,43 @@ class ModeledThreadKernelTest(unittest.TestCase):
         self.assertFalse(r.ok)
         self.assertIn("modeled (helical) thread", r.error)
         self.assertNotIn("cuts away the whole part", r.error)
+
+
+class KernelFailureMessageTest(unittest.TestCase):
+    """'command not done' from the kernel is explained for the feature that failed, not always as a Revolve."""
+
+    def setUp(self):
+        self.doc = util.new_doc("KF")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        log.set_reporter(lambda level, msg: None)
+
+    def tearDown(self):
+        log.set_reporter(None)
+        App.closeDocument(self.doc.Name)
+
+    def dress(self, kind, **values):
+        from incad.features import dressup
+        k = {"chamfer": dressup.CHAMFER, "fillet": dressup.FILLET}[kind]
+        edges = ["Edge%d" % (i + 1) for i, e in enumerate(self.pad.Shape.Edges)
+                 if abs(e.BoundBox.ZMin - 10) < 1e-6 and abs(e.BoundBox.ZMax - 10) < 1e-6][:2]
+        vals = dict(k.defaults(self.doc, self.body, None), edges=",".join("%s:%s" % (self.pad.Name, e) for e in edges),
+                    **values)
+        return safe.run_safely(k.TITLE, lambda: k.create(self.doc, self.body, None, vals), self.doc)
+
+    def test_a_too_big_chamfer_is_explained_as_a_chamfer(self):
+        r = self.dress("chamfer", size="500 mm")
+        self.assertFalse(r.ok)
+        self.assertIn("chamfer", r.error.lower())
+        self.assertNotIn("revolve", r.error.lower())
+        self.assertIn("smaller", r.error)
+
+    def test_a_too_big_fillet_is_explained_as_a_fillet(self):
+        r = self.dress("fillet", radius="500 mm")
+        self.assertFalse(r.ok)
+        self.assertIn("fillet", r.error.lower())
+        self.assertNotIn("revolve", r.error.lower())
+
+    def test_a_revolve_failure_keeps_the_revolve_text(self):
+        from incad.core import model
+        self.assertIn("revolve", model.friendly("BRep_API: command not done", "PartDesign::Revolution"))
+        self.assertIn("revolve", model.friendly("BRep_API: command not done", "PartDesign::Groove"))
