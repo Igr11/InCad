@@ -118,3 +118,177 @@ def ref_points(sk, geo):
 
 def point_of(sk, geo, pos):
     return sk.getPoint(geo, pos)
+
+
+# ----- copies -----
+def _copy_geometry(sk, geo, offset=None, rotate=None):
+    """A new geometry equal to sk.Geometry[geo], translated by `offset` (Vector) or rotated by `rotate`
+    (centre Vector, angle in radians); construction flag kept."""
+    g = sk.Geometry[geo].copy()
+    if offset is not None:
+        g.translate(offset)
+    if rotate is not None:
+        _rotate_in_place(g, *rotate)
+    return sk.addGeometry(g, sk.getConstruction(geo))
+
+
+def _rotate_in_place(g, centre, angle):
+    pl = App.Placement(centre, App.Rotation(App.Vector(0, 0, 1), math.degrees(angle))) \
+        .multiply(App.Placement(-centre, App.Rotation()))
+    g.transform(pl.toMatrix())
+
+
+def PREFIX_OF(name):
+    """'Pattern3' -> 'pat3': the constraint name prefix of a pattern."""
+    return sketches.PATTERN_PREFIX + name[len("Pattern"):]
+
+
+def _name_constraint(sk, rec, index):
+    name = "%s_%d" % (rec["_prefix"], rec["_next"])
+    rec["_next"] += 1
+    sk.renameConstraint(index, name)
+    rec["constraints"].append(name)
+    return name
+
+
+def _add(sk, rec, constraint, expression=None, hidden=True):
+    i = sk.addConstraint(constraint)
+    if expression is not None:
+        sk.setExpression("Constraints[%d]" % i, expression)
+    if hidden:
+        sk.setVirtualSpace(i, True)
+    return _name_constraint(sk, rec, i)
+
+
+def _begin(sk, rec):
+    rec.setdefault("copies", [])
+    rec.setdefault("constraints", [])
+    rec["_prefix"] = PREFIX_OF(rec["name"])
+    rec["_next"] = 0
+    rec["_points"] = {}  # (orig geo, pos) -> True once tied for this copy: shared corners are tied once
+
+
+def _end(sk, rec):
+    for key in ("_prefix", "_next", "_points", "_doc"):
+        rec.pop(key, None)
+    recs = [r for r in records(sk) if r.get("name") != rec["name"]]
+    recs.append(rec)
+    save_records(sk, recs)
+    return rec
+
+
+def _originals(sk, rec):
+    out = []
+    for gid in rec["originals"]:
+        i = index_of(sk, gid)
+        if i is None:
+            raise ValueError("The pattern's original geometry is gone: delete the pattern")
+        ref_points(sk, i)  # raises for unsupported types
+        out.append(i)
+    return out
+
+
+def _coincident_points(sk, geos):
+    """{(geo, pos): (geo0, pos0)}: for every point of `geos` that is coincident with an earlier point of the
+    same set, the earlier one (a closed rectangle's corners are tied once)."""
+    alias = {}
+    seen = []
+    for g in geos:
+        for pos in ref_points(sk, g):
+            p = point_of(sk, g, pos)
+            for (g0, pos0, q) in seen:
+                if (p - q).Length < 1e-7:
+                    alias[(g, pos)] = (g0, pos0)
+                    break
+            else:
+                seen.append((g, pos, p))
+    return alias
+
+
+def _translation(rec, k, j):
+    """Expressions of a copy's offset: k steps along direction 1, j along direction 2 (0 when single)."""
+    sign = -1 if rec.get("flip") else 1
+    terms_x = ["%d * InCadModel.%s * cos(%s deg)" % (sign * k, rec["spacing_param"], repr(float(rec["angle"])))]
+    terms_y = ["%d * InCadModel.%s * sin(%s deg)" % (sign * k, rec["spacing_param"], repr(float(rec["angle"])))]
+    if j:
+        terms_x.append("%d * InCadModel.%s * cos(%s deg)" % (j, rec["spacing_param2"], repr(float(rec["angle2"]))))
+        terms_y.append("%d * InCadModel.%s * sin(%s deg)" % (j, rec["spacing_param2"], repr(float(rec["angle2"]))))
+    return " + ".join(terms_x), " + ".join(terms_y)
+
+
+def _param_value(doc, name):
+    from incad.core import model
+    return float(getattr(model._model_obj(doc), name).getValueAs("mm"))
+
+
+def _offset_vector(rec, k, j):
+    sign = -1 if rec.get("flip") else 1
+    s1 = _param_value(rec["_doc"], rec["spacing_param"])
+    a1 = math.radians(rec["angle"])
+    v = App.Vector(sign * k * s1 * math.cos(a1), sign * k * s1 * math.sin(a1), 0)
+    if j:
+        s2 = _param_value(rec["_doc"], rec["spacing_param2"])
+        a2 = math.radians(rec["angle2"])
+        v += App.Vector(j * s2 * math.cos(a2), j * s2 * math.sin(a2), 0)
+    return v
+
+
+def build_rect(doc, sk, rec):
+    """Copies of the originals at k steps along direction 1 (and j along direction 2), each point tied to the
+    original's by DistanceX/DistanceY with expressions, round geometry Equal to the original."""
+    rec["_doc"] = doc
+    _begin(sk, rec)
+    originals = _originals(sk, rec)
+    alias = _coincident_points(sk, originals)
+    count, count2 = int(rec["count"]), int(rec.get("count2") or 1)
+    if count < 2:
+        raise ValueError("Use a count of 2 or more")
+    for j in range(count2):
+        for k in range(count):
+            if k == 0 and j == 0:
+                continue
+            offset = _offset_vector(rec, k, j)
+            if offset.Length < 1e-9:
+                raise ValueError("The copies would land on the original: give the pattern a spacing")
+            ex, ey = _translation(rec, k, j)
+            copy_ids = []
+            new = {}
+            for g in originals:
+                c = _copy_geometry(sk, g, offset=offset)
+                new[g] = c
+                copy_ids.append(ensure_id(sk, c))
+            for g in originals:
+                c = new[g]
+                for pos in ref_points(sk, g):
+                    src = alias.get((g, pos), (g, pos))
+                    if (src, k, j) in rec["_points"]:
+                        _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
+                        continue
+                    rec["_points"][(src, k, j)] = True
+                    _add(sk, rec, Sketcher.Constraint("DistanceX", g, pos, c, pos, offset.x), ex)
+                    _add(sk, rec, Sketcher.Constraint("DistanceY", g, pos, c, pos, offset.y), ey)
+                if geometry_type(sk, g) in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+                    _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+            rec["copies"].append(copy_ids)
+    return _end(sk, rec)
+
+
+def copies_of(sk, name):
+    rec = find(sk, name)
+    if rec is None:
+        return []
+    return [i for ids in rec.get("copies", []) for i in [index_of(sk, g) for g in ids] if i is not None]
+
+
+def remove(doc, sk, name):
+    """Delete a pattern's copies (spokes included) and constraints; the original stays. Missing pieces (deleted
+    by hand) are skipped."""
+    rec = find(sk, name)
+    if rec is None:
+        return
+    names = set(rec.get("constraints", []))
+    for i in sorted([i for i, c in enumerate(sk.Constraints) if c.Name in names], reverse=True):
+        sk.delConstraint(i)
+    for i in sorted(copies_of(sk, name), reverse=True):
+        sk.delGeometry(i)
+    save_records(sk, [r for r in records(sk) if r.get("name") != name])
