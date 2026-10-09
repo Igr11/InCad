@@ -370,6 +370,7 @@ def _sketch_selection(sk):
             try:
                 geo, pos = sp.element(sk, sub)
             except (ValueError, IndexError):
+                out.append((None, 0, sub))  # a dimension ('Constraint7'): the Sketcher's delete handles it
                 continue
             if geo >= sk.GeometryCount or geo < -2 - len(sk.ExternalGeo):
                 continue
@@ -382,7 +383,7 @@ def _delete_in_sketch(sk):
     on its next edit); everything else through the Sketcher's own delete, with a selection cleaned of stale names."""
     from incad.core import safe, sketch_patterns as sp
     picked = _sketch_selection(sk)
-    mine = sorted({geo for geo, _, _ in picked if geo >= 0 and sp.pattern_of(sk, geo)
+    mine = sorted({geo for geo, _, _ in picked if geo is not None and geo >= 0 and sp.pattern_of(sk, geo)
                    and sp.index_of(sk, sp.getGeometryId(sk, geo)) is not None and not sp.is_original(sk, geo)}, reverse=True)
     rest = [sub for geo, _, sub in picked if geo not in mine]
     if mine:
