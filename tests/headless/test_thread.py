@@ -200,6 +200,17 @@ class ThreadReviewTest(unittest.TestCase):
         ring = Part.makeCylinder(5.2, 10, App.Vector(0, 0, 10)).cut(Part.makeCylinder(4.9, 10, App.Vector(0, 0, 10)))
         self.assertLess(ring.common(f.Shape).Volume, ring.Volume * 0.7)
 
+    def test_a_slightly_oversize_shaft_still_gets_a_real_thread(self):
+        """Ø4.5 with an M4 (auto size picks the nearest): the profile used to be built for Ø4.0, so the groove left
+        only ~0.04 mm hairs above it — no thread at all. The thread now follows the shaft's real diameter."""
+        shaft_ = self.add_cyl(2.25, 0, 10, "Small")
+        f = self.make(face=cyl_face(shaft_, 2.25), size="M4", clearance="0 mm")
+        self.assertEqual(f.State, ["Up-to-date"], f.getStatusString())
+        ring = Part.makeCylinder(2.25, 6, App.Vector(0, 0, 2)).cut(Part.makeCylinder(2.1, 6, App.Vector(0, 0, 2)))
+        kept = ring.common(f.Shape).Volume / ring.Volume
+        self.assertGreater(kept, 0.15, "the ridges at the surface are %.0f%% of the ring: hairs" % (100 * kept))
+        self.assertLess(kept, 0.6)  # and the groove is really cut
+
     def test_partial_cylinder_is_refused(self):
         pad = self.add_cyl(5, 0, 10, "Shaft")
         from incad.features import dressup

@@ -3,6 +3,7 @@ through the axis, x radial, y along the axis) + one PartDesign SubtractiveHelix.
 
 Standard, size, clearance, hand, start end and offset live on the helix (InCadThread, JSON) and regenerate the
 profile on edit; the length (Distance mode) is a model parameter bound to Height."""
+import dataclasses
 import json
 
 import FreeCAD as App
@@ -171,7 +172,13 @@ def _spec(values, diameter, internal, clearance):
     size = values.get("size") or ""
     if size not in standards.sizes(std):
         size = standards.suggest(std, diameter, internal, clearance)
-    return standards.spec(std, size)
+    spec = standards.spec(std, size)
+    slack = 2 * max(0.5, 0.5 * spec.depth)  # the same allowance _fit gives (a bigger gap is 'pick a larger size')
+    if not internal and not spec.taper and spec.major + 0.02 < diameter <= spec.major + slack:
+        # a shaft a little larger than the nominal (Ø4.5 with an M4): the groove cut for the nominal diameter would
+        # leave hair-thin ridges above it, so the profile follows the real diameter (same pitch, depth and angle)
+        spec = dataclasses.replace(spec, major=diameter)
+    return spec
 
 
 def options(key, values):
