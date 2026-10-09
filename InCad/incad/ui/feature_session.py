@@ -192,7 +192,8 @@ class FeatureSession(QtCore.QObject):
         for sel in Gui.Selection.getSelectionEx(self.doc_name):
             for sub in (sel.SubElementNames or ("",)):
                 obj, el = common.resolve(sel.Object, sub)
-                if obj is not None and obj is not self.feature:  # the feature being made can't be its own input
+                if obj is not None and (obj is not self.feature or getattr(self.kind, "IN_SKETCH", False)):
+                    # the feature being made can't be its own input (a sketch pattern's picks ARE on the sketch)
                     pairs.append((obj, el))
         return pairs
 
@@ -200,6 +201,8 @@ class FeatureSession(QtCore.QObject):
 
     def _expected_base(self):
         """The shape geometry picks must lie on: what the feature starts from."""
+        if getattr(self.kind, "IN_SKETCH", False):
+            return None  # picks are the sketch's own elements: nothing to show or check
         if self.feature is not None:
             return getattr(self.feature, "BaseFeature", None)
         return self.body.Tip if self.body is not None else None
@@ -263,6 +266,10 @@ class FeatureSession(QtCore.QObject):
         any later features; put everything back exactly as it was afterwards."""
         want = None
         key = self.dialog.active_pick() if self.dialog is not None else None
+        if getattr(self.kind, "IN_SKETCH", False):
+            if seed and key:
+                self._seed_selection(key)
+            return
         if key and self.dialog.field_def(key).pick in self._ON_BASE and self.feature is not None:
             want = self._expected_base()
         if want is not self._base_shown:
@@ -423,7 +430,9 @@ class FeatureSession(QtCore.QObject):
             pass
 
     def _label_params(self):
-        extra = self.kind.param_names(self.feature) if hasattr(self.kind, "param_names") and self.feature else {}
+        target = self.feature if self.feature is not None else (
+            self.profile if getattr(self.kind, "IN_SKETCH", False) else None)
+        extra = self.kind.param_names(target) if hasattr(self.kind, "param_names") and target is not None else {}
         for key, name in extra.items():
             self.dialog.set_param_name(key, name)
         for f in self.kind.FIELDS:
@@ -511,7 +520,7 @@ class FeatureSession(QtCore.QObject):
 
     def _fill_empty_picks(self):
         """Show what a default picked for an empty field (e.g. the feature a pattern repeats)."""
-        if self.feature is None:
+        if self.feature is None or getattr(self.kind, "IN_SKETCH", False):
             return
         try:
             read = self.kind.read(self.doc, self.feature)
@@ -601,6 +610,8 @@ class FeatureSession(QtCore.QObject):
         """A preview that failed shows nothing: keep the part (the shape the feature starts from) on screen until the
         values work again, then show the preview. A geometry pick already shows the base itself."""
         if self._base_shown is not None or self.feature is None or not _feature_alive(self.feature):
+            return
+        if getattr(self.kind, "IN_SKETCH", False):
             return
         base = getattr(self.feature, "BaseFeature", None)
         if broken and base is not None and base is not getattr(self, "_error_base", None):
@@ -696,6 +707,11 @@ class FeatureSession(QtCore.QObject):
                 and _feature_alive(self.feature):  # an edit cancelled while it was failing: the feature shows again
             self._set_visible(self.feature, True)
             self._set_visible(base, False)
+        if getattr(self.kind, "IN_SKETCH", False) and self.profile is not None and _feature_alive(self.profile):
+            try:
+                self.profile.InCadEditing = ""  # the pattern is no longer open in a dialog
+            except Exception:
+                pass
         safe.set_busy(None)
         if self.dialog is not None:
             self.dialog.close()

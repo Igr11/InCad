@@ -1494,6 +1494,21 @@ class Shell(QtCore.QObject):
             return
         if not document.is_incad_part(doc):
             raise ValueError("Create or open an InCad part first")
+        if getattr(kind, "IN_SKETCH", False):
+            editing = self.sketches.editing()
+            if editing is None:
+                raise ValueError("Open a sketch first")
+            if self.feature_session is not None:
+                raise self._dialog_first()
+            self.stop_slot_tool()
+            import FreeCADGui as Gui
+            picked = [(sel.Object.Name, sub) for sel in Gui.Selection.getSelectionEx(doc.Name)
+                      for sub in (sel.SubElementNames or ("",))]
+            Gui.runCommand("Sketcher_StopOperation")  # no Sketcher tool fighting for the clicks; it clears the
+            for name, sub in picked:                   # selection, so the geometry picked beforehand is put back
+                Gui.Selection.addSelection(doc.Name, name, sub)
+            self._open_session(kind, doc, document.primary_body(doc), profile=editing)
+            return
         if self.feature_session is not None:
             raise self._dialog_first()
         body = document.primary_body(doc)

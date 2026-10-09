@@ -189,6 +189,11 @@ class SketchSession:
     def finish(self):
         import FreeCAD as App
         import FreeCADGui as Gui
+        from incad.ui import shell as shells
+        sh = shells.instance()
+        fs = sh.feature_session if sh is not None else None
+        if fs is not None and getattr(fs.kind, "IN_SKETCH", False):
+            fs.cancel()  # the pattern dialog cannot outlive its sketch
         gdoc = Gui.ActiveDocument
         if gdoc is not None and gdoc.getInEdit() is not None:
             gdoc.resetEdit()
