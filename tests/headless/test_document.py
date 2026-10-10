@@ -1,3 +1,4 @@
+import math
 import os
 import tempfile
 import unittest
@@ -428,6 +429,38 @@ class DetachLumpTest(unittest.TestCase):
         self.assertAlmostEqual(face.CenterOfMass.z, 10, places=6)
         self.assertAlmostEqual(face.CenterOfMass.x, 60, places=6)
         self.assertIsNone(document.remap_sub(old_shape, self.box.Shape, "Face1"), "the pad's face is not here")
+
+    def test_sketches_on_the_lumps_faces_and_their_features_move_along(self):
+        """A sketch drawn on the box's top face (attached to Extrude.FaceN) and a pad made from it: both go to
+        the box's Solid, the sketch re-attached to the same face under its new number."""
+        top = [i + 1 for i, f in enumerate(self.box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6
+               and f.CenterOfMass.x > 40][0]
+        on_top = self.body.newObject("Sketcher::SketchObject", "OnTop")
+        on_top.AttachmentSupport = [(self.box, "Face%d" % top)]
+        on_top.MapMode = "FlatFace"
+        on_top.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3))
+        bump = util.add_pad(self.body, on_top, 4, name="Bump")
+        self.body.Tip = bump
+        loose = self.body.newObject("Sketcher::SketchObject", "Loose")  # on the box's top too, no feature
+        loose.AttachmentSupport = [(self.box, "Face%d" % top)]
+        loose.MapMode = "FlatFace"
+        loose.addGeometry(Part.Circle(App.Vector(2, 2, 0), App.Vector(0, 0, 1), 1))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", bump.State)
+        new = document.detach_lump(self.box)
+        self.doc.recompute()
+        for o in (self.box, on_top, bump, loose):
+            self.assertIs(o.getParentGeoFeatureGroup(), new, o.Name)
+        for sk in (on_top, loose):
+            self.assertIs(sk.AttachmentSupport[0][0], self.box)
+            sub = sk.AttachmentSupport[0][1]
+            face = self.box.Shape.getElement(sub[0] if isinstance(sub, (tuple, list)) else sub)
+            self.assertAlmostEqual(face.CenterOfMass.z, 10, places=6, msg=sk.Name)
+            self.assertNotIn("Invalid", sk.State, sk.getStatusString())
+        self.assertNotIn("Invalid", bump.State, bump.getStatusString())
+        self.assertIs(new.Tip, bump)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 2000 + math.pi * 9 * 4, delta=1.0)
+        self.assertIs(self.body.Tip, self.pad)
 
     def test_a_touching_feature_is_not_a_lump(self):
         self.assertFalse(document.is_detached_lump(self.pad))

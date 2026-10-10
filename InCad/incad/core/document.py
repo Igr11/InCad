@@ -111,14 +111,23 @@ def detach_lump(feature):
     if not is_detached_lump(feature):
         raise ValueError("%s is not a separate piece of the part" % feature.Label)
     group = list(body.Group)
-    movers = [feature]
-    for o in group[group.index(feature) + 1:]:  # later features that link to a mover go with it
-        if o.TypeId == "Sketcher::SketchObject" or not o.isDerivedFrom("PartDesign::Feature"):
-            continue
-        links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
-        if any(m in links or _profile_of(m) in links for m in movers):
-            movers.append(o)
-    sketches = [p for p in (_profile_of(m) for m in movers) if p is not None and p.getParentGeoFeatureGroup() is body]
+    related = [feature]  # the piece, its sketch, anything attached to it or built on those, in body order
+    grown = True
+    while grown:
+        grown = False
+        for o in group:
+            if o in related:
+                continue
+            links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
+            support = [sup for sup, _ in (getattr(o, "AttachmentSupport", None) or [])]
+            if any(r in links or r in support for r in related) and (o.TypeId == "Sketcher::SketchObject"
+                                                                       or o.isDerivedFrom("PartDesign::Feature")):
+                related.append(o)
+                grown = True
+    related.sort(key=group.index)
+    movers = [o for o in related if o.TypeId != "Sketcher::SketchObject"]
+    sketches = [o for o in related if o.TypeId == "Sketcher::SketchObject"]
+    old_shapes = {m.Name: m.Shape.copy() for m in movers if not m.Shape.isNull()}
     was_tip = body.Tip in movers
     new = new_solid(doc)
     for m in reversed(movers):  # FreeCAD relinks the feature after each removed one onto the one before it
@@ -143,6 +152,18 @@ def detach_lump(feature):
     if was_tip:
         solids = [o for o in body.Group if _is_solid_feature(o)]
         body.Tip = solids[-1] if solids else None
+    doc.recompute()
+    for p in sketches:  # a sketch on a face of a moved piece: that face has a new number now
+        support = p.AttachmentSupport
+        if not support or support[0][0] is None or support[0][0].Name not in old_shapes:
+            continue
+        sub = support[0][1]
+        sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub  # FreeCAD hands subs back as a tuple
+        if not sub:
+            continue
+        fresh = remap_sub(old_shapes[support[0][0].Name], support[0][0].Shape, sub)
+        if fresh and fresh != sub:
+            p.AttachmentSupport = [(support[0][0], fresh)]
     doc.recompute()
     show_result(body)
     show_result(new)
