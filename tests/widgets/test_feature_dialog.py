@@ -3,7 +3,7 @@ import unittest
 from widgets import qtapp
 from incad.qt import QtCore
 from incad.features.common import Field
-from incad.ui.feature_dialog import FeatureDialog
+from incad.ui.feature_dialog import FeatureDialog, step_text
 
 FIELDS = (
     Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join"),
@@ -249,3 +249,84 @@ class RescueButtonTest(unittest.TestCase):
         self.assertFalse(self.d.rescue_button.isVisibleTo(self.d))
         self.d.set_error("plain failure")
         self.assertFalse(self.d.rescue_button.isVisibleTo(self.d), "no rescue: no button")
+
+
+class StepTextTest(unittest.TestCase):
+    """The ± arrows of a value field: 1 of the shown unit (1 mm, 1°, 1 count; 1/16 in), Shift ×10, a formula
+    cannot be stepped, a length never goes below zero."""
+
+    def test_lengths_counts_and_angles(self):
+        self.assertEqual(step_text("10 mm", 1, "value_length"), "11 mm")
+        self.assertEqual(step_text("10.5 mm", -1, "value_length"), "9.5 mm")
+        self.assertEqual(step_text("10 mm", 10, "value_length"), "20 mm")
+        self.assertEqual(step_text("2", -1, "value_length"), "1")
+        self.assertEqual(step_text("360°", 10, "value_angle"), "370°")
+        self.assertEqual(step_text("30 °", -1, "value_angle"), "29 °")
+        self.assertEqual(step_text("0.5 in", 1, "value_length"), "0.5625 in")
+        self.assertEqual(step_text("12mm", 1, "value_length"), "13mm")
+        self.assertEqual(step_text("  7 mm ", 1, "value_length"), "8 mm")
+
+    def test_floors_and_formulas(self):
+        self.assertEqual(step_text("0 mm", -1, "value_length"), "0 mm")
+        self.assertEqual(step_text("0.5 mm", -1, "value_length"), "0 mm")
+        self.assertEqual(step_text("-5°", -1, "value_angle"), "-6°")
+        self.assertIsNone(step_text("d0 / 1.5", 1, "value_length"))
+        self.assertIsNone(step_text("", 1, "value_length"))
+        self.assertIsNone(step_text("10 mm + 2", 1, "value_length"))
+
+
+class StepButtonsTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Extrude", "incad", FIELDS,
+                               {"operation": "join", "extent": "distance", "to_face": "", "distance": "10 mm",
+                                "flip": False})
+        self.seen = []
+        self.d.changed.connect(lambda v: self.seen.append(dict(v)))
+        self.d.show()
+
+    def tearDown(self):
+        self.d.close()
+
+    def test_each_press_steps_and_previews_at_once(self):
+        up, down = self.d.step_buttons("distance")
+        up.click()
+        self.assertEqual(self.d.field("distance").text(), "11 mm")
+        self.assertEqual([v["distance"] for v in self.seen], ["11 mm"], "previewed without waiting for the pause")
+        down.click()
+        down.click()
+        self.assertEqual(self.d.field("distance").text(), "9 mm")
+        self.assertEqual(len(self.seen), 3)
+        self.assertTrue(self.d.undo_change())
+        self.assertEqual(self.d.field("distance").text(), "10 mm", "each press is one undo step in the dialog")
+
+    def test_shift_steps_by_ten(self):
+        from PySide6.QtTest import QTest
+        up, down = self.d.step_buttons("distance")
+        QTest.mouseClick(up, QtCore.Qt.LeftButton, QtCore.Qt.ShiftModifier)
+        self.assertEqual(self.d.field("distance").text(), "20 mm")
+
+    def test_arrow_keys_in_the_field_step_too(self):
+        from PySide6.QtTest import QTest
+        w = self.d.field("distance")
+        w.setFocus()
+        QTest.keyClick(w, QtCore.Qt.Key_Up)
+        self.assertEqual(w.text(), "11 mm")
+        QTest.keyClick(w, QtCore.Qt.Key_Down, QtCore.Qt.ShiftModifier)
+        self.assertEqual(w.text(), "1 mm")
+        self.assertEqual([v["distance"] for v in self.seen], ["11 mm", "1 mm"])
+
+    def test_a_formula_disables_the_arrows(self):
+        up, down = self.d.step_buttons("distance")
+        self.d.field("distance").setText("d0 / 1.5")
+        self.assertFalse(up.isEnabled() or down.isEnabled())
+        up.click()
+        self.assertEqual(self.d.field("distance").text(), "d0 / 1.5")
+        self.d.field("distance").setText("12 mm")
+        self.assertTrue(up.isEnabled() and down.isEnabled())
+
+    def test_the_arrows_hide_with_their_row(self):
+        up, down = self.d.step_buttons("distance")
+        self.d.field("extent").button("to").click()
+        self.assertFalse(self.d.row_visible("distance"))
+        self.assertFalse(up.isVisible() or down.isVisible())

@@ -1,14 +1,65 @@
 """Floating feature dialog (Inventor style): fields built from the feature kind's FIELDS, live changes, an error
 line, OK / Apply / Cancel. Value fields accept units, parameter names and formulas; clicking a dimension or a
 parameter while one has focus inserts the name."""
+import re
+
 from incad.qt import QtCore, QtWidgets, Signal
 from incad.ui import theme as themes
 
 
+_NUMBER = re.compile(r"^\s*([-+]?\d+(?:\.\d+)?)\s*([^\d\s][^\d]*?)?\s*$")
+
+
+def step_text(text, delta, kind):
+    """The text of a value field one step up or down (delta ±1, ±10 with Shift): 1 of the unit shown (1 mm, 1°,
+    1 count; 1/16 in), the number of decimals kept. None when the text is a formula, which cannot be stepped;
+    a length never goes below zero."""
+    m = _NUMBER.match(text or "")
+    if m is None:
+        return None
+    number, unit = m.group(1), m.group(2) or ""
+    if unit and not re.match(r"^(mm|cm|m|in|\"|ft|'|°|deg|rad|µm|um)$", unit):
+        return None
+    step = 0.0625 if unit in ("in", '"') else 1.0
+    value = float(number) + delta * step
+    if kind != "value_angle" and value < 0:
+        value = 0.0
+    decimals = len(number.split(".")[1]) if "." in number else 0
+    if unit in ("in", '"'):
+        decimals = max(decimals, 4)
+    out = "%.*f" % (decimals, value)
+    if "." in out:
+        out = out.rstrip("0").rstrip(".")
+    head = text[:text.index(number)] if number in text else ""
+    between = text[m.end(1):m.start(2)] if unit else ""
+    return (head.strip() + out + between + unit).strip()
+
+
+class _StepButton(QtWidgets.QToolButton):
+    """An arrow button that remembers whether Shift was down at the press (auto-repeat keeps that)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.big = False
+
+    def mousePressEvent(self, event):
+        self.big = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+        super().mousePressEvent(event)
+
+
 class ValueField(QtWidgets.QLineEdit):
+    stepped = Signal(int)  # ±1 (±10 with Shift) from the Up/Down keys
+
     def insert(self, name):
         super().insert(name)
         self.setFocus()
+
+    def keyPressEvent(self, event):
+        if event.key() in (QtCore.Qt.Key_Up, QtCore.Qt.Key_Down):
+            big = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+            self.stepped.emit((1 if event.key() == QtCore.Qt.Key_Up else -1) * (10 if big else 1))
+            return
+        super().keyPressEvent(event)
 
 
 class ChoiceField(QtWidgets.QWidget):
@@ -78,12 +129,15 @@ class FeatureDialog(QtWidgets.QFrame):
         col.addLayout(head)
         form = QtWidgets.QGridLayout()
         form.setHorizontalSpacing(8)
+        self._steppers = {}
         for r, f in enumerate(fields):
             label = QtWidgets.QLabel(f.label)
             widget = self._make(f)
+            self._widgets[f.key] = widget  # the arrows read it while the row is built
+            row = self._with_arrows(f, widget) if f.kind in ("value_length", "value_angle") else widget
             form.addWidget(label, r, 0)
-            form.addWidget(widget, r, 1)
-            self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, widget)
+            form.addWidget(row, r, 1)
+            self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, row)
         col.addLayout(form)
         self._error = QtWidgets.QLabel("")
         self._error.setObjectName("InCadDialogError")
@@ -114,7 +168,9 @@ class FeatureDialog(QtWidgets.QFrame):
             " QLabel {{ color: {text}; }} QLabel#InCadDialogTitle {{ font-weight: 600; }}"
             " QLabel#InCadDialogError {{ color: {error}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
-            " padding: 2px 4px; }} QToolButton#InCadSegment {{ background: {panel_alt}; color: {text};"
+            " padding: 2px 4px; }} QToolButton#InCadStep {{ background: {panel_alt}; color: {text};"
+            " border: 1px solid {border}; padding: 0; font-size: 7px; }} QToolButton#InCadStep:disabled {{"
+            " color: {text_dim}; }} QToolButton#InCadSegment {{ background: {panel_alt}; color: {text};"
             " border: 1px solid {border}; padding: 2px 8px; }} QToolButton#InCadSegment:checked {{"
             " background: {accent}; color: {selection_text}; }}"
             " QPushButton {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 6px;"
@@ -155,6 +211,52 @@ class FeatureDialog(QtWidgets.QFrame):
         w.setCheckable(True)
         w.clicked.connect(lambda _=False, k=f.key: self._pick_clicked(k))
         return w
+
+    def _with_arrows(self, f, w):
+        """The value field with its ▲▼ arrows: one step per press (Shift ×10), each press previews at once."""
+        box = QtWidgets.QWidget(self)
+        row = QtWidgets.QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(2)
+        row.addWidget(w, 1)
+        col = QtWidgets.QVBoxLayout()
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        arrows = []
+        for text, delta in (("▲", 1), ("▼", -1)):
+            b = _StepButton(box)
+            b.setText(text)
+            b.setObjectName("InCadStep")
+            b.setFixedSize(18, 11)
+            b.setFocusPolicy(QtCore.Qt.NoFocus)
+            b.setAutoRepeat(True)
+            b.clicked.connect(lambda _=False, k=f.key, d=delta, b=b: self._step(k, d * (10 if b.big else 1)))
+            col.addWidget(b)
+            arrows.append(b)
+        row.addLayout(col)
+        self._steppers[f.key] = tuple(arrows)
+        w.stepped.connect(lambda d, k=f.key: self._step(k, d))
+        w.textChanged.connect(lambda _t, k=f.key: self._update_arrows(k))
+        self._update_arrows(f.key)
+        return box
+
+    def _update_arrows(self, key):
+        can = step_text(self._widgets[key].text(), 1, self._fields[key].kind) is not None
+        for b in self._steppers.get(key, ()):
+            b.setEnabled(can)
+
+    def _step(self, key, delta):
+        w = self._widgets[key]
+        text = step_text(w.text(), delta, self._fields[key].kind)
+        if text is None or text == w.text():
+            return
+        self._type_timer.stop()
+        w.setText(text)
+        self._emit()  # one preview per press, no waiting for the typing pause
+
+    def step_buttons(self, key):
+        """(up, down) arrow buttons of a value field (tests)."""
+        return self._steppers[key]
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.FocusIn and isinstance(obj, ValueField):
