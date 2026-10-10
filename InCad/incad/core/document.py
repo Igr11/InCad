@@ -122,13 +122,13 @@ def is_unused_sketch(sk):
 
 
 def sketch_shown(sk):
-    """Whether the part view shows this sketch: never when a feature uses it; else the user's InCadShown
-    choice; else an open contour (a path) is shown and a closed sketch hidden."""
+    """Whether the part view shows this sketch: the user's InCadShown choice when there is one; else hidden when
+    a feature uses it; else an open contour (a path) is shown and a closed sketch hidden."""
     from incad.core import sketch as sketches
-    if not is_unused_sketch(sk):
-        return False
     if SHOWN_PROP in sk.PropertiesList:
         return bool(getattr(sk, SHOWN_PROP))
+    if not is_unused_sketch(sk):
+        return False
     return sketches.is_open_contour(sk)
 
 
@@ -174,7 +174,7 @@ def prepare_choice(objects):
 
 
 def set_visibility(objects, flag, record=True):
-    """Show or hide origin items, work features and unused sketches; every one remembers the choice in
+    """Show or hide origin items, work features and sketches; every one remembers the choice in
     InCadShown (saved, undoable) unless `record` is False (a temporary show). Showing an origin item whose
     group is hidden turns the group on and hides its other items first, so only the chosen one appears."""
     for o in objects:
@@ -231,18 +231,12 @@ def apply_visibility(doc):
 
 def toggle_visibility(objects):
     """Hide / Show: hides when any target is visible, else shows them all. Returns the new state."""
-    targets = []
-    for o in objects:
-        if o.TypeId == "Sketcher::SketchObject":
-            if not is_unused_sketch(o):
-                raise ValueError("%s belongs to %s" % (o.Label, _consumer_label(o)))
-            targets.append(o)
-        elif o.TypeId in ORIGIN_TYPES or o.TypeId in DATUM_TYPES:
-            targets.append(o)
+    targets = [o for o in objects if o.TypeId == "Sketcher::SketchObject" or o.TypeId in ORIGIN_TYPES
+               or o.TypeId in DATUM_TYPES]
     if not targets:
         seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
-        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, a point or an unused sketch"
-                         % seen if seen else "Select a plane, an axis, a point or an unused sketch first")
+        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, a point or a sketch"
+                         % seen if seen else "Select a plane, an axis, a point or a sketch first")
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag

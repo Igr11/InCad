@@ -36,8 +36,9 @@ def _obj_node(obj, rolled_back):
     state = _state(obj, rolled_back)
     kind = "sketch" if obj.TypeId == "Sketcher::SketchObject" else "feature"
     node = Node(kind, obj.Label, obj.Name, state, _tooltip(obj, state))
-    if kind == "sketch" and state in ("", "rolled_back") and document.is_unused_sketch(obj) and not obj.Visibility:
-        node.state = "hidden"  # hidden by the user's choice (a consumed sketch is hidden by design)
+    if kind == "sketch" and state in ("", "rolled_back") and not obj.Visibility \
+            and (document.SHOWN_PROP in obj.PropertiesList or document.is_unused_sketch(obj)):
+        node.state = "hidden"  # hidden by the user's choice (a feature's sketch is hidden by design otherwise)
     if kind == "feature" and obj.TypeId in document.DATUM_TYPES and state in ("", "rolled_back") and not obj.Visibility:
         node.state = "hidden"  # a work plane, axis or point the user hid
     if kind == "sketch":

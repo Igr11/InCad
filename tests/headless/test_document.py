@@ -201,15 +201,20 @@ class VisibilityTest(unittest.TestCase):
         self.assertFalse(getattr(self.path, document.SHOWN_PROP))
         self.assertTrue(getattr(self.closed, document.SHOWN_PROP))
 
-    def test_consumed_sketch_stays_hidden_whatever_the_flag(self):
+    def test_consumed_sketch_is_hidden_by_default_but_follows_a_choice(self):
+        """A feature's sketch is hidden unless the user shows it with Hide / Show; the choice survives tip moves
+        and undo/redo re-application."""
         prof = self._profile()
-        prof.addProperty("App::PropertyBool", document.SHOWN_PROP, "InCad", "")
-        setattr(prof, document.SHOWN_PROP, True)
         document.show_result(self.body)
         self.assertFalse(prof.Visibility)
-        with self.assertRaises(ValueError) as cm:
-            document.toggle_visibility([prof])
-        self.assertIn("belongs to Pad", str(cm.exception))
+        self.assertTrue(document.toggle_visibility([prof]), "hidden: the toggle shows it")
+        self.assertTrue(prof.Visibility)
+        document.show_result(self.body)
+        self.assertTrue(prof.Visibility, "the choice outlives a tip move")
+        document.apply_visibility(self.doc)
+        self.assertTrue(prof.Visibility)
+        self.assertFalse(document.toggle_visibility([prof]))
+        self.assertFalse(prof.Visibility)
 
     def test_toggle_mixed_hides_all_then_shows_all(self):
         xy, xz = [o for o in document.origin_items(self.body) if o.Role in ("XY_Plane", "XZ_Plane")]
@@ -264,9 +269,7 @@ class VisibilityTest(unittest.TestCase):
         document.show_result(self.body)
         self.assertFalse(self.path.Visibility)
         self.assertFalse(prof.Visibility)
-        with self.assertRaises(ValueError) as cm:
-            document.toggle_visibility([self.path])
-        self.assertIn("belongs to " + sweep.Label, str(cm.exception))
+        self.assertTrue(document.toggle_visibility([self.path]), "a consumed path can still be shown by choice")
 
     def test_a_lofts_sections_are_consumed(self):
         from incad.features import shapes

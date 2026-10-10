@@ -133,14 +133,25 @@ def test_4_plane_pick_restores_the_choice():
         [(o.Role, document.is_shown(o)) for o in items]
 
 
-def test_5_consumed_sketch_is_refused():
+def test_5_consumed_sketch_can_be_shown_and_hidden():
     from incad.core import context
     sh = shell.instance()
+    Gui.Selection.clearSelection()
     sh.browser.tree.clearSelection()
     context.set_target("Sketch")
+    sk = App.ActiveDocument.getObject("Sketch")
+    assert not sk.Visibility
     r = commands.REGISTRY.run("view.toggle_visibility")
-    assert not r.ok and "belongs to Pad" in r.error, (r.ok, r.error)
-    assert not App.ActiveDocument.getObject("Sketch").Visibility
+    assert r.ok, r.error
+    harness.pump(400)
+    assert sk.Visibility, "a feature's sketch shown by choice"
+    assert sh.browser.item_by_label("Sketch").data(0, STATE_ROLE) == ""
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    assert not sk.Visibility
+    assert sh.browser.item_by_label("Sketch").data(0, STATE_ROLE) == "hidden"
+    context.set_target(None)
 
 
 def test_6_right_click_on_a_visible_plane_in_the_view_opens_the_origin_menu():
@@ -227,6 +238,6 @@ def test_7_right_click_on_a_work_plane_in_the_view_offers_hide_show():
 
 
 harness.run([test_0_part, test_1_tree_menu_hide_show_on_a_plane, test_2_two_selected_axes_toggle_together,
-             test_3_show_all_and_hide_all, test_4_plane_pick_restores_the_choice, test_5_consumed_sketch_is_refused,
+             test_3_show_all_and_hide_all, test_4_plane_pick_restores_the_choice, test_5_consumed_sketch_can_be_shown_and_hidden,
              test_6_right_click_on_a_visible_plane_in_the_view_opens_the_origin_menu,
              test_7_right_click_on_a_work_plane_in_the_view_offers_hide_show])

@@ -124,8 +124,13 @@ class HiddenRowsTest(unittest.TestCase):
         document.set_visibility([self.path], False)
         self.assertEqual(self._state("Path"), "hidden")
 
-    def test_consumed_sketch_is_not_marked(self):
+    def test_consumed_sketch_is_not_marked_unless_the_user_hid_it(self):
         self.assertEqual(self._state("Sketch"), "")
+        sk = self.doc.getObject("Sketch")
+        document.set_visibility([sk], True)
+        self.assertEqual(self._state("Sketch"), "")
+        document.set_visibility([sk], False)
+        self.assertEqual(self._state("Sketch"), "hidden", "hidden by choice: dimmed like any other")
 
     def test_hidden_work_plane_is_marked(self):
         wp = self.body.newObject("PartDesign::Plane", "WorkPlane")

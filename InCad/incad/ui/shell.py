@@ -1957,7 +1957,8 @@ class Shell(QtCore.QObject):
                         if not sk.Visibility and document.SHOWN_PROP not in sk.PropertiesList \
                                 and document.sketch_shown(sk):
                             sk.Visibility = True
-                        if sk.Visibility and (peeked or document.is_unused_sketch(sk)):
+                        if sk.Visibility and (peeked or document.SHOWN_PROP in sk.PropertiesList
+                                              or document.is_unused_sketch(sk)):
                             points.extend(sketches.key_points(sk))
                     except Exception as e:
                         log.logger().warning("Key points of %s: %s", sk.Name, e)

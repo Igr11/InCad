@@ -94,6 +94,13 @@ Three things the user asked for after trying the sketch tools on splines:
   peek: nothing saved; the next selection, Esc or a cleared selection puts it back). Hide / Show acts on the
   model's selection, ends a peek first, and names what was selected when nothing qualifies.
 - The part's Combine button and dialog are named **Boolean** (the assembly's Combine keeps its name).
+- **Hide / Show on any sketch**, a feature's too (asked after the first try): a consumed sketch is hidden by
+  default and shown when the user chooses; the choice (`InCadShown`) outlives tip moves and undo/redo.
+- **Work planes, axes and points** are planes and axes too: Hide / Show from the tree and from the RMB menu on
+  them in the view; the view's part/face/edge/vertex menus list Hide / Show.
+- **Undo is exact:** the targets get `InCadShown` with their current state before the step (outside it), the
+  step changes the value, Undo/Redo restore it and re-apply the recorded choices; a document's saved choices
+  are applied once when it is first shown.
 
 ## 7. Out of scope
 
