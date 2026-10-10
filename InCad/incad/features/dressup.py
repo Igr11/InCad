@@ -1,6 +1,9 @@
 """Fillet, Chamfer and Shell (Inventor) = PartDesign Fillet, Chamfer, Thickness on picked edges/faces."""
 from types import SimpleNamespace
 
+import FreeCAD as App
+import Part
+
 from incad.features.common import Field, link_sub, parse_picks, resolve, value_param, value_text
 
 
@@ -129,8 +132,144 @@ def _shell_update(doc, f, values):
     return f
 
 
+def _first_thread(body):
+    """The first modeled thread of the body (a helix feature, or a Hole with a modeled thread), or None."""
+    for o in body.Group:
+        if o.TypeId.endswith("Helix") or (o.TypeId == "PartDesign::Hole" and getattr(o, "ModelThread", False)):
+            return o
+    return None
+
+
+def _solid_before(body, feature):
+    from incad.core import document
+    group = list(body.Group)
+    before = [o for o in group[:group.index(feature)] if document._is_solid_feature(o)]
+    return before[-1] if before else None
+
+
+def _same_face(base, face):
+    """'FaceN' of `base` that is the same face as `face` (of a later feature): same kind of surface, the
+    picked face's centre on it; None when the earlier feature does not have it yet."""
+    centre = face.CenterOfMass
+    best, best_d = None, 1e-3
+    for i, f in enumerate(base.Shape.Faces):
+        if f.Surface.TypeId != face.Surface.TypeId:
+            continue
+        if face.Surface.TypeId == "Part::GeomPlane":
+            n, m = f.normalAt(0, 0), face.normalAt(0, 0)
+            if abs(n.dot(m)) < 1 - 1e-6 or abs((centre - f.CenterOfMass).dot(n)) > 1e-6:
+                continue
+            if f.isInside(centre, 1e-6, True):
+                return "Face%d" % (i + 1)
+        else:
+            d = f.distToShape(Part.Vertex(centre))[0] if hasattr(Part, "Vertex") else 1.0
+            if d < best_d:
+                best, best_d = "Face%d" % (i + 1), d
+    return best
+
+
+def _chain_failure(body, f, old_tip, thread, thickness):
+    """Reason text if a feature built on the hollowed part is unsound, else ''."""
+    from incad.core import document
+    group = list(body.Group)
+    for o in group[group.index(f) + 1:]:
+        if not o.isDerivedFrom("PartDesign::Feature"):
+            continue
+        shape = getattr(o, "Shape", None)
+        if "Invalid" in o.State or shape is None or shape.isNull() or not shape.isValid():
+            return "%s then fails on the hollowed part (wall %s)" % (o.Label, thickness)
+        if o is old_tip:
+            break
+    if body.Tip is not old_tip:
+        return "the part after it could not be rebuilt"
+    return ""
+
+
+def shell_before_thread(doc, body, values, search=True):
+    """The way around a kernel that can't hollow a threaded part: End of Part goes above the first modeled
+    thread, the Shell is made there (the picked faces found again on that earlier feature), and End of Part
+    comes back to where it was. When the thread then fails on the hollowed part and `search` is on, half and a
+    quarter of the wall are tried and the first that works is kept. Returns the Thickness (its Value is the
+    wall used); raises when nothing works, naming the feature that fails."""
+    from incad.core import document
+    thread = _first_thread(body)
+    if thread is None:
+        raise ValueError("The part has no modeled thread to shell before")
+    base = _solid_before(body, thread)
+    if base is None:
+        raise ValueError("Nothing to shell before %s" % thread.Label)
+    old_tip = body.Tip
+    picked = []
+    for obj, sub in parse_picks(doc, values.get("faces")):
+        if not sub.startswith("Face"):
+            continue
+        name = _same_face(base, obj.getSubObject(sub))
+        if name is None:
+            raise ValueError("%s of %s does not exist yet before %s: pick a face of the part's body"
+                             % (sub, obj.Label, thread.Label))
+        if name not in picked:
+            picked.append(name)
+    faces = ",".join("%s:%s" % (base.Name, n) for n in picked)
+    units = doc.getObject("InCadModel") is None  # (the text keeps the user's unit; only the number varies)
+    asked = App.Units.Quantity(values.get("thickness") or "1 mm")
+    mm = asked.getValueAs("mm")
+
+    def attempt(wall_mm):
+        text = "%g mm" % wall_mm
+        document.set_end_of_part(body, base)
+        try:
+            f = _shell_create(doc, body, None, dict(values, faces=faces, thickness=text))
+            doc.recompute()
+            if "Invalid" in f.State:
+                raise ValueError("%s: %s" % (f.Label, f.getStatusString()))
+        except Exception:
+            document.set_end_of_part(body, old_tip)
+            raise
+        document.set_end_of_part(body, old_tip)
+        doc.recompute()
+        why = _chain_failure(body, f, old_tip, thread, text)
+        if why:
+            doc.removeObject(f.Name)
+            document.set_end_of_part(body, old_tip)
+            doc.recompute()
+            return None, why
+        return f, ""
+
+    f, why = attempt(mm)
+    if f is not None or not search:
+        if f is None:
+            raise ValueError("Shell before %s: %s. Use a thinner wall, or a Shell later in the design"
+                             % (thread.Label, why))
+        return f
+    first_why, wall = why, mm
+    for _ in range(2):  # a thinner wall, twice (every attempt recomputes the thread: seconds each)
+        wall = wall / 2.0
+        f, why = attempt(wall)
+        if f is not None:
+            return f
+    raise ValueError("Shell before %s: %s, and so do walls of %g mm and %g mm"
+                     % (thread.Label, first_why, mm / 2.0, mm / 4.0))
+
+
+def _shell_rescue(doc, body, values, error):
+    """The dialog's way around a kernel that can't hollow a threaded part: shell before the thread."""
+    if "above the thread" not in error or _first_thread(body) is None:
+        return None
+    thread = _first_thread(body)
+
+    def go():
+        f = shell_before_thread(doc, body, values)
+        asked = values.get("thickness") or "1 mm"
+        used = "%g mm" % f.Value.Value
+        f.InCadRescueNote = ("Shell made before %s with %s walls" % (thread.Label, used)
+                             + ("" if App.Units.Quantity(asked).getValueAs("mm") <= f.Value.Value + 1e-9
+                                else " (%s fails on the thread there)" % asked))
+        return f
+    return ("Shell before %s" % thread.Label, go)
+
+
 SHELL = SimpleNamespace(
-    __name__="incad.features.shell", TITLE="Shell", ICON="shell", TYPES=("PartDesign::Thickness",),
+    __name__="incad.features.shell", TITLE="Shell", ICON="shell", TYPES=("PartDesign::Thickness",), rescue=_shell_rescue,
     NEEDS_PROFILE=False, PROPS={"thickness": "Value"}, PRESELECT={"faces": "face"},
     FIELDS=(Field("faces", "Remove faces", "picks", pick="face"),
             Field("thickness", "Thickness", "value_length", default="1 mm"),

@@ -228,3 +228,24 @@ class ComboFieldsTest(unittest.TestCase):
         self.assertTrue(self.d.row_visible("deep"))
         self.d.field("threaded").setChecked(False)
         self.assertFalse(self.d.row_visible("deep"))
+
+
+class RescueButtonTest(unittest.TestCase):
+    """An error may come with a way around it: a button under the message that runs the kind's rescue."""
+
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Shell", "incad", PICK_FIELDS, {"edges": "", "plane": "", "radius": "1 mm"})
+
+    def test_rescue_button_shows_with_the_error_and_runs_its_callable(self):
+        calls = []
+        self.d.set_error("Shell: FreeCAD can't hollow this", ("Shell before Thread", lambda: calls.append(1)))
+        self.assertTrue(self.d.rescue_button.isVisibleTo(self.d))
+        self.assertEqual(self.d.rescue_button.text(), "Shell before Thread")
+        self.assertFalse(self.d.ok_button.isEnabled())
+        self.d.rescue_button.click()
+        self.assertEqual(calls, [1])
+        self.d.set_error("")
+        self.assertFalse(self.d.rescue_button.isVisibleTo(self.d))
+        self.d.set_error("plain failure")
+        self.assertFalse(self.d.rescue_button.isVisibleTo(self.d), "no rescue: no button")

@@ -658,8 +658,34 @@ class FeatureSession(QtCore.QObject):
 
     def _check(self):
         found = safe.problems(self.doc, self._broken, {o.Name for o in self.doc.Objects})
-        self.dialog.set_error("; ".join(found))
+        text = "; ".join(found)
+        rescue = None
+        offer = getattr(self.kind, "rescue", None)
+        if text and offer is not None:
+            try:
+                plan = offer(self.doc, self.body, self.dialog.values(), text)  # (label, callable) or None
+            except Exception:
+                plan = None
+            if plan is not None:
+                rescue = (plan[0], lambda fn=plan[1], label=plan[0]: self._rescue(label, fn))
+        self.dialog.set_error(text, rescue)
         self._show_base_while_broken(bool(found))
+
+    def _rescue(self, label, fn):
+        """The kind's way around the failure: the failed attempt is dropped (as Cancel), the rescue runs as its
+        own undo step, and the status line says what was done or why it could not be."""
+        doc = self.doc
+        self.cancel()
+        r = safe.run_safely(self.kind.TITLE, fn, doc)
+        if r.ok:
+            note = getattr(r.value, "InCadRescueNote", None) if r.value is not None else None
+            log.report("info", note or "%s: done (%s)" % (self.kind.TITLE, label))
+        else:
+            log.report("warning", r.error)
+        from incad.ui import shell as shells
+        inst = shells.instance()
+        if inst is not None:
+            inst.schedule_refresh()
 
     def _show_base_while_broken(self, broken):
         """A preview that failed shows nothing: keep the part (the shape the feature starts from) on screen until the

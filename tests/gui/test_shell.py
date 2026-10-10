@@ -61,4 +61,39 @@ def test_1_shell_the_box_open_at_the_top():
     assert abs(tip.Shape.Volume - expect) < 1.0, (tip.Shape.Volume, expect)
 
 
-harness.run([test_0_part, test_1_shell_the_box_open_at_the_top])
+def test_2_the_real_part_offers_a_shell_before_the_thread():
+    """The user's part: the kernel refuses the shell; the dialog explains and offers 'Shell before Thread';
+    the button makes it with the thickest wall that works and says so."""
+    from incad.core import document
+    sh = shell.instance()
+    path = os.path.join(os.environ["INCAD_REPO"], "tests", "gui", "data", "p2_test_reordered.FCStd")
+    App.openDocument(path)
+    harness.pump(2000)
+    sh.schedule_refresh()
+    harness.pump(800)
+    body = document.primary_body(App.ActiveDocument)
+    tip = body.Tip
+    top = max((i for i, f in enumerate(tip.Shape.Faces) if abs(f.normalAt(0, 0).z - 1) < 1e-6),
+              key=lambda i: tip.Shape.Faces[i].Area) + 1
+    n0 = App.ActiveDocument.UndoCount  # before the dialog: its own pending step would count
+    commands.REGISTRY.run("feature.shell")
+    harness.pump(800)
+    fs = sh.feature_session
+    assert fs is not None
+    fs.dialog.set_pick("faces", "%s:Face%d" % (tip.Name, top))
+    fs.dialog.set_values({"thickness": "1.5 mm"})
+    harness.pump(9000)
+    assert "End of Part above the thread" in fs.dialog.error_text(), fs.dialog.error_text()
+    assert fs.dialog.rescue_button.isVisible(), "the way around is offered"
+    assert fs.dialog.rescue_button.text() == "Shell before Hole", fs.dialog.rescue_button.text()  # the first
+    QTest.mouseClick(fs.dialog.rescue_button, QtCore.Qt.LeftButton)      # modeled thread here is the Hole's
+    harness.pump(500)  # the rescue ran inside the click (three thread recomputes); the message is fresh
+    assert sh.feature_session is None, "the dialog is gone"
+    assert not [o for o in body.Group if o.TypeId == "PartDesign::Thickness"], "no wall works on this part"
+    assert App.ActiveDocument.UndoCount == n0, (n0, App.ActiveDocument.UndoCount)
+    assert body.Tip is tip and tip.Shape.isValid()
+    msg = sh.status.texts()["message"]
+    assert "and so do walls of 0.75 mm and 0.375 mm" in msg, msg
+
+
+harness.run([test_0_part, test_1_shell_the_box_open_at_the_top, test_2_the_real_part_offers_a_shell_before_the_thread])

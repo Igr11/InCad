@@ -90,6 +90,12 @@ class FeatureDialog(QtWidgets.QFrame):
         self._error.setWordWrap(True)
         self._error.hide()
         col.addWidget(self._error)
+        self.rescue_button = QtWidgets.QPushButton("")  # a way around the error, offered by the feature kind
+        self.rescue_button.setObjectName("InCadDialogRescue")
+        self.rescue_button.hide()
+        self._rescue = None
+        self.rescue_button.clicked.connect(lambda: self._rescue() if self._rescue is not None else None)
+        col.addWidget(self.rescue_button)
         buttons = QtWidgets.QHBoxLayout()
         buttons.addStretch(1)
         self.cancel_button = QtWidgets.QPushButton("Cancel")
@@ -345,11 +351,15 @@ class FeatureDialog(QtWidgets.QFrame):
     def set_choice_enabled(self, key, value, enabled):
         self._widgets[key].button(value).setEnabled(enabled)
 
-    def set_error(self, text):
+    def set_error(self, text, rescue=None):
+        """Show why the feature fails; `rescue` = (button label, callable) offers a way around it."""
         self._error.setText(text)
         self._error.setVisible(bool(text))
         self.ok_button.setEnabled(not text)
         self.apply_button.setEnabled(not text)
+        self._rescue = rescue[1] if rescue else None
+        self.rescue_button.setText(rescue[0] if rescue else "")
+        self.rescue_button.setVisible(bool(text and rescue))
         self.adjustSize()  # grow (or shrink back) so the reason never squeezes the fields
 
     def error_text(self):

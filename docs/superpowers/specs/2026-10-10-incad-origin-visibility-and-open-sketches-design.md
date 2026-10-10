@@ -98,6 +98,11 @@ Three things the user asked for after trying the sketch tools on splines:
   default and shown when the user chooses; the choice (`InCadShown`) outlives tip moves and undo/redo.
 - **Work planes, axes and points** are planes and axes too: Hide / Show from the tree and from the RMB menu on
   them in the view; the view's part/face/edge/vertex menus list Hide / Show.
+- **Shell on a threaded part:** the kernel refuses a thick solid once a modeled thread is in. The Shell dialog
+  explains it and offers a button "Shell before <thread>": End of Part goes above the first modeled thread,
+  the Shell is made there with the picked faces found again on that feature, End of Part comes back; when the
+  thread then fails on the hollowed part, half and a quarter of the wall are tried; one undo step; the status
+  line says the wall used or that no wall works (`features.dressup.shell_before_thread`, `kind.rescue`).
 - **Undo is exact:** the targets get `InCadShown` with their current state before the step (outside it), the
   step changes the value, Undo/Redo restore it and re-apply the recorded choices; a document's saved choices
   are applied once when it is first shown.
