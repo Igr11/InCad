@@ -40,6 +40,8 @@ class FeatureSession(QtCore.QObject):
         self._observing = False
         self._seeding = False
         self._saved_visibility = []
+        self._markers = None       # key points of the sketches picked for Sweep/Loft, on the view
+        self._saved_sketches = []  # picked sketches shown for the dialog, hidden again when it closes
 
     def start(self):
         doc = self.doc
@@ -104,6 +106,7 @@ class FeatureSession(QtCore.QObject):
         if self.dialog is not None:
             self.dialog.reset_history()  # seeding is not the user's change: Undo stops (and drops the dialog) here
         self._observe(True)
+        self._sync_sketch_markers()  # an edited Sweep/Loft shows its sketches' points from the start
         return True
 
     def _shown(self, field):
@@ -450,6 +453,48 @@ class FeatureSession(QtCore.QObject):
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
         self._timer.start()
+        self._sync_sketch_markers()
+
+    def _sync_sketch_markers(self):
+        """The sketches picked in `sketch` fields (Sweep's profile and path, Loft's sections) are shown with
+        their key points while the dialog is open."""
+        import FreeCADGui as Gui
+        from incad.core import sketch as sketches
+        from incad.features import common
+        from incad.ui.point_markers import PointMarkers
+        if self._closed or self.dialog is None:
+            return
+        picked = []
+        for f in self.kind.FIELDS:
+            if getattr(f, "pick", None) == "sketch":
+                for obj, _ in common.parse_picks(self.doc, self.dialog.values().get(f.key)):
+                    if obj.TypeId == "Sketcher::SketchObject" and obj not in picked:
+                        picked.append(obj)
+        for sk in picked:  # FreeCAD hides a sketch once a Pipe/Loft takes it (its view provider does): show it
+            if not sk.Visibility:  # again after every preview, hidden back when the dialog closes
+                if sk not in self._saved_sketches:
+                    self._saved_sketches.append(sk)
+                self._set_visible(sk, True)
+        points = []
+        for sk in picked:
+            try:
+                points.extend(sketches.key_points(sk))
+            except Exception:
+                pass
+        if not points:
+            if self._markers is not None:
+                self._markers.clear()
+            return
+        try:
+            if self._markers is None:
+                gdoc = Gui.getDocument(self.doc_name)
+                view = gdoc.ActiveView if gdoc is not None else None
+                if view is None:
+                    return
+                self._markers = PointMarkers(view, self._theme)
+            self._markers.set(points)
+        except Exception as e:
+            log.logger().warning("Dialog markers: %s", e)
 
     def _preview(self):
         if self._pending is None or self._closed:
@@ -502,6 +547,7 @@ class FeatureSession(QtCore.QObject):
         self._label_params()
         self._fill_empty_picks()
         self._show_summary()
+        self._sync_sketch_markers()
         key = self.dialog.active_pick()
         if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
             self._show_base(False)
@@ -704,6 +750,12 @@ class FeatureSession(QtCore.QObject):
             self._show_base(False)
         except Exception:
             pass
+        for sk in self._saved_sketches:  # shown for the dialog only: back to the part view's policy
+            self._set_visible(sk, False)
+        self._saved_sketches = []
+        if self._markers is not None:
+            self._markers.remove()
+            self._markers = None
         try:
             if commit:
                 self.doc.commitTransaction()

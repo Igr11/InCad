@@ -110,5 +110,58 @@ def test_4_real_part_sketch7_is_shown_with_its_ends():
     assert others == [], others
 
 
+def test_5_sweep_dialog_marks_the_picked_path_and_profile():
+    from incad.core import document
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    body = _body()
+    path = _sketch_on(body, "XY_Plane", "Path")
+    path.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(40, 0, 0)))
+    prof = _sketch_on(body, "YZ_Plane", "Prof")
+    prof.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3))
+    App.ActiveDocument.recompute()
+    document.show_result(body)
+    sh = shell.instance()
+    sh.schedule_refresh()
+    harness.pump(500)
+    assert not prof.Visibility, "a closed unused sketch starts hidden"
+    commands.REGISTRY.run("feature.sweep")
+    harness.pump(600)
+    fs = sh.feature_session
+    assert fs is not None, "the Sweep dialog is open"
+    fs.dialog.set_pick("profile", "Prof")
+    fs.dialog.set_pick("path", "Path")
+    harness.pump(900)
+    assert prof.Visibility and path.Visibility, "picked sketches are shown for the dialog"
+    assert fs._markers is not None and fs._markers.count == 3, fs._markers and fs._markers.count  # centre + 2 ends
+    assert _count() == 0, "the part-view markers wait while the dialog shows its own"
+    fs.cancel()
+    harness.pump(600)
+    assert sh.feature_session is None
+    assert fs._markers is None, "the dialog's markers are gone"
+    assert not prof.Visibility, "the closed sketch is hidden again"
+    assert _count() == 2, _count()  # the open path's ends are back
+
+
+def test_6_loft_dialog_marks_every_section():
+    body = _body()
+    sh = shell.instance()
+    top = _sketch_on(body, "YZ_Plane", "Top")
+    top.AttachmentOffset = App.Placement(App.Vector(0, 0, 20), App.Rotation())
+    top.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5))
+    App.ActiveDocument.recompute()
+    commands.REGISTRY.run("feature.loft")
+    harness.pump(600)
+    fs = sh.feature_session
+    assert fs is not None, "the Loft dialog is open"
+    assert fs.kind.TITLE == "Loft" and "sections" in fs.dialog._widgets, (fs.kind.TITLE, list(fs.dialog._widgets))
+    fs.dialog.set_pick("sections", "Prof,Top")
+    harness.pump(900)
+    assert fs._markers is not None and fs._markers.count == 2, fs._markers and fs._markers.count
+    fs.cancel()
+    harness.pump(600)
+
+
 harness.run([test_0_part_with_a_path, test_1_hidden_path_has_no_markers, test_2_sketch_edit_mode_hides_the_markers,
-             test_3_deleted_sketch_drops_its_markers, test_4_real_part_sketch7_is_shown_with_its_ends])
+             test_3_deleted_sketch_drops_its_markers, test_4_real_part_sketch7_is_shown_with_its_ends,
+             test_5_sweep_dialog_marks_the_picked_path_and_profile, test_6_loft_dialog_marks_every_section])
