@@ -117,6 +117,7 @@ class ModelBrowser(QtWidgets.QWidget):
         self.tree = _Tree(self)
         self.tree.setObjectName("InCadTree")
         self.tree.setHeaderHidden(True)
+        self.tree.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)  # Shift/Cmd: Hide / Show on all
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         self.tree.itemClicked.connect(self._on_click)
         self.tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -178,6 +179,8 @@ class ModelBrowser(QtWidgets.QWidget):
             color = p["error"]
         elif node.state in ("rolled_back", "suppressed"):
             color = p["rolled_back"]
+        elif node.state == "hidden":
+            color = p["text_dim"]
         if node.kind == "end_of_part":
             color = p["eop"]
         elif node.kind == "action":
@@ -221,6 +224,10 @@ class ModelBrowser(QtWidgets.QWidget):
 
     def tree_rows(self):
         return [(self._depth(i), i.data(0, LABEL_ROLE), i.data(0, KIND_ROLE), i.data(0, STATE_ROLE)) for i in self._items()]
+
+    def selected_names(self):
+        """FreeCAD names of the selected rows, tree order (Hide / Show acts on them)."""
+        return [i.data(0, NAME_ROLE) for i in self._items() if i.isSelected() and i.data(0, NAME_ROLE)]
 
     def item_by_label(self, label):
         for item in self._items():

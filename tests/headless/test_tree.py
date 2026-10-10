@@ -1,6 +1,7 @@
 import unittest
 
 import FreeCAD as App
+import Part
 from incad.core import document, nodes, tree
 from headless import util
 
@@ -93,3 +94,35 @@ class TreeTest(unittest.TestCase):
         self.doc.recompute()
         self.assertEqual([x[:4] for x in body_rows(self.doc)],
                          [(1, "sketch", "First", ""), (1, "end_of_part", "End of Part", "")])
+
+
+class HiddenRowsTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Th")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        self.path = self.body.newObject("Sketcher::SketchObject", "Path")
+        self.path.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.path.MapMode = "FlatFace"
+        self.path.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(30, 0, 0)))
+        self.doc.recompute()
+        document.show_result(self.body)
+        for o in document.origin_items(self.body):
+            o.Visibility = False  # as FreeCAD's GUI leaves them in a new part (headless defaults them visible)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _state(self, label):
+        return next(n.state for _, n in nodes.flatten(tree.build(self.doc)) if n.label == label)
+
+    def test_hidden_origin_items_and_unused_sketches_are_marked(self):
+        self.assertEqual(self._state("XY Plane"), "hidden")
+        xy = [o for o in document.origin_items(self.body) if o.Role == "XY_Plane"][0]
+        xy.Visibility = True
+        self.assertEqual(self._state("XY Plane"), "")
+        self.assertEqual(self._state("Path"), "", "an open contour is shown")
+        document.set_visibility([self.path], False)
+        self.assertEqual(self._state("Path"), "hidden")
+
+    def test_consumed_sketch_is_not_marked(self):
+        self.assertEqual(self._state("Sketch"), "")

@@ -36,6 +36,8 @@ def _obj_node(obj, rolled_back):
     state = _state(obj, rolled_back)
     kind = "sketch" if obj.TypeId == "Sketcher::SketchObject" else "feature"
     node = Node(kind, obj.Label, obj.Name, state, _tooltip(obj, state))
+    if kind == "sketch" and state in ("", "rolled_back") and document.is_unused_sketch(obj) and not obj.Visibility:
+        node.state = "hidden"  # hidden by the user's choice (a consumed sketch is hidden by design)
     if kind == "sketch":
         try:
             node.detail = "✓" if obj.FullyConstrained else "%d DOF" % obj.DoF
@@ -91,15 +93,17 @@ def _work_in_progress_above_end(nodes):
     if marker is None:
         return nodes
     j = marker + 1
-    while j < len(nodes) and nodes[j].kind == "sketch" and nodes[j].state in ("", "rolled_back"):
-        nodes[j].state = ""
+    while j < len(nodes) and nodes[j].kind == "sketch" and nodes[j].state in ("", "rolled_back", "hidden"):
+        if nodes[j].state == "rolled_back":
+            nodes[j].state = ""
         j += 1
     return nodes[:marker] + nodes[marker + 1:j] + [nodes[marker]] + nodes[j:]
 
 
 def _origin(body):
     origin = body.Origin
-    items = [Node("origin_item", ROLE_LABELS.get(getattr(f, "Role", ""), f.Label), f.Name)
+    items = [Node("origin_item", ROLE_LABELS.get(getattr(f, "Role", ""), f.Label), f.Name,
+                  "" if f.Visibility else "hidden")
              for f in origin.OriginFeatures]
     return Node("origin", "Origin", origin.Name, children=items)
 

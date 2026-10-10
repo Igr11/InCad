@@ -7,7 +7,7 @@ class Node:
     kind: str          # part | origin | origin_item | solids | body | feature | sketch | end_of_part | message | action
     label: str
     name: str = ""     # FreeCAD object name; for 'action' nodes the action id
-    state: str = ""    # '' | 'error' | 'suppressed' | 'rolled_back'
+    state: str = ""    # '' | 'error' | 'suppressed' | 'rolled_back' | 'hidden'
     tooltip: str = ""
     detail: str = ""   # shown after the label (e.g. a sketch's DOF)
     children: list = field(default_factory=list)

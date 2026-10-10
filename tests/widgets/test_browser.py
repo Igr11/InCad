@@ -1,7 +1,7 @@
 import unittest
 
 from widgets import qtapp
-from incad.qt import QtCore, QtGui
+from incad.qt import QtCore, QtGui, QtWidgets
 from incad.core.nodes import Node
 from incad.ui import theme
 from incad.ui.browser import ModelBrowser
@@ -319,3 +319,21 @@ class OriginRowsTest(unittest.TestCase):
         b.tree.scrollToItem(item)
         b._on_context_menu(b.tree.visualItemRect(item).center())
         self.assertEqual(seen, [("edit", "XY_Plane"), ("menu", "XY_Plane")])
+
+
+class HiddenRowsTest(unittest.TestCase):
+    def test_hidden_rows_are_dimmed_and_multi_selection_reports_names(self):
+        qtapp.app()
+        b = ModelBrowser("light")
+        b.set_nodes([Node("part", "P", "Body", children=[
+            Node("origin", "Origin", "Origin", children=[Node("origin_item", "XY Plane", "XY_Plane", "hidden"),
+                                                         Node("origin_item", "XZ Plane", "XZ_Plane")]),
+            Node("sketch", "Path", "Path", "hidden")])])
+        dim = QtGui.QColor(theme.PALETTES["light"]["text_dim"])
+        self.assertEqual(b.item_by_label("XY Plane").foreground(0).color(), dim)
+        self.assertEqual(b.item_by_label("Path").foreground(0).color(), dim)
+        self.assertNotEqual(b.item_by_label("XZ Plane").foreground(0).color(), dim)
+        self.assertEqual(b.tree.selectionMode(), QtWidgets.QAbstractItemView.ExtendedSelection)
+        b.item_by_label("XY Plane").setSelected(True)
+        b.item_by_label("Path").setSelected(True)
+        self.assertEqual(b.selected_names(), ["XY_Plane", "Path"])
