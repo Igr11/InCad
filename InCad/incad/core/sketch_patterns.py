@@ -638,12 +638,18 @@ def stations(chain, s0, count, spacing):
 
 def _rotation_centre(s0, sk_, alpha):
     """Centre of the rotation by `alpha` that takes station s0 to station sk_ (a rigid motion with a turn is a
-    rotation about one point): (I - R) C = sk_ - R s0."""
+    rotation about one point): (I - R) C = sk_ - R s0. None for a turn too small to resolve."""
     c, s = math.cos(alpha), math.sin(alpha)
+    det = 2.0 * (1.0 - c)
+    if det < 1e-12:
+        return None
     rx, ry = c * s0.x - s * s0.y, s * s0.x + c * s0.y
     bx, by = sk_.x - rx, sk_.y - ry
-    det = 2.0 * (1.0 - c)
     return App.Vector(((1 - c) * bx - s * by) / det, (s * bx + (1 - c) * by) / det, 0)
+
+
+MIN_TURN = 1e-4      # radians: a smaller turn is tied as a translation
+FAR_CENTRE = 20.0    # a centre farther than this × the path length would put spokes off the sketch
 
 
 def build_path(doc, sk, rec):
@@ -683,9 +689,17 @@ def build_path(doc, sk, rec):
             alpha = (alpha + math.pi) % (2 * math.pi) - math.pi
         offset = station - start_pt
         new, copy_ids = {}, []
-        if abs(alpha) < 1e-9:
+        centre = None
+        if abs(alpha) >= MIN_TURN:
+            centre = _rotation_centre(start_pt, station, alpha)
+            if centre is not None and (centre - station).Length > FAR_CENTRE * path_length(chain):
+                centre = None  # a gentle bend: the turn's centre would sit far off the sketch
+        if centre is None:
+            # a translation (or a turn too gentle for spokes): the copy is placed as it should be and each point
+            # tied to the original's by its own constant offset — still rigid, nothing far away
             for g in originals:
-                c = _copy_geometry(sk, g, offset=offset)
+                c = _copy_geometry(sk, g, offset=offset) if abs(alpha) < 1e-12 else \
+                    _copy_geometry(sk, g, offset=offset, rotate=(station, alpha))
                 new[g] = c
                 copy_ids.append(ensure_id(sk, c))
             for g in originals:
@@ -696,19 +710,20 @@ def build_path(doc, sk, rec):
                         _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
                         continue
                     rec["_points"][(src, k, 0)] = True
-                    _add(sk, rec, Sketcher.Constraint("DistanceX", g, pos, c, pos, offset.x))
-                    _add(sk, rec, Sketcher.Constraint("DistanceY", g, pos, c, pos, offset.y))
+                    d = point_of(sk, c, pos) - point_of(sk, g, pos)
+                    _add(sk, rec, Sketcher.Constraint("DistanceX", g, pos, c, pos, d.x))
+                    _add(sk, rec, Sketcher.Constraint("DistanceY", g, pos, c, pos, d.y))
                 t = geometry_type(sk, g)
                 if t == "Part::GeomCircle":
                     _add(sk, rec, Sketcher.Constraint("Equal", g, c))
                 elif t == "Part::GeomArcOfCircle":
                     b = _bisector(sk, g)
+                    d = point_of(sk, c, 3) - point_of(sk, g, 3)
                     if abs(b.x) >= abs(b.y):
-                        _add(sk, rec, Sketcher.Constraint("DistanceX", g, 3, c, 3, offset.x))
+                        _add(sk, rec, Sketcher.Constraint("DistanceX", g, 3, c, 3, d.x))
                     else:
-                        _add(sk, rec, Sketcher.Constraint("DistanceY", g, 3, c, 3, offset.y))
+                        _add(sk, rec, Sketcher.Constraint("DistanceY", g, 3, c, 3, d.y))
         else:
-            centre = _rotation_centre(start_pt, station, alpha)
             for g in originals:
                 c = _copy_geometry(sk, g, rotate=(centre, alpha))
                 new[g] = c

@@ -961,6 +961,35 @@ class PathBuildTest(unittest.TestCase):
         copy = self.sk.Geometry[sp.index_of(self.sk, rec["copies"][0][0])]
         self.assertAlmostEqual((copy.EndPoint - copy.StartPoint).Length, 6, places=4)
 
+    def test_follow_path_on_a_gentle_bend_keeps_the_ties_close(self):
+        """Two lines meeting at half a degree: the rotation centre would sit metres away (and a near-zero turn
+        divides by zero): such a copy takes the plain translation ties instead, and nothing lands far off."""
+        doc = util.new_doc("Pg")
+        try:
+            body = document.make_part(doc)
+            sk = body.newObject("Sketcher::SketchObject", "Sketch")
+            sk.AttachmentSupport = [(util.xy_plane(body), "")]
+            sk.MapMode = "FlatFace"
+            a = line(sk, 0, 0, 50, 0)
+            b = line(sk, 50, 0, 100, 50 * math.tan(math.radians(0.5)))
+            ln = line(sk, 0, -5, 4, -5)
+            doc.recompute()
+            sk.solve()
+            dof = sk.DoF
+            rec = {"name": sp.next_name(sk), "kind": "path", "values": {}, "originals": [sp.ensure_id(sk, ln)],
+                   "path": [sp.ensure_id(sk, a), sp.ensure_id(sk, b)], "count": 2, "spacing": 80.0,
+                   "orientation": "follow", "flip": False}
+            rec = sp.build_path(doc, sk, rec)
+            sk.solve()
+            self.assertEqual(sk.DoF, dof)
+            bb = Part.Compound([sk.Geometry[i].toShape() for i in range(sk.GeometryCount)]).BoundBox
+            self.assertLess(max(abs(bb.XMin), abs(bb.XMax), abs(bb.YMin), abs(bb.YMax)), 200, "no far-off spokes")
+            for tiny in (1e-9, 5e-9, 1e-8):  # no ZeroDivisionError: None means "tie as a translation"
+                self.assertIsNone(sp._rotation_centre(App.Vector(0, 0, 0), App.Vector(10, 0, 0), tiny))
+            self.assertIsNotNone(sp._rotation_centre(App.Vector(0, 0, 0), App.Vector(10, 0, 0), 0.1))
+        finally:
+            App.closeDocument(doc.Name)
+
     def test_spline_path_and_rebuild_and_remove(self):
         spl = Part.BSplineCurve()
         spl.buildFromPoles([App.Vector(0, 20, 0), App.Vector(10, 30, 0), App.Vector(20, 20, 0), App.Vector(30, 30, 0)])
