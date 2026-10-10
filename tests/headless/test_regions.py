@@ -165,3 +165,49 @@ class UsableProfileTest(unittest.TestCase):
             self.assertEqual(common.unconsumed_closed_sketches(body), [sk])
         finally:
             App.closeDocument(doc.Name)
+
+
+class FollowAndOrphansTest(unittest.TestCase):
+    """Area copies follow their sketch quietly: a lost area is reported once, naming the features that use it; a
+    copy no feature uses (an orphan) is never reported and is removed when the file opens."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Rf")
+        self.body = document.make_part(self.doc)
+        self.sk = crossing_sketch(self.body)
+        self.doc.recompute()
+        self.used = regions.make_profile(self.doc, self.body, self.sk, regions.region_at(self.sk, App.Vector(5, 5, 0)))
+        self.cut = self.body.newObject("PartDesign::Pad", "Pad")
+        self.cut.Profile = self.used
+        self.cut.Length = 3
+        self.orphan = regions.make_profile(self.doc, self.body, self.sk,
+                                           regions.region_at(self.sk, App.Vector(15, 5, 0)))
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_users(self):
+        self.assertEqual(regions.users(self.used), [self.cut])
+        self.assertEqual(regions.users(self.orphan), [])
+
+    def test_a_lost_area_is_reported_once_with_its_users(self):
+        warned = set()
+        for i in reversed(range(self.sk.GeometryCount)):  # everything redrawn far away: both areas are gone
+            self.sk.delGeometry(i)
+        self.sk.addGeometry(Part.Circle(App.Vector(60, 60, 0), App.Vector(0, 0, 1), 3))
+        self.doc.recompute()
+        first = regions.follow(self.sk, warned)
+        second = regions.follow(self.sk, warned)
+        self.assertEqual(len(first), 1, first)
+        self.assertIn("Pad", first[0])
+        self.assertNotIn(self.orphan.Label, " ".join(first))
+        self.assertEqual(second, [], "not again while the area stays lost")
+
+    def test_purge_orphans_keeps_the_used_copy(self):
+        name = self.orphan.Name
+        self.assertEqual(regions.purge_orphans(self.doc), 1)
+        self.assertIsNone(self.doc.getObject(name))
+        self.assertIsNotNone(self.doc.getObject(self.used.Name))
+        self.assertIsNotNone(self.doc.getObject(self.sk.Name), "the user's sketch stays")
+        self.assertEqual(regions.purge_orphans(self.doc), 0)

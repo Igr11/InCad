@@ -301,6 +301,7 @@ class Shell(QtCore.QObject):
         self._point_pick = None  # waiting for three clicks on the section markers
         self._peeked = None      # (document, object name, [(obj, was visible)]): shown while its tree row is selected
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
+        self._area_warned = set()  # area copies already reported as lost (until their area is back)
         self._visibility_applied = set()  # document names whose saved visibility was put in step once
         self._sel_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
@@ -1265,14 +1266,12 @@ class Shell(QtCore.QObject):
         if not _alive(sk) or regions.is_profile(sk):
             return
         try:
-            profiles = regions.profiles_of(sk)
-            if not profiles:
+            if not regions.profiles_of(sk):
                 return
-            lost = [p for p in profiles if not regions.update(p)]
+            warnings = regions.follow(sk, self._area_warned)  # each lost area once, naming its features
             sk.Document.recompute()
-            for p in lost:
-                log.report("warning", "The area of %s used by %s is gone: it keeps its previous outline" % (
-                    sk.Label, ", ".join(o.Label for o in p.InList if getattr(o, "Profile", None) is not None)))
+            for text in warnings:
+                log.report("warning", text)
         except Exception as e:
             log.report("warning", "Could not update the areas of %s: %s" % (sk.Label, e), traceback.format_exc())
 
@@ -2055,6 +2054,12 @@ class Shell(QtCore.QObject):
                 document.apply_visibility(doc)
             except Exception as e:
                 log.logger().warning("Visibility on open: %s", e)
+            try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
+                from incad.core import regions
+                if regions.purge_orphans(doc):
+                    doc.recompute()
+            except Exception as e:
+                log.logger().warning("Orphan area copies on open: %s", e)
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)

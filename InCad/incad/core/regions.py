@@ -168,3 +168,45 @@ def update(profile):
     _attach_like(profile, source)
     fill(profile, face)
     return True
+
+
+def users(profile):
+    """The features built on this area copy (none: an orphan, its feature deleted outside InCad)."""
+    out = []
+    for o in profile.InList:
+        prof = getattr(o, "Profile", None)
+        prof = prof[0] if isinstance(prof, (tuple, list)) and prof else prof
+        if prof is profile:
+            out.append(o)
+    return out
+
+
+def follow(source, warned):
+    """Bring the area copies of `source` in step with it; returns the warnings to show. A lost area is reported
+    once (its name stays in `warned` until the area is back), with the features that use it; an orphan copy is
+    never reported."""
+    out = []
+    for p in profiles_of(source):
+        if update(p):
+            warned.discard(p.Name)
+            continue
+        who = users(p)
+        if not who or p.Name in warned:
+            continue
+        warned.add(p.Name)
+        out.append("The area of %s used by %s is gone: it keeps its previous outline"
+                   % (source.Label, ", ".join(o.Label for o in who)))
+    return out
+
+
+def purge_orphans(doc):
+    """Remove the area copies no feature uses (left behind when a feature was deleted outside InCad); the
+    user's sketches stay. Returns how many went."""
+    gone = 0
+    for p in [o for o in doc.Objects if is_profile(o) and not users(o)]:
+        body = p.getParentGeoFeatureGroup()
+        if body is not None:
+            body.removeObject(p)
+        doc.removeObject(p.Name)
+        gone += 1
+    return gone
