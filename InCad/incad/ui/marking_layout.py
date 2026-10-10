@@ -12,10 +12,11 @@ LAYOUT = {
                       "view.origin_hide_all"]},
     "face": {"N": "sketch.start", "NE": "view.look_at", "E": "view.style_shaded", "SE": "view.home",
              "S": "feature.extrude", "SW": "view.zoom_all", "W": "view.style_wireframe", "NW": "edit.undo",
-             "list": ["view.zoom_selection", "feature.hole", "feature.fillet", "feature.thread", "view.toggle_visibility"]},
+             "list": ["view.show_in_browser", "view.zoom_selection", "feature.hole", "feature.fillet", "feature.thread",
+                      "view.toggle_visibility"]},
     "edge": dict(_EDGE, E="feature.fillet", W="feature.chamfer",
-                 list=["view.style_shaded", "view.style_wireframe", "view.toggle_visibility"]),
-    "vertex": dict(_EDGE, list=["view.toggle_visibility"]),
+                 list=["view.show_in_browser", "view.style_shaded", "view.style_wireframe", "view.toggle_visibility"]),
+    "vertex": dict(_EDGE, list=["view.show_in_browser", "view.toggle_visibility"]),
     "sketch": {"N": "sketch.finish", "NE": "sketch.line", "E": "sketch.circle", "SE": "sketch.rectangle",
                "S": "sketch.dimension", "SW": "sketch.arc", "W": "edit.undo", "NW": "sketch.trim",
                "list": ["sketch.stop", "edit.delete", "sketch.constraints_toggle", "view.look_at",
@@ -30,7 +31,8 @@ LAYOUT = {
     "empty": {"N": "file.new", "S": "file.open", "E": "view.theme_toggle", "W": "view.freecad", "list": []},
     "origin": {"N": "sketch.start", "S": "view.toggle_visibility", "list": ["sketch.start", "view.toggle_visibility"]},
     "browser": {"N": "browser.edit", "S": "browser.move_end_of_part", "E": "browser.suppress",
-                "W": "browser.rename", "list": ["browser.edit", "sketch.start", "browser.delete", "view.toggle_visibility"]},
+                "W": "browser.rename", "list": ["browser.edit", "browser.show_in_window", "sketch.start", "browser.delete",
+                         "view.toggle_visibility"]},
 }
 
 

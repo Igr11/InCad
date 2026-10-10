@@ -88,6 +88,22 @@ class KeyPointsTest(unittest.TestCase):
         self.assertEqual(self._xy(sketch.key_points(s)),
                          [("pole", 0.0, 0.0, 0.0), ("pole", 5.0, 8.0, 0.0), ("pole", 10.0, 0.0, 0.0)])
 
+    def test_spline_through_points_marks_the_points_it_passes(self):
+        """A spline drawn through points (FreeCAD's B-spline by knots, a path for a sweep): the points on the
+        line are marked as well as its poles."""
+        s = _sketch(self.doc)
+        c = Part.BSplineCurve()
+        c.interpolate([App.Vector(0, 0, 0), App.Vector(5, 8, 0), App.Vector(10, 0, 0), App.Vector(15, 4, 0)])
+        s.addGeometry(c)
+        self.doc.recompute()
+        marks = self._xy(sketch.key_points(s))
+        ends = [(x, y) for k, x, y, _ in marks if k == "end"]
+        for p in ((5.0, 8.0), (10.0, 0.0)):
+            self.assertIn(p, ends, marks)
+        everything = [(x, y) for _, x, y, _ in marks]
+        for p in ((0.0, 0.0), (15.0, 4.0)):  # the ends sit on the first and last pole: marked once
+            self.assertIn(p, everything, marks)
+
     def test_construction_geometry_is_skipped(self):
         s = _sketch(self.doc)
         s.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(10, 0, 0)))

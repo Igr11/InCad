@@ -67,7 +67,8 @@ def test_1_tree_click_selects_in_the_model_and_shows_a_hidden_axis_while_selecte
     assert document.is_shown(z), "shown while its row is selected"
     assert not document.is_shown(_origin("X_Axis")), "only the selected one"
     _click_row("Pad")
-    assert _sel() == [("Pad", ())], _sel()
+    got = _sel()  # a feature row lights the faces it made on the shown solid (Inventor)
+    assert len(got) == 1 and got[0][0] == "Pad" and got[0][1] and all(n.startswith("Face") for n in got[0][1]), got
     assert not document.is_shown(z), "hidden again when the selection moves on"
     assert document.SHOWN_PROP not in z.PropertiesList
 

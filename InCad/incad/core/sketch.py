@@ -48,7 +48,8 @@ def is_open_contour(sk):
 
 
 def key_points(sk):
-    """[(kind, global Vector)] the view marks on a sketch: a spline's poles ('pole'), a line's or arc's ends and
+    """[(kind, global Vector)] the view marks on a sketch: a spline's poles ('pole') and the points it passes
+    through ('end'), a line's or arc's ends and
     a point ('end'), a circle's or ellipse's centre ('centre'). Construction geometry is skipped; points within
     1e-6 of an earlier one are merged (the first kind wins)."""
     pl = sk.getGlobalPlacement()
@@ -69,6 +70,8 @@ def key_points(sk):
         if tid == "Part::GeomBSplineCurve":
             for p in geo.getPoles():
                 add("pole", p)
+            for k in geo.getKnots():  # the points the line passes through (a spline drawn through points)
+                add("end", geo.value(k))
         elif tid in ("Part::GeomCircle", "Part::GeomEllipse"):
             add("centre", geo.Center)
         elif tid == "Part::GeomPoint":

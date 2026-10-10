@@ -920,14 +920,58 @@ class Shell(QtCore.QObject):
         names = self.browser.selected_names() if self.browser is not None else []
         if name not in names:
             names = [name]  # a plain click: the clicked row alone (Shift/Cmd-clicks keep the others)
+        fs = self.feature_session
+        picking = fs is not None and fs.dialog is not None and fs.dialog.active_pick() is not None
         self._syncing = True
         try:
             Gui.Selection.clearSelection()
             for n in names:
-                if doc.getObject(n) is not None:
+                o = doc.getObject(n)
+                if o is None:
+                    continue
+                faces = [] if picking else self._faces_of(o)  # a dialog waiting for a pick takes the feature
+                if faces:
+                    Gui.Selection.addSelection(doc.getObject(faces[0]), faces[1])  # Inventor: its faces light up
+                else:
                     Gui.Selection.addSelection(doc.Name, n)
         finally:
             self._syncing = False
+
+    def show_in_browser(self):
+        """Inventor's Find in Browser: the tree opens to the rows of what is selected in the view (a face: the
+        feature that made it) and scrolls to them."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        doc = App.ActiveDocument
+        if doc is None or not Gui.Selection.getSelectionEx(doc.Name):
+            raise ValueError("Select something in the view first")
+        was, self._syncing = self._syncing, False
+        try:
+            self._on_model_selection_changed()
+        finally:
+            self._syncing = was
+
+    def show_in_window(self, name):
+        """Inventor's Show in Window: the row's faces light up on the solid and the view zooms to them."""
+        import FreeCADGui as Gui
+        self._on_browser_select(name)
+        try:
+            Gui.SendMsgToActiveView("ViewSelection")
+        except Exception:
+            log.logger().exception("zoom to selection")
+
+    @staticmethod
+    def _faces_of(obj):
+        """(shown solid's name, [FaceN…]) a solid feature made on the shown solid, or None."""
+        from incad.core import document, feature_faces
+        if not obj.isDerivedFrom("PartDesign::Feature") or obj.TypeId in document.DATUM_TYPES:
+            return None
+        try:
+            subs = feature_faces.on_tip(obj)
+        except Exception:
+            log.logger().exception("faces of %s", obj.Name)
+            return None
+        return (obj.getParentGeoFeatureGroup().Tip.Name, subs) if subs else None
 
     def _peek(self, obj):
         """Show a hidden plane, axis, point or sketch while its row is selected; nothing is saved (its own rule
@@ -988,11 +1032,24 @@ class Shell(QtCore.QObject):
         if not self.active or self._syncing or self.browser is None:
             return
         doc = App.ActiveDocument
-        names = [s.ObjectName for s in Gui.Selection.getSelectionEx(doc.Name)] if doc is not None else []
+        sels = Gui.Selection.getSelectionEx(doc.Name) if doc is not None else []
+        names = [s.ObjectName for s in sels]
         if self._peeked is not None and self._peeked[1] not in names:
             self._unpeek()
+        rows = []
+        from incad.core import feature_faces
+        for sel in sels:  # a face or edge of the shown solid: the feature that made it (Inventor)
+            subs = [n for n in sel.SubElementNames if n.startswith(("Face", "Edge"))]
+            if subs and sel.Object.isDerivedFrom("PartDesign::Feature"):
+                for sub in subs:
+                    try:
+                        rows.append(feature_faces.creator(sel.Object, sub).Name)
+                    except Exception:
+                        rows.append(sel.ObjectName)
+            else:
+                rows.append(sel.ObjectName)
         try:
-            self.browser.select_names(list(dict.fromkeys(names)))
+            self.browser.select_names(list(dict.fromkeys(rows)))
         except RuntimeError:
             pass
 

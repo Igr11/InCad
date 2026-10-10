@@ -244,6 +244,16 @@ def move_end_of_part_here():
     document.set_end_of_part_at(obj.Document, obj)
 
 
+def show_in_browser():
+    from incad.ui import shell
+    shell.instance().show_in_browser()
+
+
+def show_in_window():
+    from incad.ui import shell
+    shell.instance().show_in_window(_target_object().Name)
+
+
 def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
@@ -705,6 +715,10 @@ def commands():
                 handler=lambda: origin_visibility(False), contexts=frozenset({"part"}),
                 tooltip="Hide every origin plane, axis and the centre point"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
+        Command(id="view.show_in_browser", label="Show in Browser", icon="zoom_selection", handler=show_in_browser,
+                tooltip="Open the model tree at what is selected (a face: the feature that made it)"),
+        Command(id="browser.show_in_window", label="Show in Window", icon="zoom_selection", handler=show_in_window,
+                contexts=frozenset({"browser"}), tooltip="Light up this feature's faces and zoom the view to them"),
         Command(id="browser.move_end_of_part", label="Move End of Part Here", icon="end_of_part",
                 handler=move_end_of_part_here, transactional=True, contexts=frozenset({"browser"})),
         Command(id="browser.suppress", label="Suppress / Unsuppress", icon="suppress", handler=toggle_suppress,
