@@ -9,7 +9,9 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   Every FreeCAD run uses `-u <temp>/user.cfg`, so the user's settings are never touched.
 - FreeCAD facts: bundled Python has no pytest (use unittest); `PySide` is FreeCAD's shim (PySide6 outside);
   new documents have `UndoMode == 0` — `incad.core.safe` turns it on; a failed feature has `'Invalid'` in
-  `obj.State` and the reason in `obj.getStatusString()`.
+  `obj.State` and the reason in `obj.getStatusString()`; `Document.restore` pumps the Qt event loop (progress bar)
+  on files that take long to load, so a deferred timer that recomputes runs mid-load and crashes the Sketcher —
+  check `doc.Restoring` first (`tests/gui/test_open_during_restore.py`).
 - UI text English. Chat with the user in any language.
 - 1b facts: `view.getCameraNode()` needs `from pivy import coin` first; Coin pixel positions are device px with a
   bottom-left origin (`incad.ui.nav.to_coin`); FreeCAD opens its 3D context menu on the right-button release, so

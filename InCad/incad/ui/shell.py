@@ -1102,6 +1102,9 @@ class Shell(QtCore.QObject):
 
     def _sketch_changed(self, sk):
         """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
+        if getattr(sk.Document, "Restoring", False):
+            return  # a file being loaded sets every sketch's geometry: nothing was drawn, and a recompute from
+            # these follow-ups on the half-restored document crashed the Sketcher (external geometry)
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
@@ -2012,6 +2015,12 @@ class Shell(QtCore.QObject):
     def refresh(self):
         self._refresh_pending = False
         if self.ribbon is None:
+            return
+        import FreeCAD as App
+        if any(getattr(App.getDocument(n), "Restoring", False) for n in App.listDocuments()):
+            # a file is still loading: FreeCAD pumps events for its progress bar, and a refresh now would
+            # recompute a half-restored document (the Sketcher crashed on a projected edge not yet linked)
+            QtCore.QTimer.singleShot(300, self.schedule_refresh)
             return
         try:
             self._refresh()
