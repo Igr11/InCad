@@ -120,8 +120,9 @@ def detach_lump(feature):
                 continue
             links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
             support = [sup for sup, _ in (getattr(o, "AttachmentSupport", None) or [])]
-            if any(r in links or r in support for r in related) and (o.TypeId == "Sketcher::SketchObject"
-                                                                       or o.isDerivedFrom("PartDesign::Feature")):
+            profiles = [_profile_of(r) for r in related]
+            if (o in profiles or any(r in links or r in support for r in related)) and (
+                    o.TypeId == "Sketcher::SketchObject" or o.isDerivedFrom("PartDesign::Feature")):
                 related.append(o)
                 grown = True
     related.sort(key=group.index)
