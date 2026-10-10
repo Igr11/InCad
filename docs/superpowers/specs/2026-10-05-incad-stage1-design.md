@@ -121,7 +121,10 @@ Cancel aborts it.
 - **Model Browser**: part node, Origin folder (planes, axes, center point), features with nested sketches,
   sketch status (✓ fully constrained / "n DOF"), **End of Part** marker draggable to roll back/forward,
   failed features red with the reason as tooltip, suppressed features grey, "Solid Bodies (n)" when more
-  than one. Double-click = Edit Feature. Parameters panel below: name / expression / value, using
+  than one. A part with several Solids keeps ONE history, as Inventor does (2026-10-10): every Solid's
+  features sit in the part's list in the order they were made (`document.history`), rows of a Solid other
+  than the main one name it ("Extrude006    Solid2"), the Solid Bodies folder lists names only, and the one
+  End of Part rolls every Solid back to the dropped row (`document.set_end_of_part_at`). Double-click = Edit Feature. Parameters panel below: name / expression / value, using
   FreeCAD's expression engine (stored as properties of one `App::VarSet` named "Parameters", hidden from the browser tree).
 - **3D view**: ViewCube (FreeCAD's NaviCube restyled), navigation strip (pan, orbit, zoom, zoom all,
   visual style), triad.

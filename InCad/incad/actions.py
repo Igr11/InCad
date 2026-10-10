@@ -239,10 +239,9 @@ def rename(ask=None):
 def move_end_of_part_here():
     from incad.core import document
     obj = document.owning_feature(_target_object())
-    body = obj.getParentGeoFeatureGroup()
-    if body is None or body.TypeId != "PartDesign::Body":
+    if document.body_of(obj) is None:
         raise ValueError("%s is not part of a solid" % obj.Label)
-    document.set_end_of_part(body, obj)
+    document.set_end_of_part_at(obj.Document, obj)
 
 
 def edit_feature():

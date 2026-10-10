@@ -488,3 +488,57 @@ class DetachLumpTest(unittest.TestCase):
         self.assertAlmostEqual(near.Shape.Volume, 2000 + 600, places=3)
         self.assertEqual(len(near.Shape.Solids), 1)
         self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
+
+
+class HistoryTest(unittest.TestCase):
+    """One history for the part (Inventor): the features of every Solid in the order they were made, and one End
+    of Part that rolls all Solids back to a point in it."""
+
+    def setUp(self):
+        from incad.features import extrude
+        self.doc = util.new_doc("Hist")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        far = util.add_rect_sketch(self.body, name="Far")
+        far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.doc.recompute()
+        self.box = extrude.create(self.doc, self.body, far, extrude.defaults(self.doc, self.body, far))
+        self.doc.recompute()
+        self.other = self.box.getParentGeoFeatureGroup()
+        top = util.add_rect_sketch(self.body, name="Top")
+        top.AttachmentOffset = App.Placement(App.Vector(0, 0, 10), App.Rotation())
+        self.pad2 = util.add_pad(self.body, top, 5, name="Pad2")
+        self.body.Tip = self.pad2
+        on_box = util.add_rect_sketch(self.other, w=4, h=4, name="OnBox")
+        on_box.AttachmentOffset = App.Placement(App.Vector(55, 52, 10), App.Rotation())
+        self.cut = self.other.newObject("PartDesign::Pocket", "Cut")
+        self.cut.Profile = on_box
+        self.cut.Length = 3
+        self.other.Tip = self.cut
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_history_interleaves_the_solids_in_creation_order(self):
+        hist = document.history(self.doc)
+        self.assertEqual([o.Name for _, o in hist], ["Sketch", "Pad", "Far", "Extrude", "Top", "Pad2", "OnBox", "Cut"])
+        self.assertEqual([b.Label for b, _ in hist], ["Solid1", "Solid1", "Solid2", "Solid2", "Solid1", "Solid1",
+                                                       "Solid2", "Solid2"])
+
+    def test_end_of_part_at_a_feature_rolls_every_solid_to_that_point(self):
+        document.set_end_of_part_at(self.doc, self.box)
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertIs(self.other.Tip, self.box)
+        document.set_end_of_part_at(self.doc, self.pad2)
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertIs(self.other.Tip, self.box)
+        document.set_end_of_part_at(self.doc, self.cut)
+        self.assertIs(self.body.Tip, self.pad2)
+        self.assertIs(self.other.Tip, self.cut)
+        document.set_end_of_part_at(self.doc, self.pad)
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertIsNone(self.other.Tip, "nothing of the box is made yet")
+        document.set_end_of_part_at(self.doc, None)
+        self.assertIsNone(self.body.Tip)
+        self.assertIsNone(self.other.Tip)
+        self.assertFalse(self.pad.Visibility)

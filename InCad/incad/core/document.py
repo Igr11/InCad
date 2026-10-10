@@ -241,6 +241,43 @@ def adopt(body, obj):
             doc.removeObject(name)
 
 
+def history(doc):
+    """Every Solid's objects in one list of (body, obj), in the order they were made: Inventor's one history for
+    the part. Each Solid keeps its own order; the Solids interleave by creation (a sketch moved into a Solid
+    keeps its place in time)."""
+    order = {o.Name: i for i, o in enumerate(doc.Objects)}
+    lanes = [(b, list(b.Group)) for b in bodies(doc)]
+    heads = [0] * len(lanes)
+    out = []
+    while True:
+        best = None
+        for k, (b, lane) in enumerate(lanes):
+            if heads[k] < len(lane):
+                idx = order.get(lane[heads[k]].Name, 0)
+                if best is None or idx < best[0]:
+                    best = (idx, k)
+        if best is None:
+            return out
+        b, lane = lanes[best[1]]
+        out.append((b, lane[heads[best[1]]]))
+        heads[best[1]] += 1
+
+
+def set_end_of_part_at(doc, feature):
+    """The part's one End of Part, after `feature` in the history (None: before everything): every Solid rolls
+    back to its last object at or before that point, so a drop on another Solid's row means the same thing."""
+    hist = history(doc)
+    pos = next((i for i, (_, o) in enumerate(hist) if o is feature), -1) if feature is not None else -1
+    if feature is not None and pos == -1:
+        raise ValueError("%s is not part of a Solid" % feature.Label)
+    for body in bodies(doc):
+        last = None
+        for b, o in hist[:pos + 1]:
+            if b is body:
+                last = o
+        set_end_of_part(body, last)
+
+
 def end_of_part(body):
     return body.Tip
 

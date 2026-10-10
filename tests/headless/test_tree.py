@@ -186,15 +186,29 @@ class SecondSolidTest(unittest.TestCase):
     def tearDown(self):
         App.closeDocument(self.doc.Name)
 
-    def test_only_the_part_has_an_end_of_part(self):
+    def test_one_history_for_the_part(self):
+        """Inventor's browser: every Solid's features in the one list at the part level, in the order made, the
+        other Solids' rows saying which Solid; the Solid Bodies folder lists names only; one End of Part."""
         from incad.features import extrude
         self.assertEqual(len(document.bodies(self.doc)), 2,
                          (self.before, self.box.State, extrude._solids(self.box), self.box.getParentGeoFeatureGroup().Label))
-        flat = [(d, n.kind, n.label) for d, n in nodes.flatten(tree.build(self.doc))]
-        markers = [(d, k, l) for d, k, l in flat if k == "end_of_part"]
-        self.assertEqual(len(markers), 1, flat)
-        self.assertEqual(markers[0][0], 1, flat)
-        self.assertIn((3, "feature", "Extrude"), flat, "the box is listed under its Solid")
+        flat = [(d, n.kind, n.label, n.detail) for d, n in nodes.flatten(tree.build(self.doc))]
+        self.assertEqual([(d, k, l, t) for d, k, l, t in flat if k in ("solids", "body")],
+                         [(1, "solids", "Solid Bodies (2)", ""), (2, "body", "Solid1", ""), (2, "body", "Solid2", "")])
+        self.assertEqual([(l, t) for d, k, l, t in flat if d == 1 and k in ("feature", "sketch", "end_of_part")],
+                         [("Pad", ""), ("Extrude", "Solid2"), ("End of Part", "")])
+        top = util.add_rect_sketch(self.body, name="Top")
+        top.AttachmentOffset = App.Placement(App.Vector(0, 0, 10), App.Rotation())
+        pad2 = util.add_pad(self.body, top, 5, name="Pad2")
+        self.body.Tip = pad2
+        self.doc.recompute()
+        flat = [(d, n.kind, n.label, n.detail, n.state) for d, n in nodes.flatten(tree.build(self.doc))]
+        self.assertEqual([(l, t) for d, k, l, t, s in flat if d == 1 and k in ("feature", "end_of_part")],
+                         [("Pad", ""), ("Extrude", "Solid2"), ("Pad2", ""), ("End of Part", "")])
+        document.set_end_of_part_at(self.doc, self.pad)
+        flat = [(d, n.kind, n.label, n.detail, n.state) for d, n in nodes.flatten(tree.build(self.doc))]
+        self.assertEqual([(l, s) for d, k, l, t, s in flat if d == 1 and k in ("feature", "end_of_part")],
+                         [("Pad", ""), ("End of Part", ""), ("Extrude", "rolled_back"), ("Pad2", "rolled_back")])
 
     def test_body_of(self):
         other = self.box.getParentGeoFeatureGroup()

@@ -1,5 +1,5 @@
-"""Builds the Model Browser tree from a document (Inventor-style: sketches under the feature that uses them,
-an End of Part marker after the Tip)."""
+"""Builds the Model Browser tree from a document (Inventor-style: one history for the part with every Solid's
+features in the order made, sketches under the feature that uses them, one End of Part marker)."""
 from incad.core import document
 from incad.core.nodes import Node
 
@@ -49,45 +49,58 @@ def _obj_node(obj, rolled_back):
     return node
 
 
-def _features(body, marker=True):
-    """The body's feature rows; End of Part only for the part's main Solid (`marker`), the one marker a part has."""
-    group = list(body.Group)
-    tip = body.Tip
-    tip_index = group.index(tip) if tip in group else -1
+def _history(doc, primary):
+    """The part's feature rows: every Solid's features in the one list, in the order made (Inventor's one
+    history), rows of other Solids than the main one naming theirs; one End of Part, after the latest Tip."""
     from incad.core import regions
-    consumed = {p.Name for p in (_profile(o) for o in group) if p is not None}
-    for o in group:
+    hist = document.history(doc)
+    objs = [o for _, o in hist]
+    groups = {b.Name: list(b.Group) for b in document.bodies(doc)}
+    tips = {name: (group.index(b.Tip) if b.Tip in group else -1)
+            for name, group, b in ((b.Name, groups[b.Name], b) for b in document.bodies(doc))}
+    consumed = {p.Name for p in (_profile(o) for o in objs) if p is not None}
+    for o in objs:
         if regions.is_profile(o) and o.Name in consumed:  # an orphan profile (its feature gone) hides nothing
             src = regions.source_of(o)
             if src is not None:
                 consumed.add(src.Name)
     helpers = {}  # owner name -> objects InCad made for it (a thread's chamfer): shown under the owner
-    for o in group:
+    for o in objs:
         owner = getattr(o, "InCadHelperOf", None)
         if owner:
             helpers.setdefault(owner, []).append(o)
-    tip_owner = getattr(tip, "InCadHelperOf", None) if tip is not None else None
+    tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip]
+    latest = hist[max(tip_positions)][1] if tip_positions else None  # the marker goes right after it
     out = []
-    if tip_index == -1 and marker:
+    if latest is None:
         out.append(Node("end_of_part", "End of Part"))
-    for i, obj in enumerate(group):
+
+    def rolled(b, o):
+        return groups[b.Name].index(o) > tips[b.Name]
+
+    for b, obj in hist:
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
             continue
         if getattr(obj, "InCadHelperOf", None) or regions.is_profile(obj):
             continue
-        node = _obj_node(obj, i > tip_index)
+        node = _obj_node(obj, rolled(b, obj))
+        if b is not primary:
+            node.detail = (node.detail + "  ·  " + b.Label) if node.detail else b.Label
+        under = []
         prof = _profile(obj)
         if prof is not None and regions.is_profile(prof):
+            under.append(prof)
             prof = regions.source_of(prof)  # the user's sketch, not the area copy
-        if prof is not None and prof in group:
-            node.children.append(_obj_node(prof, group.index(prof) > tip_index))
+        if prof is not None and prof in groups[b.Name]:
+            node.children.append(_obj_node(prof, rolled(b, prof)))
+            under.append(prof)
         for h in helpers.get(obj.Name, []):
-            node.children.append(_obj_node(h, group.index(h) > tip_index))
+            node.children.append(_obj_node(h, rolled(b, h)))
+            under.append(h)
         out.append(node)
-        if marker and (obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner) or
-                       (regions.is_profile(tip) if tip is not None else False) and _profile(obj) is tip):
+        if latest is not None and (obj is latest or latest in under):
             out.append(Node("end_of_part", "End of Part"))
-    return _work_in_progress_above_end(out) if marker else out
+    return _work_in_progress_above_end(out)
 
 
 def _work_in_progress_above_end(nodes):
@@ -145,9 +158,8 @@ def build(doc):
     if primary is not None:
         root.children.append(_origin(primary))
     if len(all_bodies) > 1:
-        root.children.append(Node("solids", "Solid Bodies (%d)" % len(all_bodies), children=[
-            Node("body", b.Label, b.Name, children=[] if b is primary else _features(b, marker=False))
-            for b in all_bodies]))
+        root.children.append(Node("solids", "Solid Bodies (%d)" % len(all_bodies),
+                                  children=[Node("body", b.Label, b.Name) for b in all_bodies]))
     if primary is not None:
-        root.children.extend(_features(primary))
+        root.children.extend(_history(doc, primary))
     return [root]

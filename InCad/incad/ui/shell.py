@@ -2522,16 +2522,10 @@ class Shell(QtCore.QObject):
         if doc is None:
             return
         obj = doc.getObject(name) if name else None
-        body = obj.getParentGeoFeatureGroup() if obj is not None else document.primary_body(doc)
-        if body is None or body.TypeId != "PartDesign::Body":
+        if obj is not None and document.body_of(obj) is None:
             return
-        if body is not document.primary_body(doc):
-            # the one marker is the part's (its main Solid): a drop on another Solid's feature would move that
-            # Solid's tip while the marker stays put (and a drop above it emptied the part on 2026-10-10)
-            log.report("warning", "End of Part belongs to the part: drop it on a feature of %s"
-                       % document.primary_body(doc).Label)
-            return
-        r = safe.run_safely("Move End of Part", lambda: document.set_end_of_part(body, obj), doc)
+        # the part's one history: every Solid rolls back to this point (Inventor's End of Part)
+        r = safe.run_safely("Move End of Part", lambda: document.set_end_of_part_at(doc, obj), doc)
         if r.ok:
             log.report("info", "End of Part moved after %s" % obj.Label if obj is not None
                        else "End of Part moved before the first feature")
