@@ -129,7 +129,7 @@ class SketchSession:
     def _create(self, support, face):
         import FreeCAD as App
         doc = App.ActiveDocument
-        body = document.primary_body(doc)
+        body = document.body_of(support) or document.primary_body(doc)  # a face of a second Solid: its sketch
         r = safe.run_safely("New Sketch", lambda: sketch.make_sketch(body, support, face), doc)
         if r.ok:
             self.edit(r.value)

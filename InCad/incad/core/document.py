@@ -192,6 +192,22 @@ def remap_sub(old_shape, new_shape, sub):
     return "%s%d" % (kind, best + 1) if best is not None and best_d < 1e-3 else None
 
 
+def body_of(obj):
+    """The Solid an object belongs to: a feature's or sketch's body, an origin item's body; None otherwise."""
+    if obj is None:
+        return None
+    if getattr(obj, "TypeId", "") == "PartDesign::Body":
+        return obj
+    if getattr(obj, "TypeId", "") in ORIGIN_TYPES:
+        origin = _origin_of(obj)
+        for o in (origin.InList if origin is not None else []):
+            if o.TypeId == "PartDesign::Body":
+                return o
+        return None
+    owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+    return owner if owner is not None and owner.TypeId == "PartDesign::Body" else None
+
+
 def end_of_part(body):
     return body.Tip
 

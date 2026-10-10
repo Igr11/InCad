@@ -49,7 +49,8 @@ def _obj_node(obj, rolled_back):
     return node
 
 
-def _features(body):
+def _features(body, marker=True):
+    """The body's feature rows; End of Part only for the part's main Solid (`marker`), the one marker a part has."""
     group = list(body.Group)
     tip = body.Tip
     tip_index = group.index(tip) if tip in group else -1
@@ -67,7 +68,7 @@ def _features(body):
             helpers.setdefault(owner, []).append(o)
     tip_owner = getattr(tip, "InCadHelperOf", None) if tip is not None else None
     out = []
-    if tip_index == -1:
+    if tip_index == -1 and marker:
         out.append(Node("end_of_part", "End of Part"))
     for i, obj in enumerate(group):
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
@@ -83,10 +84,10 @@ def _features(body):
         for h in helpers.get(obj.Name, []):
             node.children.append(_obj_node(h, group.index(h) > tip_index))
         out.append(node)
-        if obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner) or \
-                (regions.is_profile(tip) if tip is not None else False) and _profile(obj) is tip:
+        if marker and (obj is tip or (prof is not None and prof is tip) or (tip_owner and obj.Name == tip_owner) or
+                       (regions.is_profile(tip) if tip is not None else False) and _profile(obj) is tip):
             out.append(Node("end_of_part", "End of Part"))
-    return _work_in_progress_above_end(out)
+    return _work_in_progress_above_end(out) if marker else out
 
 
 def _work_in_progress_above_end(nodes):
@@ -145,7 +146,8 @@ def build(doc):
         root.children.append(_origin(primary))
     if len(all_bodies) > 1:
         root.children.append(Node("solids", "Solid Bodies (%d)" % len(all_bodies), children=[
-            Node("body", b.Label, b.Name, children=[] if b is primary else _features(b)) for b in all_bodies]))
+            Node("body", b.Label, b.Name, children=[] if b is primary else _features(b, marker=False))
+            for b in all_bodies]))
     if primary is not None:
         root.children.extend(_features(primary))
     return [root]

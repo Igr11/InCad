@@ -138,3 +138,38 @@ class HiddenRowsTest(unittest.TestCase):
         self.assertIn(self._state("WorkPlane"), ("", "rolled_back"))  # after the tip: rolled back, not hidden
         wp.Visibility = False
         self.assertEqual(self._state("WorkPlane"), "hidden")
+
+
+class SecondSolidTest(unittest.TestCase):
+    """One End of Part for the part: a second Solid lists its features without a marker of its own."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Ts2")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        far = util.add_rect_sketch(self.body, name="Far")
+        far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.doc.recompute()
+        from incad.features import extrude
+        self.before = (self.body.Tip.Label if self.body.Tip else None, extrude._solids(self.body.Tip))
+        self.box = extrude.create(self.doc, self.body, far, extrude.defaults(self.doc, self.body, far))
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_only_the_part_has_an_end_of_part(self):
+        from incad.features import extrude
+        self.assertEqual(len(document.bodies(self.doc)), 2,
+                         (self.before, self.box.State, extrude._solids(self.box), self.box.getParentGeoFeatureGroup().Label))
+        flat = [(d, n.kind, n.label) for d, n in nodes.flatten(tree.build(self.doc))]
+        markers = [(d, k, l) for d, k, l in flat if k == "end_of_part"]
+        self.assertEqual(len(markers), 1, flat)
+        self.assertEqual(markers[0][0], 1, flat)
+        self.assertIn((3, "feature", "Extrude"), flat, "the box is listed under its Solid")
+
+    def test_body_of(self):
+        other = self.box.getParentGeoFeatureGroup()
+        self.assertIs(document.body_of(self.box), other)
+        self.assertIs(document.body_of(self.pad), self.body)
+        self.assertIs(document.body_of([o for o in other.Origin.OriginFeatures if o.Role == "XY_Plane"][0]), other)
+        self.assertIsNone(document.body_of(None))
