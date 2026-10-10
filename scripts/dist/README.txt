@@ -20,6 +20,68 @@ Requirements
 Other systems (Intel Macs, Windows, Linux) are not supported in this build.
 
 
+Install (with FreeCAD's Addon Manager)
+--------------------------------------
+1. Unzip the archive. You get a folder with this README and a folder named "InCad".
+   Put it somewhere it can stay for now, e.g. in Downloads.
+2. Copy the path of the "InCad" folder (the one INSIDE the unzipped folder):
+   select it in Finder and press Option+Cmd+C ("Copy as Pathname").
+   The path ends in .../InCad - not in .zip and not in ...-macOS-arm64.
+3. Start FreeCAD and open FreeCAD > Settings... (Preferences...).
+   Choose "Addon Manager" in the list on the left.
+4. Under "Custom repositories" click "+". In "Repository URL" paste the path from
+   step 2. Leave "Branch" as it is. Click OK, then OK again to close Settings.
+5. Open Tools > Addon Manager. Find "InCad" in the list, select it and click Install.
+6. Restart FreeCAD and choose "InCad" in the workbench selector.
+   The first time, InCad asks Part or Assembly and the units: choose and click OK.
+
+After the install the unzipped folder is no longer needed.
+
+To get FreeCAD's own interface back at any time, use "Return to FreeCAD"
+(the FreeCAD button at the top right of the window).
+
+
+Install by hand (if the Addon Manager way does not work)
+--------------------------------------------------------
+1. Quit FreeCAD.
+2. In Finder choose Go > Go to Folder... (Shift+Cmd+G) and paste:
+       ~/Library/Application Support/FreeCAD/v1-1/Mod
+   If the "Mod" folder does not exist, go to ".../FreeCAD/v1-1" and create a folder
+   named "Mod" there.
+3. Copy the "InCad" folder from the unzipped archive into that "Mod" folder.
+   The result must be:  .../FreeCAD/v1-1/Mod/InCad/InitGui.py
+   (not .../Mod/InCad/InCad/InitGui.py).
+4. Start FreeCAD and choose "InCad" in the workbench selector.
+
+
+Update to a new build
+---------------------
+1. Tools > Addon Manager > select "InCad" > Uninstall. Quit FreeCAD.
+2. Unzip the new build and copy the path of its "InCad" folder (Option+Cmd+C).
+3. FreeCAD > Settings... > Addon Manager > Custom repositories: select the old path,
+   remove it with "-", and add the new path with "+".
+4. Tools > Addon Manager > "InCad" > Install, then restart FreeCAD.
+(Installed by hand: quit FreeCAD, replace the "Mod/InCad" folder, start FreeCAD.)
+
+
+Uninstall
+---------
+Tools > Addon Manager > select "InCad" > Uninstall, then restart FreeCAD.
+(Installed by hand: quit FreeCAD and delete the "Mod/InCad" folder.)
+You may also delete the log file ~/Library/Logs/InCad.log.
+
+
+Reporting a problem" below).
+
+
+Requirements
+------------
+- A Mac with Apple Silicon (M1, M2, M3, M4 ...).
+- FreeCAD 1.1 for macOS Apple Silicon (tested with FreeCAD 1.1.3),
+  from https://www.freecad.org/downloads.php
+Other systems (Intel Macs, Windows, Linux) are not supported in this build.
+
+
 Install
 -------
 1. Quit FreeCAD.
