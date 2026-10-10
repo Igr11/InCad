@@ -1652,7 +1652,7 @@ class Shell(QtCore.QObject):
             return
         if self.feature_session is not None:
             raise self._dialog_first()
-        body = document.primary_body(doc)
+        body = self._selected_body(doc) or document.primary_body(doc)
         if not getattr(kind, "NEEDS_PROFILE", True):
             self._open_session(kind, doc, body)
             return
@@ -1761,6 +1761,16 @@ class Shell(QtCore.QObject):
             raise self._dialog_first()
         body = None if getattr(kind, "ASSEMBLY", False) else feature.getParentGeoFeatureGroup()
         self._open_session(kind, feature.Document, body, feature=feature)
+
+    @staticmethod
+    def _selected_body(doc):
+        """The Solid the 3D selection belongs to (a face of a box drawn away from the part), or None."""
+        import FreeCADGui as Gui
+        for sel in Gui.Selection.getSelectionEx(doc.Name):
+            owner = sel.Object.getParentGeoFeatureGroup() if hasattr(sel.Object, "getParentGeoFeatureGroup") else None
+            if owner is not None and owner.TypeId == "PartDesign::Body":
+                return owner
+        return None
 
     def _open_session(self, kind, doc, body, profile=None, feature=None):
         parent = self._mdi().viewport() if self._mdi() is not None else self.mw

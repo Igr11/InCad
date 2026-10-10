@@ -96,4 +96,46 @@ def test_2_the_real_part_offers_a_shell_before_the_thread():
     assert "and so do walls of 0.75 mm and 0.375 mm" in msg, msg
 
 
-harness.run([test_0_part, test_1_shell_the_box_open_at_the_top, test_2_the_real_part_offers_a_shell_before_the_thread])
+def test_3_shell_a_box_drawn_away_from_the_part():
+    """The user's case: a second box extruded (Join) away from the part lands in its own Solid; Shell started
+    from the ribbon with the box's top face picked in the dialog hollows the box, not the part."""
+    from incad.core import document
+    from incad.features import extrude
+    sh = shell.instance()
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    body = _body()
+    pad = util.add_pad(body, util.add_rect_sketch(body), 10)
+    body.Tip = pad
+    far = util.add_rect_sketch(body, name="Far")
+    far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+    App.ActiveDocument.recompute()
+    box = extrude.create(App.ActiveDocument, body, far, extrude.defaults(App.ActiveDocument, body, far))
+    App.ActiveDocument.recompute()
+    other = box.getParentGeoFeatureGroup()
+    assert other is not body and len(document.bodies(App.ActiveDocument)) == 2
+    for b in document.bodies(App.ActiveDocument):
+        document.show_result(b)
+    sh.schedule_refresh()
+    harness.pump(600)
+    top = [i + 1 for i, f in enumerate(box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.shell")
+    harness.pump(800)
+    fs = sh.feature_session
+    assert fs is not None
+    fs.dialog.set_pick("faces", "%s:Face%d" % (box.Name, top))
+    harness.pump(1200)
+    assert fs.dialog.error_text() == "", fs.dialog.error_text()
+    QTest.mouseClick(fs.dialog.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+    assert sh.feature_session is None
+    shells = [o for o in App.ActiveDocument.Objects if o.TypeId == "PartDesign::Thickness"]
+    assert len(shells) == 1 and shells[0].getParentGeoFeatureGroup() is other, shells
+    assert other.Tip is shells[0] and "Invalid" not in shells[0].State
+    assert abs(shells[0].Shape.Volume - (2000 - 18 * 8 * 9)) < 2.0, shells[0].Shape.Volume
+    assert body.Tip is pad and abs(pad.Shape.Volume - 2000) < 1e-6, "the part is untouched"
+
+
+harness.run([test_0_part, test_1_shell_the_box_open_at_the_top, test_2_the_real_part_offers_a_shell_before_the_thread,
+             test_3_shell_a_box_drawn_away_from_the_part])

@@ -213,6 +213,26 @@ class FeatureSession(QtCore.QObject):
             return getattr(self.feature, "BaseFeature", None)
         return self.body.Tip if self.body is not None else None
 
+    def _retarget_body(self, pairs):
+        """A pick on another Solid of the part before the feature exists: the feature goes to that Solid (a box
+        drawn away from the part is its own Solid; Shell on its face hollows the box)."""
+        if self.feature is not None or getattr(self.kind, "IN_SKETCH", False):
+            return
+        for obj, _ in pairs:
+            owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+            if owner is not None and owner.TypeId == "PartDesign::Body" and owner is not self.body:
+                self.body = owner
+                return
+
+    def _retarget_from_values(self, values):
+        """The picks typed or seeded into the dialog may belong to another Solid: same rule as a 3D pick."""
+        from incad.features import common
+        pairs = []
+        for f in self.kind.FIELDS:
+            if f.kind in ("pick", "picks") and values.get(f.key):
+                pairs += common.parse_picks(self.doc, values.get(f.key))
+        self._retarget_body(pairs)
+
     def _off_base(self, pairs):
         base = self._expected_base()
         if base is None:
@@ -241,6 +261,7 @@ class FeatureSession(QtCore.QObject):
             return  # taken by clicks on the markers, not by the selection
         raw_pairs = self._selection()
         pairs = self._as_picks(f.pick, raw_pairs)
+        self._retarget_body(pairs)
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return
@@ -537,6 +558,7 @@ class FeatureSession(QtCore.QObject):
                 self.doc.openTransaction(self.kind.TITLE)
                 self.feature = None  # the abort removed it; stays None if the new one fails
             if self.feature is None:
+                self._retarget_from_values(values)
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
                 self._created_values = dict(values)

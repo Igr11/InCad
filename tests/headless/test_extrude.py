@@ -121,6 +121,30 @@ class ExtrudeTest(unittest.TestCase):
         self.assertEqual(f.SideType, "Two sides")
         self.assertAlmostEqual(f.Shape.Volume, 20 * 10 * 15, places=3)
 
+    def test_a_join_that_does_not_touch_the_part_becomes_its_own_solid(self):
+        """A box drawn away from the part and extruded as Join would leave the body with two separate solids
+        (nothing after it can be shelled): it goes into a new Solid by itself, and reads back as New solid."""
+        base = self.make()
+        far = util.add_rect_sketch(self.body, name="Far")
+        far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.doc.recompute()
+        f = extrude.create(self.doc, self.body, far, extrude.defaults(self.doc, self.body, far))
+        self.doc.recompute()
+        other = f.getParentGeoFeatureGroup()
+        self.assertIsNot(other, self.body, "its own Solid")
+        self.assertIs(document.primary_body(self.doc), self.body)
+        self.assertEqual(len(document.bodies(self.doc)), 2)
+        self.assertIs(far.getParentGeoFeatureGroup(), other, "the sketch moved with it")
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
+        self.assertIs(self.body.Tip, base)
+        self.assertEqual(extrude.read(self.doc, f)["operation"], "new_solid")
+        touching = util.add_rect_sketch(self.body, name="Near")
+        touching.AttachmentOffset = App.Placement(App.Vector(10, 5, 10), App.Rotation())  # on the pad's top
+        self.doc.recompute()
+        g = extrude.create(self.doc, self.body, touching, extrude.defaults(self.doc, self.body, touching))
+        self.doc.recompute()
+        self.assertIs(g.getParentGeoFeatureGroup(), self.body, "a join that touches stays in the part")
+
     def test_new_solid_moves_the_sketch(self):
         f = self.make(operation="new_solid")
         self.assertEqual(len(document.bodies(self.doc)), 2)

@@ -67,6 +67,14 @@ def _apply(doc, f, values):
     value_param(doc, f, "TaperAngle", values.get("taper") or "0 °", "angle")
 
 
+def _solids(feature):
+    try:
+        shape = feature.Shape
+        return 0 if shape.isNull() else len(shape.Solids)
+    except Exception:
+        return 0
+
+
 def create(doc, body, profile, values):
     operation = values.get("operation", "join")
     target = body
@@ -74,9 +82,23 @@ def create(doc, body, profile, values):
         target = document.new_solid(doc)
         body.removeObject(profile)
         target.addObject(profile)
+    before = _solids(body.Tip) if body.Tip is not None else 0
     f = target.newObject(_feature_type("cut" if operation == "cut" else "join"), "Extrude")
     f.Profile = profile
     _apply(doc, f, values)
+    if operation == "join" and before:
+        doc.recompute()
+        if _solids(f) > before:  # the new solid does not touch the part: a piece of its own, not a second
+            target.removeObject(f)  # lump in the part's body (nothing could be shelled or filleted there)
+            doc.removeObject(f.Name)
+            target = document.new_solid(doc)
+            body.removeObject(profile)
+            target.addObject(profile)
+            f = target.newObject(_feature_type("join"), "Extrude")
+            f.Profile = profile
+            _apply(doc, f, values)
+            from incad.core import log
+            log.report("info", "%s does not touch the part: made as its own Solid (%s)" % (f.Label, target.Label))
     if operation == "intersect":
         doc.recompute()
         common = body.newObject("PartDesign::Boolean", "Intersect")
