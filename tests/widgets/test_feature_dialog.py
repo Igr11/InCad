@@ -356,12 +356,20 @@ class SectionListTest(unittest.TestCase):
     def test_empty_field_explains_itself(self):
         self.assertEqual(self.d.list_rows("sections"), [])
         self.assertIn("in order", self.d.pick_text("sections"))
-        self.assertIn("2 or more", self.d.pick_text("sections"))
+        self.assertLessEqual(len(self.d.pick_text("sections")), 26, "short enough to show whole")
+
+    def test_a_reason_while_still_picking_is_quiet(self):
+        """At the start nothing is wrong yet: the reason shows grey, not as a red error; OK stays off."""
+        self.d.set_error("Pick at least two section sketches, in order", waiting=True)
+        self.assertTrue(self.d.error_waiting())
+        self.assertFalse(self.d.ok_button.isEnabled())
+        self.d.set_error("The sections are out of order")
+        self.assertFalse(self.d.error_waiting())
 
     def test_rows_follow_the_picks(self):
         self.d.set_pick("sections", "SkA,SkB,SkC")
         self.assertEqual(self.d.list_rows("sections"), ["1.  SkA", "2.  SkB", "3.  SkC"])
-        self.assertIn("Add", self.d.pick_text("sections"))
+        self.assertIn("add", self.d.pick_text("sections"))
         self.d.set_values({"sections": "SkC"})
         self.assertEqual(self.d.list_rows("sections"), ["1.  SkC"])
 

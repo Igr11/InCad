@@ -623,7 +623,12 @@ class FeatureSession(QtCore.QObject):
             self._recover_deleted_feature()  # a type-swapping update() may have deleted it then failed
             if self.creating and self.feature is None:
                 self._drop_partial()
-            self.dialog.set_error(str(e))
+            # nothing made yet while the user is still picking: the reason is a hint, not an error
+            values = self.dialog.values()
+            empty = any(f.kind in ("pick", "picks") and self._shown(f) and not values.get(f.key)
+                        for f in self.kind.FIELDS)
+            waiting = self.creating and self.feature is None and (self.dialog.active_pick() is not None or empty)
+            self.dialog.set_error(str(e), waiting=waiting)
             return
         self._check()
         self._label_params()

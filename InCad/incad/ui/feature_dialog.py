@@ -137,9 +137,14 @@ class FeatureDialog(QtWidgets.QFrame):
             self._widgets[f.key] = widget  # the arrows read it while the row is built
             row = self._with_arrows(f, widget) if f.kind in ("value_length", "value_angle") else \
                 self._with_list(f, widget) if f.kind == "picks" and getattr(f, "listed", False) else widget
-            form.addWidget(label, r, 0)
+            if row is not widget and f.kind == "picks":  # a list under the field: its name stays at the top
+                label.setFixedHeight(widget.sizeHint().height())
+                form.addWidget(label, r, 0, QtCore.Qt.AlignTop)
+            else:
+                form.addWidget(label, r, 0)
             form.addWidget(row, r, 1)
             self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, row)
+        form.setColumnStretch(1, 1)  # spare width goes to the fields, never between the names and the fields
         col.addLayout(form)
         self._error = QtWidgets.QLabel("")
         self._error.setObjectName("InCadDialogError")
@@ -168,7 +173,7 @@ class FeatureDialog(QtWidgets.QFrame):
         self.setStyleSheet(
             "QFrame#InCadFeatureDialog {{ background: {panel}; border: 1px solid {border}; border-radius: 9px; }}"
             " QLabel {{ color: {text}; }} QLabel#InCadDialogTitle {{ font-weight: 600; }}"
-            " QLabel#InCadDialogError {{ color: {error}; }}"
+            " QLabel#InCadDialogError {{ color: {error}; }} QLabel#InCadDialogError[waiting=\"true\"] {{ color: {text_dim}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
             " padding: 2px 4px; }} QToolButton#InCadStep {{ background: {panel_alt}; color: {text};"
             " border: 1px solid {border}; padding: 0; font-size: 7px; }} QToolButton#InCadStep:disabled {{"
@@ -209,6 +214,7 @@ class FeatureDialog(QtWidgets.QFrame):
             w.toggled.connect(lambda _=False: self._emit())
             return w
         w = QtWidgets.QPushButton("Select…", self)
+        w.setMinimumWidth(200)  # a hint like "Click sketches in order…" shows whole
         w.setObjectName("InCadPick")
         w.setCheckable(True)
         w.clicked.connect(lambda _=False, k=f.key: self._pick_clicked(k))
@@ -307,7 +313,7 @@ class FeatureDialog(QtWidgets.QFrame):
 
     @staticmethod
     def _list_hint(items):
-        return "Click sketches in order (2 or more)…" if not items else "Add sketches (click in order)…"
+        return "Click sketches in order…" if not items else "Click to add more…"
 
     def _edit_list(self, key, index, action):
         items = [i.strip() for i in (self._widgets[key].property("pick") or "").split(",") if i.strip()]
@@ -547,8 +553,12 @@ class FeatureDialog(QtWidgets.QFrame):
     def set_choice_enabled(self, key, value, enabled):
         self._widgets[key].button(value).setEnabled(enabled)
 
-    def set_error(self, text, rescue=None):
-        """Show why the feature fails; `rescue` = (button label, callable) offers a way around it."""
+    def set_error(self, text, rescue=None, waiting=False):
+        """Show why the feature fails; `rescue` = (button label, callable) offers a way around it. `waiting`: the
+        feature is not made yet because the picks are still coming (shown grey, it is no error)."""
+        self._error.setProperty("waiting", bool(waiting and text))
+        self._error.style().unpolish(self._error)
+        self._error.style().polish(self._error)
         self._error.setText(text)
         self._error.setVisible(bool(text))
         self.ok_button.setEnabled(not text)
@@ -560,6 +570,9 @@ class FeatureDialog(QtWidgets.QFrame):
 
     def error_text(self):
         return self._error.text()
+
+    def error_waiting(self):
+        return bool(self._error.property("waiting"))
 
     def focused_value_field(self):
         for key, f in self._fields.items():

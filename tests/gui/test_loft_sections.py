@@ -43,14 +43,17 @@ def test_0_three_circles_and_the_loft_dialog():
     harness.pump(800)
     assert fs() is not None and fs().kind.TITLE == "Loft"
     d = fs().dialog
-    assert d.list_rows("sections") == [] and "2 or more" in d.pick_text("sections"), d.pick_text("sections")
+    assert d.list_rows("sections") == [] and "in order" in d.pick_text("sections"), d.pick_text("sections")
+    assert d.error_text() == "" or d.error_waiting(), "nothing is wrong yet: no red error at the start"
     assert d.active_pick() == "sections", d.active_pick()
 
 
 def test_1_clicked_in_order_fill_the_rows():
-    for name in ("Low", "Mid", "High"):
-        click(name)
+    click("Low")
     d = fs().dialog
+    assert d.error_text() == "" or d.error_waiting(), "one section so far: still a hint, not an error"
+    for name in ("Mid", "High"):
+        click(name)
     assert d.list_rows("sections") == ["1.  Low", "2.  Mid", "3.  High"], d.list_rows("sections")
     assert d.error_text() == "", d.error_text()
 
