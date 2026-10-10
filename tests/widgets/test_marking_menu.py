@@ -90,3 +90,44 @@ class RingSpacingTest(unittest.TestCase):
         self.assertEqual(clashes, [])
         for d, r in rects.items():
             self.assertTrue(menu.rect().contains(r), d)
+
+
+class ScreenEdgeTest(unittest.TestCase):
+    """Opened near the left or bottom edge of the screen the menu was cut off (2026-10-10): it is shifted onto
+    the screen, and a flick is still measured from the point pressed."""
+
+    def setUp(self):
+        qtapp.app()
+        self.ran = []
+        self.reg = Registry()
+        for i in ("n", "e", "s", "w", "x"):
+            self.reg.register(Command(id=i, label="Cmd " + i, icon="incad", handler=lambda i=i: self.ran.append(i)))
+        slots = [("N", self.reg.get("n")), ("E", self.reg.get("e")), ("S", self.reg.get("s")), ("W", self.reg.get("w"))]
+        self.menu = MarkingMenu(self.reg, slots, [self.reg.get("x")], "light")
+
+    def tearDown(self):
+        self.menu.close()
+
+    def _screen(self):
+        from incad.qt import QtGui
+        return QtGui.QGuiApplication.primaryScreen().availableGeometry()
+
+    def test_the_menu_stays_on_the_screen(self):
+        screen = self._screen()
+        for pos in (QtCore.QPoint(screen.left() + 4, screen.top() + 4),
+                    QtCore.QPoint(screen.left() + 4, screen.bottom() - 4),
+                    QtCore.QPoint(screen.right() - 4, screen.bottom() - 4)):
+            self.menu.show_at(pos)
+            g = self.menu.frameGeometry()
+            self.assertTrue(screen.contains(g), (pos, g, screen))
+            self.assertEqual(self.menu.center_global(), pos, "the gesture is measured from the press")
+
+    def test_a_flick_from_the_pressed_point_near_the_edge(self):
+        screen = self._screen()
+        pos = QtCore.QPoint(screen.left() + 4, screen.bottom() - 4)
+        self.menu.show_at(pos)
+        self.menu.start_flick()
+        self.menu.flick_move(pos + QtCore.QPoint(70, 0))
+        self.assertEqual(self.menu.hot_direction(), "E")
+        self.menu.flick_end(pos + QtCore.QPoint(70, 0))
+        self.assertEqual(self.ran, ["e"])

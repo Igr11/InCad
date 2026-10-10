@@ -89,12 +89,24 @@ class MarkingMenu(QtWidgets.QWidget):
 
     # ----- public -----
     def show_at(self, global_pos):
-        self.move(global_pos - self._center)
+        """Open the ring around the point pressed; near an edge of the screen the menu is shifted to stay whole,
+        and the gesture is still measured from the point pressed."""
+        self._anchor = QtCore.QPoint(global_pos)
+        top_left = global_pos - self._center
+        screen = QtGui.QGuiApplication.screenAt(global_pos) or QtGui.QGuiApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            x = min(max(top_left.x(), area.left()), max(area.left(), area.right() - self.width() + 1))
+            y = min(max(top_left.y(), area.top()), max(area.top(), area.bottom() - self.height() + 1))
+            top_left = QtCore.QPoint(x, y)
+        self.move(top_left)
         self.show()
         self.raise_()
 
     def center_global(self):
-        return self.mapToGlobal(self._center)
+        """Where the gesture starts: the point pressed (the ring's centre unless the menu was shifted)."""
+        return QtCore.QPoint(self._anchor) if getattr(self, "_anchor", None) is not None \
+            else self.mapToGlobal(self._center)
 
     def button(self, direction):
         return self._buttons.get(direction)
@@ -145,9 +157,10 @@ class MarkingMenu(QtWidgets.QWidget):
         fill = QtGui.QColor(pal["accent"])
         fill.setAlpha(40)
         painter.setBrush(fill)
-        painter.drawEllipse(self._center, DEAD_ZONE, DEAD_ZONE)
+        origin = self.mapFromGlobal(self.center_global())
+        painter.drawEllipse(origin, DEAD_ZONE, DEAD_ZONE)
         if self._flick_to is not None:
-            painter.drawLine(self._center, self._flick_to)
+            painter.drawLine(origin, self._flick_to)
         painter.end()
 
     def mouseMoveEvent(self, event):
