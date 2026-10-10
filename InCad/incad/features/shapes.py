@@ -261,6 +261,8 @@ def _loft_apply(doc, f, values):
     secs = _sketches(doc, values.get("sections"))
     if len(secs) < 2:
         raise ValueError("Pick at least two section sketches, in order")
+    from incad.core import loft_guard
+    loft_guard.check(f.getParentGeoFeatureGroup(), secs, values.get("ruled"), values.get("closed"))  # before OCC can freeze
     f.Profile = secs[0]
     f.Sections = secs[1:]
     f.Ruled = bool(values.get("ruled"))
@@ -272,8 +274,11 @@ def _loft_apply(doc, f, values):
 
 
 def _loft_create(doc, body, profile, values):
-    if len(_sketches(doc, values.get("sections"))) < 2:
+    secs = _sketches(doc, values.get("sections"))
+    if len(secs) < 2:
         raise ValueError("Pick at least two section sketches, in order")
+    from incad.core import loft_guard
+    loft_guard.check(body, secs, values.get("ruled"), values.get("closed"))  # nothing is made for a loft that would hang
     f = _new(body, "loft", values, "Loft")
     _loft_apply(doc, f, values)
     return f

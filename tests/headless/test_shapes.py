@@ -184,3 +184,87 @@ class SweepWallTest(ShapesTest):
         f = self.tube(hollow=False)
         self.assertIsNone(shapes.wall_of(f))
         self.assertIs(self.body.Tip, f)
+
+
+class LoftHangGuardTest(unittest.TestCase):
+    """OpenCascade hangs (minutes, never returns) lofting a section of 1-2 edges into one of many (probed
+    2026-10-10: a circle into a 42-gon or more, two arcs into a 44-gon); the user's FreeCAD froze in a Loft
+    preview. Such sections are refused at once with the way out."""
+
+    def setUp(self):
+        import math
+        self.doc = util.new_doc("LG")
+        self.body = document.make_part(self.doc)
+
+        def section(name, z, n, turn=0.3):
+            sk = self.body.newObject("Sketcher::SketchObject", name)
+            sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+            sk.MapMode = "FlatFace"
+            sk.AttachmentOffset = App.Placement(App.Vector(0, 0, z), App.Rotation())
+            if n == 1:
+                sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 10))
+            else:
+                pts = [App.Vector(8 * math.cos(2 * math.pi * i / n + turn), 8 * math.sin(2 * math.pi * i / n + turn), 0)
+                       for i in range(n)]
+                for i in range(n):
+                    sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % n]))
+            return sk
+        self.circle = section("Round", 0, 1)
+        self.many = section("Many", 20, 48)
+        self.few = section("Few", 40, 6)
+        self.aligned = section("Aligned", 20, 48, turn=0.0)  # the same count, vertices aligned: OpenCascade copes
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def values(self, names):
+        return {"sections": names, "ruled": False, "closed": False, "operation": "join"}
+
+    def test_a_loft_that_hangs_in_the_trial_is_refused(self):
+        """A trial that does not finish in time stands for the hang (the limit set below any real loft)."""
+        import time
+        from incad.core import loft_guard
+        old, loft_guard.LOFT_SECONDS = loft_guard.LOFT_SECONDS, 1.0
+        script = loft_guard._SCRIPT
+        loft_guard._SCRIPT = script.replace("f.recompute()", "import time; time.sleep(30); f.recompute()")
+        loft_guard._cache.clear()
+        try:
+            t = time.time()
+            with self.assertRaises(ValueError) as e:
+                shapes.LOFT.create(self.doc, self.body, None, self.values("Round,Aligned"))
+            self.assertLess(time.time() - t, 60, "a bounded trial, never a freeze")
+        finally:
+            loft_guard.LOFT_SECONDS, loft_guard._SCRIPT = old, script
+            loft_guard._cache.clear()
+        self.assertFalse([o for o in self.doc.Objects if o.TypeId == "PartDesign::AdditiveLoft"], "nothing made")
+        text = str(e.exception)
+        self.assertIn("Round", text)
+        self.assertIn("Aligned", text)
+        self.assertIn("48", text)
+
+    def test_the_trial_tells_finishing_failing_and_plain_cases(self):
+        from incad.core import loft_guard
+        loft_guard._cache.clear()
+        self.assertEqual(loft_guard.trial(self.body, [self.circle, self.aligned]), "ok")
+        self.assertEqual(loft_guard.trial(self.body, [self.circle, self.many]), "fails")
+        self.assertFalse(loft_guard.risky([1, 6]))
+        self.assertTrue(loft_guard.risky([1, 48]))
+        self.assertEqual(self.doc.FileName, "", "the user's document is never saved by the trial")
+
+    def test_the_same_counts_that_do_not_hang_still_loft(self):
+        f = shapes.LOFT.create(self.doc, self.body, None, self.values("Round,Aligned"))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertGreater(f.Shape.Volume, 0)
+
+    def test_few_edges_into_many_still_lofts(self):
+        f = shapes.LOFT.create(self.doc, self.body, None, self.values("Few,Many"))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertGreater(f.Shape.Volume, 0)
+
+    def test_a_circle_into_a_hexagon_still_lofts(self):
+        f = shapes.LOFT.create(self.doc, self.body, None, self.values("Round,Few"))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
