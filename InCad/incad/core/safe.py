@@ -34,6 +34,12 @@ def _broken(obj, check_shape):
         status = _status(obj)
         if obj.TypeId == "PartDesign::Body" and status == "Tip shape is empty":
             return ""  # an empty part (everything suppressed / rolled back) is a normal state
+        if obj.TypeId == "PartDesign::Thickness" and "thick solid" in status:
+            if _has_modeled_thread(getattr(obj, "BaseFeature", None)):
+                return ("%s: FreeCAD can't hollow a part with a modeled (helical) thread in it. Drag End of Part "
+                        "above the thread, make the Shell there, then move End of Part back" % obj.Label)
+            return ("%s: FreeCAD couldn't hollow this shape. Try a smaller thickness, or make the Shell earlier "
+                    "in the tree, before fillets and chamfers" % obj.Label)
         if status and status not in ("Valid", "Touched"):
             from incad.core import model
             return "%s: %s" % (obj.Label, model.friendly(status, obj.TypeId))

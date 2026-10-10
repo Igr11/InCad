@@ -199,6 +199,33 @@ class ModeledThreadKernelTest(unittest.TestCase):
         self.assertIn("modeled (helical) thread", r.error)
         self.assertNotIn("cuts away the whole part", r.error)
 
+    def test_thick_solid_failure_after_a_thread_gets_the_shell_hint(self):
+        """The kernel can't hollow the user's real part once its helical thread is in ('Failed to make thick
+        solid'): the user is told to shell before the thread (End of Part above it), not a bare kernel message."""
+        import os
+        from incad.core import document
+        from incad.features import dressup
+        path = os.path.join(os.path.dirname(__file__), "..", "gui", "data", "p2_test_reordered.FCStd")
+        doc = App.openDocument(os.path.abspath(path))
+        try:
+            doc.UndoMode = 1
+            doc.recompute()
+            body = document.primary_body(doc)
+            tip = body.Tip
+            top = max((i for i, f in enumerate(tip.Shape.Faces) if abs(f.normalAt(0, 0).z - 1) < 1e-6),
+                      key=lambda i: tip.Shape.Faces[i].Area)
+
+            def build():
+                dressup._shell_create(doc, body, None, {"faces": "%s:Face%d" % (tip.Name, top + 1),
+                                                         "thickness": "1 mm", "direction": "inside"})
+                doc.recompute()
+            r = safe.run_safely("Shell", build, doc)
+            self.assertFalse(r.ok)
+            self.assertIn("End of Part above the thread", r.error)
+            self.assertNotIn("Failed to make thick solid", r.error)
+        finally:
+            App.closeDocument(doc.Name)
+
 
 class KernelFailureMessageTest(unittest.TestCase):
     """'command not done' from the kernel is explained for the feature that failed, not always as a Revolve."""
