@@ -199,6 +199,28 @@ class _PointPick:
         return best
 
 
+class _PeekWatch:
+    """Selection observer while a sketch is shown for its tree row: any change that drops it ends the peek."""
+
+    def __init__(self, shell):
+        self.shell = shell
+
+    def _check(self):
+        QtCore.QTimer.singleShot(0, self.shell._peek_selection_changed)
+
+    def addSelection(self, doc, obj, sub, pnt):
+        self._check()
+
+    def removeSelection(self, doc, obj, sub):
+        self._check()
+
+    def setSelection(self, doc):
+        self._check()
+
+    def clearSelection(self, doc):
+        self._check()
+
+
 class _RegionPicker:
     """Waits for a click on one of the shown areas of a sketch, then starts the feature on it."""
 
@@ -267,6 +289,8 @@ class Shell(QtCore.QObject):
         self._geometry_counts = {}
         self.section_panel = None
         self._point_pick = None  # waiting for three clicks on the section markers
+        self._peeked = None      # (document, sketch name, was visible): a sketch shown while its tree row is selected
+        self._peek_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
@@ -858,19 +882,73 @@ class Shell(QtCore.QObject):
 
     def _on_browser_select(self, name):
         """A click in the model tree selects the object in the model too, so a dialog waiting for a sketch or a
-        feature takes it (Inventor picks from the browser)."""
+        feature takes it (Inventor picks from the browser). A sketch row shows its sketch in the view while it is
+        selected (a consumed one too); the next row, Esc or a cleared selection hides it again."""
         import FreeCAD as App
         import FreeCADGui as Gui
+        from incad.core import sketch as sketches
         doc = App.ActiveDocument
-        if doc is None or doc.getObject(name) is None:
+        obj = doc.getObject(name) if doc is not None else None
+        if obj is None:
             return
+        if self._peeked is not None and self._peeked[1] != name:
+            self._unpeek_sketch()
         waiting = (self.feature_session is not None and self.feature_session.dialog is not None
                    and self.feature_session.dialog.active_pick() is not None) or self._profile_pick is not None \
             or self.sketches.picking or self._measure is not None or self._region_pick is not None
-        if not waiting:
+        if sketches.is_sketch(obj) and self.sketches.editing() is None:
+            self._peek_sketch(obj)
+        elif not waiting:
             return  # just looking at the tree: the 3D selection stays
         Gui.Selection.clearSelection()
         Gui.Selection.addSelection(doc.Name, name)
+
+    def _peek_sketch(self, sk):
+        """Show `sk` in the view while its row is selected; nothing is saved (the sketch's own rule comes back)."""
+        import FreeCADGui as Gui
+        if self._peeked is not None and self._peeked[1] == sk.Name:
+            return
+        self._peeked = (sk.Document.Name, sk.Name, bool(sk.Visibility))
+        try:
+            sk.ViewObject.Visibility = True
+        except Exception:
+            pass
+        if self._peek_watch is None:
+            self._peek_watch = _PeekWatch(self)
+            Gui.Selection.addObserver(self._peek_watch)
+        self.schedule_refresh()
+
+    def _unpeek_sketch(self):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        peeked, self._peeked = self._peeked, None
+        if self._peek_watch is not None:
+            try:
+                Gui.Selection.removeObserver(self._peek_watch)
+            except Exception:
+                pass
+            self._peek_watch = None
+        if peeked is None:
+            return
+        doc = App.getDocument(peeked[0]) if peeked[0] in App.listDocuments() else None
+        sk = doc.getObject(peeked[1]) if doc is not None else None
+        if sk is not None:
+            try:
+                from incad.core import document
+                sk.ViewObject.Visibility = peeked[2] or document.sketch_shown(sk)
+            except Exception:
+                pass
+        self.schedule_refresh()
+
+    def _peek_selection_changed(self):
+        """The 3D selection moved away from the peeked sketch (a click elsewhere, a cleared selection)."""
+        import FreeCADGui as Gui
+        if self._peeked is None:
+            return
+        doc_name, name, _ = self._peeked
+        still = any(s.ObjectName == name and s.DocumentName == doc_name for s in Gui.Selection.getSelectionEx())
+        if not still:
+            self._unpeek_sketch()
 
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
@@ -904,6 +982,8 @@ class Shell(QtCore.QObject):
     def _on_escape(self):
         """Esc, Inventor style: the value box first, then InCad's own picks and tools, then the feature dialog,
         else the running Sketcher tool (the sketch itself is left with Finish Sketch, never with Esc)."""
+        if self._peeked is not None:
+            self._unpeek_sketch()  # the sketch shown for its tree row goes back to its rule
         if self.value_box is not None:
             self.value_box.closed_by_user = True  # Esc
             self._close_value_box()
@@ -1826,7 +1906,8 @@ class Shell(QtCore.QObject):
                         if not sk.Visibility and document.SHOWN_PROP not in sk.PropertiesList \
                                 and document.sketch_shown(sk):
                             sk.Visibility = True
-                        if sk.Visibility and document.is_unused_sketch(sk):
+                        peeked = self._peeked is not None and self._peeked[1] == sk.Name
+                        if sk.Visibility and (peeked or document.is_unused_sketch(sk)):
                             points.extend(sketches.key_points(sk))
                     except Exception as e:
                         log.logger().warning("Key points of %s: %s", sk.Name, e)
