@@ -336,3 +336,38 @@ class NoOpPatternTest(unittest.TestCase):
     def test_a_pattern_whose_copies_land_on_the_part_is_fine(self):
         r = self.pattern("6 mm")
         self.assertTrue(r.ok, r.error)
+
+
+class ShellOnTwoSolidsTest(unittest.TestCase):
+    """A body holding two separate solids (a box drawn away from the part): the kernel's 'Null input shape' is
+    explained — Shell works on one connected solid."""
+
+    def setUp(self):
+        self.doc = util.new_doc("S2")
+        self.body = document.make_part(self.doc)
+        pad = util.add_pad(self.body, util.add_rect_sketch(self.body, name="S1"), 10, name="Box1")
+        sk2 = util.add_rect_sketch(self.body, name="S2")
+        sk2.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.pad2 = util.add_pad(self.body, sk2, 10, name="Box2")
+        self.body.Tip = self.pad2
+        self.doc.recompute()
+        log.set_reporter(lambda level, msg: None)
+
+    def tearDown(self):
+        log.set_reporter(None)
+        App.closeDocument(self.doc.Name)
+
+    def test_message_names_the_two_solids(self):
+        from incad.features import dressup
+        top = [i + 1 for i, f in enumerate(self.pad2.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6
+               and f.CenterOfMass.x > 40][0]
+
+        def build():
+            dressup._shell_create(self.doc, self.body, None, {"faces": "Box2:Face%d" % top, "thickness": "1 mm",
+                                                               "direction": "inside"})
+            self.doc.recompute()
+        r = safe.run_safely("Shell", build, self.doc)
+        self.assertFalse(r.ok)
+        self.assertIn("2 separate solids", r.error)
+        self.assertIn("one connected solid", r.error)
+        self.assertNotIn("Null input shape", r.error)

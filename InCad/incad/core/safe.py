@@ -34,6 +34,15 @@ def _broken(obj, check_shape):
         status = _status(obj)
         if obj.TypeId == "PartDesign::Body" and status == "Tip shape is empty":
             return ""  # an empty part (everything suppressed / rolled back) is a normal state
+        if obj.TypeId == "PartDesign::Thickness" and "Null input shape" in status:
+            base = getattr(obj, "BaseFeature", None)
+            shape = getattr(base, "Shape", None) if base is not None else None
+            n = len(shape.Solids) if shape is not None and not shape.isNull() else 0
+            if n > 1:
+                return ("%s: the part's body holds %d separate solids (a box drawn away from the part stays its own "
+                        "piece); Shell works on one connected solid. Join the piece to the part, or shell it in a "
+                        "part file of its own" % (obj.Label, n))
+            return "%s: the kernel got no solid to hollow (is the face on the part's body?)" % obj.Label
         if obj.TypeId == "PartDesign::Thickness" and "thick solid" in status:
             if _has_modeled_thread(getattr(obj, "BaseFeature", None)):
                 return ("%s: FreeCAD can't hollow a part with a modeled (helical) thread in it. Drag End of Part "
