@@ -208,6 +208,39 @@ def body_of(obj):
     return owner if owner is not None and owner.TypeId == "PartDesign::Body" else None
 
 
+def target_body(obj):
+    """The Solid a feature built on this sketch belongs to: the one owning the face the sketch is attached to (a
+    sketch can be left in another Solid when the piece it sits on moved, or when its feature was deleted), else
+    the sketch's own Solid."""
+    for support in getattr(obj, "AttachmentSupport", None) or []:
+        owner = support[0] if isinstance(support, (tuple, list)) else support
+        if owner is not None and getattr(owner, "TypeId", "").startswith("PartDesign::") \
+                and owner.TypeId != "PartDesign::Body" and owner.TypeId not in DATUM_TYPES:
+            body = body_of(owner)
+            if body is not None:
+                return body
+    return body_of(obj)
+
+
+def adopt(body, obj):
+    """Move a sketch into `body` from the Solid it sits in; a secondary Solid left with nothing is removed, with
+    its origin (the user saw a fourth Solid appear for a Cut on a sketch left in an empty third one)."""
+    old = body_of(obj)
+    if old is None or old is body:
+        return
+    doc = body.Document
+    old.removeObject(obj)
+    body.addObject(obj)
+    if old.Group or old is primary_body(doc):
+        return
+    origin = old.Origin
+    leftovers = ([o.Name for o in origin.OriginFeatures] + [origin.Name]) if origin is not None else []
+    doc.removeObject(old.Name)  # FreeCAD takes the origin with the body; whatever stays is removed here
+    for name in leftovers:
+        if doc.getObject(name) is not None:
+            doc.removeObject(name)
+
+
 def end_of_part(body):
     return body.Tip
 

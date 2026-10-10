@@ -1663,7 +1663,7 @@ class Shell(QtCore.QObject):
         if profile is None:
             self._begin_profile_pick(kind)
             return
-        body = document.body_of(profile) or body  # a sketch on a second Solid: the feature goes there
+        body = document.target_body(profile) or body  # a sketch on a face of a second Solid: the feature goes there
         from incad.core import regions
         if regions.needs_regions(profile):
             self._profile_from_areas(kind, doc, body, profile)

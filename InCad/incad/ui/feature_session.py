@@ -1,7 +1,7 @@
 """One feature dialog: one undo transaction around create/edit + live previews; OK commits, Cancel aborts."""
 import traceback
 
-from incad.core import log, model, safe
+from incad.core import document, log, model, safe
 from incad.qt import dispose, QtCore, QtWidgets
 from incad.ui.feature_dialog import FeatureDialog
 
@@ -59,6 +59,7 @@ class FeatureSession(QtCore.QObject):
             if self.creating:
                 values = self.kind.defaults(doc, self.body, self.profile)
                 if getattr(self.kind, "NEEDS_PROFILE", True):
+                    document.adopt(self.body, self.profile)  # a sketch left in another Solid comes along
                     self.feature = self.kind.create(doc, self.body, self.profile, values)
                     self._created_with = values.get("operation")
                     self._created_values = dict(values)
@@ -600,6 +601,8 @@ class FeatureSession(QtCore.QObject):
                 self.feature = None  # the abort removed it; stays None if the new one fails
             if self.feature is None:
                 self._retarget_from_values(values)
+                if self.profile is not None:
+                    document.adopt(self.body, self.profile)
                 self.feature = self.kind.create(self.doc, self.body, self.profile, values)
                 self._created_with = values.get("operation")
                 self._created_values = dict(values)

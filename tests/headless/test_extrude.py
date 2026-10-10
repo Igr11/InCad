@@ -170,3 +170,74 @@ class ExtrudeTest(unittest.TestCase):
         mid.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
         self.doc.recompute()
         self.assertEqual(extrude.defaults(self.doc, self.body, mid)["operation"], "cut")
+
+
+class SketchOnAnotherSolidTest(unittest.TestCase):
+    """A sketch left in one Solid but drawn on a face of another (a piece moved after the sketch was made, or the
+    sketch stayed behind when its feature was deleted): the feature goes to the Solid that owns the face, the
+    sketch with it, and a Solid emptied this way is removed. On 2026-10-10 a Cut on such a sketch became a
+    fourth, detached Solid instead of cutting the box."""
+
+    def setUp(self):
+        self.doc = util.new_doc("E2")
+        self.body = document.make_part(self.doc)
+        self.pad = util.add_pad(self.body, util.add_rect_sketch(self.body), 10)
+        self.body.Tip = self.pad
+        far = util.add_rect_sketch(self.body, name="Far")
+        far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.doc.recompute()
+        self.box = extrude.create(self.doc, self.body, far, extrude.defaults(self.doc, self.body, far))
+        self.doc.recompute()
+        self.other = self.box.getParentGeoFeatureGroup()
+        self.stray = document.new_solid(self.doc)  # the Solid the sketch was left in
+        top = [i + 1 for i, f in enumerate(self.box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        self.sk = self.stray.newObject("Sketcher::SketchObject", "OnBox")
+        self.sk.AttachmentSupport = [(self.box, "Face%d" % top)]
+        self.sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        centre = self.sk.Placement.inverse().multVec(self.box.Shape.Faces[top - 1].CenterOfMass)
+        self.sk.addGeometry(Part.Circle(App.Vector(centre.x, centre.y, 0), App.Vector(0, 0, 1), 2))
+        self.doc.recompute()
+        self.assertEqual(len(document.bodies(self.doc)), 3)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_target_body_is_the_solid_owning_the_face(self):
+        self.assertIs(document.target_body(self.sk), self.other)
+        plain = self.stray.newObject("Sketcher::SketchObject", "Plain")
+        plain.AttachmentSupport = [(util.xy_plane(self.stray), "")]
+        plain.MapMode = "FlatFace"
+        self.doc.recompute()
+        self.assertIs(document.target_body(plain), self.stray, "a sketch on a plane stays where it is")
+        self.assertIs(document.target_body(self.pad), self.body)
+
+    def test_adopt_moves_the_sketch_and_removes_the_emptied_solid(self):
+        name = self.stray.Name
+        document.adopt(self.other, self.sk)
+        self.assertIs(self.sk.getParentGeoFeatureGroup(), self.other)
+        self.assertEqual(len(document.bodies(self.doc)), 2)
+        self.assertIsNone(self.doc.getObject(name), "the emptied Solid is gone")
+        self.assertEqual([o.Name for o in self.doc.Objects if o.TypeId == "App::Origin" and not o.InList], [],
+                         "and its origin with it")
+        document.adopt(self.other, self.sk)  # already there: nothing happens
+        self.assertEqual(len(document.bodies(self.doc)), 2)
+
+    def test_adopt_keeps_a_solid_that_still_holds_something(self):
+        keep = self.stray.newObject("Sketcher::SketchObject", "Keep")
+        document.adopt(self.other, self.sk)
+        self.assertIs(keep.getParentGeoFeatureGroup(), self.stray)
+        self.assertEqual(len(document.bodies(self.doc)), 3)
+
+    def test_a_cut_on_it_cuts_the_box(self):
+        body = document.target_body(self.sk)
+        document.adopt(body, self.sk)
+        values = extrude.defaults(self.doc, body, self.sk)
+        values.update(operation="cut", distance="5 mm")
+        f = extrude.create(self.doc, body, self.sk, values)
+        self.doc.recompute()
+        self.assertIs(f.getParentGeoFeatureGroup(), self.other)
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertLess(f.Shape.Volume, self.box.Shape.Volume - 1)
+        self.assertEqual(len(document.bodies(self.doc)), 2)
+        self.assertAlmostEqual(self.body.Tip.Shape.Volume, 2000, places=6, msg="the part is untouched")

@@ -107,5 +107,54 @@ def test_2_end_of_part_stays_with_the_part():
     assert "End of Part belongs to the part" in log, log[-1500:]
 
 
+def test_3_a_sketch_left_in_an_empty_solid_cuts_the_box_its_face_belongs_to():
+    """Sketch16 on 2026-10-10: drawn on the box's face but left in a Solid of its own (its first feature was
+    deleted); a Cut on it made a fourth Solid. The Cut must go to the box's Solid, the sketch with it, and the
+    emptied Solid must go."""
+    from incad.core import document
+    sh = shell.instance()
+    box = App.ActiveDocument.getObject("Extrude")
+    other = box.getParentGeoFeatureGroup()
+    stray = document.new_solid(App.ActiveDocument)
+    stray_name = stray.Name
+    top = [i + 1 for i, f in enumerate(box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+    sk = stray.newObject("Sketcher::SketchObject", "Stray")
+    sk.AttachmentSupport = [(box, "Face%d" % top)]
+    sk.MapMode = "FlatFace"
+    App.ActiveDocument.recompute()
+    centre = sk.Placement.inverse().multVec(App.Vector(55, 52, 10))
+    sk.addGeometry(Part.Circle(App.Vector(centre.x, centre.y, 0), App.Vector(0, 0, 1), 1.5))
+    App.ActiveDocument.recompute()
+    sh.schedule_refresh()
+    harness.pump(600)
+    assert len(document.bodies(App.ActiveDocument)) == 3
+    volume = other.Tip.Shape.Volume
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(1200)
+    fs = sh.feature_session
+    assert fs is not None and fs.body is other, (fs and fs.body.Label)
+    fs.dialog.field("operation").button("cut").click()
+    fs.dialog.field("extent").button("through_all").click()
+    harness.pump(1200)
+    assert fs.dialog.error_text() == "", fs.dialog.error_text()
+    QTest.mouseClick(fs.dialog.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+    assert sh.feature_session is None
+    cut = other.Tip
+    assert cut.TypeId == "PartDesign::Pocket" and cut.Profile[0] is sk, cut.Label
+    assert cut.Shape.Volume < volume - 1, (cut.Shape.Volume, volume)
+    assert sk.getParentGeoFeatureGroup() is other, "the sketch moved to the box's Solid"
+    assert App.ActiveDocument.getObject(stray_name) is None, "the emptied Solid is gone"
+    assert len(document.bodies(App.ActiveDocument)) == 2
+    log = open(os.environ["INCAD_LOG"]).read()
+    assert "its own Solid (Solid3)" not in log and "Solid4" not in log, log[-1500:]
+    App.ActiveDocument.undo()
+    harness.pump(900)
+    assert App.ActiveDocument.getObject(stray_name) is not None and len(document.bodies(App.ActiveDocument)) == 3
+    assert sk.getParentGeoFeatureGroup().Name == stray_name, "one undo step puts everything back"
+
+
 harness.run([test_0_part_with_a_box_aside, test_1_a_sketch_on_the_box_and_a_cut_through_it,
-             test_2_end_of_part_stays_with_the_part])
+             test_2_end_of_part_stays_with_the_part, test_3_a_sketch_left_in_an_empty_solid_cuts_the_box_its_face_belongs_to])

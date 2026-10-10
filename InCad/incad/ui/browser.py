@@ -179,6 +179,7 @@ class ModelBrowser(QtWidgets.QWidget):
         parents; no signal is emitted (nothing is picked again)."""
         names = list(names)
         self.tree.blockSignals(True)
+        first = None
         try:
             self.tree.clearSelection()
             for item in self._items():
@@ -189,6 +190,9 @@ class ModelBrowser(QtWidgets.QWidget):
                             parent.setExpanded(True)
                         parent = parent.parent()
                     item.setSelected(True)  # highlighted only: the current row stays the one the user clicked
+                    first = first or item
+            if first is not None:
+                self.tree.scrollToItem(first)  # a sketch picked in the 3D view is found in the tree
         finally:
             self.tree.blockSignals(False)
 
