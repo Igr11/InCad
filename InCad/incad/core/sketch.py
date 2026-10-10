@@ -38,6 +38,47 @@ def valid_support(obj, sub=""):
     return False
 
 
+def is_open_contour(sk):
+    """A sketch with normal geometry whose wires are all open (a path, a guide): shown in the part view."""
+    try:
+        wires = sk.Shape.Wires
+        return bool(sk.Shape.Edges) and bool(wires) and not any(w.isClosed() for w in wires)
+    except Exception:
+        return False
+
+
+def key_points(sk):
+    """[(kind, global Vector)] the view marks on a sketch: a spline's poles ('pole'), a line's or arc's ends and
+    a point ('end'), a circle's or ellipse's centre ('centre'). Construction geometry is skipped; points within
+    1e-6 of an earlier one are merged (the first kind wins)."""
+    pl = sk.getGlobalPlacement()
+    out = []
+
+    def add(kind, p):
+        g = pl.multVec(p)
+        if not any((g - q).Length < 1e-6 for _, q in out):
+            out.append((kind, g))
+
+    for i, geo in enumerate(sk.Geometry):
+        try:
+            if sk.getConstruction(i):
+                continue
+        except Exception:
+            pass
+        tid = geo.TypeId
+        if tid == "Part::GeomBSplineCurve":
+            for p in geo.getPoles():
+                add("pole", p)
+        elif tid in ("Part::GeomCircle", "Part::GeomEllipse"):
+            add("centre", geo.Center)
+        elif tid == "Part::GeomPoint":
+            add("end", App.Vector(geo.X, geo.Y, geo.Z))
+        elif hasattr(geo, "StartPoint") and hasattr(geo, "EndPoint"):
+            add("end", geo.StartPoint)
+            add("end", geo.EndPoint)
+    return out
+
+
 def _next_label(doc, stem):
     used = {o.Label for o in doc.Objects}
     n = 1
