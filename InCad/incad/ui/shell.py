@@ -1674,7 +1674,7 @@ class Shell(QtCore.QObject):
             raise ValueError("No pattern named %s in %s" % (name, sk.Label))
         if self.feature_session is not None:
             raise self._dialog_first()
-        kind = kinds.SKETCH_RECT if rec["kind"] == "rect" else kinds.SKETCH_CIRC
+        kind = {"rect": kinds.SKETCH_RECT, "circ": kinds.SKETCH_CIRC, "path": kinds.SKETCH_PATH}[rec["kind"]]
         kinds._set_editing(sk, name)
         if sp.is_broken(sk, name):
             log.report("warning", "Some copies of %s were deleted; the pattern will be rebuilt" % name)

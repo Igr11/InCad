@@ -357,14 +357,16 @@ def _accepts_sketch(kind, sk, sub):
         return pos == 0 and t == "Part::GeomLineSegment"
     if kind == "sketch_limit":
         return pos != 0 or t == "Part::GeomLineSegment"
+    if kind == "sketch_path":
+        return geo >= 0 and pos == 0 and t in sp.PATH_TYPES
     return False
 
 
 _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
                "limit": "Click a face, edge or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
-               "sketch_limit": "Click a line or a point…"}
-_PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items"})
+               "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}
+_PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})
 _SKETCH_NAMES = {"H_Axis": "X axis", "V_Axis": "Y axis", "RootPoint": "Origin"}
 
 

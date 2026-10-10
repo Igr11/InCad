@@ -809,6 +809,9 @@ def commands():
         Command(id="sketch.circ_pattern", label="Circular", icon="circ_pattern",
                 handler=lambda: start_feature("sketch_circ"), contexts=frozenset({"sketch"}),
                 tooltip="Repeat sketch geometry around a point"),
+        Command(id="sketch.path_pattern", label="Along Path", icon="path_pattern",
+                handler=lambda: start_feature("sketch_path"), contexts=frozenset({"sketch"}),
+                tooltip="Repeat sketch geometry along a path of lines, arcs and splines"),
         Command(id="sketch.edit_pattern", label="Edit Pattern", icon="rect_pattern", handler=_edit_sketch_pattern,
                 contexts=frozenset({"sketch"}), tooltip="Change the selected pattern (or double-click a copy)"),
         Command(id="sketch.delete_pattern", label="Delete Pattern", icon="delete", handler=_delete_sketch_pattern,
@@ -853,7 +856,7 @@ SHORT = {"view.section_points": "Section", "view.toggle_visibility": "Hide / Sho
          "sketch.rectangle_rounded": "Rectangle", "sketch.line_single": "Line", "sketch.polygon": "Polygon",
          "sketch.triangle": "Polygon", "sketch.square": "Polygon", "sketch.pentagon": "Polygon", "sketch.octagon": "Polygon",
          "sketch.polygon_n": "Polygon", "sketch.spline_cv": "Spline", "sketch.rect_pattern": "Pattern",
-         "sketch.circ_pattern": "Pattern",
+         "sketch.circ_pattern": "Pattern", "sketch.path_pattern": "Pattern",
          "sketch.constraints_toggle": "Constraints", "sketch.show_dof": "Free DOF", "sketch.slice": "Slice",
          "sketch.project": "Project", "inspect.mass": "Mass", "feature.rect_pattern": "Pattern",
          "feature.circ_pattern": "Pattern"}

@@ -2,6 +2,8 @@
 'feature' these kinds hand the session is the sketch itself; the pattern being made or edited is named in
 sketch.InCadEditing (the shell sets it for an edit; create sets it for the new one)."""
 import math
+
+import FreeCAD as App
 from types import SimpleNamespace
 
 from incad.core import sketch_patterns as sp
@@ -313,4 +315,97 @@ SKETCH_CIRC = SimpleNamespace(
     IN_SKETCH=True, NEEDS_PROFILE=False, FIELDS=CIRC_FIELDS, PRESELECT={"geometry": "sketch_geometry"},
     defaults=_circ_defaults, create=_circ_create, read=_circ_read, update=_circ_update, param_names=_circ_params)
 
-KINDS = (SKETCH_RECT, SKETCH_CIRC)
+# ----- along a path -----
+PATH_FIELDS = (
+    Field("geometry", "Geometry", "picks", pick="sketch_geometry"),
+    Field("path", "Path", "picks", pick="sketch_path"),
+    Field("count", "Count", "value_length", default="3"),
+    Field("fit", "Distribution", "choice", (("spacing", "By spacing"), ("fit", "Fit to path")), default="spacing"),
+    Field("spacing", "Spacing", "value_length", default="10 mm", show_if=("fit", ("spacing",))),
+    Field("orientation", "Orientation", "choice", (("identical", "Identical"), ("follow", "Follow path")),
+          default="identical"),
+    Field("flip", "Flip", "bool", default=False),
+)
+PICK_KEYS = PICK_KEYS + ("path",)
+
+
+def _path_defaults(doc, body, sk):
+    return {"geometry": "", "path": "", "count": "3", "fit": "spacing", "spacing": "10 mm",
+            "orientation": "identical", "flip": False}
+
+
+def _path_geos(doc, sk, text):
+    picks = _picks(doc, sk, text)
+    geos = [geo for geo, pos in picks if geo >= 0 and pos == 0]
+    if not geos:
+        raise ValueError("Click the path's lines, arcs or splines")
+    return list(dict.fromkeys(geos))
+
+
+def _path_record(doc, sk, name, values):
+    geos = _geometry(doc, sk, values.get("geometry"))
+    path = _path_geos(doc, sk, values.get("path"))
+    if set(path) & set(geos):
+        raise ValueError("The path can't be part of the geometry to repeat")
+    count = _count(values.get("count"))
+    if count < 2:
+        raise ValueError("Use a count of 2 or more")
+    fit = values.get("fit") == "fit"
+    spacing = None
+    if not fit:
+        text = (values.get("spacing") or "10 mm").strip()
+        try:
+            spacing = float(App.Units.Quantity(text).getValueAs("mm"))
+        except Exception:
+            raise ValueError("Spacing must be a length, such as 10 mm (a formula is not taken here)")
+        if spacing <= 0:
+            raise ValueError("Give the pattern a spacing")
+    return {"name": name, "kind": "path", "values": _stored_values(values),
+            "originals": [sp.ensure_id(sk, g) for g in geos], "path": [sp.ensure_id(sk, g) for g in path],
+            "count": count, "spacing": spacing, "orientation": values.get("orientation") or "identical",
+            "flip": bool(values.get("flip"))}
+
+
+def _path_create(doc, body, sk, values):
+    if sk is None:
+        raise ValueError("Open a sketch first")
+    name = sp.next_name(sk)
+    _set_editing(sk, name)
+    sp.build_path(doc, sk, _path_record(doc, sk, name, values))
+    return sk
+
+
+def _path_update(doc, sk, values):
+    name = _editing(sk)
+    sp.rebuild(doc, sk, _path_record(doc, sk, name, values))
+    return sk
+
+
+def _path_read(doc, sk):
+    rec = _record(sk, "path")
+    if rec is None:
+        return _path_defaults(doc, None, sk)
+    values = dict(_path_defaults(doc, None, sk), **_stored_values(rec.get("values", {})))
+    values["geometry"] = _geometry_text(sk, rec)
+    subs = []
+    for gid in rec.get("path", []):
+        i = sp.index_of(sk, gid)
+        if i is not None:
+            subs.append("%s:Edge%d" % (sk.Name, i + 1))
+    values["path"] = ",".join(subs)
+    values["count"] = str(rec["count"])
+    values["fit"] = "fit" if rec.get("spacing") is None else "spacing"
+    if rec.get("spacing") is not None:
+        values["spacing"] = values.get("spacing") or "%g mm" % rec["spacing"]
+    values["orientation"] = rec.get("orientation", "identical")
+    values["flip"] = bool(rec.get("flip"))
+    return values
+
+
+SKETCH_PATH = SimpleNamespace(
+    __name__="incad.features.sketch_path", TITLE="Along Path", ICON="path_pattern", TYPES=(),
+    IN_SKETCH=True, NEEDS_PROFILE=False, FIELDS=PATH_FIELDS, PRESELECT={"geometry": "sketch_geometry"},
+    defaults=_path_defaults, create=_path_create, read=_path_read, update=_path_update)
+
+
+KINDS = (SKETCH_RECT, SKETCH_CIRC, SKETCH_PATH)

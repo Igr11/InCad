@@ -281,6 +281,9 @@ ICONS.update({
     "circ_pattern": ('<circle cx="16" cy="16" r="10" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="3 2"/>'
                      '<g fill="{F}" stroke="{S}" stroke-width="1.3"><circle cx="16" cy="6" r="3"/>'
                      '<circle cx="26" cy="16" r="3"/><circle cx="16" cy="26" r="3"/><circle cx="6" cy="16" r="3"/></g>'),
+    "path_pattern": ('<path d="M4 24 C10 6 16 30 22 12 S30 8 30 8" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="3 2"/>'
+                     '<g fill="{F}" stroke="{S}" stroke-width="1.3"><circle cx="6" cy="20" r="3"/>'
+                     '<circle cx="15" cy="19" r="3"/><circle cx="24" cy="10" r="3"/></g>'),
     "mirror3d": ('<path d="M16 3 V29" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
                  '<path d="M4 10 L10 7 L13 9 V22 L7 25 L4 23 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                  '<path d="M28 10 L22 7 L19 9 V22 L25 25 L28 23 Z" fill="none" stroke="{A}" stroke-width="1.4"/>'),

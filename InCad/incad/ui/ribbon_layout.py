@@ -33,7 +33,7 @@ LAYOUT = {
                                  "sketch.octagon", "sketch.polygon_n"],
                                 ["sketch.spline", "sketch.spline_cv"], "sketch.point"]],
                     ["Modify", [["sketch.fillet", "sketch.chamfer"], "sketch.trim", "sketch.extend", "sketch.offset"]],
-                    ["Pattern", [["sketch.rect_pattern", "sketch.circ_pattern"], "sketch.mirror"]],
+                    ["Pattern", [["sketch.rect_pattern", "sketch.circ_pattern", "sketch.path_pattern"], "sketch.mirror"]],
                     ["Dimension", ["sketch.dimension"]],
                     ["Constrain", ["sketch.coincident", "sketch.horizontal", "sketch.vertical", "sketch.parallel",
                                    "sketch.perpendicular", "sketch.tangent", "sketch.equal", "sketch.symmetric",

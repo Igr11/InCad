@@ -977,3 +977,72 @@ class PathBuildTest(unittest.TestCase):
         sp.remove(self.doc, self.sk, rec2["name"])
         self.assertEqual(sp.records(self.sk), [])
         self.assertEqual(self.sk.GeometryCount, 5, "the path and the original stay")
+
+
+class PathKindTest(unittest.TestCase):
+    """The Along Path kind: values in, record and copies out, read round-trips, update rebuilds."""
+
+    def setUp(self):
+        from incad.features import sketch_patterns as kinds
+        self.kinds = kinds
+        self.doc = util.new_doc("Pk")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.l1 = line(self.sk, 0, 0, 20, 0)
+        self.a = arc(self.sk, 20, 10, 10, -math.pi / 2, 0)
+        self.l2 = line(self.sk, 30, 10, 30, 40)
+        self.c = circle(self.sk, 0, -5, 2)
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def values(self, **extra):
+        v = dict(self.kinds.SKETCH_PATH.defaults(self.doc, self.body, self.sk))
+        v.update(geometry="Sketch:Edge%d" % (self.c + 1),
+                 path="Sketch:Edge%d,Sketch:Edge%d,Sketch:Edge%d" % (self.l1 + 1, self.a + 1, self.l2 + 1),
+                 count="3", fit="fit")
+        v.update(extra)
+        return v
+
+    def test_create_read_update(self):
+        kind = self.kinds.SKETCH_PATH
+        self.assertEqual(kind.TITLE, "Along Path")
+        self.assertTrue(kind.IN_SKETCH)
+        sk = kind.create(self.doc, self.body, self.sk, self.values())
+        rec = sp.records(sk)[0]
+        self.assertEqual(rec["kind"], "path")
+        self.assertEqual(len(rec["copies"]), 2)
+        v = kind.read(self.doc, sk)
+        self.assertEqual(v["count"], "3")
+        self.assertEqual(v["fit"], "fit")
+        self.assertEqual(v["orientation"], "identical")
+        self.assertEqual(v["geometry"], "Sketch:Edge%d" % (self.c + 1))
+        self.assertEqual(v["path"].split(","), ["Sketch:Edge%d" % (self.l1 + 1), "Sketch:Edge%d" % (self.a + 1),
+                                                "Sketch:Edge%d" % (self.l2 + 1)])
+        kind.update(self.doc, sk, dict(v, count="4", fit="spacing", spacing="15 mm", orientation="follow"))
+        rec = sp.records(sk)[0]
+        self.assertEqual(len(rec["copies"]), 3)
+        self.assertEqual(rec["spacing"], 15.0)
+        self.assertEqual(rec["orientation"], "follow")
+        v = kind.read(self.doc, sk)
+        self.assertEqual((v["count"], v["fit"], v["spacing"], v["orientation"]), ("4", "spacing", "15 mm", "follow"))
+
+    def test_the_path_cannot_be_the_geometry_and_needs_a_pick(self):
+        kind = self.kinds.SKETCH_PATH
+        with self.assertRaises(ValueError) as cm:
+            kind.create(self.doc, self.body, self.sk, self.values(path="Sketch:Edge%d" % (self.c + 1)))
+        self.assertIn("path", str(cm.exception).lower())
+        with self.assertRaises(ValueError) as cm:
+            kind.create(self.doc, self.body, self.sk, self.values(path=""))
+        self.assertIn("path", str(cm.exception).lower())
+
+    def test_pick_kind_sketch_path(self):
+        from incad.features import common
+        self.assertTrue(common.accepts("sketch_path", self.sk, "Edge%d" % (self.l1 + 1)))
+        self.assertTrue(common.accepts("sketch_path", self.sk, "Edge%d" % (self.a + 1)))
+        self.assertFalse(common.accepts("sketch_path", self.sk, "Edge%d" % (self.c + 1)), "no circles")
+        self.assertFalse(common.accepts("sketch_path", self.sk, "Vertex1"))
+        self.assertFalse(common.accepts("sketch_path", self.sk, "H_Axis"))

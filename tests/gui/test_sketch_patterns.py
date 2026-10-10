@@ -126,7 +126,7 @@ def test_4_the_ribbon_has_one_pattern_split_button_and_mirror_on_its_own():
     b = rb.button("sketch.rect_pattern")
     assert b is not None and b.menu() is not None, "one split button for the two patterns"
     labels = [a.text() for a in b.menu().actions()]
-    assert labels == ["Rectangular", "Circular"], labels
+    assert labels == ["Rectangular", "Circular", "Along Path"], labels
     m = rb.button("sketch.mirror")
     assert m is not None and m.menu() is None, "Mirror is its own button"
 
@@ -294,10 +294,89 @@ def test_10_undo_inside_the_dialog_reverts_its_last_change():
     assert k.GeometryCount == before, (k.GeometryCount, before)
 
 
+def test_11_along_path_from_the_ribbon():
+    """A circle repeated along a line + arc + line path: picks in the sketch, count and spacing typed, preview,
+    OK; the copies are real geometry rigidly tied to the original."""
+    import math
+    k = sk()
+    Gui.Selection.clearSelection()
+    ST["p1"] = k.addGeometry(Part.LineSegment(App.Vector(0, 30, 0), App.Vector(20, 30, 0)))
+    ST["p2"] = k.addGeometry(Part.ArcOfCircle(Part.Circle(App.Vector(20, 40, 0), App.Vector(0, 0, 1), 10), -math.pi / 2, 0))
+    ST["p3"] = k.addGeometry(Part.LineSegment(App.Vector(30, 40, 0), App.Vector(30, 70, 0)))
+    ST["dot"] = k.addGeometry(Part.Circle(App.Vector(0, 25, 0), App.Vector(0, 0, 1), 1.5))
+    App.ActiveDocument.recompute()
+    harness.pump(300)
+    before = k.GeometryCount
+    res = commands.REGISTRY.run("sketch.path_pattern")
+    harness.pump(1200)
+    assert res.ok, res.error
+    assert dialog() is not None and s().feature_session.kind.TITLE == "Along Path"
+    pick("geometry", "Edge%d" % (ST["dot"] + 1))
+    for key in ("p1", "p2", "p3"):
+        pick("path", "Edge%d" % (ST[key] + 1))
+    assert dialog().values()["path"].count(",") == 2, dialog().values()["path"]
+    w = dialog().field("count")
+    w.setText("4")
+    w.editingFinished.emit()
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    assert k.GeometryCount == before + 3, (k.GeometryCount, before)  # identical: three plain copies
+    w = dialog().field("spacing")
+    w.setText("12 mm")
+    harness.pump(1500)  # typing previews
+    rec = sp.records(k)[-1]
+    assert rec["kind"] == "path" and rec["spacing"] == 12.0, rec
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(800)
+    assert dialog() is None
+    ST["path_pattern"] = rec["name"]
+    assert len(sp.find(k, ST["path_pattern"])["copies"]) == 3
+    c = k.Geometry[sp.index_of(k, sp.find(k, ST["path_pattern"])["copies"][0][0])]
+    assert abs(c.Center.x - 12) < 1e-6 and abs(c.Center.y - 25) < 1e-6, c.Center
+
+
+def test_12_edit_pattern_on_a_path_copy_opens_along_path():
+    k = sk()
+    rec = sp.find(k, ST["path_pattern"])
+    copy = sp.index_of(k, rec["copies"][0][0])
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (copy + 1))
+    harness.pump(300)
+    handled = s()._dblclick_hook(Gui.ActiveDocument.ActiveView, None, 10, 10)
+    harness.pump(1200)
+    assert handled and dialog() is not None and s().feature_session.kind.TITLE == "Along Path"
+    v = dialog().values()
+    assert v["count"] == "4" and v["spacing"] == "12 mm" and v["path"].count(",") == 2, v
+    dialog().set_values({"orientation": "follow", "fit": "fit"})
+    harness.pump(1500)
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(800)
+    rec = sp.find(k, ST["path_pattern"])
+    assert rec["orientation"] == "follow" and rec["spacing"] is None, rec
+    last = k.Geometry[sp.index_of(k, rec["copies"][-1][0])]
+    assert abs(last.Center.x - 35) < 1e-6 and abs(last.Center.y - 70) < 1e-6, last.Center  # fitted to the end, turned 90°
+
+
+def test_13_delete_path_pattern():
+    k = sk()
+    rec = sp.find(k, ST["path_pattern"])
+    copy = sp.index_of(k, rec["copies"][0][0])
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(App.ActiveDocument.Name, k.Name, "Edge%d" % (copy + 1))
+    harness.pump(300)
+    res = commands.REGISTRY.run("sketch.delete_pattern")
+    harness.pump(800)
+    assert res.ok, res.error
+    assert sp.find(k, ST["path_pattern"]) is None
+    assert k.Geometry[ST["dot"]].TypeId == "Part::GeomCircle" and k.Geometry[ST["p2"]].TypeId == "Part::GeomArcOfCircle"
+
+
 harness.run([test_0_sketch_with_a_hole_and_two_limits, test_1_rectangular_pattern_from_the_ribbon_with_picks_in_the_sketch,
              test_2_cancel_leaves_the_sketch_as_it_was, test_3_equal_spacing_between_the_two_lines,
              test_4_the_ribbon_has_one_pattern_split_button_and_mirror_on_its_own, test_5_double_click_on_a_copy_opens_edit_pattern_and_count_changes,
              test_6_delete_pattern_leaves_the_original, test_7_construction_drawing_mode_does_not_turn_the_copies_into_construction,
              test_8_a_dialog_that_fails_to_start_leaves_no_stuck_session,
              test_9_cancel_still_drops_the_pattern_after_a_sketcher_delete_in_between,
-             test_10_undo_inside_the_dialog_reverts_its_last_change])
+             test_10_undo_inside_the_dialog_reverts_its_last_change, test_11_along_path_from_the_ribbon,
+             test_12_edit_pattern_on_a_path_copy_opens_along_path, test_13_delete_path_pattern])
