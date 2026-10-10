@@ -636,6 +636,123 @@ def stations(chain, s0, count, spacing):
     return [s0 + k * spacing for k in range(count)]
 
 
+def _rotation_centre(s0, sk_, alpha):
+    """Centre of the rotation by `alpha` that takes station s0 to station sk_ (a rigid motion with a turn is a
+    rotation about one point): (I - R) C = sk_ - R s0."""
+    c, s = math.cos(alpha), math.sin(alpha)
+    rx, ry = c * s0.x - s * s0.y, s * s0.x + c * s0.y
+    bx, by = sk_.x - rx, sk_.y - ry
+    det = 2.0 * (1.0 - c)
+    return App.Vector(((1 - c) * bx - s * by) / det, (s * bx + (1 - c) * by) / det, 0)
+
+
+def build_path(doc, sk, rec):
+    """Copies of the originals at stations along the path (the original's station is where its first reference
+    point projects on the path), placed exactly and tied rigidly to the original: Identical by constant
+    DistanceX/DistanceY per point, Follow path by Equal + Angle spokes from a locked construction centre (the
+    rotation that takes the original's station and tangent to the copy's)."""
+    rec["_doc"] = doc
+    _begin(sk, rec)
+    originals = _originals(sk, rec)
+    path_geos = []
+    for gid in rec["path"]:
+        i = index_of(sk, gid)
+        if i is None:
+            raise ValueError("A segment of the path is gone: pick the path again")
+        path_geos.append(i)
+    if set(path_geos) & set(originals):
+        raise ValueError("The path can't be part of the geometry to repeat")
+    g0 = originals[0]
+    anchor = point_of(sk, g0, ref_points(sk, g0)[0])
+    chain = path_chain(sk, path_geos)  # runs from the first picked segment's free end; Flip: from the other
+    if rec.get("flip"):
+        far, _ = path_point(chain, path_length(chain))
+        chain = path_chain(sk, path_geos, start=far)
+    s0 = path_station(chain, anchor)
+    count = int(rec["count"])
+    spacing = rec.get("spacing")
+    sts = stations(chain, s0, count, float(spacing) if spacing not in (None, "") else None)
+    start_pt, start_t = path_point(chain, s0)
+    follow = rec.get("orientation") == "follow"
+    alias = _coincident_points(sk, originals)
+    for k, s in enumerate(sts[1:], start=1):
+        station, tangent = path_point(chain, s)
+        alpha = 0.0
+        if follow:
+            alpha = math.atan2(tangent.y, tangent.x) - math.atan2(start_t.y, start_t.x)
+            alpha = (alpha + math.pi) % (2 * math.pi) - math.pi
+        offset = station - start_pt
+        new, copy_ids = {}, []
+        if abs(alpha) < 1e-9:
+            for g in originals:
+                c = _copy_geometry(sk, g, offset=offset)
+                new[g] = c
+                copy_ids.append(ensure_id(sk, c))
+            for g in originals:
+                c = new[g]
+                for pos in ref_points(sk, g):
+                    src = alias.get((g, pos), (g, pos))
+                    if (src, k, 0) in rec["_points"]:
+                        _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
+                        continue
+                    rec["_points"][(src, k, 0)] = True
+                    _add(sk, rec, Sketcher.Constraint("DistanceX", g, pos, c, pos, offset.x))
+                    _add(sk, rec, Sketcher.Constraint("DistanceY", g, pos, c, pos, offset.y))
+                t = geometry_type(sk, g)
+                if t == "Part::GeomCircle":
+                    _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+                elif t == "Part::GeomArcOfCircle":
+                    b = _bisector(sk, g)
+                    if abs(b.x) >= abs(b.y):
+                        _add(sk, rec, Sketcher.Constraint("DistanceX", g, 3, c, 3, offset.x))
+                    else:
+                        _add(sk, rec, Sketcher.Constraint("DistanceY", g, 3, c, 3, offset.y))
+        else:
+            centre = _rotation_centre(start_pt, station, alpha)
+            for g in originals:
+                c = _copy_geometry(sk, g, rotate=(centre, alpha))
+                new[g] = c
+                copy_ids.append(ensure_id(sk, c))
+            cp = sk.addGeometry(Part.Point(centre), True)  # the turn's centre, locked
+            copy_ids.append(ensure_id(sk, cp))
+            _add(sk, rec, Sketcher.Constraint("DistanceX", -1, 1, cp, 1, centre.x))
+            _add(sk, rec, Sketcher.Constraint("DistanceY", -1, 1, cp, 1, centre.y))
+            axis = (cp, 1)
+            spoke0, done = {}, {}
+            for g in originals:
+                c = new[g]
+                for pos in ref_points(sk, g):
+                    src = alias.get((g, pos), (g, pos))
+                    if src in done:
+                        _add(sk, rec, Sketcher.Constraint("Coincident", c, pos, new[src[0]], src[1]))
+                        continue
+                    if src not in spoke0:
+                        s0g = _spoke(sk, rec, axis, src[0], src[1])
+                        copy_ids.append(ensure_id(sk, s0g))
+                        spoke0[src] = s0g
+                    sg = _spoke(sk, rec, axis, c, pos)
+                    copy_ids.append(ensure_id(sk, sg))
+                    done[src] = sg
+                    _add(sk, rec, Sketcher.Constraint("Equal", spoke0[src], sg))
+                    _add(sk, rec, Sketcher.Constraint("Angle", spoke0[src], sg, alpha))
+                t = geometry_type(sk, g)
+                if t == "Part::GeomCircle":
+                    _add(sk, rec, Sketcher.Constraint("Equal", g, c))
+                elif t == "Part::GeomArcOfCircle":
+                    s0g = _spoke(sk, rec, axis, g, 3)
+                    sg = _spoke(sk, rec, axis, c, 3)
+                    copy_ids += [ensure_id(sk, s0g), ensure_id(sk, sg)]
+                    b = _bisector(sk, g)
+                    u = point_of(sk, g, 3) - centre
+                    u = u.normalize() if u.Length > 1e-9 else App.Vector(1, 0, 0)
+                    if abs(b.dot(u)) >= abs(b.x * u.y - b.y * u.x):
+                        _add(sk, rec, Sketcher.Constraint("Equal", s0g, sg))
+                    else:
+                        _add(sk, rec, Sketcher.Constraint("Angle", s0g, sg, alpha))
+        rec["copies"].append(copy_ids)
+    return _end(sk, rec)
+
+
 # ----- equal spacing between two limits -----
 def _limit(sk, limit):
     """(point, normal) of a limit: a line gives a point on it and its normal; a point gives itself and None."""
@@ -713,7 +830,8 @@ def rebuild(doc, sk, rec):
     remove(doc, sk, rec["name"], keep_params=True)
     fresh = dict(rec, copies=[], constraints=[], spokes0=[])
     try:
-        built = build_rect(doc, sk, fresh) if fresh["kind"] == "rect" else build_circ(doc, sk, fresh)
+        build = {"rect": build_rect, "circ": build_circ, "path": build_path}[fresh["kind"]]
+        built = build(doc, sk, fresh)
     except Exception:
         if old is not None:
             save_records(sk, [r for r in records(sk) if r.get("name") != old["name"]]

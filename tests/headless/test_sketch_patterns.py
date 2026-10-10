@@ -874,3 +874,106 @@ class PathChainTest(unittest.TestCase):
             sp.stations(chain, 0.0, 4, 25.0)
         self.assertIn("No room", str(cm.exception))
         self.assertEqual([round(x, 6) for x in sp.stations(chain, 10.0, 2, None)], [10, round(self.L, 6)])
+
+
+class PathBuildTest(unittest.TestCase):
+    """build_path: copies at the stations, rigidly tied to the original; Identical keeps the orientation,
+    Follow path turns each copy by the tangent's change."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Pb")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        self.l1 = line(self.sk, 0, 0, 20, 0)
+        self.a = arc(self.sk, 20, 10, 10, -math.pi / 2, 0)
+        self.l2 = line(self.sk, 30, 10, 30, 40)
+        self.doc.recompute()
+        self.L = 20 + 5 * math.pi + 30
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def record(self, originals, **extra):
+        rec = {"name": sp.next_name(self.sk), "kind": "path", "values": {},
+               "originals": [sp.ensure_id(self.sk, g) for g in originals],
+               "path": [sp.ensure_id(self.sk, g) for g in (self.l1, self.a, self.l2)],
+               "count": 3, "spacing": None, "orientation": "identical", "flip": False}
+        rec.update(extra)
+        return rec
+
+    def centres(self, rec):
+        return [self.sk.Geometry[sp.index_of(self.sk, ids[0])].Center for ids in rec["copies"]]
+
+    def test_identical_copies_sit_at_the_stations(self):
+        c = circle(self.sk, 0, -5, 2)
+        self.doc.recompute()
+        self.sk.solve()
+        dof = self.sk.DoF  # the free path lines and arc (13) and the circle (3)
+        rec = sp.build_path(self.doc, self.sk, self.record([c]))
+        self.assertEqual(len(rec["copies"]), 2)
+        chain = sp.path_chain(self.sk, [self.l1, self.a, self.l2], start=App.Vector(0, 0, 0))
+        for k, centre in enumerate(self.centres(rec), start=1):
+            p, _ = sp.path_point(chain, k * self.L / 2)
+            self.assertAlmostEqual(centre.x, p.x, places=5)
+            self.assertAlmostEqual(centre.y, p.y - 5, places=5)  # the original hangs 5 below its station
+        self.sk.solve()
+        self.assertEqual(self.sk.DoF, dof, "the copies add no freedom")
+        # moving the original moves the copies the same way
+        self.sk.moveGeometry(c, 3, App.Vector(1, -5, 0))
+        self.sk.solve()
+        self.doc.recompute()
+        centre = self.centres(rec)[0]
+        p, _ = sp.path_point(chain, self.L / 2)
+        self.assertAlmostEqual(centre.x, p.x + 1, places=4)
+
+    def test_by_spacing_and_flip(self):
+        c = circle(self.sk, 0, -5, 2)
+        self.doc.recompute()
+        rec = sp.build_path(self.doc, self.sk, self.record([c], spacing=25.0, count=3))
+        chain = sp.path_chain(self.sk, [self.l1, self.a, self.l2], start=App.Vector(0, 0, 0))
+        p, _ = sp.path_point(chain, 50)
+        self.assertAlmostEqual(self.centres(rec)[1].x, p.x, places=5)
+        with self.assertRaises(ValueError) as cm:
+            sp.build_path(self.doc, self.sk, self.record([c], spacing=25.0, count=4))
+        self.assertIn("No room", str(cm.exception))
+        c2 = circle(self.sk, 30, 45, 2)  # at the other end: flip runs the path from there
+        self.doc.recompute()
+        rec2 = sp.build_path(self.doc, self.sk, self.record([c2], spacing=20.0, count=2, flip=True))
+        self.assertAlmostEqual(self.centres(rec2)[0].y, 45 - 20, places=5)
+
+    def test_follow_path_turns_the_copy_with_the_tangent(self):
+        ln = line(self.sk, 0, -5, 4, -5)
+        self.doc.recompute()
+        self.sk.solve()
+        dof = self.sk.DoF
+        rec = sp.build_path(self.doc, self.sk, self.record([ln], orientation="follow", spacing=20 + 5 * math.pi / 2, count=2))
+        copy = self.sk.Geometry[sp.index_of(self.sk, rec["copies"][0][0])]
+        d = (copy.EndPoint - copy.StartPoint).normalize()
+        self.assertAlmostEqual(d.x, math.cos(math.pi / 4), places=5)
+        self.assertAlmostEqual(d.y, math.sin(math.pi / 4), places=5)
+        self.assertAlmostEqual((copy.EndPoint - copy.StartPoint).Length, 4, places=5)
+        self.sk.solve()
+        self.assertEqual(self.sk.DoF, dof, "the copy adds no freedom")
+        self.sk.moveGeometry(ln, 2, App.Vector(6, -5, 0))  # the original grows: the copy follows
+        self.sk.solve()
+        copy = self.sk.Geometry[sp.index_of(self.sk, rec["copies"][0][0])]
+        self.assertAlmostEqual((copy.EndPoint - copy.StartPoint).Length, 6, places=4)
+
+    def test_spline_path_and_rebuild_and_remove(self):
+        spl = Part.BSplineCurve()
+        spl.buildFromPoles([App.Vector(0, 20, 0), App.Vector(10, 30, 0), App.Vector(20, 20, 0), App.Vector(30, 30, 0)])
+        sg = self.sk.addGeometry(spl)
+        c = circle(self.sk, 0, 25, 1)
+        self.doc.recompute()
+        rec = self.record([c], count=3)
+        rec["path"] = [sp.ensure_id(self.sk, sg)]
+        rec = sp.build_path(self.doc, self.sk, rec)
+        self.assertEqual(len(rec["copies"]), 2)
+        self.sk.solve()
+        rec2 = sp.rebuild(self.doc, self.sk, dict(rec, count=5))
+        self.assertEqual(len(rec2["copies"]), 4)
+        sp.remove(self.doc, self.sk, rec2["name"])
+        self.assertEqual(sp.records(self.sk), [])
+        self.assertEqual(self.sk.GeometryCount, 5, "the path and the original stay")
