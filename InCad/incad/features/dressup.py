@@ -270,6 +270,7 @@ def _shell_rescue(doc, body, values, error):
 
 SHELL = SimpleNamespace(
     __name__="incad.features.shell", TITLE="Shell", ICON="shell", TYPES=("PartDesign::Thickness",), rescue=_shell_rescue,
+    claims=lambda f: not getattr(f, "InCadHelperOf", None),  # a Sweep's wall is edited from its Sweep
     NEEDS_PROFILE=False, PROPS={"thickness": "Value"}, PRESELECT={"faces": "face"},
     FIELDS=(Field("faces", "Remove faces", "picks", pick="face"),
             Field("thickness", "Thickness", "value_length", default="1 mm"),

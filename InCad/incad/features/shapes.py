@@ -1,6 +1,8 @@
 """Sweep, Loft, Coil and Draft (Inventor) on native PartDesign features. Join/Cut is chosen when creating."""
 from types import SimpleNamespace
 
+import Part
+
 from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
 
 _OP = Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join")
@@ -54,6 +56,81 @@ def _sketch_preselect(keys):
 
 
 # ----- Sweep -----
+HELPER = "InCadHelperOf"
+_ENDS = (("both_open", "Both open"), ("start_closed", "Start closed"), ("end_closed", "End closed"))
+# (no "both closed": a Thickness with no face removed is the solid itself — the kernel offers no closed cavity)
+
+
+def wall_of(f):
+    """The Sweep's wall: a helper Thickness InCad keeps under it, or None (a solid sweep)."""
+    body = f.getParentGeoFeatureGroup()
+    for o in (body.Group if body is not None else []):
+        if o.TypeId == "PartDesign::Thickness" and getattr(o, HELPER, None) == f.Name:
+            return o
+    return None
+
+
+def _end_faces(f):
+    """('FaceN' at the path's start, 'FaceN' at its end) of the swept solid: the planar faces nearest the
+    spine's two end points (the profile sits at the start)."""
+    spine = f.Spine[0] if f.Spine else None
+    if spine is None or spine.Shape.isNull() or not spine.Shape.Wires:
+        raise ValueError("The sweep's path has no wire")
+    wire = spine.Shape.Wires[0]
+    ends = [wire.OrderedVertexes[0].Point, wire.OrderedVertexes[-1].Point]
+    found = []
+    for p in ends:
+        best, best_d = None, 1e-3
+        for i, face in enumerate(f.Shape.Faces):
+            if face.Surface.TypeId != "Part::GeomPlane":
+                continue
+            d = face.distToShape(Part.Vertex(p))[0]
+            if d < best_d:
+                best, best_d = "Face%d" % (i + 1), d
+        if best is None:
+            raise ValueError("The sweep's end faces were not found: the wall needs a path that starts and ends "
+                             "where the profile sits")
+        found.append(best)
+    if found[0] == found[1]:
+        raise ValueError("The path is closed: a wall needs an open path")
+    return found[0], found[1]
+
+
+def _remove_wall(doc, body, f):
+    helper = wall_of(f)
+    if helper is None:
+        return
+    if body.Tip is helper:
+        body.Tip = f
+    body.removeObject(helper)
+    doc.removeObject(helper.Name)
+
+
+def _wall_apply(doc, body, f, values):
+    """The Wall option: a helper Thickness right after the Sweep removing the chosen end faces."""
+    if not values.get("hollow"):
+        _remove_wall(doc, body, f)
+        return None
+    doc.recompute()  # the sweep's faces must exist to pick its ends
+    start, end = _end_faces(f)
+    ends = values.get("ends") or "both_open"
+    faces = {"both_open": [start, end], "start_closed": [end], "end_closed": [start]}.get(ends, [start, end])
+    helper = wall_of(f)
+    old_tip = body.Tip
+    if helper is None:
+        body.Tip = f  # the wall goes right after its sweep
+        helper = body.newObject("PartDesign::Thickness", "SweepWall")
+        helper.addProperty("App::PropertyString", HELPER, "InCad", "The Sweep this wall belongs to")
+        setattr(helper, HELPER, f.Name)
+        helper.Mode = "Skin"
+        helper.Join = "Arc"
+    helper.Base = (f, faces)
+    helper.Reversed = (values.get("side") or "inside") == "inside"  # as Shell: inside keeps the outer size
+    value_param(doc, helper, "Value", values.get("wall") or "1 mm", "length")
+    body.Tip = helper if old_tip in (f, helper, None) else old_tip
+    return helper
+
+
 def _sweep_apply(doc, f, values):
     prof, path = _one(doc, values.get("profile"), "profile"), _one(doc, values.get("path"), "path")
     if prof is path:
@@ -61,6 +138,7 @@ def _sweep_apply(doc, f, values):
     f.Profile = prof
     f.Spine = (path, [])  # the whole sketch: segments added or redrawn later are followed (probed)
     f.Transition = "Round corner" if "Round corner" in f.getEnumerationsOfProperty("Transition") else f.Transition
+    _wall_apply(doc, f.getParentGeoFeatureGroup(), f, values)
 
 
 def _sweep_create(doc, body, profile, values):
@@ -73,15 +151,34 @@ def _sweep_create(doc, body, profile, values):
 
 def _sweep_read(doc, f):
     spine = f.Spine[0] if f.Spine else None
-    return {"profile": _profile(f).Name if _profile(f) else "", "path": spine.Name if spine else "",
-            "operation": _op(f, "sweep")}
+    out = {"profile": _profile(f).Name if _profile(f) else "", "path": spine.Name if spine else "",
+           "operation": _op(f, "sweep"), "hollow": False, "wall": "1 mm", "side": "inside", "ends": "both_open"}
+    helper = wall_of(f)
+    if helper is not None:
+        start, end = None, None
+        try:
+            start, end = _end_faces(f)
+        except ValueError:
+            pass
+        removed = list(helper.Base[1]) if helper.Base else []
+        ends = ("both_open" if start in removed and end in removed else "start_closed" if end in removed
+                else "end_closed")
+        out.update(hollow=True, wall=value_text(doc, helper, "Value") or "1 mm",
+                   side="inside" if helper.Reversed else "outside", ends=ends)
+    return out
 
 
+_WALL = ("hollow", (True,))
 SWEEP = SimpleNamespace(
     __name__="incad.features.sweep", TITLE="Sweep", ICON="sweep", TYPES=_TYPES["sweep"], NEEDS_PROFILE=False,
     PROPS={}, STRUCTURAL=("join", "cut"), preselect=_sketch_preselect(["profile", "path"]),
-    FIELDS=(Field("profile", "Profile", "pick", pick="sketch"), Field("path", "Path", "pick", pick="sketch"), _OP),
-    defaults=lambda doc, body, profile=None: {"profile": "", "path": "", "operation": "join"},
+    FIELDS=(Field("profile", "Profile", "pick", pick="sketch"), Field("path", "Path", "pick", pick="sketch"), _OP,
+            Field("hollow", "Wall", "bool", default=False),
+            Field("wall", "Thickness", "value_length", default="1 mm", show_if=_WALL),
+            Field("side", "Side", "choice", (("inside", "Inside"), ("outside", "Outside")), "inside", show_if=_WALL),
+            Field("ends", "Ends", "choice", _ENDS, "both_open", show_if=_WALL)),
+    defaults=lambda doc, body, profile=None: {"profile": "", "path": "", "operation": "join", "hollow": False,
+                                              "wall": "1 mm", "side": "inside", "ends": "both_open"},
     create=_sweep_create, read=_sweep_read,
     update=lambda doc, f, values: (_sweep_apply(doc, f, values), f)[1], _pad_of=lambda f: f)
 
