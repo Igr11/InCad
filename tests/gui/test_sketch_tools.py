@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
 import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
-from incad.qt import QtWidgets  # noqa: E402
+from incad.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from incad import actions  # noqa: E402
 from incad.core import commands, prefs  # noqa: E402
 from incad.ui import shell  # noqa: E402
@@ -248,6 +248,68 @@ def test_10_delete_removes_selected_dimension_and_feature():
     assert sk.GeometryCount == ng - 1
 
 
+def _send(kind, pos, button, buttons):
+    """A mouse event on the 3D viewport, through InCad's navigation filter like a real click."""
+    vp = Gui.ActiveDocument.ActiveView.graphicsView().viewport()
+    types = {"press": QtCore.QEvent.MouseButtonPress, "release": QtCore.QEvent.MouseButtonRelease,
+             "move": QtCore.QEvent.MouseMove}
+    ev = QtGui.QMouseEvent(types[kind], pos, QtCore.QPointF(vp.mapToGlobal(pos.toPoint())), button, buttons,
+                           QtCore.Qt.NoModifier)
+    QtWidgets.QApplication.sendEvent(vp, ev)
+    harness.pump(80)
+
+
+def _click(x, y, button=QtCore.Qt.LeftButton):
+    """Click the sketch point (x, y) in the view."""
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    sk = Gui.ActiveDocument.getInEdit().Object
+    sx, sy = view.getPointOnViewport(sk.getGlobalPlacement().multVec(App.Vector(x, y, 0)))
+    dpr = vp.devicePixelRatioF()
+    pos = QtCore.QPointF(sx / dpr, vp.height() - sy / dpr)
+    _send("move", pos, QtCore.Qt.NoButton, QtCore.Qt.NoButton)
+    _send("press", pos, button, button)
+    _send("release", pos, button, QtCore.Qt.NoButton)
+    harness.pump(150)
+
+
+def test_11_right_click_finishes_a_spline():
+    """FreeCAD's spline tools build the curve on a right click; InCad hands that click over instead of opening
+    its marking menu while a Sketcher tool runs (the control points alone are what the user saw before)."""
+    from incad.ui.marking_menu import MarkingMenu
+    sk = Gui.ActiveDocument.getInEdit().Object
+    before = sk.GeometryCount
+    commands.REGISTRY.run("sketch.spline_cv")
+    harness.pump(400)
+    for x, y in ((-30, 60), (0, 80), (30, 60)):
+        _click(x, y)
+    assert sk.GeometryCount == before + 3, "three control points"
+    _click(30, 60, QtCore.Qt.RightButton)
+    harness.pump(400)
+    assert not isinstance(QtWidgets.QApplication.activePopupWidget(), MarkingMenu), "no marking menu in a tool"
+    splines = [g for g in sk.Geometry[before:] if g.TypeId == "Part::GeomBSplineCurve"]
+    assert len(splines) == 1, [g.TypeId for g in sk.Geometry[before:]]
+    poles = [(round(p.x), round(p.y)) for p in splines[0].getPoles()]
+    assert poles == [(-30, 60), (0, 80), (30, 60)], poles
+    shell.instance()._on_escape()  # the tool restarted (continuous mode): stop it
+    harness.pump(300)
+
+
+def test_12_right_click_without_a_tool_opens_the_marking_menu():
+    from incad.ui.marking_menu import MarkingMenu
+    sh = shell.instance()
+    Gui.runCommand("Sketcher_StopOperation")
+    harness.pump(300)
+    assert not sh._sketch_tool_active()
+    _click(-40, -60, QtCore.Qt.RightButton)
+    harness.pump(300)
+    menu = QtWidgets.QApplication.activePopupWidget()
+    assert isinstance(menu, MarkingMenu), menu
+    assert sh.menu_kind == "sketch", sh.menu_kind
+    menu.close()
+    harness.pump(200)
+
+
 harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
@@ -256,4 +318,5 @@ harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_
              test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
              test_8_double_click_with_a_deleted_preselection_is_ignored,
              test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile,
-             test_10_delete_removes_selected_dimension_and_feature])
+             test_10_delete_removes_selected_dimension_and_feature, test_11_right_click_finishes_a_spline,
+             test_12_right_click_without_a_tool_opens_the_marking_menu])

@@ -1251,10 +1251,7 @@ class Shell(QtCore.QObject):
         """A Sketcher tool shows its own bitmap cursor in the view (FreeCAD tells Python nothing else)."""
         mdi = self._mdi()
         views = [w for w in mdi.findChildren(QtWidgets.QGraphicsView) if w.isVisible()] if mdi is not None else []
-        try:
-            return bool(views) and views[0].viewport().cursor().shape() == QtCore.Qt.BitmapCursor
-        except RuntimeError:
-            return False
+        return bool(views) and Navigator.tool_cursor(views[0].viewport())
 
 
 

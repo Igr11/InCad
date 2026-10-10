@@ -1,5 +1,6 @@
 """InCad mouse navigation on FreeCAD's 3D views (rules in incad.core.gestures): LMB+RMB drag orbits around the
-point under the cursor, right-click opens the marking menu, right-drag flicks it, left clicks still select.
+point under the cursor, right-click opens the marking menu (or finishes the running Sketcher tool: FreeCAD's spline
+and polyline tools end on a right click), right-drag flicks it, left clicks still select.
 Middle-drag pan and wheel zoom stay FreeCAD's own (the shell sets the CAD style with zoom-at-cursor)."""
 from incad.core import camera, gestures, log
 from incad.qt import QtCore, QtGui, QtWidgets
@@ -128,18 +129,34 @@ class Navigator(QtCore.QObject):
             self._pivot = None
         elif name == "pan":
             camera.pan_pixels(view.getCameraNode(), action[1], action[2], viewport.height())
+        elif name == "menu" and self.tool_cursor(viewport):
+            self._replay(viewport, action[1], action[2], press_modifiers, QtCore.Qt.RightButton, release=True)
         elif name in ("menu", "flick_start"):
             local = QtCore.QPointF(action[1], action[2])
             self._open_menu(view, viewport, local, viewport.mapToGlobal(local.toPoint()), name == "flick_start")
 
-    def _replay(self, viewport, x, y, modifiers):
+    @staticmethod
+    def tool_cursor(viewport):
+        """True while a Sketcher tool runs in this view: it shows its own bitmap cursor, and FreeCAD tells Python
+        nothing else. A plain right click then belongs to the tool (it finishes a spline or a polyline, ends an
+        empty tool), not to the marking menu; a right drag still flicks the menu."""
+        try:
+            return viewport.cursor().shape() == QtCore.Qt.BitmapCursor
+        except RuntimeError:
+            return False
+
+    def _replay(self, viewport, x, y, modifiers, button=QtCore.Qt.LeftButton, release=False):
+        """Hand FreeCAD a press InCad held back (and its release, for a right click a Sketcher tool finishes on)."""
         local = QtCore.QPointF(x, y)
-        press = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, local,
-                                  QtCore.QPointF(viewport.mapToGlobal(local.toPoint())),
-                                  QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, modifiers)
+        glob = QtCore.QPointF(viewport.mapToGlobal(local.toPoint()))
+        events = [QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, local, glob, button, button, modifiers)]
+        if release:
+            events.append(QtGui.QMouseEvent(QtCore.QEvent.MouseButtonRelease, local, glob, button,
+                                            QtCore.Qt.NoButton, modifiers))
         self._replaying = True
         try:
-            QtWidgets.QApplication.sendEvent(viewport, press)
+            for ev in events:
+                QtWidgets.QApplication.sendEvent(viewport, ev)
         finally:
             self._replaying = False
 

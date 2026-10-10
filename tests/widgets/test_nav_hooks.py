@@ -40,3 +40,44 @@ class HooksTest(unittest.TestCase):
         self.assertTrue(self.nav.eventFilter(self.w, ev("dbl", L, L)))
         self.nav.dblclick_hook = lambda *a: False
         self.assertFalse(self.nav.eventFilter(self.w, ev("dbl", L, L)))
+
+
+class Recorder(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.seen = []
+
+    def mousePressEvent(self, e):
+        self.seen.append(("press", e.button()))
+
+    def mouseReleaseEvent(self, e):
+        self.seen.append(("release", e.button()))
+
+
+class ToolRightClickTest(unittest.TestCase):
+    """A plain right click while a Sketcher tool runs (bitmap cursor on the view) is handed to FreeCAD as
+    press+release (the spline and polyline tools finish on it); otherwise it opens the marking menu."""
+    def setUp(self):
+        qtapp.app()
+        self.menus = []
+        self.nav = Navigator(lambda *a: self.menus.append(a[-1]))
+        self.w = Recorder()
+        self.nav._attached[self.w] = [None, gestures.Gestures(), QtCore.Qt.NoModifier]
+
+    def right_click(self):
+        R = QtCore.Qt.RightButton
+        self.assertTrue(self.nav.eventFilter(self.w, ev("press", R, R)))
+        self.assertTrue(self.nav.eventFilter(self.w, ev("release", R, QtCore.Qt.NoButton)))
+
+    def test_tool_cursor_gets_the_click(self):
+        self.w.setCursor(QtGui.QCursor(QtGui.QPixmap(16, 16)))
+        self.assertTrue(Navigator.tool_cursor(self.w))
+        self.right_click()
+        self.assertEqual(self.w.seen, [("press", QtCore.Qt.RightButton), ("release", QtCore.Qt.RightButton)])
+        self.assertEqual(self.menus, [])
+
+    def test_plain_cursor_opens_the_menu(self):
+        self.assertFalse(Navigator.tool_cursor(self.w))
+        self.right_click()
+        self.assertEqual(self.w.seen, [])
+        self.assertEqual(self.menus, [False])  # a click, not a flick

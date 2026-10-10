@@ -18,3 +18,5 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   constraint of the same sketch; FreeCAD gives every geometry a permanent id (`getGeometryId`) that survives
   deletions and reload and that the pad's element names derive from, so never `setGeometryId` on existing
   geometry; virtual space hides constraints, never geometry (sketch patterns: `incad.core.sketch_patterns`).
+  A running Sketcher tool is visible to Python only as the bitmap cursor on the viewport; FreeCAD's spline
+  and polyline tools finish on a right click (press+release), which `incad.ui.nav` replays while that cursor shows.
