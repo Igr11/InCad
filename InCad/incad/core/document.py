@@ -102,13 +102,70 @@ def show_result(body):
             o.Visibility = (o is shown)
         except Exception:
             pass
-    for o in body.Group:  # profile / construction sketches shouldn't linger in the model view after a tip move
-        if o.TypeId == "Sketcher::SketchObject":
+    for o in body.Group:  # profile sketches shouldn't linger in the model view after a tip move; an unused
+        if o.TypeId == "Sketcher::SketchObject":  # sketch follows the user's choice, else its shape
             try:
-                o.Visibility = False
+                o.Visibility = sketch_shown(o)
             except Exception:
                 pass
     return shown
+
+
+SHOWN_PROP = "InCadShown"  # a sketch the user hid or showed by hand (absent: the default of sketch_shown)
+ORIGIN_TYPES = ("App::Plane", "App::Line", "App::Point")
+
+
+def is_unused_sketch(sk):
+    from incad.features import common
+    return getattr(sk, "TypeId", "") == "Sketcher::SketchObject" and not common.consumers(sk)
+
+
+def sketch_shown(sk):
+    """Whether the part view shows this sketch: never when a feature uses it; else the user's InCadShown
+    choice; else an open contour (a path) is shown and a closed sketch hidden."""
+    from incad.core import sketch as sketches
+    if not is_unused_sketch(sk):
+        return False
+    if SHOWN_PROP in sk.PropertiesList:
+        return bool(getattr(sk, SHOWN_PROP))
+    return sketches.is_open_contour(sk)
+
+
+def origin_items(body):
+    return list(body.Origin.OriginFeatures)
+
+
+def _consumer_label(sk):
+    from incad.features import common
+    users = common.consumers(sk)
+    return users[0].Label if users else ""
+
+
+def set_visibility(objects, flag):
+    """Show or hide origin items and unused sketches (a sketch remembers the choice in InCadShown)."""
+    for o in objects:
+        if o.TypeId == "Sketcher::SketchObject":
+            if SHOWN_PROP not in o.PropertiesList:
+                o.addProperty("App::PropertyBool", SHOWN_PROP, "InCad", "Shown in the part view by choice")
+            setattr(o, SHOWN_PROP, bool(flag))
+        o.Visibility = bool(flag)
+
+
+def toggle_visibility(objects):
+    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state."""
+    targets = []
+    for o in objects:
+        if o.TypeId == "Sketcher::SketchObject":
+            if not is_unused_sketch(o):
+                raise ValueError("%s belongs to %s" % (o.Label, _consumer_label(o)))
+            targets.append(o)
+        elif o.TypeId in ORIGIN_TYPES:
+            targets.append(o)
+    if not targets:
+        raise ValueError("Select a plane, an axis, the centre point or an unused sketch first")
+    flag = not any(o.Visibility for o in targets)
+    set_visibility(targets, flag)
+    return flag
 
 
 def _broken_shape(obj):

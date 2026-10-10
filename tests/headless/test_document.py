@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 import FreeCAD as App
+import Part
 from incad.core import document
 from headless import util
 
@@ -162,3 +163,74 @@ class ShownBodyTest(unittest.TestCase):
         self.assertIs(shown, self.pad)
         self.assertTrue(self.body.Visibility, "the Body itself is shown, not just its tip")
         self.assertTrue(self.pad.Visibility)
+
+
+class VisibilityTest(unittest.TestCase):
+    """Unused sketches: open contours shown, closed ones hidden, the user's InCadShown choice wins; consumed
+    sketches always hidden. Hide / Show on origin items and unused sketches."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Vis")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        self.closed = util.add_rect_sketch(self.body, name="Closed")  # unused
+        self.path = self.body.newObject("Sketcher::SketchObject", "Path")
+        self.path.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.path.MapMode = "FlatFace"
+        self.path.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(30, 0, 0)))
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def _profile(self):
+        p = self.pad.Profile
+        return p[0] if isinstance(p, (tuple, list)) else p
+
+    def test_show_result_shows_an_open_unused_sketch_and_hides_a_closed_one(self):
+        document.show_result(self.body)
+        self.assertTrue(self.path.Visibility)
+        self.assertFalse(self.closed.Visibility)
+        self.assertFalse(self._profile().Visibility, "a consumed sketch is hidden")
+
+    def test_the_users_choice_wins(self):
+        document.set_visibility([self.path], False)
+        document.set_visibility([self.closed], True)
+        document.show_result(self.body)
+        self.assertFalse(self.path.Visibility)
+        self.assertTrue(self.closed.Visibility)
+        self.assertFalse(getattr(self.path, document.SHOWN_PROP))
+        self.assertTrue(getattr(self.closed, document.SHOWN_PROP))
+
+    def test_consumed_sketch_stays_hidden_whatever_the_flag(self):
+        prof = self._profile()
+        prof.addProperty("App::PropertyBool", document.SHOWN_PROP, "InCad", "")
+        setattr(prof, document.SHOWN_PROP, True)
+        document.show_result(self.body)
+        self.assertFalse(prof.Visibility)
+        with self.assertRaises(ValueError) as cm:
+            document.toggle_visibility([prof])
+        self.assertIn("belongs to Pad", str(cm.exception))
+
+    def test_toggle_mixed_hides_all_then_shows_all(self):
+        xy, xz = [o for o in document.origin_items(self.body) if o.Role in ("XY_Plane", "XZ_Plane")]
+        xy.Visibility, xz.Visibility = True, False
+        self.assertFalse(document.toggle_visibility([xy, xz]))
+        self.assertFalse(xy.Visibility or xz.Visibility)
+        self.assertTrue(document.toggle_visibility([xy, xz]))
+        self.assertTrue(xy.Visibility and xz.Visibility)
+
+    def test_toggle_on_a_sketch_records_the_choice(self):
+        self.assertFalse(document.toggle_visibility([self.path]))
+        self.assertFalse(getattr(self.path, document.SHOWN_PROP))
+        document.show_result(self.body)
+        self.assertFalse(self.path.Visibility, "show_result keeps the hidden choice")
+
+    def test_toggle_refuses_nothing_and_features(self):
+        with self.assertRaises(ValueError):
+            document.toggle_visibility([])
+        with self.assertRaises(ValueError):
+            document.toggle_visibility([self.pad])
+
+    def test_origin_items_are_the_seven(self):
+        self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
+                         ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])
