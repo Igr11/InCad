@@ -836,11 +836,15 @@ class Shell(QtCore.QObject):
         context.set_target(None)
         if info:
             obj = doc.getObject(info["Object"])
-            if obj is not None and obj.TypeId in document.ORIGIN_TYPES:  # a shown plane or axis: its own menu
+            if obj is not None and (obj.TypeId in document.ORIGIN_TYPES or obj.TypeId == "Sketcher::SketchObject"):
+                # a shown plane or axis, or a shown sketch: the object's own menu (as from its tree row), and the
+                # tree's old selection steps aside so Hide / Show acts on what is under the cursor
                 context.set_target(obj.Name)
+                self.browser.tree.clearSelection()
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
-                return self._show_marking_menu("origin", global_pos, flick)
+                kind = "origin" if obj.TypeId in document.ORIGIN_TYPES else "browser"
+                return self._show_marking_menu(kind, global_pos, flick)
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()

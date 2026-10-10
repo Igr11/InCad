@@ -455,21 +455,27 @@ class FeatureSession(QtCore.QObject):
         self._timer.start()
         self._sync_sketch_markers()
 
-    def _sync_sketch_markers(self):
-        """The sketches picked in `sketch` fields (Sweep's profile and path, Loft's sections) are shown with
-        their key points while the dialog is open."""
-        import FreeCADGui as Gui
-        from incad.core import sketch as sketches
+    def _picked_sketches(self):
+        """The sketches named in the dialog's `sketch` fields (Sweep's profile and path, Loft's sections)."""
         from incad.features import common
-        from incad.ui.point_markers import PointMarkers
-        if self._closed or self.dialog is None:
-            return
         picked = []
+        if self.dialog is None:
+            return picked
         for f in self.kind.FIELDS:
             if getattr(f, "pick", None) == "sketch":
                 for obj, _ in common.parse_picks(self.doc, self.dialog.values().get(f.key)):
                     if obj.TypeId == "Sketcher::SketchObject" and obj not in picked:
                         picked.append(obj)
+        return picked
+
+    def _sync_sketch_markers(self):
+        """The sketches picked in `sketch` fields are shown with their key points while the dialog is open."""
+        import FreeCADGui as Gui
+        from incad.core import sketch as sketches
+        from incad.ui.point_markers import PointMarkers
+        if self._closed or self.dialog is None:
+            return
+        picked = self._picked_sketches()
         for sk in picked:  # FreeCAD hides a sketch once a Pipe/Loft takes it (its view provider does): show it
             if not sk.Visibility:  # again after every preview, hidden back when the dialog closes
                 if sk not in self._saved_sketches:
@@ -750,8 +756,13 @@ class FeatureSession(QtCore.QObject):
             self._show_base(False)
         except Exception:
             pass
-        for sk in self._saved_sketches:  # shown for the dialog only: back to the part view's policy
-            self._set_visible(sk, False)
+        for sk in self._picked_sketches() + self._saved_sketches:  # back to the part view's policy: a sketch
+            if _feature_alive(sk):  # the feature took is hidden, an unused one follows its (or the user's) rule
+                try:
+                    from incad.core import document
+                    self._set_visible(sk, document.sketch_shown(sk))
+                except Exception:
+                    pass
         self._saved_sketches = []
         if self._markers is not None:
             self._markers.remove()

@@ -11,6 +11,7 @@ import FreeCADGui as Gui  # noqa: E402
 import Part  # noqa: E402
 from incad.core import commands, prefs  # noqa: E402
 from incad.ui import shell  # noqa: E402
+from incad.ui.browser import STATE_ROLE  # noqa: E402
 import headless.util as util  # noqa: E402
 
 
@@ -162,6 +163,142 @@ def test_6_loft_dialog_marks_every_section():
     harness.pump(600)
 
 
+def _send(kind, pos, button, buttons):
+    from incad.qt import QtCore, QtGui, QtWidgets
+    vp = Gui.ActiveDocument.ActiveView.graphicsView().viewport()
+    types = {"press": QtCore.QEvent.MouseButtonPress, "release": QtCore.QEvent.MouseButtonRelease}
+    ev = QtGui.QMouseEvent(types[kind], pos, QtCore.QPointF(vp.mapToGlobal(pos.toPoint())), button, buttons,
+                           QtCore.Qt.NoModifier)
+    QtWidgets.QApplication.sendEvent(vp, ev)
+    harness.pump(80)
+
+
+def _right_click_at(point):
+    from incad.qt import QtCore
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    sx, sy = view.getPointOnViewport(point)
+    dpr = vp.devicePixelRatioF()
+    pos = QtCore.QPointF(sx / dpr, vp.height() - sy / dpr)
+    _send("press", pos, QtCore.Qt.RightButton, QtCore.Qt.RightButton)
+    _send("release", pos, QtCore.Qt.RightButton, QtCore.Qt.NoButton)
+    harness.pump(300)
+
+
+def test_7_cancel_keeps_a_sketch_the_user_showed():
+    """A closed unused sketch shown by choice (InCadShown) is picked for a Sweep, FreeCAD's preview hides it, the
+    dialog shows it again; Cancel must leave it shown, as the choice says."""
+    from incad.core import document
+    sh = shell.instance()
+    prof = App.ActiveDocument.getObject("Prof")
+    document.set_visibility([prof], True)
+    sh.schedule_refresh()
+    harness.pump(400)
+    commands.REGISTRY.run("feature.sweep")
+    harness.pump(600)
+    fs = sh.feature_session
+    fs.dialog.set_pick("profile", "Prof")
+    harness.pump(900)
+    prof.ViewObject.Visibility = False  # what FreeCAD's Pipe view provider does once it takes the profile
+    fs.dialog.set_pick("path", "Path")  # the dialog shows it again (and remembers to restore it)
+    harness.pump(900)
+    assert prof.Visibility
+    fs.cancel()
+    harness.pump(600)
+    assert prof.Visibility, "shown by choice: Cancel leaves it shown"
+    assert sh.browser.item_by_label("Prof").data(0, STATE_ROLE) == "", "not dimmed either"
+    document.set_visibility([prof], False)
+    sh.schedule_refresh()
+    harness.pump(400)
+
+
+def test_8_ok_on_a_sweep_hides_the_path_and_its_markers():
+    sh = shell.instance()
+    path = App.ActiveDocument.getObject("Path")
+    assert path.Visibility
+    before = _count()  # the path's two ends, plus the centre of Top (unused, left visible by the cancelled Loft)
+    assert before >= 2, before
+    commands.REGISTRY.run("feature.sweep")
+    harness.pump(600)
+    fs = sh.feature_session
+    fs.dialog.set_pick("profile", "Prof")
+    fs.dialog.set_pick("path", "Path")
+    harness.pump(900)
+    fs.ok()
+    harness.pump(900)
+    assert sh.feature_session is None
+    sweeps = [o for o in App.ActiveDocument.Objects if o.TypeId == "PartDesign::AdditivePipe"]
+    assert sweeps and "Invalid" not in sweeps[0].State, [o.State for o in sweeps]
+    assert not path.Visibility, "the Sweep consumed its path"
+    assert _count() == before - 2, (_count(), before)
+    assert sh.browser.item_by_label("Path") is None or \
+        sh.browser.item_by_label("Path").data(0, STATE_ROLE) != "hidden", "a consumed sketch is not 'hidden by choice'"
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(900)
+    assert not [o for o in App.ActiveDocument.Objects if o.TypeId == "PartDesign::AdditivePipe"]
+    assert path.Visibility and _count() == before, (path.Visibility, _count(), before)
+
+
+def test_9_right_click_on_a_shown_sketch_in_the_view_opens_the_browser_menu():
+    from incad.core import context
+    from incad.core import document
+    sh = shell.instance()
+    context.set_target(None)
+    body = _body()
+    guide = _sketch_on(body, "XY_Plane", "Guide")  # an open contour away from the swept solid
+    guide.addGeometry(Part.LineSegment(App.Vector(0, 60, 0), App.Vector(40, 60, 0)))
+    App.ActiveDocument.recompute()
+    document.show_result(body)
+    sh.schedule_refresh()
+    harness.pump(500)
+    assert guide.Visibility
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(400)
+    _right_click_at(App.Vector(20, 60, 0))  # on the guide's line
+    assert sh.menu_kind == "browser", sh.menu_kind
+    assert context.target() == "Guide", context.target()
+    sh.marking_menu.close()
+    harness.pump(200)
+
+
+def test_10_a_stale_tree_selection_does_not_beat_the_plane_under_the_cursor():
+    from incad.core import context, document
+    sh = shell.instance()
+    body = _body()
+    xy = [o for o in document.origin_items(body) if o.Role == "XY_Plane"][0]
+    document.set_visibility([xy], True)
+    sh.schedule_refresh()
+    harness.pump(400)
+    row = sh.browser.item_by_label("Prof")
+    row.setSelected(True)  # a row clicked earlier in the tree
+    view = Gui.ActiveDocument.ActiveView
+    hit = None
+    for x, y in ((1.2, 1.2), (1.5, 0.8), (0.8, 1.5), (2.0, 2.0)):
+        sx, sy = view.getPointOnViewport(App.Vector(x, y, 0))
+        info = view.getObjectInfo((int(sx), int(sy)))
+        if info and info["Object"] == xy.Name:
+            hit = App.Vector(x, y, 0)
+            break
+    assert hit is not None, "the shown XY plane is under a probe point"
+    if sh.marking_menu is not None:
+        sh.marking_menu.close()
+        harness.pump(200)
+    sh.menu_kind = None
+    _right_click_at(hit)
+    assert sh.menu_kind == "origin", sh.menu_kind
+    assert context.target() == xy.Name, context.target()
+    if sh.marking_menu is not None:
+        sh.marking_menu.close()
+        harness.pump(200)
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    assert not document.is_shown(xy), "Hide / Show acted on the plane under the cursor, not on the old tree row"
+
+
 harness.run([test_0_part_with_a_path, test_1_hidden_path_has_no_markers, test_2_sketch_edit_mode_hides_the_markers,
              test_3_deleted_sketch_drops_its_markers, test_4_real_part_sketch7_is_shown_with_its_ends,
-             test_5_sweep_dialog_marks_the_picked_path_and_profile, test_6_loft_dialog_marks_every_section])
+             test_5_sweep_dialog_marks_the_picked_path_and_profile, test_6_loft_dialog_marks_every_section,
+             test_7_cancel_keeps_a_sketch_the_user_showed, test_8_ok_on_a_sweep_hides_the_path_and_its_markers,
+             test_9_right_click_on_a_shown_sketch_in_the_view_opens_the_browser_menu,
+             test_10_a_stale_tree_selection_does_not_beat_the_plane_under_the_cursor])

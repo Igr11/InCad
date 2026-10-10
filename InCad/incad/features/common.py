@@ -34,11 +34,35 @@ def closed_profile(sk):
 
 
 def consumers(sk):
+    """Features that use this sketch: as their Profile, as a Sweep's path (Spine) or a Loft's further section
+    (Sections), or through one of its areas."""
     from incad.core import regions
-    own = [o for o in sk.InList if getattr(o, "Profile", None) is not None and _profile(o) is sk]
+    own = [o for o in sk.InList if _uses(o, sk)]
     for prof in regions.profiles_of(sk):  # a feature on one of its areas uses this sketch too
-        own += [o for o in prof.InList if getattr(o, "Profile", None) is not None and _profile(o) is prof]
+        own += [o for o in prof.InList if _uses(o, prof)]
     return own
+
+
+def _linked(value):
+    """The object of a link property value (plain, (obj, subs) tuple, or a list of either)."""
+    if isinstance(value, (tuple, list)):
+        if len(value) == 2 and not isinstance(value[0], (tuple, list)) and isinstance(value[1], (list, tuple, str)) \
+                and hasattr(value[0], "TypeId"):
+            return [value[0]]
+        out = []
+        for v in value:
+            out += _linked(v)
+        return out
+    return [value] if value is not None and hasattr(value, "TypeId") else []
+
+
+def _uses(feature, sk):
+    if getattr(feature, "Profile", None) is not None and _profile(feature) is sk:
+        return True
+    for prop in ("Spine", "Sections"):
+        if prop in getattr(feature, "PropertiesList", ()) and sk in _linked(getattr(feature, prop)):
+            return True
+    return False
 
 
 def _profile(feature):

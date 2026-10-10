@@ -246,6 +246,45 @@ class VisibilityTest(unittest.TestCase):
         self.assertFalse(any(document.is_shown(o) for o in items if o is not xy))
         self.assertFalse(any(o.Visibility for o in items if o is not xy))
 
+    def _sweep_on_path(self):
+        from incad.features import shapes
+        prof = self.body.newObject("Sketcher::SketchObject", "Prof")
+        prof.AttachmentSupport = [([o for o in self.body.Origin.OriginFeatures if o.Role == "YZ_Plane"][0], "")]
+        prof.MapMode = "FlatFace"
+        prof.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 2))
+        self.doc.recompute()
+        sweep = shapes.SWEEP.create(self.doc, self.body, None, {"profile": "Prof", "path": "Path", "operation": "join"})
+        self.doc.recompute()
+        return prof, sweep
+
+    def test_a_sweeps_path_is_consumed(self):
+        prof, sweep = self._sweep_on_path()
+        self.assertFalse(document.is_unused_sketch(self.path), "the Sweep's Spine uses it")
+        self.assertFalse(document.sketch_shown(self.path))
+        document.show_result(self.body)
+        self.assertFalse(self.path.Visibility)
+        self.assertFalse(prof.Visibility)
+        with self.assertRaises(ValueError) as cm:
+            document.toggle_visibility([self.path])
+        self.assertIn("belongs to " + sweep.Label, str(cm.exception))
+
+    def test_a_lofts_sections_are_consumed(self):
+        from incad.features import shapes
+        secs = []
+        for i, z in enumerate((0, 20)):
+            sk = self.body.newObject("Sketcher::SketchObject", "Sec%d" % i)
+            sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+            sk.MapMode = "FlatFace"
+            sk.AttachmentOffset = App.Placement(App.Vector(60, 60, z), App.Rotation())
+            sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 4 + i))
+            secs.append(sk)
+        self.doc.recompute()
+        shapes.LOFT.create(self.doc, self.body, None, {"sections": "Sec0,Sec1", "ruled": False, "closed": False,
+                                                       "operation": "join"})
+        self.doc.recompute()
+        self.assertFalse(document.is_unused_sketch(secs[0]))
+        self.assertFalse(document.is_unused_sketch(secs[1]), "the second section (f.Sections) is used too")
+
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])
