@@ -57,7 +57,7 @@ def _features(body, marker=True):
     from incad.core import regions
     consumed = {p.Name for p in (_profile(o) for o in group) if p is not None}
     for o in group:
-        if regions.is_profile(o):
+        if regions.is_profile(o) and o.Name in consumed:  # an orphan profile (its feature gone) hides nothing
             src = regions.source_of(o)
             if src is not None:
                 consumed.add(src.Name)

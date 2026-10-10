@@ -62,7 +62,8 @@ def test_1_one_area_extrudes_at_once():
 
 def test_2_several_areas_are_shown_and_clicked():
     sk = crossing_sketch(body(), name="Cross")
-    sk.AttachmentOffset = App.Placement(App.Vector(0, 30, 0), App.Rotation())  # beside the first part
+    # on top of the first pad: its areas extrude onto the part (a sketch beside it would make its own Solid)
+    sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 10), App.Rotation())
     doc().recompute()
     harness.pump(300)
     v_before = body().Shape.Volume

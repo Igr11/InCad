@@ -293,8 +293,9 @@ class ModelBrowser(QtWidgets.QWidget):
                 self.endOfPartMoved.emit(before)  # "" = before the first feature (of the main solid only)
             else:
                 self.endOfPartMoved.emit(top.data(0, NAME_ROLE))
-        elif kind in ("origin", "solids", "part"):
+        elif kind in ("origin", "part"):
             self.endOfPartMoved.emit("")
+        # a Solid row or the Solid Bodies group is no place in the part's feature list: nothing moves
 
     @staticmethod
     def _rolled_back(top):

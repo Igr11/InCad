@@ -96,6 +96,35 @@ class TreeTest(unittest.TestCase):
                          [(1, "sketch", "First", ""), (1, "end_of_part", "End of Part", "")])
 
 
+class OrphanProfileTest(unittest.TestCase):
+    """An area profile whose feature is gone (deleted, or never made) must not hide the user's sketch: on
+    2026-10-10 Sketch15 vanished from the tree this way and the user could not find it."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Orph")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_sketch_whose_area_profile_lost_its_feature_is_listed(self):
+        from incad.core import regions
+        sk = util.add_rect_sketch(self.body, name="Cross")
+        sk.addGeometry(Part.LineSegment(App.Vector(10, -5, 0), App.Vector(10, 15, 0)))
+        self.doc.recompute()
+        prof = regions.make_profile(self.doc, self.body, sk, regions.region_at(sk, App.Vector(5, 5, 0)))
+        labels = [l for _, k, l, _ in rows(self.doc)]
+        self.assertIn("Cross", labels, labels)
+        self.assertNotIn(prof.Label, labels, labels)
+        cut = self.body.newObject("PartDesign::Pocket", "Cut")
+        cut.Profile = prof
+        cut.Length = 3
+        self.doc.recompute()
+        flat = [(d, k, l) for d, k, l, _ in rows(self.doc)]
+        self.assertNotIn((1, "sketch", "Cross"), flat, flat)  # used now: shown under its Cut only
+        self.assertIn((2, "sketch", "Cross"), flat, flat)
+
+
 class HiddenRowsTest(unittest.TestCase):
     def setUp(self):
         self.doc = util.new_doc("Th")

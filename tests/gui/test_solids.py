@@ -85,4 +85,27 @@ def test_1_a_sketch_on_the_box_and_a_cut_through_it():
     assert len(document.bodies(App.ActiveDocument)) == 2, "no third Solid"
 
 
-harness.run([test_0_part_with_a_box_aside, test_1_a_sketch_on_the_box_and_a_cut_through_it])
+def test_2_end_of_part_stays_with_the_part():
+    """The one End of Part is the part's (main Solid): dropped on another Solid's feature or on the Solid Bodies
+    row it moves nothing (on 2026-10-10 such a drop emptied the main Solid's Tip and the part vanished)."""
+    from incad.core import document
+    body = _body()
+    tip = body.Tip
+    other = [b for b in document.bodies(App.ActiveDocument) if b is not body][0]
+    other_tip = other.Tip
+    b = shell.instance().browser
+    rows_before = b.tree_rows()
+    for label in (other.Group[-1].Label, "Solid Bodies (2)"):
+        item = b.item_by_label(label)
+        assert item is not None, (label, rows_before)
+        b.drop_end_of_part_on(item)
+        harness.pump(600)
+        assert body.Tip is tip, (label, body.Tip)
+        assert other.Tip is other_tip, (label, other.Tip)
+    assert b.tree_rows() == rows_before
+    log = open(os.environ["INCAD_LOG"]).read()
+    assert "End of Part belongs to the part" in log, log[-1500:]
+
+
+harness.run([test_0_part_with_a_box_aside, test_1_a_sketch_on_the_box_and_a_cut_through_it,
+             test_2_end_of_part_stays_with_the_part])
