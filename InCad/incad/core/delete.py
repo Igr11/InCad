@@ -86,12 +86,23 @@ def _delete(obj):
         prof = obj.Profile[0] if isinstance(getattr(obj, "Profile", None), (tuple, list)) and obj.Profile else None
         body = obj.getParentGeoFeatureGroup()
         helpers = [o for o in body.Group if getattr(o, "InCadHelperOf", None) == obj.Name
-                   and o.TypeId in ("PartDesign::Line", "PartDesign::Plane", "PartDesign::Point")]
-        _remove_feature(obj)
-        for h in helpers:  # work features InCad made for it (a revolve's two-point axis)
-            if doc.getObject(h.Name) is not None:
+                   and o.TypeId in ("PartDesign::Line", "PartDesign::Plane", "PartDesign::Point",
+                                    "PartDesign::Thickness")]
+        walls = [h.Name for h in helpers if h.TypeId == "PartDesign::Thickness"]
+        others = [h.Name for h in helpers if h.TypeId != "PartDesign::Thickness"]
+        for name in walls:  # a sweep's wall sits after its sweep: it goes first, so the tip falls back cleanly
+            h = doc.getObject(name)
+            if h is not None:
+                if body.Tip is h:
+                    body.Tip = obj
                 body.removeObject(h)
-                doc.removeObject(h.Name)
+                doc.removeObject(name)
+        _remove_feature(obj)
+        for name in others:  # work features InCad made for it (a revolve's two-point axis)
+            h = doc.getObject(name)
+            if h is not None:
+                body.removeObject(h)
+                doc.removeObject(name)
         if prof is not None and regions.is_profile(prof) and doc.getObject(prof.Name) is not None:
             body = prof.getParentGeoFeatureGroup()
             if body is not None:

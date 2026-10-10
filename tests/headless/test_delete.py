@@ -57,6 +57,23 @@ class DeleteTest(unittest.TestCase):
         self.assertIsNotNone(self.doc.getObject("A"))
         self.assertAlmostEqual(self.doc.getObject("B").Shape.Volume, 500 + 160 - 80, places=3)
 
+    def test_delete_sweep_removes_its_wall(self):
+        from incad.features import shapes
+        from headless.test_shapes import sketch
+        pad = util.add_pad(self.body, util.add_rect_sketch(self.body, name="BaseSk"), 5, name="Base")
+        self.body.Tip = pad
+        sketch(self.body, "YZ_Plane", "Prof", [Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3)])
+        sketch(self.body, "XY_Plane", "Path", [Part.LineSegment(App.Vector(0, 0, 0), App.Vector(30, 0, 0))])
+        self.doc.recompute()
+        f = shapes.SWEEP.create(self.doc, self.body, None, dict(shapes.SWEEP.defaults(self.doc, self.body, None),
+                                                                 profile="Prof", path="Path", hollow=True))
+        self.doc.recompute()
+        self.assertIsNotNone(shapes.wall_of(f))
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertFalse(any(o.TypeId in ("PartDesign::Thickness", "PartDesign::AdditivePipe") for o in self.body.Group))
+        self.assertIs(self.body.Tip, pad)
+
     def test_delete_refuses_origin_items(self):
         with self.assertRaises(ValueError):
             delete.delete(self.body.Origin.OriginFeatures[0])
