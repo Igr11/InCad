@@ -504,6 +504,138 @@ def build_circ(doc, sk, rec):
     return _end(sk, rec)
 
 
+# ----- along a path -----
+PATH_TYPES = ("Part::GeomLineSegment", "Part::GeomArcOfCircle", "Part::GeomBSplineCurve")
+_JOIN = 1e-6
+
+
+def _near(a, b):
+    return (a - b).Length < _JOIN
+
+
+def path_chain(sk, geos, start=None):
+    """[(geo, edge, reversed)] of this sketch's lines, arcs and splines ordered end to end (edges in sketch
+    coordinates). `start`: a point near the free end the chain begins at; None begins at the first picked
+    segment's free end. Raises when the segments do not join into one open chain."""
+    geos = list(dict.fromkeys(geos))
+    if not geos:
+        raise ValueError("Pick the path's lines, arcs or splines")
+    for g in geos:
+        if geometry_type(sk, g) not in PATH_TYPES:
+            raise ValueError("The path takes lines, arcs and splines")
+    edges = {g: sk.Geometry[g].toShape() for g in geos}
+    ends = {g: (edges[g].firstVertex().Point, edges[g].lastVertex().Point) for g in geos}
+    if len(geos) == 1:
+        free = [(geos[0], 0), (geos[0], 1)]
+    else:
+        free = [(g, i) for g in geos for i in (0, 1)
+                if not any(_near(ends[g][i], q) for h in geos if h != g for q in ends[h])]
+    if len(free) != 2:
+        raise ValueError("The path's segments must join end to end, without branches or gaps")
+    if start is not None:
+        first = min(free, key=lambda gi: (ends[gi[0]][gi[1]] - start).Length)
+    else:
+        first = next((gi for gi in free if gi[0] == geos[0]), free[0])
+    chain, used = [], set()
+    g, i = first
+    while True:
+        chain.append((g, edges[g], i == 1))
+        used.add(g)
+        tail = ends[g][1 - i]
+        nxt = None
+        for h in geos:
+            if h in used:
+                continue
+            for j in (0, 1):
+                if _near(ends[h][j], tail):
+                    nxt = (h, j)
+                    break
+            if nxt:
+                break
+        if nxt is None:
+            break
+        g, i = nxt
+    if len(used) != len(geos):
+        raise ValueError("The path's segments must join end to end, without branches or gaps")
+    return chain
+
+
+def path_length(chain):
+    return sum(e.Length for _, e, _ in chain)
+
+
+def _edge_param(e, reversed_, local):
+    """Curve parameter of the point `local` mm along the chain's direction on edge `e`."""
+    local = min(max(local, 0.0), e.Length)
+    return e.getParameterByLength(e.Length - local if reversed_ else local)
+
+
+def path_point(chain, s):
+    """(point, unit tangent) at arc length `s` along the chain (clamped to its ends)."""
+    total = path_length(chain)
+    s = min(max(s, 0.0), total)
+    run = 0.0
+    for k, (_, e, rev) in enumerate(chain):
+        if s <= run + e.Length + 1e-9 or k == len(chain) - 1:
+            par = _edge_param(e, rev, s - run)
+            t = e.tangentAt(par)
+            if rev:
+                t = -t
+            return e.valueAt(par), t.normalize()
+        run += e.Length
+    raise ValueError("The path is empty")
+
+
+def _wrap(e, par):
+    """A periodic curve's parameter (an arc's angle) moved into the edge's own range."""
+    first, last = e.FirstParameter, e.LastParameter
+    period = 2 * math.pi
+    if e.Curve.TypeId in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+        while par < first - 1e-9:
+            par += period
+        while par > last + 1e-9:
+            par -= period
+    return min(max(par, first), last)
+
+
+def path_station(chain, point):
+    """Arc length along the chain of the point of the path nearest to `point`."""
+    best, best_d, run = 0.0, None, 0.0
+    v = Part.Vertex(point)
+    for _, e, rev in chain:
+        d, pts, _ = e.distToShape(v)
+        if best_d is None or d < best_d - 1e-9:
+            on_edge = pts[0][0]
+            par = _wrap(e, e.Curve.parameter(on_edge))
+            local = e.Curve.length(e.FirstParameter, par)
+            if rev:
+                local = e.Length - local
+            best, best_d = run + local, d
+        run += e.Length
+    return best
+
+
+def stations(chain, s0, count, spacing):
+    """Arc lengths of the original (s0) and its copies: `spacing` mm apart, or spread to the path's end when
+    spacing is None (fit). Raises when the copies do not fit."""
+    total = path_length(chain)
+    if count < 2:
+        raise ValueError("Use a count of 2 or more")
+    room = total - s0
+    if spacing is None:
+        if room < 1e-6:
+            raise ValueError("No room: the original sits at the end of the path (flip the path)")
+        step = room / (count - 1)
+        return [s0 + k * step for k in range(count)]
+    need = (count - 1) * spacing
+    if spacing <= 0:
+        raise ValueError("Give the pattern a spacing")
+    if need > room + 1e-6:
+        raise ValueError("No room: %d copies at %g mm need %g mm, the path has %g mm after the original"
+                         % (count, spacing, need, room))
+    return [s0 + k * spacing for k in range(count)]
+
+
 # ----- equal spacing between two limits -----
 def _limit(sk, limit):
     """(point, normal) of a limit: a line gives a point on it and its normal; a point gives itself and None."""

@@ -810,3 +810,67 @@ class SpeedTest(unittest.TestCase):
         names = [c.Name for c in self.sk.Constraints if sketch.is_pattern_name(c.Name)]
         self.assertEqual(len(names), len(set(names)), "every pattern constraint keeps its own name")
         self.assertTrue(all(self.sk.getVirtualSpace(i) for i, c in enumerate(self.sk.Constraints) if sketch.is_pattern_name(c.Name)))
+
+
+def arc(sk, cx, cy, r, a0, a1, construction=False):
+    return sk.addGeometry(Part.ArcOfCircle(Part.Circle(App.Vector(cx, cy, 0), App.Vector(0, 0, 1), r), a0, a1),
+                          construction)
+
+
+class PathChainTest(unittest.TestCase):
+    """A path: this sketch's lines, arcs and splines ordered end to end; stations by arc length along it."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Pc")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+        # line (0,0)-(20,0), arc centre (20,10) r 10 from (20,0) to (30,10), line (30,10)-(30,40): picked shuffled
+        self.l2 = line(self.sk, 30, 10, 30, 40)
+        self.l1 = line(self.sk, 0, 0, 20, 0)
+        self.a = arc(self.sk, 20, 10, 10, -math.pi / 2, 0)
+        self.doc.recompute()
+        self.L = 20 + 5 * math.pi + 30
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_chain_is_ordered_end_to_end_and_measured(self):
+        chain = sp.path_chain(self.sk, [self.l2, self.a, self.l1], start=App.Vector(0, 0, 0))
+        self.assertEqual([geo for geo, _, _ in chain], [self.l1, self.a, self.l2])
+        self.assertEqual([geo for geo, _, _ in sp.path_chain(self.sk, [self.l2, self.a, self.l1])],
+                         [self.l2, self.a, self.l1], "no start: the first picked segment's free end")
+        self.assertAlmostEqual(sp.path_length(chain), self.L, places=6)
+        p, t = sp.path_point(chain, 20 + 5 * math.pi / 2)
+        self.assertAlmostEqual(p.x, 20 + 10 * math.cos(-math.pi / 4), places=6)
+        self.assertAlmostEqual(p.y, 10 + 10 * math.sin(-math.pi / 4), places=6)
+        self.assertAlmostEqual(t.x, math.cos(math.pi / 4), places=6)
+        self.assertAlmostEqual(t.y, math.sin(math.pi / 4), places=6)
+        p, t = sp.path_point(chain, self.L)
+        self.assertAlmostEqual(p.y, 40, places=6)
+
+    def test_chain_can_start_from_the_other_end(self):
+        chain = sp.path_chain(self.sk, [self.l1, self.a, self.l2], start=App.Vector(30, 40, 0))
+        self.assertEqual([geo for geo, _, _ in chain], [self.l2, self.a, self.l1])
+        p, t = sp.path_point(chain, 0)
+        self.assertAlmostEqual(p.y, 40, places=6)
+        self.assertAlmostEqual(t.y, -1, places=6)
+
+    def test_disconnected_segments_are_refused(self):
+        stray = line(self.sk, 50, 50, 60, 50)
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as cm:
+            sp.path_chain(self.sk, [self.l1, stray])
+        self.assertIn("join end to end", str(cm.exception))
+
+    def test_station_of_a_point_and_stations_along(self):
+        chain = sp.path_chain(self.sk, [self.l1, self.a, self.l2])
+        self.assertAlmostEqual(sp.path_station(chain, App.Vector(5, -3, 0)), 5, places=6)
+        self.assertAlmostEqual(sp.path_station(chain, App.Vector(31, 25, 0)), 20 + 5 * math.pi + 15, places=6)
+        self.assertEqual([round(x, 6) for x in sp.stations(chain, 0.0, 3, None)], [0, round(self.L / 2, 6), round(self.L, 6)])
+        self.assertEqual(sp.stations(chain, 0.0, 3, 25.0), [0, 25, 50])
+        with self.assertRaises(ValueError) as cm:
+            sp.stations(chain, 0.0, 4, 25.0)
+        self.assertIn("No room", str(cm.exception))
+        self.assertEqual([round(x, 6) for x in sp.stations(chain, 10.0, 2, None)], [10, round(self.L, 6)])
