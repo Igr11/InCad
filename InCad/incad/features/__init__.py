@@ -11,6 +11,8 @@ def kinds():
 
 
 def kind_for(feature):
+    if getattr(feature, "InCadHelperOf", None):
+        return None  # a piece InCad made for another feature (a sweep's wall): edited from that feature
     for kind in kinds():
         if feature is not None and feature.TypeId in kind.TYPES and getattr(kind, "claims", lambda f: True)(feature):
             return kind

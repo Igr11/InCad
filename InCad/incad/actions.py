@@ -248,6 +248,9 @@ def move_end_of_part_here():
 def edit_feature():
     from incad.core import log, sketch
     obj = _target_object()
+    owner = getattr(obj, "InCadHelperOf", None)  # a sweep's wall, a thread's chamfer: the owner's dialog
+    if owner and obj.Document.getObject(owner) is not None:
+        obj = obj.Document.getObject(owner)
     if obj.TypeId in ("App::Line", "App::Point"):
         from incad.core import log
         log.report("info", "Double-click a plane to start a sketch on it")

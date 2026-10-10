@@ -527,9 +527,13 @@ def path_chain(sk, geos, start=None):
     ends = {g: (edges[g].firstVertex().Point, edges[g].lastVertex().Point) for g in geos}
     if len(geos) == 1:
         free = [(geos[0], 0), (geos[0], 1)]
+        if _near(ends[geos[0]][0], ends[geos[0]][1]):
+            raise ValueError("The path is closed: pick an open chain")
     else:
         free = [(g, i) for g in geos for i in (0, 1)
                 if not any(_near(ends[g][i], q) for h in geos if h != g for q in ends[h])]
+    if not free and len(geos) > 1:
+        raise ValueError("The path is closed: pick an open chain")
     if len(free) != 2:
         raise ValueError("The path's segments must join end to end, without branches or gaps")
     if start is not None:

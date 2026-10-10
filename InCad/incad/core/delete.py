@@ -85,13 +85,12 @@ def _delete(obj):
     if obj.getParentGeoFeatureGroup() is not None and obj.getParentGeoFeatureGroup().TypeId == "PartDesign::Body":
         prof = obj.Profile[0] if isinstance(getattr(obj, "Profile", None), (tuple, list)) and obj.Profile else None
         body = obj.getParentGeoFeatureGroup()
-        helpers = [o for o in body.Group if getattr(o, "InCadHelperOf", None) == obj.Name
-                   and o.TypeId in ("PartDesign::Line", "PartDesign::Plane", "PartDesign::Point",
-                                    "PartDesign::Thickness")]
-        walls = [h.Name for h in helpers if h.TypeId == "PartDesign::Thickness"]
-        others = [h.Name for h in helpers if h.TypeId != "PartDesign::Thickness"]
-        for name in walls:  # a sweep's wall sits after its sweep: it goes first, so the tip falls back cleanly
-            h = doc.getObject(name)
+        datum_types = ("PartDesign::Line", "PartDesign::Plane", "PartDesign::Point")
+        helpers = [o for o in body.Group if getattr(o, "InCadHelperOf", None) == obj.Name]
+        walls = [h.Name for h in helpers if h.TypeId not in datum_types]
+        others = [h.Name for h in helpers if h.TypeId in datum_types]
+        for name in reversed(walls):  # a sweep's wall (sketch, pipe, caps) sits after its sweep: it goes first,
+            h = doc.getObject(name)   # last piece first, so the tip falls back cleanly
             if h is not None:
                 if body.Tip is h:
                     body.Tip = obj

@@ -1,6 +1,7 @@
 """Sweep, Loft, Coil and Draft (Inventor) on native PartDesign features. Join/Cut is chosen when creating."""
 from types import SimpleNamespace
 
+import FreeCAD as App
 import Part
 
 from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
@@ -57,78 +58,158 @@ def _sketch_preselect(keys):
 
 # ----- Sweep -----
 HELPER = "InCadHelperOf"
+WALL_PROP, ENDS_PROP = "InCadWall", "InCadWallEnds"
 _ENDS = (("both_open", "Both open"), ("start_closed", "Start closed"), ("end_closed", "End closed"))
-# (no "both closed": a Thickness with no face removed is the solid itself — the kernel offers no closed cavity)
+# (no "both closed": that is the solid sweep itself)
+
+
+def _helpers(f):
+    """Everything InCad made for this Sweep's wall (inner profile sketch, subtractive pipe, caps), body order."""
+    body = f.getParentGeoFeatureGroup()
+    return [o for o in (body.Group if body is not None else []) if getattr(o, HELPER, None) == f.Name]
 
 
 def wall_of(f):
-    """The Sweep's wall: a helper Thickness InCad keeps under it, or None (a solid sweep)."""
-    body = f.getParentGeoFeatureGroup()
-    for o in (body.Group if body is not None else []):
-        if o.TypeId == "PartDesign::Thickness" and getattr(o, HELPER, None) == f.Name:
+    """The Sweep's wall: the subtractive pipe InCad keeps under it, or None (a solid sweep)."""
+    for o in _helpers(f):
+        if o.TypeId == "PartDesign::SubtractivePipe":
             return o
     return None
 
 
-def _end_faces(f):
-    """('FaceN' at the path's start, 'FaceN' at its end) of the swept solid: the planar faces nearest the
-    spine's two end points (the profile sits at the start)."""
-    spine = f.Spine[0] if f.Spine else None
-    if spine is None or spine.Shape.isNull() or not spine.Shape.Wires:
-        raise ValueError("The sweep's path has no wire")
-    wire = spine.Shape.Wires[0]
-    ends = [wire.OrderedVertexes[0].Point, wire.OrderedVertexes[-1].Point]
-    found = []
-    for p in ends:
-        best, best_d = None, 1e-3
-        for i, face in enumerate(f.Shape.Faces):
-            if face.Surface.TypeId != "Part::GeomPlane":
-                continue
-            d = face.distToShape(Part.Vertex(p))[0]
-            if d < best_d:
-                best, best_d = "Face%d" % (i + 1), d
-        if best is None:
-            raise ValueError("The sweep's end faces were not found: the wall needs a path that starts and ends "
-                             "where the profile sits")
-        found.append(best)
-    if found[0] == found[1]:
-        raise ValueError("The path is closed: a wall needs an open path")
-    return found[0], found[1]
+def _mark(o, f):
+    o.addProperty("App::PropertyString", HELPER, "InCad", "The Sweep this belongs to")
+    setattr(o, HELPER, f.Name)
 
 
 def _remove_wall(doc, body, f):
-    helper = wall_of(f)
-    if helper is None:
-        return
-    if body.Tip is helper:
+    helpers = _helpers(f)
+    if body.Tip in helpers:
         body.Tip = f
-    body.removeObject(helper)
-    doc.removeObject(helper.Name)
+    for o in reversed(helpers):
+        body.removeObject(o)
+        doc.removeObject(o.Name)
+
+
+def _inner_geometry(prof, t):
+    """Sketch geometry (sketch coordinates) of the profile's closed wires offset inward by `t`."""
+    from incad.core import regions
+    sh = prof.Shape.copy()
+    sh.transformShape(prof.Placement.inverse().toMatrix())
+    geos = []
+    for w in sh.Wires:
+        if not w.isClosed():
+            continue
+        try:
+            off = w.makeOffset2D(-t, 2, False, False)
+        except Exception as e:
+            raise ValueError("The profile can't take a %g mm wall: %s" % (t, e))
+        for e in off.Edges:
+            geos.append(regions._geometry(e))
+    if not geos:
+        raise ValueError("The wall is as thick as the profile: nothing would be left inside")
+    return geos
+
+
+def _spine_ends(path):
+    """(start point, direction into the path there, end point, direction out of the path there)."""
+    wire = path.Shape.Wires[0]
+    p0, p1 = wire.OrderedVertexes[0].Point, wire.OrderedVertexes[-1].Point
+    e0, e1 = wire.OrderedEdges[0], wire.OrderedEdges[-1]
+
+    def direction(e, p, ahead):
+        par = e.Curve.parameter(p)
+        par = min(max(par, e.FirstParameter), e.LastParameter) if e.Curve.TypeId == "Part::GeomLine" else par
+        d = e.tangentAt(par)
+        towards_centre = (e.CenterOfMass - p).dot(d) > 0
+        if towards_centre != ahead:
+            d = -d
+        return d.normalize()
+    return p0, direction(e0, p0, True), p1, direction(e1, p1, False)
+
+
+def _wall_sketch(doc, body, f, prof, geos, name, placement=None):
+    sk = body.newObject("Sketcher::SketchObject", name)
+    _mark(sk, f)
+    if placement is None:
+        sk.AttachmentSupport = prof.AttachmentSupport
+        sk.MapMode = prof.MapMode
+        sk.AttachmentOffset = prof.AttachmentOffset
+    else:
+        sk.MapMode = "Deactivated"
+        sk.Placement = placement
+    for g in geos:
+        sk.addGeometry(g)
+    return sk
+
+
+def _cap(doc, body, f, sk, t, into):
+    """A cap of thickness `t` padded from `sk` into the tube (`into`: unit direction from the cap's plane)."""
+    pad = body.newObject("PartDesign::Pad", "SweepWallCap")
+    _mark(pad, f)
+    pad.Profile = sk
+    pad.Type = "Length"
+    pad.Length = t
+    normal = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+    pad.Reversed = normal.dot(into) < 0
+    return pad
 
 
 def _wall_apply(doc, body, f, values):
-    """The Wall option: a helper Thickness right after the Sweep removing the chosen end faces."""
+    """The Wall option: a second, subtractive sweep of the profile offset inward along the same path hollows
+    the tube (and nothing else); a closed end is a cap padded from the inner profile at that end."""
+    _remove_wall(doc, body, f)
     if not values.get("hollow"):
-        _remove_wall(doc, body, f)
+        for prop in (WALL_PROP, ENDS_PROP):
+            if prop in f.PropertiesList:
+                f.removeProperty(prop)
         return None
-    doc.recompute()  # the sweep's faces must exist to pick its ends
-    start, end = _end_faces(f)
+    if _op(f, "sweep") != "join":
+        raise ValueError("A wall needs a Join sweep: a Cut sweep removes material, there is nothing to hollow")
+    try:
+        t = float(App.Units.Quantity(values.get("wall") or "1 mm").getValueAs("mm"))
+    except Exception:
+        raise ValueError("Wall thickness must be a length, such as 1 mm")
+    if t <= 0:
+        raise ValueError("Give the wall a thickness")
     ends = values.get("ends") or "both_open"
-    faces = {"both_open": [start, end], "start_closed": [end], "end_closed": [start]}.get(ends, [start, end])
-    helper = wall_of(f)
+    prof, path = _profile(f), (f.Spine[0] if f.Spine else None)
+    doc.recompute()
+    if prof is None or path is None or path.Shape.isNull() or not path.Shape.Wires:
+        raise ValueError("The wall needs the sweep's profile and path")
+    geos = _inner_geometry(prof, t)
     old_tip = body.Tip
-    if helper is None:
-        body.Tip = f  # the wall goes right after its sweep
-        helper = body.newObject("PartDesign::Thickness", "SweepWall")
-        helper.addProperty("App::PropertyString", HELPER, "InCad", "The Sweep this wall belongs to")
-        setattr(helper, HELPER, f.Name)
-        helper.Mode = "Skin"
-        helper.Join = "Arc"
-    helper.Base = (f, faces)
-    helper.Reversed = (values.get("side") or "inside") == "inside"  # as Shell: inside keeps the outer size
-    value_param(doc, helper, "Value", values.get("wall") or "1 mm", "length")
-    body.Tip = helper if old_tip in (f, helper, None) else old_tip
-    return helper
+    body.Tip = f  # the wall goes right after its sweep
+    inner = _wall_sketch(doc, body, f, prof, geos, "SweepWallProfile")
+    pipe = body.newObject("PartDesign::SubtractivePipe", "SweepWall")
+    _mark(pipe, f)
+    pipe.Profile = inner
+    pipe.Spine = (path, [])
+    pipe.Transition = f.Transition
+    doc.recompute()
+    if "Invalid" in pipe.State:
+        raise ValueError("The wall could not be made: %s" % pipe.getStatusString())
+    last = pipe
+    p0, t0, p1, t1 = _spine_ends(path)
+    if ends == "start_closed":
+        last = _cap(doc, body, f, inner, t, t0)
+    elif ends == "end_closed":
+        local_start = prof.Placement.inverse().multVec(p0)
+        rot = App.Rotation(t0, t1).multiply(prof.Placement.Rotation)
+        placement = App.Placement(p1 - rot.multVec(local_start), rot)
+        end_sk = _wall_sketch(doc, body, f, prof, geos, "SweepWallEndProfile", placement)
+        last = _cap(doc, body, f, end_sk, t, -t1)
+    doc.recompute()
+    for o in _helpers(f):
+        if o.isDerivedFrom("PartDesign::Feature") and "Invalid" in o.State:
+            raise ValueError("The wall could not be made: %s: %s" % (o.Label, o.getStatusString()))
+    body.Tip = last if old_tip in (f, None) or getattr(old_tip, HELPER, None) == f.Name else old_tip
+    if WALL_PROP not in f.PropertiesList:
+        f.addProperty("App::PropertyLength", WALL_PROP, "InCad", "Wall thickness")
+        f.addProperty("App::PropertyString", ENDS_PROP, "InCad", "Which ends stay open")
+    setattr(f, WALL_PROP, t)
+    setattr(f, ENDS_PROP, ends)
+    return pipe
 
 
 def _sweep_apply(doc, f, values):
@@ -152,33 +233,25 @@ def _sweep_create(doc, body, profile, values):
 def _sweep_read(doc, f):
     spine = f.Spine[0] if f.Spine else None
     out = {"profile": _profile(f).Name if _profile(f) else "", "path": spine.Name if spine else "",
-           "operation": _op(f, "sweep"), "hollow": False, "wall": "1 mm", "side": "inside", "ends": "both_open"}
-    helper = wall_of(f)
-    if helper is not None:
-        start, end = None, None
-        try:
-            start, end = _end_faces(f)
-        except ValueError:
-            pass
-        removed = list(helper.Base[1]) if helper.Base else []
-        ends = ("both_open" if start in removed and end in removed else "start_closed" if end in removed
-                else "end_closed")
-        out.update(hollow=True, wall=value_text(doc, helper, "Value") or "1 mm",
-                   side="inside" if helper.Reversed else "outside", ends=ends)
+           "operation": _op(f, "sweep"), "hollow": False, "wall": "1 mm", "ends": "both_open"}
+    if wall_of(f) is not None:
+        wall = getattr(f, WALL_PROP, None)
+        out.update(hollow=True, wall="%g mm" % wall.Value if wall is not None else "1 mm",
+                   ends=getattr(f, ENDS_PROP, "") or "both_open")
     return out
 
 
-_WALL = ("hollow", (True,))
+_JOIN = ("operation", ("join",))
+_WALL = (("hollow", (True,)), _JOIN)
 SWEEP = SimpleNamespace(
     __name__="incad.features.sweep", TITLE="Sweep", ICON="sweep", TYPES=_TYPES["sweep"], NEEDS_PROFILE=False,
     PROPS={}, STRUCTURAL=("join", "cut"), preselect=_sketch_preselect(["profile", "path"]),
     FIELDS=(Field("profile", "Profile", "pick", pick="sketch"), Field("path", "Path", "pick", pick="sketch"), _OP,
-            Field("hollow", "Wall", "bool", default=False),
+            Field("hollow", "Wall", "bool", default=False, show_if=_JOIN),
             Field("wall", "Thickness", "value_length", default="1 mm", show_if=_WALL),
-            Field("side", "Side", "choice", (("inside", "Inside"), ("outside", "Outside")), "inside", show_if=_WALL),
             Field("ends", "Ends", "choice", _ENDS, "both_open", show_if=_WALL)),
     defaults=lambda doc, body, profile=None: {"profile": "", "path": "", "operation": "join", "hollow": False,
-                                              "wall": "1 mm", "side": "inside", "ends": "both_open"},
+                                              "wall": "1 mm", "ends": "both_open"},
     create=_sweep_create, read=_sweep_read,
     update=lambda doc, f, values: (_sweep_apply(doc, f, values), f)[1], _pad_of=lambda f: f)
 

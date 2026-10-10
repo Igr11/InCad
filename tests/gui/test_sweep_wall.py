@@ -75,7 +75,8 @@ def test_2_edit_from_the_sweeps_row_and_undo():
     from incad.features import shapes
     sh = shell.instance()
     sweep = App.ActiveDocument.getObject("Sweep")
-    before = shapes.wall_of(sweep).Shape.Volume
+    body = _body()
+    before = body.Tip.Shape.Volume
     sh.browser.featureActivated.emit("Sweep")  # the double-click on the row
     harness.pump(900)
     fs = sh.feature_session
@@ -86,11 +87,17 @@ def test_2_edit_from_the_sweeps_row_and_undo():
     harness.pump(900)
     QTest.mouseClick(fs.dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(900)
-    after = shapes.wall_of(sweep).Shape.Volume
+    after = body.Tip.Shape.Volume  # the cap is the last helper: the tip
+    assert body.Tip.TypeId == "PartDesign::Pad" and body.Tip.InCadHelperOf == "Sweep", body.Tip.TypeId
     assert abs((after - before) - math.pi * 16 * 1) < 3.0, (before, after)
     commands.REGISTRY.run("edit.undo")
     harness.pump(900)
-    assert abs(shapes.wall_of(sweep).Shape.Volume - before) < 1e-3
+    assert body.Tip is shapes.wall_of(sweep) and abs(body.Tip.Shape.Volume - before) < 1e-3
+    sh.browser.featureActivated.emit("SweepWall")  # a helper's row opens its Sweep
+    harness.pump(900)
+    assert sh.feature_session is not None and sh.feature_session.kind.TITLE == "Sweep"
+    sh.feature_session.cancel()
+    harness.pump(600)
 
 
 harness.run([test_0_part, test_1_hollow_sweep_from_the_dialog, test_2_edit_from_the_sweeps_row_and_undo])

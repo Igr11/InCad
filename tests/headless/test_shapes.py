@@ -108,56 +108,79 @@ class ShapesTest(unittest.TestCase):
 
 
 class SweepWallTest(ShapesTest):
-    """Sweep's Wall option: a helper Thickness under the Sweep, its removed faces the pipe's ends."""
+    """Sweep's Wall option: the tube is hollowed by a second, subtractive sweep of the profile offset inward
+    along the same path (helpers under the Sweep); a closed end is a cap padded from the inner profile."""
 
-    def hollow(self, **extra):
+    def tube(self, **extra):
         prof = self.circle(5, role="YZ_Plane", name="Prof")
         path = sketch(self.body, "XY_Plane", "Path", [Part.LineSegment(App.Vector(0, 0, 0), App.Vector(40, 0, 0))])
         self.doc.recompute()
-        v = dict(profile="Prof", path="Path", hollow=True, wall="1 mm", side="inside", ends="both_open")
+        v = dict(profile="Prof", path="Path", hollow=True, wall="1 mm", ends="both_open")
         v.update(extra)
         return self.make(shapes.SWEEP, **v)
 
+    def helpers(self, f):
+        return [o for o in self.body.Group if getattr(o, "InCadHelperOf", None) == f.Name]
+
     def test_both_ends_open_is_a_tube(self):
         import math
-        f = self.hollow()
+        f = self.tube()
         wall = shapes.wall_of(f)
         self.assertIsNotNone(wall)
-        self.assertEqual(wall.TypeId, "PartDesign::Thickness")
+        self.assertEqual(wall.TypeId, "PartDesign::SubtractivePipe")
         self.assertEqual(wall.InCadHelperOf, f.Name)
         self.assertIs(self.body.Tip, wall)
         self.assertNotIn("Invalid", wall.State, wall.getStatusString())
         expect = math.pi * (25 - 16) * 40
         self.assertAlmostEqual(wall.Shape.Volume, expect, delta=0.02 * expect)
-        start, end = shapes._end_faces(f)
-        self.assertNotEqual(start, end)
+        kinds = sorted(o.TypeId for o in self.helpers(f))
+        self.assertEqual(kinds, ["PartDesign::SubtractivePipe", "Sketcher::SketchObject"])
 
     def test_a_closed_end_keeps_its_cap(self):
         import math
-        f = self.hollow(ends="start_closed")
-        wall = shapes.wall_of(f)
+        f = self.tube(ends="start_closed")
         expect = math.pi * 25 * 40 - math.pi * 16 * 39  # a 1 mm cap at the start
-        self.assertAlmostEqual(wall.Shape.Volume, expect, delta=0.02 * expect)
+        self.assertAlmostEqual(self.body.Tip.Shape.Volume, expect, delta=0.02 * expect)
         self.assertEqual(shapes.SWEEP.read(self.doc, f)["ends"], "start_closed")
         f2 = shapes.SWEEP.update(self.doc, f, dict(shapes.SWEEP.read(self.doc, f), ends="end_closed"))
         self.doc.recompute()
-        self.assertAlmostEqual(shapes.wall_of(f2).Shape.Volume, expect, delta=0.02 * expect)
+        self.assertAlmostEqual(self.body.Tip.Shape.Volume, expect, delta=0.02 * expect)
         self.assertEqual(shapes.SWEEP.read(self.doc, f2)["ends"], "end_closed")
+        bb = self.body.Tip.Shape.BoundBox
+        self.assertAlmostEqual(bb.XMax, 40, places=3, msg="the end cap sits inside the tube's end")
         self.assertEqual([v for v, _ in shapes._ENDS], ["both_open", "start_closed", "end_closed"])
 
-    def test_read_round_trips_and_clearing_the_wall_removes_the_helper(self):
-        f = self.hollow()
+    def test_the_wall_hollows_the_tube_only(self):
+        """A tube swept off the end face of a block: the block keeps its full volume."""
+        import math
+        block = util.add_pad(self.body, util.add_rect_sketch(self.body, name="Blk"), 10, name="Block")
+        self.body.Tip = block
+        prof = sketch(self.body, "YZ_Plane", "Prof", [Part.Circle(App.Vector(5, 5, 0), App.Vector(0, 0, 1), 3)], 20)
+        path = sketch(self.body, "XY_Plane", "Path", [Part.LineSegment(App.Vector(20, 5, 0), App.Vector(60, 5, 0))], 5)
+        self.doc.recompute()
+        f = self.make(shapes.SWEEP, profile="Prof", path="Path", hollow=True, wall="1 mm", ends="both_open")
+        expect = 2000 + math.pi * (9 - 4) * 40
+        self.assertAlmostEqual(self.body.Tip.Shape.Volume, expect, delta=0.02 * expect)
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
+
+    def test_read_round_trips_and_clearing_the_wall_removes_the_helpers(self):
+        f = self.tube()
         v = shapes.SWEEP.read(self.doc, f)
         self.assertTrue(v["hollow"])
-        self.assertEqual((v["wall"], v["side"], v["ends"]), ("1 mm", "inside", "both_open"))
+        self.assertEqual((v["wall"], v["ends"]), ("1 mm", "both_open"))
         self.assertIs(kind_for(shapes.wall_of(f)), None, "a helper row opens no dialog of its own")
         shapes.SWEEP.update(self.doc, f, dict(v, hollow=False))
         self.doc.recompute()
         self.assertIsNone(shapes.wall_of(f))
+        self.assertEqual(self.helpers(f), [])
         self.assertIs(self.body.Tip, f)
-        self.assertFalse(any(o.TypeId == "PartDesign::Thickness" for o in self.body.Group))
+
+    def test_a_cut_sweep_takes_no_wall(self):
+        with self.assertRaises(ValueError) as cm:
+            self.tube(operation="cut")
+        self.assertIn("Join", str(cm.exception))
 
     def test_solid_sweep_has_no_helper(self):
-        f = self.hollow(hollow=False)
+        f = self.tube(hollow=False)
         self.assertIsNone(shapes.wall_of(f))
         self.assertIs(self.body.Tip, f)

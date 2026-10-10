@@ -857,6 +857,15 @@ class PathChainTest(unittest.TestCase):
         self.assertAlmostEqual(p.y, 40, places=6)
         self.assertAlmostEqual(t.y, -1, places=6)
 
+    def test_a_closed_loop_is_refused_as_closed(self):
+        a = line(self.sk, 50, 50, 60, 50)
+        b = line(self.sk, 60, 50, 60, 60)
+        c = line(self.sk, 60, 60, 50, 50)
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as cm:
+            sp.path_chain(self.sk, [a, b, c])
+        self.assertIn("closed", str(cm.exception))
+
     def test_disconnected_segments_are_refused(self):
         stray = line(self.sk, 50, 50, 60, 50)
         self.doc.recompute()
@@ -998,9 +1007,12 @@ class PathBuildTest(unittest.TestCase):
         self.doc.recompute()
         rec = self.record([c], count=3)
         rec["path"] = [sp.ensure_id(self.sk, sg)]
+        self.sk.solve()
+        dof = self.sk.DoF
         rec = sp.build_path(self.doc, self.sk, rec)
         self.assertEqual(len(rec["copies"]), 2)
         self.sk.solve()
+        self.assertEqual(self.sk.DoF, dof, "copies on a spline are tied too")
         rec2 = sp.rebuild(self.doc, self.sk, dict(rec, count=5))
         self.assertEqual(len(rec2["copies"]), 4)
         sp.remove(self.doc, self.sk, rec2["name"])
@@ -1067,6 +1079,18 @@ class PathKindTest(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             kind.create(self.doc, self.body, self.sk, self.values(path=""))
         self.assertIn("path", str(cm.exception).lower())
+
+    def test_a_copy_cannot_be_a_path_segment(self):
+        kind = self.kinds.SKETCH_PATH
+        sk = kind.create(self.doc, self.body, self.sk, self.values())
+        copy = sp.index_of(sk, sp.records(sk)[0]["copies"][0][0])
+        c2 = circle(sk, 60, 60, 1)
+        self.doc.recompute()
+        self.kinds._set_editing(sk, "")
+        with self.assertRaises(ValueError) as cm:
+            kind.create(self.doc, self.body, sk, self.values(geometry="Sketch:Edge%d" % (c2 + 1),
+                                                             path="Sketch:Edge%d" % (copy + 1)))
+        self.assertIn("not a copy", str(cm.exception))
 
     def test_pick_kind_sketch_path(self):
         from incad.features import common

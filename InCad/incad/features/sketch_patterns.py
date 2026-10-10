@@ -37,7 +37,7 @@ def _picks(doc, sk, text):
     return out
 
 
-PICK_KEYS = ("geometry", "dir1", "dir2", "from1", "to1", "axis")
+PICK_KEYS = ("geometry", "dir1", "dir2", "from1", "to1", "axis", "path")
 
 
 def _geometry(doc, sk, text):
@@ -326,9 +326,6 @@ PATH_FIELDS = (
           default="identical"),
     Field("flip", "Flip", "bool", default=False),
 )
-PICK_KEYS = PICK_KEYS + ("path",)
-
-
 def _path_defaults(doc, body, sk):
     return {"geometry": "", "path": "", "count": "3", "fit": "spacing", "spacing": "10 mm",
             "orientation": "identical", "flip": False}
@@ -339,6 +336,9 @@ def _path_geos(doc, sk, text):
     geos = [geo for geo, pos in picks if geo >= 0 and pos == 0]
     if not geos:
         raise ValueError("Click the path's lines, arcs or splines")
+    for geo in geos:
+        if sp.is_copy(sk, geo):
+            raise ValueError("The path must be original geometry, not a copy of a pattern")
     return list(dict.fromkeys(geos))
 
 
