@@ -24,3 +24,6 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   effective state); unused sketches follow `InCadShown` (`document.sketch_shown`: open contours shown by default);
   view markers (`incad.ui.point_markers`) are SoAnnotation nodes, never document objects; a raw `Gui.setEdit` on a
   sketch switches workbenches and crashed in a test, open sketches through `shell.sketches.edit`.
+- Sketch patterns Along Path (`core/sketch_patterns.build_path`) place copies exactly and tie them with constant
+  constraints (re-placed on edit); a Sweep's Wall is a helper `PartDesign::Thickness` (`InCadHelperOf`) after the Sweep
+  removing its end faces, and a Thickness with no removed face is the solid itself (no closed cavity).

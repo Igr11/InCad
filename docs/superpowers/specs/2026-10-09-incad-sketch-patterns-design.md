@@ -153,7 +153,15 @@ cannot be used in this expression"), and construction geometry cannot be hidden.
 - Starting the dialog while another sketch tool runs stops that tool (as the slot tool does); finishing the
   sketch with the dialog open cancels the dialog.
 
-## 7. Phase 2 — Along path
+## 7. Phase 2 — Along path (implemented 2026-10-10, plan `docs/superpowers/plans/2026-10-10-incad-sweep-wall-and-path-pattern.md`)
+
+Built as its own dialog "Along Path" (third entry of the sketch Pattern split button), not a mode of Rectangular.
+Rulings: copies are placed exactly at creation and re-placed on edit (count, spacing and the path live in the
+record, no model parameter); every copy is tied rigidly to the original (Identical: constant DistanceX/DistanceY
+per point; Follow path: a locked construction centre with Equal + Angle spokes, the rotation that takes the
+original's station and tangent to the copy's); the chain runs from the first picked segment's free end, Flip from
+the other; the original's station is its first reference point projected on the path; "Fit to path" spreads the
+copies from the original to the path's end. The paragraphs below are the original design notes.
 
 - Rectangular's Distribution gains "Along path": Path (`sketch_path`: one curve or a connected chain of
   lines/arcs of this sketch), Count, Spacing or "Fit to path" (equal steps over the whole length, first copy at
