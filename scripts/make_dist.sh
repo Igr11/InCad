@@ -15,6 +15,7 @@ export COPYFILE_DISABLE=1
 mkdir -p "$STAGE/$NAME"
 rsync -a --exclude "__pycache__" --exclude "._*" --exclude ".DS_Store" --exclude "*.pyc" InCad/ "$STAGE/$NAME/InCad/"
 sed "s/VERSION/$NAME/g" scripts/dist/README.txt > "$STAGE/$NAME/README.txt"
+sed "s/VERSION/$NAME/g" scripts/dist/README_ru.txt > "$STAGE/$NAME/README_ru.txt"
 xattr -cr "$STAGE/$NAME"
 (cd "$STAGE" && zip -qrX "$NAME.zip" "$NAME" -x "*/._*" "*/.DS_Store")
 mkdir -p "$OUT"
