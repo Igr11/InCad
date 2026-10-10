@@ -11,6 +11,9 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
+Assemblies have not been tested yet in this build: please test parts (Part).
+If you try an Assembly anyway, expect problems and work on copies of your files.
+
 
 Requirements
 ------------
@@ -33,7 +36,8 @@ Install (with FreeCAD's Addon Manager)
    step 2. Leave "Branch" as it is. Click OK, then OK again to close Settings.
 5. Open Tools > Addon Manager. Find "InCad" in the list, select it and click Install.
 6. Restart FreeCAD and choose "InCad" in the workbench selector.
-   The first time, InCad asks Part or Assembly and the units: choose and click OK.
+   The first time, InCad asks Part or Assembly and the units: choose Part (Assembly
+   is not tested yet) and click OK.
 
 After the install the unzipped folder is no longer needed.
 
