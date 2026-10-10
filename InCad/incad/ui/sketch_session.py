@@ -144,6 +144,10 @@ class SketchSession:
             self._saved_vp[key] = (vo.EditingWorkbench,
                                    vo.Autoconstraints if "Autoconstraints" in vo.PropertiesList else None)
         vo.EditingWorkbench = ""  # stay in InCad while sketching (restored when the sketch is finished)
+        from incad.ui import shell as shells
+        inst = shells.instance()
+        if inst is not None:
+            inst._unpeek()  # shown for its tree row: FreeCAD restores what it sees at setEdit, so end that first
         if "Autoconstraints" in vo.PropertiesList:
             vo.Autoconstraints = True
         if self._on_edit is not None:

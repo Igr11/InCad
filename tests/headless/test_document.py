@@ -327,6 +327,17 @@ class VisibilityTest(unittest.TestCase):
         document.apply_visibility(self.doc)
         self.assertTrue(document.is_shown(xy) and wp.Visibility, "redone: shown again")
 
+    def test_apply_visibility_hides_consumed_sketches_and_leaves_free_ones(self):
+        """Redo of an Extrude or a Sweep brings the feature back but not the hiding of its sketch (FreeCAD
+        records no Visibility): apply_visibility hides consumed sketches; an unused one without a choice stays."""
+        prof = self._profile()
+        prof.Visibility = True
+        self.closed.Visibility = True
+        document.apply_visibility(self.doc)
+        self.assertFalse(prof.Visibility, "consumed: hidden")
+        self.assertTrue(self.closed.Visibility, "unused, no choice: left alone")
+        self.assertTrue(self.path.Visibility)
+
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])

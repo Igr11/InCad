@@ -182,8 +182,8 @@ def set_visibility(objects, flag, record=True):
 def apply_visibility(doc):
     """After undo/redo (which restore InCadShown but not Visibility): origin items and work features show or
     hide as their choice says, or as their default when the choice is gone (origin items hidden, work features
-    shown); a sketch with a choice follows sketch_shown, one without is left alone; an Origin group is on when
-    any of its items is shown."""
+    shown); a sketch with a choice follows sketch_shown, a consumed one is hidden, a free one without a choice
+    is left alone; an Origin group is on when any of its items is shown."""
     origins = set()
     for o in doc.Objects:
         if o.TypeId in ORIGIN_TYPES:
@@ -194,9 +194,9 @@ def apply_visibility(doc):
         elif o.TypeId in DATUM_TYPES:
             want = bool(getattr(o, SHOWN_PROP)) if SHOWN_PROP in o.PropertiesList else True
         elif o.TypeId == "Sketcher::SketchObject":
-            if SHOWN_PROP not in o.PropertiesList:
-                continue  # no choice: left as it is (a sketch just finished must not vanish on an Undo)
-            want = sketch_shown(o)
+            if SHOWN_PROP not in o.PropertiesList and is_unused_sketch(o):
+                continue  # free, no choice: left as it is (a sketch just finished must not vanish on an Undo)
+            want = sketch_shown(o)  # a choice, or a consumed sketch (redo of its feature leaves it visible)
         else:
             continue
         if bool(o.Visibility) != want:
