@@ -285,6 +285,23 @@ class VisibilityTest(unittest.TestCase):
         self.assertFalse(document.is_unused_sketch(secs[0]))
         self.assertFalse(document.is_unused_sketch(secs[1]), "the second section (f.Sections) is used too")
 
+    def test_work_features_hide_and_show(self):
+        """A work plane, axis or point (PartDesign datums) toggles like an origin item; Show All / Hide All
+        Origin leave it alone."""
+        wp = self.body.newObject("PartDesign::Plane", "WorkPlane")
+        wa = self.body.newObject("PartDesign::Line", "WorkAxis")
+        self.doc.recompute()
+        self.assertTrue(document.is_shown(wp))
+        self.assertFalse(document.toggle_visibility([wp, wa]))
+        self.assertFalse(wp.Visibility or wa.Visibility)
+        self.assertFalse(document.is_shown(wp))
+        document.set_visibility(document.origin_items(self.body), True)
+        self.assertFalse(wp.Visibility, "Show All Origin is about the origin")
+        self.assertTrue(document.toggle_visibility([wp]))
+        self.assertTrue(wp.Visibility)
+        document.show_result(self.body)
+        self.assertTrue(wp.Visibility, "a tip move does not hide a work plane")
+
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])

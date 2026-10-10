@@ -879,14 +879,16 @@ class Shell(QtCore.QObject):
         context.set_target(None)
         if info:
             obj = doc.getObject(info["Object"])
-            if obj is not None and (obj.TypeId in document.ORIGIN_TYPES or obj.TypeId == "Sketcher::SketchObject"):
-                # a shown plane or axis, or a shown sketch: the object's own menu (as from its tree row), and the
-                # tree's old selection steps aside so Hide / Show acts on what is under the cursor
+            datum = obj is not None and (obj.TypeId in document.ORIGIN_TYPES or obj.TypeId in document.DATUM_TYPES)
+            if obj is not None and (datum or obj.TypeId == "Sketcher::SketchObject"):
+                # a shown plane, axis or point (origin or work feature), or a shown sketch: the object's own menu
+                # (as from its tree row); the tree's old selection steps aside so Hide / Show acts on what is
+                # under the cursor
                 context.set_target(obj.Name)
                 self.browser.tree.clearSelection()
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
-                kind = "origin" if obj.TypeId in document.ORIGIN_TYPES else "browser"
+                kind = "origin" if datum else "browser"
                 return self._show_marking_menu(kind, global_pos, flick)
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
@@ -941,7 +943,7 @@ class Shell(QtCore.QObject):
                 document.set_visibility([obj], True)
             except Exception:
                 pass
-        elif obj.TypeId == "Sketcher::SketchObject":
+        elif obj.TypeId == "Sketcher::SketchObject" or obj.TypeId in document.DATUM_TYPES:
             if obj.Visibility:
                 return
             self._peeked = (obj.Document.Name, obj.Name, [(obj, False)])

@@ -30,6 +30,8 @@ class MarkingLayoutTest(unittest.TestCase):
                          {"part", "face", "edge", "vertex", "empty", "browser", "origin", "sketch", "assembly",
                           "asm_face", "asm_edge"})
         self.assertEqual(marking_layout.LAYOUT["origin"]["list"], ["sketch.start", "view.toggle_visibility"])  # planes/axes
+        for ctx in ("part", "face", "edge", "vertex", "browser", "origin"):  # Hide / Show from any RMB in the view
+            self.assertIn("view.toggle_visibility", marking_layout.LAYOUT[ctx]["list"], ctx)
         self.assertEqual(marking_layout.LAYOUT["sketch"]["list"][:2], ["sketch.stop", "edit.delete"])  # RMB: Stop Tool first
         self.assertEqual(marking_layout.LAYOUT["assembly"]["N"], "assembly.place")
         self.assertEqual(marking_layout.LAYOUT["asm_face"]["N"], "constrain.mate")

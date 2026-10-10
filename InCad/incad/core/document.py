@@ -113,6 +113,7 @@ def show_result(body):
 
 SHOWN_PROP = "InCadShown"  # a sketch the user hid or showed by hand (absent: the default of sketch_shown)
 ORIGIN_TYPES = ("App::Plane", "App::Line", "App::Point")
+DATUM_TYPES = ("PartDesign::Plane", "PartDesign::Line", "PartDesign::Point")  # work planes, axes, points
 
 
 def is_unused_sketch(sk):
@@ -180,12 +181,12 @@ def toggle_visibility(objects):
             if not is_unused_sketch(o):
                 raise ValueError("%s belongs to %s" % (o.Label, _consumer_label(o)))
             targets.append(o)
-        elif o.TypeId in ORIGIN_TYPES:
+        elif o.TypeId in ORIGIN_TYPES or o.TypeId in DATUM_TYPES:
             targets.append(o)
     if not targets:
         seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
-        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, the centre point or an unused sketch"
-                         % seen if seen else "Select a plane, an axis, the centre point or an unused sketch first")
+        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, a point or an unused sketch"
+                         % seen if seen else "Select a plane, an axis, a point or an unused sketch first")
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag

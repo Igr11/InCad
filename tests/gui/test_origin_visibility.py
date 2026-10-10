@@ -175,6 +175,58 @@ def test_6_right_click_on_a_visible_plane_in_the_view_opens_the_origin_menu():
     document.set_visibility([xy], False)
 
 
+def test_7_right_click_on_a_work_plane_in_the_view_offers_hide_show():
+    """A work plane (PartDesign::Plane) is a plane too: its RMB menu in the view has Hide / Show, and the command
+    hides it; the tree dims its row; a second Hide / Show from the row shows it again."""
+    from incad.core import context, document
+    sh = shell.instance()
+    context.set_target(None)
+    body = _body()
+    wp = body.newObject("PartDesign::Plane", "WorkPlane")
+    wp.Placement = App.Placement(App.Vector(0, 0, 25), App.Rotation())  # above the pad, in the clear
+    App.ActiveDocument.recompute()
+    sh.schedule_refresh()
+    harness.pump(500)
+    assert wp.Visibility
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(400)
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    hit = None
+    for x, y in ((0, 0), (2, 2), (-2, 2), (3, -1)):
+        sx, sy = view.getPointOnViewport(App.Vector(x, y, 25))
+        info = view.getObjectInfo((int(sx), int(sy)))
+        if info and info["Object"] == wp.Name:
+            hit = (sx, sy)
+            break
+    assert hit is not None, "the work plane is under a probe point"
+    dpr = vp.devicePixelRatioF()
+    pos = QtCore.QPointF(hit[0] / dpr, vp.height() - hit[1] / dpr)
+    _send("press", pos, QtCore.Qt.RightButton, QtCore.Qt.RightButton)
+    _send("release", pos, QtCore.Qt.RightButton, QtCore.Qt.NoButton)
+    harness.pump(300)
+    assert sh.menu_kind == "origin", sh.menu_kind
+    assert context.target() == wp.Name
+    from incad.ui import marking_layout
+    _, items = marking_layout.resolve(sh.menu_kind, commands.REGISTRY)
+    assert any(c.id == "view.toggle_visibility" for c in items), [c.id for c in items]
+    sh.marking_menu.close()
+    harness.pump(200)
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    assert not wp.Visibility and not document.is_shown(wp)
+    assert sh.browser.item_by_label("WorkPlane").data(0, STATE_ROLE) == "hidden"
+    _click_row("WorkPlane")
+    assert wp.Visibility, "shown while its row is selected"
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    _click_row("Pad")
+    assert wp.Visibility, "shown for good"
+
+
 harness.run([test_0_part, test_1_tree_menu_hide_show_on_a_plane, test_2_two_selected_axes_toggle_together,
              test_3_show_all_and_hide_all, test_4_plane_pick_restores_the_choice, test_5_consumed_sketch_is_refused,
-             test_6_right_click_on_a_visible_plane_in_the_view_opens_the_origin_menu])
+             test_6_right_click_on_a_visible_plane_in_the_view_opens_the_origin_menu,
+             test_7_right_click_on_a_work_plane_in_the_view_offers_hide_show])

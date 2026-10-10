@@ -126,3 +126,10 @@ class HiddenRowsTest(unittest.TestCase):
 
     def test_consumed_sketch_is_not_marked(self):
         self.assertEqual(self._state("Sketch"), "")
+
+    def test_hidden_work_plane_is_marked(self):
+        wp = self.body.newObject("PartDesign::Plane", "WorkPlane")
+        self.doc.recompute()
+        self.assertIn(self._state("WorkPlane"), ("", "rolled_back"))  # after the tip: rolled back, not hidden
+        wp.Visibility = False
+        self.assertEqual(self._state("WorkPlane"), "hidden")
