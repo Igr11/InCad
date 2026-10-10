@@ -333,10 +333,43 @@ def test_11_a_file_with_a_visible_consumed_sketch_opens_clean():
     assert not sk.Visibility
 
 
+def test_12_undo_after_hiding_an_open_sketch_shows_it_again():
+    from incad.core import document
+    sh = shell.instance()
+    body = _body()
+    guide = body.newObject("Sketcher::SketchObject", "Guide2")
+    guide.AttachmentSupport = [(util.xy_plane(body), "")]
+    guide.MapMode = "FlatFace"
+    guide.addGeometry(Part.LineSegment(App.Vector(0, 90, 0), App.Vector(40, 90, 0)))
+    App.ActiveDocument.recompute()
+    document.show_result(body)
+    sh.schedule_refresh()
+    harness.pump(500)
+    assert guide.Visibility
+    Gui.Selection.clearSelection()
+    sh.browser.tree.clearSelection()
+    from incad.core import context
+    context.set_target("Guide2")
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    assert not guide.Visibility
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(600)
+    assert guide.Visibility, "Undo of the hide shows it again"
+    commands.REGISTRY.run("edit.redo")
+    harness.pump(600)
+    assert not guide.Visibility, "Redo hides it"
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(600)
+    assert guide.Visibility
+
+
 harness.run([test_0_part_with_a_path, test_1_hidden_path_has_no_markers, test_2_sketch_edit_mode_hides_the_markers,
              test_3_deleted_sketch_drops_its_markers, test_4_real_part_sketch7_is_shown_with_its_ends,
              test_5_sweep_dialog_marks_the_picked_path_and_profile, test_6_loft_dialog_marks_every_section,
              test_7_cancel_keeps_a_sketch_the_user_showed, test_8_ok_on_a_sweep_hides_the_path_and_its_markers,
              test_9_right_click_on_a_shown_sketch_in_the_view_opens_the_browser_menu,
              test_10_a_stale_tree_selection_does_not_beat_the_plane_under_the_cursor,
-             test_11_a_file_with_a_visible_consumed_sketch_opens_clean])
+             test_11_a_file_with_a_visible_consumed_sketch_opens_clean,
+             test_12_undo_after_hiding_an_open_sketch_shows_it_again])

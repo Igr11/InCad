@@ -187,30 +187,40 @@ def _visibility_targets():
     return objs
 
 
-def toggle_visibility():
-    from incad.core import document, log
+def _visibility_step(label, objects, change):
+    """One undo step for a visibility change: the targets get their InCadShown first (outside the step, holding
+    the state they have now), so undo restores exactly that state."""
+    import FreeCAD as App
+    from incad.core import document, safe
     from incad.ui import shell
     inst = shell.instance()
     if inst is not None:
-        inst.end_peek()  # the temporary "shown while selected" ends: the toggle acts on the real state
-    flag = document.toggle_visibility(_visibility_targets())
-    log.report("info", "Shown" if flag else "Hidden")
-    inst = shell.instance()
+        inst.end_peek()  # the temporary "shown while selected" ends: the change acts on the real state
+    document.prepare_choice(objects)
+    r = safe.run_safely(label, change, App.ActiveDocument)
+    if not r.ok:
+        raise ValueError(r.error)
     if inst is not None:
         inst.schedule_refresh()
+    return r.value
+
+
+def toggle_visibility():
+    from incad.core import document, log
+    objects = _visibility_targets()
+    flag = _visibility_step("Hide / Show", objects, lambda: document.toggle_visibility(objects))
+    log.report("info", "Shown" if flag else "Hidden")
 
 
 def origin_visibility(flag):
     import FreeCAD as App
     from incad.core import document
-    from incad.ui import shell
     body = document.primary_body(App.ActiveDocument) if App.ActiveDocument is not None else None
     if body is None:
         raise ValueError("Open a part first")
-    document.set_visibility(document.origin_items(body), flag)
-    inst = shell.instance()
-    if inst is not None:
-        inst.schedule_refresh()
+    items = document.origin_items(body)
+    _visibility_step("Show All Origin" if flag else "Hide All Origin", items,
+                     lambda: document.set_visibility(items, flag))
 
 
 def _ask_name(current):
@@ -684,13 +694,13 @@ def commands():
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
         Command(id="view.toggle_visibility", label="Hide / Show", icon="visibility", handler=toggle_visibility,
-                contexts=frozenset({"part", "origin", "browser"}), transactional=True,
+                contexts=frozenset({"part", "origin", "browser"}),
                 tooltip="Hide or show the selected origin planes, axes, centre point and unused sketches"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
-                handler=lambda: origin_visibility(True), contexts=frozenset({"part"}), transactional=True,
+                handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
                 tooltip="Show every origin plane, axis and the centre point"),
         Command(id="view.origin_hide_all", label="Hide All Origin", icon="hide_all",
-                handler=lambda: origin_visibility(False), contexts=frozenset({"part"}), transactional=True,
+                handler=lambda: origin_visibility(False), contexts=frozenset({"part"}),
                 tooltip="Hide every origin plane, axis and the centre point"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
         Command(id="browser.move_end_of_part", label="Move End of Part Here", icon="end_of_part",

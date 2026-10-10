@@ -163,6 +163,16 @@ def _record_choice(o, flag):
     setattr(o, SHOWN_PROP, bool(flag))
 
 
+def prepare_choice(objects):
+    """Before the Hide / Show step: give every target its InCadShown holding the state it has now. Done outside
+    the transaction, so the step changes a value FreeCAD can restore (a property added inside the step would be
+    removed by undo, taking the previous state with it)."""
+    for o in objects:
+        if SHOWN_PROP not in o.PropertiesList and (o.TypeId in ORIGIN_TYPES + DATUM_TYPES
+                                                    or o.TypeId == "Sketcher::SketchObject"):
+            _record_choice(o, is_shown(o))
+
+
 def set_visibility(objects, flag, record=True):
     """Show or hide origin items, work features and unused sketches; every one remembers the choice in
     InCadShown (saved, undoable) unless `record` is False (a temporary show). Showing an origin item whose
@@ -180,32 +190,43 @@ def set_visibility(objects, flag, record=True):
 
 
 def apply_visibility(doc):
-    """After undo/redo (which restore InCadShown but not Visibility): origin items and work features show or
-    hide as their choice says, or as their default when the choice is gone (origin items hidden, work features
-    shown); a sketch with a choice follows sketch_shown, a consumed one is hidden, a free one without a choice
-    is left alone; an Origin group is on when any of its items is shown."""
+    """After undo/redo (which restore InCadShown but not Visibility) and once when a file opens: every origin
+    item, work feature and sketch with a choice shows or hides as it says (a sketch: sketch_shown, so a consumed
+    one stays hidden); a consumed sketch without a choice is hidden too (redo of its feature leaves it visible);
+    anything else is left alone; an Origin group is on when any of its items is shown."""
     origins = set()
     for o in doc.Objects:
+        chosen = SHOWN_PROP in o.PropertiesList
         if o.TypeId in ORIGIN_TYPES:
-            want = bool(getattr(o, SHOWN_PROP)) if SHOWN_PROP in o.PropertiesList else False
             origin = _origin_of(o)
             if origin is not None:
                 origins.add(origin.Name)
+            if not chosen:
+                continue
+            want = bool(getattr(o, SHOWN_PROP))
         elif o.TypeId in DATUM_TYPES:
-            want = bool(getattr(o, SHOWN_PROP)) if SHOWN_PROP in o.PropertiesList else True
+            if not chosen:
+                continue
+            want = bool(getattr(o, SHOWN_PROP))
         elif o.TypeId == "Sketcher::SketchObject":
-            if SHOWN_PROP not in o.PropertiesList and is_unused_sketch(o):
-                continue  # free, no choice: left as it is (a sketch just finished must not vanish on an Undo)
-            want = sketch_shown(o)  # a choice, or a consumed sketch (redo of its feature leaves it visible)
+            if not chosen and is_unused_sketch(o):
+                continue
+            want = sketch_shown(o)
         else:
             continue
         if bool(o.Visibility) != want:
             o.Visibility = want
     for name in origins:
         origin = doc.getObject(name)
-        shown = any(bool(i.Visibility) for i in origin.OriginFeatures)
-        if bool(origin.Visibility) != shown:
-            origin.Visibility = shown
+        items = list(origin.OriginFeatures)
+        chosen_shown = [i for i in items if SHOWN_PROP in i.PropertiesList and getattr(i, SHOWN_PROP)]
+        if chosen_shown and not origin.Visibility:  # a chosen item wants to show: the group comes on, and the
+            for i in items:                          # items nobody chose stay hidden (a new part keeps them
+                if SHOWN_PROP not in i.PropertiesList:  # 'visible' inside a hidden group)
+                    i.Visibility = False
+            origin.Visibility = True
+        elif not chosen_shown and origin.Visibility and not any(bool(i.Visibility) for i in items):
+            origin.Visibility = False
 
 
 def toggle_visibility(objects):

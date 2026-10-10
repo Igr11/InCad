@@ -314,6 +314,7 @@ class VisibilityTest(unittest.TestCase):
         self.body.Origin.Visibility = False
         document.set_visibility([wp], False)  # hidden by an earlier choice: the toggle shows both
         n0 = self.doc.UndoCount
+        document.prepare_choice([xy, wp])  # as the command does before its step
         r = safe.run_safely("Hide / Show", lambda: document.toggle_visibility([xy, wp]), self.doc)
         self.assertTrue(r.ok, r.error)
         self.assertEqual(self.doc.UndoCount, n0 + 1, "one undo step")
@@ -337,6 +338,41 @@ class VisibilityTest(unittest.TestCase):
         self.assertFalse(prof.Visibility, "consumed: hidden")
         self.assertTrue(self.closed.Visibility, "unused, no choice: left alone")
         self.assertTrue(self.path.Visibility)
+
+    def test_undo_of_a_sketchs_first_hide_shows_it_again(self):
+        """The first Hide on a sketch: prepare_choice records the state it has now outside the step, the step
+        changes it, so undo brings exactly that state back (an open path shown, a just-drawn closed sketch shown
+        too), and redo hides it again. A sketch the step never touched is left alone."""
+        from incad.core import safe
+        document.show_result(self.body)
+        self.closed.Visibility = True  # just drawn, shown, no choice yet
+        other = util.add_rect_sketch(self.body, name="Other")
+        other.Visibility = True
+        self.doc.recompute()
+        for target in (self.path, self.closed):
+            self.assertTrue(target.Visibility)
+            document.prepare_choice([target])
+            r = safe.run_safely("Hide / Show", lambda: document.toggle_visibility([target]), self.doc)
+            self.assertTrue(r.ok, r.error)
+            self.assertFalse(target.Visibility)
+            self.doc.undo()
+            document.apply_visibility(self.doc)
+            self.assertTrue(target.Visibility, "%s undone: shown again as before" % target.Name)
+            self.assertTrue(other.Visibility, "untouched by the step: left alone")
+            self.doc.redo()
+            document.apply_visibility(self.doc)
+            self.assertFalse(target.Visibility, "%s redone: hidden" % target.Name)
+
+    def test_apply_visibility_on_a_new_part_shows_nothing(self):
+        """A new part in the GUI: Origin group hidden, every item 'visible', no choices. Putting the saved
+        visibility in step must show nothing."""
+        origin = self.body.Origin
+        origin.Visibility = False
+        for o in document.origin_items(self.body):
+            o.Visibility = True
+        document.apply_visibility(self.doc)
+        self.assertFalse(origin.Visibility)
+        self.assertFalse(any(document.is_shown(o) for o in document.origin_items(self.body)))
 
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
