@@ -104,6 +104,7 @@ class FeatureDialog(QtWidgets.QFrame):
     cancelled = Signal()
     pickRequested = Signal(str)
     activePickChanged = Signal(str)  # "" when picking ends
+    picksEdited = Signal(str)  # a listed picks field changed from its rows (remove, reorder): the session reselects
 
     def __init__(self, title, icon, fields, values, theme="light", parent=None):
         super().__init__(parent)
@@ -129,12 +130,13 @@ class FeatureDialog(QtWidgets.QFrame):
         col.addLayout(head)
         form = QtWidgets.QGridLayout()
         form.setHorizontalSpacing(8)
-        self._steppers = {}
+        self._steppers, self._lists = {}, {}
         for r, f in enumerate(fields):
             label = QtWidgets.QLabel(f.label)
             widget = self._make(f)
             self._widgets[f.key] = widget  # the arrows read it while the row is built
-            row = self._with_arrows(f, widget) if f.kind in ("value_length", "value_angle") else widget
+            row = self._with_arrows(f, widget) if f.kind in ("value_length", "value_angle") else \
+                self._with_list(f, widget) if f.kind == "picks" and getattr(f, "listed", False) else widget
             form.addWidget(label, r, 0)
             form.addWidget(row, r, 1)
             self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, row)
@@ -240,6 +242,94 @@ class FeatureDialog(QtWidgets.QFrame):
         self._update_arrows(f.key)
         return box
 
+    def _with_list(self, f, button):
+        """A picks field shown as Inventor shows Loft sections: the pick button, then one numbered row per pick
+        with ▲ ▼ (order) and ✕ (remove)."""
+        box = QtWidgets.QWidget(self)
+        col = QtWidgets.QVBoxLayout(box)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(2)
+        col.addWidget(button)
+        rows = QtWidgets.QWidget(box)
+        lay = QtWidgets.QVBoxLayout(rows)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(1)
+        col.addWidget(rows)
+        self._lists[f.key] = (rows, [])
+        return box
+
+    @staticmethod
+    def _object_label(name):
+        try:
+            import FreeCAD as App
+            obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
+            return obj.Label if obj is not None else name
+        except Exception:
+            return name
+
+    def _refresh_list(self, key):
+        if key not in self._lists:
+            return
+        rows, old = self._lists[key]
+        for w in old:
+            w.setParent(None)
+            w.deleteLater()
+        items = [i.strip() for i in (self._widgets[key].property("pick") or "").split(",") if i.strip()]
+        made = []
+        for i, item in enumerate(items):
+            r = QtWidgets.QWidget(rows)
+            h = QtWidgets.QHBoxLayout(r)
+            h.setContentsMargins(4, 0, 0, 0)
+            h.setSpacing(2)
+            label = QtWidgets.QLabel("%d.  %s" % (i + 1, self._object_label(item.partition(":")[0])), r)
+            h.addWidget(label, 1)
+            buttons = {}
+            for name, text, tip in (("up", "▲", "Earlier in the loft"), ("down", "▼", "Later in the loft"),
+                                    ("remove", "✕", "Remove this section")):
+                b = QtWidgets.QToolButton(r)
+                b.setText(text)
+                b.setToolTip(tip)
+                b.setObjectName("InCadStep")
+                b.setFixedSize(18, 16)
+                b.setFocusPolicy(QtCore.Qt.NoFocus)
+                b.clicked.connect(lambda _=False, k=key, n=i, a=name: self._edit_list(k, n, a))
+                h.addWidget(b)
+                buttons[name] = b
+            buttons["up"].setEnabled(i > 0)
+            buttons["down"].setEnabled(i < len(items) - 1)
+            r.label, r.buttons = label, buttons
+            rows.layout().addWidget(r)
+            made.append(r)
+        self._lists[key] = (rows, made)
+        rows.setVisible(bool(made))
+        self._widgets[key].setText(self._list_hint(items))
+        self.adjustSize()
+
+    @staticmethod
+    def _list_hint(items):
+        return "Click sketches in order (2 or more)…" if not items else "Add sketches (click in order)…"
+
+    def _edit_list(self, key, index, action):
+        items = [i.strip() for i in (self._widgets[key].property("pick") or "").split(",") if i.strip()]
+        if action == "remove":
+            items.pop(index)
+        elif action == "up" and index > 0:
+            items[index - 1], items[index] = items[index], items[index - 1]
+        elif action == "down" and index < len(items) - 1:
+            items[index + 1], items[index] = items[index], items[index + 1]
+        else:
+            return
+        self.set_pick(key, ",".join(items))
+        self.picksEdited.emit(key)
+
+    def list_rows(self, key):
+        """The texts of a listed picks field's rows (tests)."""
+        return [r.label.text() for r in self._lists[key][1]]
+
+    def row_button(self, key, index, name):
+        """A row's 'up' / 'down' / 'remove' button (tests)."""
+        return self._lists[key][1][index].buttons[name]
+
     def _update_arrows(self, key):
         can = step_text(self._widgets[key].text(), 1, self._fields[key].kind) is not None
         for b in self._steppers.get(key, ()):
@@ -311,6 +401,7 @@ class FeatureDialog(QtWidgets.QFrame):
                 else:
                     w.setProperty("pick", value or "")
                     w.setText(self._pick_label(f, value))
+                    self._refresh_list(key)
         finally:
             self._loading = False
             self._sent = self._value_texts()
@@ -423,12 +514,15 @@ class FeatureDialog(QtWidgets.QFrame):
         w = self._widgets[key]
         w.setProperty("pick", text or "")
         w.setText(self._pick_label(self._fields[key], text))
+        self._refresh_list(key)
         self._emit()
 
     def field_def(self, key):
         return self._fields[key]
 
     def set_pick_text(self, key, text):
+        if key in self._lists:
+            return  # the rows say what is picked
         self._widgets[key].setText(text or "Select…")
 
     def pick_text(self, key):

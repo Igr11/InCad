@@ -330,3 +330,53 @@ class StepButtonsTest(unittest.TestCase):
         self.d.field("extent").button("to").click()
         self.assertFalse(self.d.row_visible("distance"))
         self.assertFalse(up.isVisible() or down.isVisible())
+
+
+LOFT_FIELDS = (
+    Field("sections", "Sections", "picks", pick="sketch", listed=True),
+    Field("ruled", "Ruled", "bool", default=False),
+)
+
+
+class SectionListTest(unittest.TestCase):
+    """Loft's sections as Inventor shows them: a numbered list under the field, each row removable and movable;
+    the empty field says that several sketches are picked, in order."""
+
+    def setUp(self):
+        qtapp.app()
+        self.d = FeatureDialog("Loft", "incad", LOFT_FIELDS, {"sections": "", "ruled": False})
+        self.seen, self.edited = [], []
+        self.d.changed.connect(lambda v: self.seen.append(v["sections"]))
+        self.d.picksEdited.connect(self.edited.append)
+        self.d.show()
+
+    def tearDown(self):
+        self.d.close()
+
+    def test_empty_field_explains_itself(self):
+        self.assertEqual(self.d.list_rows("sections"), [])
+        self.assertIn("in order", self.d.pick_text("sections"))
+        self.assertIn("2 or more", self.d.pick_text("sections"))
+
+    def test_rows_follow_the_picks(self):
+        self.d.set_pick("sections", "SkA,SkB,SkC")
+        self.assertEqual(self.d.list_rows("sections"), ["1.  SkA", "2.  SkB", "3.  SkC"])
+        self.assertIn("Add", self.d.pick_text("sections"))
+        self.d.set_values({"sections": "SkC"})
+        self.assertEqual(self.d.list_rows("sections"), ["1.  SkC"])
+
+    def test_remove_and_reorder(self):
+        self.d.set_pick("sections", "SkA,SkB,SkC")
+        self.seen.clear()
+        self.d.row_button("sections", 1, "remove").click()
+        self.assertEqual(self.d.values()["sections"], "SkA,SkC")
+        self.d.row_button("sections", 1, "up").click()
+        self.assertEqual(self.d.values()["sections"], "SkC,SkA")
+        self.d.row_button("sections", 0, "down").click()
+        self.assertEqual(self.d.values()["sections"], "SkA,SkC")
+        self.assertEqual(self.seen, ["SkA,SkC", "SkC,SkA", "SkA,SkC"], "each edit previews")
+        self.assertEqual(self.edited, ["sections"] * 3)
+        self.assertFalse(self.d.row_button("sections", 0, "up").isEnabled())
+        self.assertFalse(self.d.row_button("sections", 1, "down").isEnabled())
+        self.assertTrue(self.d.undo_change())
+        self.assertEqual(self.d.values()["sections"], "SkC,SkA")

@@ -84,6 +84,7 @@ class FeatureSession(QtCore.QObject):
         self.dialog.applied.connect(self.apply)
         self.dialog.cancelled.connect(self.cancel)
         self.dialog.activePickChanged.connect(lambda _key: self._sync_pick_view(seed=True))
+        self.dialog.picksEdited.connect(self._picks_edited)
         self._refresh_options()
         if self.feature is not None:
             self.dialog.set_values({f.key: values.get(f.key) for f in self.kind.FIELDS if f.kind == "combo"})
@@ -409,6 +410,15 @@ class FeatureSession(QtCore.QObject):
                 self._set_visible(o, visible)
             self._saved_visibility = []
             self._base_shown = None
+
+    def _picks_edited(self, key):
+        """A section removed or moved in the dialog's list: the 3D selection follows, so the next click merges
+        with what the list shows."""
+        from incad.features import common
+        try:
+            self._reselect(common.parse_picks(self.doc, self.dialog.values().get(key)))
+        except Exception:
+            log.logger().exception("reselect after a list edit")
 
     def _collect_picks(self, key, clicked):
         """A plain click adds the edge/face to the ones already picked, and a plain click on a picked one takes it

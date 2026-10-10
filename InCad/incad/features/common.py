@@ -12,6 +12,7 @@ class Field:
     default: object = None
     show_if: tuple = None    # (other key, (values…)) or a tuple of those (all must hold)
     pick: str = ""           # pick fields: edge | face | feature | axis | plane | vertex | sketch | circular_edge
+    listed: bool = False     # picks fields: show the picks as a numbered list (remove, reorder), e.g. Loft sections
 
 
 def shown(field, values):

@@ -288,7 +288,7 @@ def _loft_read(doc, f):
 LOFT = SimpleNamespace(
     __name__="incad.features.loft", TITLE="Loft", ICON="loft", TYPES=_TYPES["loft"], NEEDS_PROFILE=False,
     PROPS={}, STRUCTURAL=("join", "cut"), preselect=_sketch_preselect(["sections"]),
-    FIELDS=(Field("sections", "Sections", "picks", pick="sketch"), Field("ruled", "Ruled", "bool", default=False),
+    FIELDS=(Field("sections", "Sections", "picks", pick="sketch", listed=True), Field("ruled", "Ruled", "bool", default=False),
             Field("closed", "Closed", "bool", default=False), _OP),
     defaults=lambda doc, body, profile=None: {"sections": "", "ruled": False, "closed": False, "operation": "join"},
     create=_loft_create, read=_loft_read,
