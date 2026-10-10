@@ -231,6 +231,21 @@ class VisibilityTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             document.toggle_visibility([self.pad])
 
+    def test_showing_one_plane_turns_the_origin_group_on_and_hides_the_rest(self):
+        """A new part in the GUI: the Origin group is hidden while its items say Visible — nothing shows. Showing
+        one plane must show the group and leave the other six hidden; is_shown reads the effective state."""
+        origin = self.body.Origin
+        origin.Visibility = False
+        items = document.origin_items(self.body)
+        for o in items:
+            o.Visibility = True
+        xy = [o for o in items if o.Role == "XY_Plane"][0]
+        self.assertFalse(document.is_shown(xy))
+        self.assertTrue(document.toggle_visibility([xy]), "hidden in effect: the toggle shows it")
+        self.assertTrue(origin.Visibility and xy.Visibility and document.is_shown(xy))
+        self.assertFalse(any(document.is_shown(o) for o in items if o is not xy))
+        self.assertFalse(any(o.Visibility for o in items if o is not xy))
+
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])

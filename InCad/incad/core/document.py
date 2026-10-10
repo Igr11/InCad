@@ -141,13 +141,34 @@ def _consumer_label(sk):
     return users[0].Label if users else ""
 
 
+def _origin_of(item):
+    return next((o for o in item.InList if o.TypeId == "App::Origin"), None)
+
+
+def is_shown(obj):
+    """What the view shows: an origin item needs its Origin group visible too (a new part keeps the group
+    hidden while every item says Visible)."""
+    if obj.TypeId in ORIGIN_TYPES:
+        origin = _origin_of(obj)
+        return bool(obj.Visibility) and (origin is None or bool(origin.Visibility))
+    return bool(obj.Visibility)
+
+
 def set_visibility(objects, flag):
-    """Show or hide origin items and unused sketches (a sketch remembers the choice in InCadShown)."""
+    """Show or hide origin items and unused sketches (a sketch remembers the choice in InCadShown). Showing an
+    origin item whose group is hidden turns the group on and hides its other items first, so only the chosen
+    one appears."""
     for o in objects:
         if o.TypeId == "Sketcher::SketchObject":
             if SHOWN_PROP not in o.PropertiesList:
                 o.addProperty("App::PropertyBool", SHOWN_PROP, "InCad", "Shown in the part view by choice")
             setattr(o, SHOWN_PROP, bool(flag))
+        elif flag and o.TypeId in ORIGIN_TYPES:
+            origin = _origin_of(o)
+            if origin is not None and not origin.Visibility:
+                for other in origin.OriginFeatures:
+                    other.Visibility = other in objects
+                origin.Visibility = True
         o.Visibility = bool(flag)
 
 
@@ -163,7 +184,7 @@ def toggle_visibility(objects):
             targets.append(o)
     if not targets:
         raise ValueError("Select a plane, an axis, the centre point or an unused sketch first")
-    flag = not any(o.Visibility for o in targets)
+    flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag
 

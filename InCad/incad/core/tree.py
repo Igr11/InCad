@@ -103,7 +103,7 @@ def _work_in_progress_above_end(nodes):
 def _origin(body):
     origin = body.Origin
     items = [Node("origin_item", ROLE_LABELS.get(getattr(f, "Role", ""), f.Label), f.Name,
-                  "" if f.Visibility else "hidden")
+                  "" if document.is_shown(f) else "hidden")
              for f in origin.OriginFeatures]
     return Node("origin", "Origin", origin.Name, children=items)
 

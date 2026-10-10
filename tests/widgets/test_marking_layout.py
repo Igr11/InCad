@@ -29,7 +29,7 @@ class MarkingLayoutTest(unittest.TestCase):
         self.assertEqual(set(marking_layout.LAYOUT),
                          {"part", "face", "edge", "vertex", "empty", "browser", "origin", "sketch", "assembly",
                           "asm_face", "asm_edge"})
-        self.assertEqual(marking_layout.LAYOUT["origin"]["list"], ["sketch.start"])  # planes/axes: a sketch only
+        self.assertEqual(marking_layout.LAYOUT["origin"]["list"], ["sketch.start", "view.toggle_visibility"])  # planes/axes
         self.assertEqual(marking_layout.LAYOUT["sketch"]["list"][:2], ["sketch.stop", "edit.delete"])  # RMB: Stop Tool first
         self.assertEqual(marking_layout.LAYOUT["assembly"]["N"], "assembly.place")
         self.assertEqual(marking_layout.LAYOUT["asm_face"]["N"], "constrain.mate")

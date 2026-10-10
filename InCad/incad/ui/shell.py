@@ -834,6 +834,12 @@ class Shell(QtCore.QObject):
         info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
         context.set_target(None)
         if info:
+            obj = doc.getObject(info["Object"])
+            if obj is not None and obj.TypeId in document.ORIGIN_TYPES:  # a shown plane or axis: its own menu
+                context.set_target(obj.Name)
+                Gui.Selection.clearSelection()
+                Gui.Selection.addSelection(doc.Name, obj.Name)
+                return self._show_marking_menu("origin", global_pos, flick)
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()

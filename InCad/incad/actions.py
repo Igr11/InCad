@@ -167,6 +167,49 @@ def toggle_suppress():
     obj.Suppressed = not obj.Suppressed
 
 
+def _visibility_targets():
+    """What Hide / Show acts on: the tree's selected rows, else the row the menu was opened on, else the
+    origin items and sketches selected in the 3D view."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from incad.core import context
+    from incad.ui import shell
+    doc = App.ActiveDocument
+    if doc is None:
+        raise ValueError("Open a part first")
+    inst = shell.instance()
+    names = inst.browser.selected_names() if inst is not None else []
+    if not names and context.target():
+        names = [context.target()]
+    objs = [o for o in (doc.getObject(n) for n in names) if o is not None]
+    if not objs:
+        objs = [s.Object for s in Gui.Selection.getSelectionEx(doc.Name)]
+    return objs
+
+
+def toggle_visibility():
+    from incad.core import document, log
+    from incad.ui import shell
+    flag = document.toggle_visibility(_visibility_targets())
+    log.report("info", "Shown" if flag else "Hidden")
+    inst = shell.instance()
+    if inst is not None:
+        inst.schedule_refresh()
+
+
+def origin_visibility(flag):
+    import FreeCAD as App
+    from incad.core import document
+    from incad.ui import shell
+    body = document.primary_body(App.ActiveDocument) if App.ActiveDocument is not None else None
+    if body is None:
+        raise ValueError("Open a part first")
+    document.set_visibility(document.origin_items(body), flag)
+    inst = shell.instance()
+    if inst is not None:
+        inst.schedule_refresh()
+
+
 def _ask_name(current):
     from incad.qt import QtWidgets
     text, ok = QtWidgets.QInputDialog.getText(_gui().getMainWindow(), "Rename", "New name:", text=current)
@@ -632,6 +675,15 @@ def commands():
         Command(id="view.look_at", label="Look At", icon="look_at", handler=look_at,
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
+        Command(id="view.toggle_visibility", label="Hide / Show", icon="visibility", handler=toggle_visibility,
+                contexts=frozenset({"part", "origin", "browser"}), transactional=True,
+                tooltip="Hide or show the selected origin planes, axes, centre point and unused sketches"),
+        Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
+                handler=lambda: origin_visibility(True), contexts=frozenset({"part"}), transactional=True,
+                tooltip="Show every origin plane, axis and the centre point"),
+        Command(id="view.origin_hide_all", label="Hide All Origin", icon="hide_all",
+                handler=lambda: origin_visibility(False), contexts=frozenset({"part"}), transactional=True,
+                tooltip="Hide every origin plane, axis and the centre point"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
         Command(id="browser.move_end_of_part", label="Move End of Part Here", icon="end_of_part",
                 handler=move_end_of_part_here, transactional=True, contexts=frozenset({"browser"})),
@@ -774,7 +826,8 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"view.section_points": "Section", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
+SHORT = {"view.section_points": "Section", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
+         "view.origin_hide_all": "Hide All", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
          "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",
