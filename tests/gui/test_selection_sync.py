@@ -148,8 +148,41 @@ def test_6_hide_show_with_a_face_selected_says_what_was_selected():
     harness.pump(200)
 
 
+def test_7_undo_and_cmd_z_take_back_a_hide_show():
+    from incad.core import document
+    z = _origin("Z_Axis")
+    Gui.Selection.clearSelection()
+    harness.pump(200)
+    doc = App.ActiveDocument
+    _click_row("Z Axis")
+    n0, names = doc.UndoCount, list(doc.UndoNames)
+    r = commands.REGISTRY.run("view.toggle_visibility")
+    assert r.ok, r.error
+    harness.pump(400)
+    assert doc.UndoCount == n0 + 1, (n0, doc.UndoCount, doc.UndoNames[:4], names[:3])
+    _click_row("Pad")
+    assert doc.UndoCount == n0 + 1, "a click adds no step"
+    assert document.is_shown(z)
+    assert doc.UndoNames[0] == "Hide / Show", doc.UndoNames[:2]
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(600)
+    assert not document.is_shown(z), "Undo hides it again"
+    assert doc.UndoCount == n0, (n0, doc.UndoCount, doc.UndoNames[:4])
+    commands.REGISTRY.run("edit.redo")
+    harness.pump(600)
+    assert document.is_shown(z), "Redo shows it again"
+    assert doc.UndoCount == n0 + 1
+    # Cmd-Z with the keyboard focus in the tree (where the last click went)
+    shell.instance().browser.tree.setFocus()
+    harness.pump(200)
+    QTest.keyClick(shell.instance().browser.tree, QtCore.Qt.Key_Z, QtCore.Qt.ControlModifier)
+    harness.pump(600)
+    assert not document.is_shown(z), "Cmd-Z undoes it from the tree"
+
+
 harness.run([test_0_part, test_1_tree_click_selects_in_the_model_and_shows_a_hidden_axis_while_selected,
              test_2_a_3d_pick_highlights_the_tree_row, test_3_a_3d_pick_of_a_shown_plane_expands_origin_and_highlights_its_row,
              test_4_refresh_keeps_the_selection_and_the_expanded_origin,
              test_5_hide_show_on_the_selected_axis_after_a_refresh_sticks,
-             test_6_hide_show_with_a_face_selected_says_what_was_selected])
+             test_6_hide_show_with_a_face_selected_says_what_was_selected,
+             test_7_undo_and_cmd_z_take_back_a_hide_show])

@@ -104,5 +104,40 @@ def test_4_an_unused_shown_sketch_stays_shown_after_the_peek():
     assert _count() == 2
 
 
+def test_5_a_sweeps_path_and_profile_show_when_their_rows_are_clicked():
+    from incad.core import document
+    import Part
+    sh = shell.instance()
+    body = document.primary_body(App.ActiveDocument)
+    prof = body.newObject("Sketcher::SketchObject", "Prof")
+    prof.AttachmentSupport = [(next(o for o in body.Origin.OriginFeatures if o.Role == "YZ_Plane"), "")]
+    prof.MapMode = "FlatFace"
+    prof.AttachmentOffset = App.Placement(App.Vector(0, 0, 0), App.Rotation())
+    prof.addGeometry(Part.Circle(App.Vector(30, 0, 0), App.Vector(0, 0, 1), 2))  # on YZ at y=30 (x in sketch = y)
+    App.ActiveDocument.recompute()
+    path = App.ActiveDocument.getObject("Path")
+    commands.REGISTRY.run("feature.sweep")
+    harness.pump(600)
+    fs = sh.feature_session
+    fs.dialog.set_pick("profile", "Prof")
+    fs.dialog.set_pick("path", "Path")
+    harness.pump(900)
+    fs.ok()
+    harness.pump(900)
+    sweep = [o for o in App.ActiveDocument.Objects if o.TypeId == "PartDesign::AdditivePipe"][0]
+    assert "Invalid" not in sweep.State, sweep.State
+    assert not path.Visibility and not prof.Visibility, "both consumed and hidden"
+    assert sh.browser.select_row("Path")
+    harness.pump(500)
+    assert path.Visibility, "the path shows while its row is selected"
+    assert sh.browser.select_row("Prof")
+    harness.pump(500)
+    assert prof.Visibility and not path.Visibility, "the profile shows, the path goes back"
+    assert sh.browser.select_row("Pad")
+    harness.pump(500)
+    assert not prof.Visibility
+
+
 harness.run([test_0_part, test_1_click_shows_the_consumed_sketch_and_the_next_row_hides_it, test_2_esc_hides_it,
-             test_3_a_cleared_3d_selection_hides_it, test_4_an_unused_shown_sketch_stays_shown_after_the_peek])
+             test_3_a_cleared_3d_selection_hides_it, test_4_an_unused_shown_sketch_stays_shown_after_the_peek,
+             test_5_a_sweeps_path_and_profile_show_when_their_rows_are_clicked])

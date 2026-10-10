@@ -645,6 +645,11 @@ def _undo_redo(redo):
         doc.redo() if redo else doc.undo()
         _linked_steps(doc, step, redo)
     doc.recompute()
+    from incad.core import document
+    try:
+        document.apply_visibility(doc)  # Hide / Show choices restored by the step show again (Visibility is not recorded)
+    except Exception as e:
+        log.logger().warning("Visibility after undo/redo: %s", e)
     from incad.core import model
     repaired = model.relink(doc)  # objects brought back by undo lose their formula links (FreeCAD quirk)
     from incad.core import log

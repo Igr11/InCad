@@ -155,22 +155,57 @@ def is_shown(obj):
     return bool(obj.Visibility)
 
 
-def set_visibility(objects, flag):
-    """Show or hide origin items and unused sketches (a sketch remembers the choice in InCadShown). Showing an
-    origin item whose group is hidden turns the group on and hides its other items first, so only the chosen
-    one appears."""
+def _record_choice(o, flag):
+    """The choice goes into InCadShown: FreeCAD records that in the undo step (a Visibility change alone leaves
+    the step empty), and apply_visibility reads it back after undo/redo."""
+    if SHOWN_PROP not in o.PropertiesList:
+        o.addProperty("App::PropertyBool", SHOWN_PROP, "InCad", "Shown in the part view by choice")
+    setattr(o, SHOWN_PROP, bool(flag))
+
+
+def set_visibility(objects, flag, record=True):
+    """Show or hide origin items, work features and unused sketches; every one remembers the choice in
+    InCadShown (saved, undoable) unless `record` is False (a temporary show). Showing an origin item whose
+    group is hidden turns the group on and hides its other items first, so only the chosen one appears."""
     for o in objects:
-        if o.TypeId == "Sketcher::SketchObject":
-            if SHOWN_PROP not in o.PropertiesList:
-                o.addProperty("App::PropertyBool", SHOWN_PROP, "InCad", "Shown in the part view by choice")
-            setattr(o, SHOWN_PROP, bool(flag))
-        elif flag and o.TypeId in ORIGIN_TYPES:
+        if record:
+            _record_choice(o, flag)
+        if flag and o.TypeId in ORIGIN_TYPES:
             origin = _origin_of(o)
             if origin is not None and not origin.Visibility:
                 for other in origin.OriginFeatures:
                     other.Visibility = other in objects
                 origin.Visibility = True
         o.Visibility = bool(flag)
+
+
+def apply_visibility(doc):
+    """After undo/redo (which restore InCadShown but not Visibility): origin items and work features show or
+    hide as their choice says, or as their default when the choice is gone (origin items hidden, work features
+    shown); a sketch with a choice follows sketch_shown, one without is left alone; an Origin group is on when
+    any of its items is shown."""
+    origins = set()
+    for o in doc.Objects:
+        if o.TypeId in ORIGIN_TYPES:
+            want = bool(getattr(o, SHOWN_PROP)) if SHOWN_PROP in o.PropertiesList else False
+            origin = _origin_of(o)
+            if origin is not None:
+                origins.add(origin.Name)
+        elif o.TypeId in DATUM_TYPES:
+            want = bool(getattr(o, SHOWN_PROP)) if SHOWN_PROP in o.PropertiesList else True
+        elif o.TypeId == "Sketcher::SketchObject":
+            if SHOWN_PROP not in o.PropertiesList:
+                continue  # no choice: left as it is (a sketch just finished must not vanish on an Undo)
+            want = sketch_shown(o)
+        else:
+            continue
+        if bool(o.Visibility) != want:
+            o.Visibility = want
+    for name in origins:
+        origin = doc.getObject(name)
+        shown = any(bool(i.Visibility) for i in origin.OriginFeatures)
+        if bool(origin.Visibility) != shown:
+            origin.Visibility = shown
 
 
 def toggle_visibility(objects):

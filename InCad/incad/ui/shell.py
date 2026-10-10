@@ -940,7 +940,7 @@ class Shell(QtCore.QObject):
             was = [(o, bool(o.Visibility)) for o in ([origin] if origin is not None else []) + list(origin.OriginFeatures if origin else [])]
             self._peeked = (obj.Document.Name, obj.Name, was)
             try:
-                document.set_visibility([obj], True)
+                document.set_visibility([obj], True, record=False)  # a look, not a choice
             except Exception:
                 pass
         elif obj.TypeId == "Sketcher::SketchObject" or obj.TypeId in document.DATUM_TYPES:

@@ -302,6 +302,31 @@ class VisibilityTest(unittest.TestCase):
         document.show_result(self.body)
         self.assertTrue(wp.Visibility, "a tip move does not hide a work plane")
 
+    def test_hide_show_is_one_undo_step_that_undo_and_redo_follow(self):
+        """FreeCAD records no Visibility change in a transaction: the choice lives in InCadShown (recorded), and
+        apply_visibility puts the view back in step after undo/redo."""
+        from incad.core import safe
+        xy = [o for o in document.origin_items(self.body) if o.Role == "XY_Plane"][0]
+        wp = self.body.newObject("PartDesign::Plane", "WorkPlane")
+        self.doc.recompute()
+        for o in document.origin_items(self.body):
+            o.Visibility = False
+        self.body.Origin.Visibility = False
+        document.set_visibility([wp], False)  # hidden by an earlier choice: the toggle shows both
+        n0 = self.doc.UndoCount
+        r = safe.run_safely("Hide / Show", lambda: document.toggle_visibility([xy, wp]), self.doc)
+        self.assertTrue(r.ok, r.error)
+        self.assertEqual(self.doc.UndoCount, n0 + 1, "one undo step")
+        self.assertEqual(self.doc.UndoNames[0], "Hide / Show")
+        self.assertTrue(document.is_shown(xy) and wp.Visibility)
+        self.doc.undo()
+        document.apply_visibility(self.doc)
+        self.assertFalse(document.is_shown(xy), "undone: hidden again")
+        self.assertFalse(wp.Visibility)
+        self.doc.redo()
+        document.apply_visibility(self.doc)
+        self.assertTrue(document.is_shown(xy) and wp.Visibility, "redone: shown again")
+
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])
