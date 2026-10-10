@@ -301,6 +301,7 @@ class Shell(QtCore.QObject):
         self._point_pick = None  # waiting for three clicks on the section markers
         self._peeked = None      # (document, object name, [(obj, was visible)]): shown while its tree row is selected
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
+        self._visibility_applied = set()  # document names whose saved visibility was put in step once
         self._sel_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
@@ -1952,10 +1953,10 @@ class Shell(QtCore.QObject):
                     if sk.TypeId != "Sketcher::SketchObject":
                         continue
                     try:
+                        peeked = self._peeked is not None and self._peeked[1] == sk.Name
                         if not sk.Visibility and document.SHOWN_PROP not in sk.PropertiesList \
                                 and document.sketch_shown(sk):
                             sk.Visibility = True
-                        peeked = self._peeked is not None and self._peeked[1] == sk.Name
                         if sk.Visibility and (peeked or document.is_unused_sketch(sk)):
                             points.extend(sketches.key_points(sk))
                     except Exception as e:
@@ -2027,6 +2028,12 @@ class Shell(QtCore.QObject):
         self.sketches.sync()
         if is_part and editing is None and fs is None and self._body_hidden(doc):
             document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank
+        if is_part and editing is None and fs is None and doc.Name not in self._visibility_applied:
+            self._visibility_applied.add(doc.Name)  # once per document: a file saved with a feature's sketch
+            try:                                     # left visible (an older InCad, FreeCAD's Space key) opens clean
+                document.apply_visibility(doc)
+            except Exception as e:
+                log.logger().warning("Visibility on open: %s", e)
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)
