@@ -6,11 +6,11 @@ from incad.core import prefs
 PALETTES = {
     "light": dict(window="#ececec", panel="#f7f7f7", panel_alt="#f3f3f3", border="#c8c8c8", text="#1d1d1f",
                   text_dim="#888888", accent="#0a64d6", accent_soft="#dbe9fb", selection_text="#ffffff",
-                  error="#b00020", rolled_back="#999999", eop="#b00020",
+                  error="#b00020", rolled_back="#999999", eop="#b00020", marker_end="#e67e22",
                   view_top="#cfd8e3", view_bottom="#f4f6f9", cube="#e3e7ec"),
     "dark": dict(window="#1e1e1e", panel="#323234", panel_alt="#262628", border="#111111", text="#e6e6e6",
                  text_dim="#888888", accent="#5aa2ff", accent_soft="#1f3b5e", selection_text="#ffffff",
-                 error="#ff6b7f", rolled_back="#777777", eop="#ff6b7f",
+                 error="#ff6b7f", rolled_back="#777777", eop="#ff6b7f", marker_end="#f39c4a",
                  view_top="#2b3440", view_bottom="#14181e", cube="#3d4450"),
 }
 ICON_PX = {"medium": 24, "large": 32}

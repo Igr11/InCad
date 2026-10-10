@@ -258,13 +258,18 @@ def test_14_clicking_ok_commits_the_typed_value():
     assert abs(doc().getObject(ST["pad"]).Length.Value - 31) < 1e-6, doc().getObject(ST["pad"]).Length
 
 
-def test_15_undo_is_refused_while_a_dialog_is_open():
+def test_15_undo_while_a_dialog_is_open_steps_its_own_change_back():
+    """Undo in a dialog never refuses: it takes back the change typed in the dialog (the model's undo waits
+    for OK or Cancel)."""
     names = list(doc().UndoNames)
     edit_pad()
     type_into("distance", "40 mm")
+    harness.pump(600)
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 40) < 1e-6, doc().getObject(ST["pad"]).Length
     commands.REGISTRY.run("edit.undo")
-    harness.pump(400)
-    assert "dialog" in s().status.texts()["message"].lower(), s().status.texts()
+    harness.pump(600)
+    assert s().feature_session is not None, "the dialog stays open"
+    assert abs(doc().getObject(ST["pad"]).Length.Value - 31) < 1e-6, doc().getObject(ST["pad"]).Length
     QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
     harness.pump(600)
     assert abs(doc().getObject(ST["pad"]).Length.Value - 31) < 1e-6, doc().getObject(ST["pad"]).Length
@@ -348,7 +353,7 @@ harness.run([test_0_setup, test_1_extrude_picks_the_only_profile_and_previews, t
              test_9_parameter_click_inserts_into_the_focused_field, test_10_busy_blocks_other_changes_and_is_cleared,
              test_11_leaving_incad_closes_the_dialog,
              test_12_user_undo_keeps_features_following_their_parameters, test_13_enter_commits_the_typed_value,
-             test_14_clicking_ok_commits_the_typed_value, test_15_undo_is_refused_while_a_dialog_is_open,
+             test_14_clicking_ok_commits_the_typed_value, test_15_undo_while_a_dialog_is_open_steps_its_own_change_back,
              test_16_apply_plus_does_not_reuse_the_extruded_sketch, test_17_failed_recreate_recovers,
              test_19_rmb_edit_in_the_model_tree_opens_sketch_and_feature,
              test_18_closing_the_document_ends_the_dialog])

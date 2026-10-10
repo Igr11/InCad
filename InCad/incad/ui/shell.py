@@ -732,6 +732,7 @@ class Shell(QtCore.QObject):
             return
         self.theme = themes.current()
         self._close_info_panel()  # it was drawn for the old theme
+        self._drop_sketch_markers()  # the next refresh draws them in the new colours
         if self.plane_panel is not None:
             self.plane_panel.set_theme(self.theme)
         qss = themes.stylesheet(self.theme)
@@ -1795,6 +1796,57 @@ class Shell(QtCore.QObject):
             self.status.show_message(level, message)
 
     # ----- panels -----
+    def _sync_sketch_markers(self, doc, editing):
+        """Key points of every shown unused sketch, drawn on the part view; none while a sketch is edited or a
+        feature dialog shows its own. An unused open contour the user never hid is shown here too (a file saved
+        before, or FreeCAD, may have hidden it); closed sketches are left as they are (a sketch just finished must
+        stay in view for the feature that will use it)."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import document, sketch as sketches
+        from incad.ui.point_markers import PointMarkers
+        if not hasattr(self, "sketch_markers"):
+            self.sketch_markers = {}  # document name -> (view, PointMarkers)
+        for name in [n for n in self.sketch_markers if n not in App.listDocuments()]:
+            self.sketch_markers.pop(name)  # the view went with its document
+        points, view = [], None
+        if doc is not None and editing is None and self.feature_session is None:
+            gdoc = Gui.getDocument(doc.Name)
+            view = gdoc.ActiveView if gdoc is not None else None
+            body = document.primary_body(doc)
+            if body is not None and view is not None:
+                for sk in body.Group:
+                    if sk.TypeId != "Sketcher::SketchObject":
+                        continue
+                    try:
+                        if not sk.Visibility and document.SHOWN_PROP not in sk.PropertiesList \
+                                and document.sketch_shown(sk):
+                            sk.Visibility = True
+                        if sk.Visibility and document.is_unused_sketch(sk):
+                            points.extend(sketches.key_points(sk))
+                    except Exception as e:
+                        log.logger().warning("Key points of %s: %s", sk.Name, e)
+        if doc is None:
+            for _, m in self.sketch_markers.values():
+                m.clear()
+            return
+        entry = self.sketch_markers.get(doc.Name)
+        try:
+            if view is None:
+                if entry is not None:
+                    entry[1].clear()
+                return
+            if entry is None:
+                entry = self.sketch_markers[doc.Name] = (view, PointMarkers(view, self.theme))
+            entry[1].set(points)
+        except Exception as e:
+            log.logger().warning("Sketch markers: %s", e)
+
+    def _drop_sketch_markers(self):
+        for _, m in getattr(self, "sketch_markers", {}).values():
+            m.remove()
+        self.sketch_markers = {}
+
     @staticmethod
     def _body_hidden(doc):
         from incad.core import document
@@ -1862,6 +1914,7 @@ class Shell(QtCore.QObject):
                 self.plane_panel.hide()
         self.title.set_document_name(doc.Label if doc is not None else "")
         self.browser.set_nodes(tree.build(doc))
+        self._sync_sketch_markers(doc if is_part else None, editing)
         from incad.core import sketch as sketches
         self.browser.set_parameters(document.list_parameters(doc) if is_part or is_asm else [],
                                     sketches.model_parameters(doc) if is_part or is_asm else [])
