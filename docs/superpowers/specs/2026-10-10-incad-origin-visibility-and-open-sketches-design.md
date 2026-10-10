@@ -1,6 +1,6 @@
 # InCad — origin visibility, open sketches in the view, path points in Sweep/Loft
 
-Status: approved in chat on 2026-10-10 (design sections); this file is the written spec for the plan.
+Status: implemented on 2026-10-10 (branch origin-visibility); plan `docs/superpowers/plans/2026-10-10-incad-origin-visibility-and-open-sketches.md`.
 
 ## 1. Intent
 

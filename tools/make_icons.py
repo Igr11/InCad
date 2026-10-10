@@ -155,6 +155,11 @@ ICONS = {
     "show_dof": ('<path d="M5 26 L16 10 L27 26" fill="none" stroke="{S}" stroke-width="2"/>'
                  '<circle cx="16" cy="10" r="3.5" fill="{R}"/><path d="M16 4 V1 M21 6 L23 4 M11 6 L9 4" stroke="{R}" '
                  'stroke-width="1.6"/>'),
+    "visibility": ('<path d="M3 16 C8 8 24 8 29 16 C24 24 8 24 3 16 Z" fill="none" stroke="{S}" stroke-width="2"/><circle cx="16" cy="16" r="4" fill="{S}"/>'),
+    "show_all": ('<path d="M3 16 C8 8 24 8 29 16 C24 24 8 24 3 16 Z" fill="none" stroke="{S}" stroke-width="2"/><circle cx="16" cy="16" r="4" fill="{S}"/>'
+                 '<path d="M24 23 V31 M20 27 H28" stroke="{A}" stroke-width="2.2" stroke-linecap="round"/>'),
+    "hide_all": ('<path d="M3 16 C8 8 24 8 29 16 C24 24 8 24 3 16 Z" fill="none" stroke="{S}" stroke-width="2"/><circle cx="16" cy="16" r="4" fill="{S}"/>'
+                 '<path d="M6 26 L26 6" stroke="{R}" stroke-width="2.2" stroke-linecap="round"/>'),
     "stop": ('<circle cx="16" cy="16" r="11" fill="none" stroke="{N}" stroke-width="2"/>'
              '<path d="M11 11 L21 21 M21 11 L11 21" stroke="{N}" stroke-width="2.4" stroke-linecap="round"/>'),
     "finish": ('<circle cx="16" cy="16" r="12" fill="#2ea043"/><path d="M10 16.5 L14.5 21 L23 11.5" fill="none" '
