@@ -215,23 +215,64 @@ class FeatureSession(QtCore.QObject):
 
     def _retarget_body(self, pairs):
         """A pick on another Solid of the part before the feature exists: the feature goes to that Solid (a box
-        drawn away from the part is its own Solid; Shell on its face hollows the box)."""
+        drawn away from the part is its own Solid; Shell on its face hollows the box). A box left in the part's
+        body by an older file is split off first; its elements are renumbered by that, so the pairs come back
+        remapped (and the dialog's pick texts with them)."""
         if self.feature is not None or getattr(self.kind, "IN_SKETCH", False):
-            return
+            return pairs
+        from incad.core import document
         for obj, _ in pairs:
             owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
-            if owner is not None and owner.TypeId == "PartDesign::Body" and owner is not self.body:
+            if owner is None or owner.TypeId != "PartDesign::Body":
+                continue
+            if document.is_detached_lump(obj):
+                old_shape = obj.Shape.copy()
+                owner = document.detach_lump(obj)
+                log.report("info", "%s does not touch the part: made its own Solid (%s)" % (obj.Label, owner.Label))
+                pairs = self._remap_pairs(pairs, obj, old_shape)
+                self._remap_dialog(obj, old_shape)
+            if owner is not self.body:
                 self.body = owner
-                return
+            return pairs
+        return pairs
+
+    @staticmethod
+    def _remap_pairs(pairs, obj, old_shape):
+        from incad.core import document
+        out = []
+        for o, sub in pairs:
+            if o is obj and sub:
+                sub = document.remap_sub(old_shape, obj.Shape, sub) or sub
+            out.append((o, sub))
+        return out
+
+    def _remap_dialog(self, obj, old_shape):
+        from incad.features import common
+        if self.dialog is None:
+            return
+        for f in self.kind.FIELDS:
+            if f.kind in ("pick", "picks") and self.dialog.values().get(f.key):
+                pairs = common.parse_picks(self.doc, self.dialog.values().get(f.key))
+                if any(o is obj for o, _ in pairs):
+                    self.dialog.set_pick(f.key, common.format_picks(self._remap_pairs(pairs, obj, old_shape)))
 
     def _retarget_from_values(self, values):
-        """The picks typed or seeded into the dialog may belong to another Solid: same rule as a 3D pick."""
+        """The picks typed or seeded into the dialog may belong to another Solid: same rule as a 3D pick; a
+        split-off piece renumbers its elements, so the values are rewritten too."""
         from incad.features import common
         pairs = []
+        keys = {}
         for f in self.kind.FIELDS:
             if f.kind in ("pick", "picks") and values.get(f.key):
-                pairs += common.parse_picks(self.doc, values.get(f.key))
-        self._retarget_body(pairs)
+                parsed = common.parse_picks(self.doc, values.get(f.key))
+                keys[f.key] = parsed
+                pairs += parsed
+        before = [(o, sub) for o, sub in pairs]
+        after = self._retarget_body(pairs)
+        if after != before:
+            changed = dict(zip(before, after))
+            for key, parsed in keys.items():
+                values[key] = common.format_picks([changed.get(pr, pr) for pr in parsed])
 
     def _off_base(self, pairs):
         base = self._expected_base()
@@ -261,7 +302,7 @@ class FeatureSession(QtCore.QObject):
             return  # taken by clicks on the markers, not by the selection
         raw_pairs = self._selection()
         pairs = self._as_picks(f.pick, raw_pairs)
-        self._retarget_body(pairs)
+        pairs = self._retarget_body(pairs)
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return

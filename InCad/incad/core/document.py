@@ -77,6 +77,99 @@ def new_solid(doc):
     return body
 
 
+def _solid_count(obj):
+    try:
+        shape = obj.Shape
+        return 0 if shape.isNull() else len(shape.Solids)
+    except Exception:
+        return 0
+
+
+def is_detached_lump(feature):
+    """True for an additive feature that added a solid of its own, not touching what came before (a box drawn
+    away from the part, wherever it sits in the tree): it belongs in its own Solid."""
+    body = feature.getParentGeoFeatureGroup() if hasattr(feature, "getParentGeoFeatureGroup") else None
+    if body is None or body.TypeId != "PartDesign::Body":
+        return False
+    if not feature.isDerivedFrom("PartDesign::FeatureAddSub") or feature.TypeId.startswith("PartDesign::Subtractive") \
+            or feature.TypeId == "PartDesign::Pocket":
+        return False
+    base = getattr(feature, "BaseFeature", None)
+    return base is not None and _solid_count(feature) > _solid_count(base) >= 1
+
+
+def _profile_of(feature):
+    prof = getattr(feature, "Profile", None)
+    return prof[0] if isinstance(prof, (tuple, list)) and prof else prof
+
+
+def detach_lump(feature):
+    """Move a detached feature into a new Solid with its profile sketch and every later feature built on it;
+    the features left behind are rebuilt on the one before it. Returns the new Solid."""
+    doc = feature.Document
+    body = feature.getParentGeoFeatureGroup()
+    if not is_detached_lump(feature):
+        raise ValueError("%s is not a separate piece of the part" % feature.Label)
+    group = list(body.Group)
+    movers = [feature]
+    for o in group[group.index(feature) + 1:]:  # later features that link to a mover go with it
+        if o.TypeId == "Sketcher::SketchObject" or not o.isDerivedFrom("PartDesign::Feature"):
+            continue
+        links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
+        if any(m in links or _profile_of(m) in links for m in movers):
+            movers.append(o)
+    sketches = [p for p in (_profile_of(m) for m in movers) if p is not None and p.getParentGeoFeatureGroup() is body]
+    was_tip = body.Tip in movers
+    new = new_solid(doc)
+    for m in reversed(movers):  # FreeCAD relinks the feature after each removed one onto the one before it
+        body.removeObject(m)
+    for p in sketches:
+        body.removeObject(p)
+        support = p.AttachmentSupport
+        if support and support[0][0] is not None and support[0][0].TypeId in ORIGIN_TYPES \
+                and getattr(support[0][0], "Role", None):  # an origin plane of the old body: the same of the new
+            same = [o for o in new.Origin.OriginFeatures if o.Role == support[0][0].Role]
+            if same:
+                p.AttachmentSupport = [(same[0], support[0][1])]
+        new.addObject(p)
+    for i, m in enumerate(movers):
+        new.addObject(m)
+        if i == 0:
+            try:
+                m.BaseFeature = None
+            except Exception:
+                pass
+        new.Tip = m
+    if was_tip:
+        solids = [o for o in body.Group if _is_solid_feature(o)]
+        body.Tip = solids[-1] if solids else None
+    doc.recompute()
+    show_result(body)
+    show_result(new)
+    return new
+
+
+def remap_sub(old_shape, new_shape, sub):
+    """The element of `new_shape` that is the same face/edge/vertex as `sub` of `old_shape` (a feature moved to
+    its own Solid renumbers its elements): nearest centre of the same kind, or None."""
+    try:
+        old = old_shape.getElement(sub)
+    except Exception:
+        return None
+    kind = old.ShapeType
+    pool = {"Face": new_shape.Faces, "Edge": new_shape.Edges, "Vertex": new_shape.Vertexes}.get(kind)
+    if not pool:
+        return None
+    centre = old.CenterOfMass if kind != "Vertex" else old.Point
+    best, best_d = None, None
+    for i, el in enumerate(pool):
+        c = el.CenterOfMass if kind != "Vertex" else el.Point
+        d = (c - centre).Length
+        if best_d is None or d < best_d:
+            best, best_d = i, d
+    return "%s%d" % (kind, best + 1) if best is not None and best_d < 1e-3 else None
+
+
 def end_of_part(body):
     return body.Tip
 

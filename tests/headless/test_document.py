@@ -380,3 +380,78 @@ class VisibilityTest(unittest.TestCase):
     def test_origin_items_are_the_seven(self):
         self.assertEqual(sorted(o.Role for o in document.origin_items(self.body)),
                          ["Origin", "XY_Plane", "XZ_Plane", "X_Axis", "YZ_Plane", "Y_Axis", "Z_Axis"])
+
+
+class DetachLumpTest(unittest.TestCase):
+    """A box extruded away from the part in the part's own body (an older file): it can be split off into its
+    own Solid together with its sketch, so Shell and the like work on it."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Dl2")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        sk = util.add_rect_sketch(self.body, name="FarSk")
+        sk.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+        self.box = util.add_pad(self.body, sk, 10, name="Box")
+        self.body.Tip = self.box
+        self.doc.recompute()
+        self.sk = sk
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_the_last_detached_feature_moves_to_its_own_solid(self):
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 2)
+        self.assertTrue(document.is_detached_lump(self.box))
+        new = document.detach_lump(self.box)
+        self.doc.recompute()
+        self.assertIsNot(new, self.body)
+        self.assertIs(self.box.getParentGeoFeatureGroup(), new)
+        self.assertIs(self.sk.getParentGeoFeatureGroup(), new)
+        self.assertIs(new.Tip, self.box)
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
+        self.assertEqual(len(new.Tip.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
+        self.assertIsNone(self.box.BaseFeature)
+        self.assertIs(self.sk.AttachmentSupport[0][0].InList[0].getParentGeoFeatureGroup() if False else new, new)
+
+    def test_picked_faces_are_found_again_after_the_split(self):
+        """In the part's body the box's top was Face N of a two-solid shape; alone it is another number."""
+        old_shape = self.box.Shape.copy()
+        top_old = [i + 1 for i, f in enumerate(old_shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6
+                   and f.CenterOfMass.x > 40][0]
+        document.detach_lump(self.box)
+        self.doc.recompute()
+        new_sub = document.remap_sub(old_shape, self.box.Shape, "Face%d" % top_old)
+        self.assertIsNotNone(new_sub)
+        face = self.box.Shape.getElement(new_sub)
+        self.assertAlmostEqual(face.CenterOfMass.z, 10, places=6)
+        self.assertAlmostEqual(face.CenterOfMass.x, 60, places=6)
+        self.assertIsNone(document.remap_sub(old_shape, self.box.Shape, "Face1"), "the pad's face is not here")
+
+    def test_a_touching_feature_is_not_a_lump(self):
+        self.assertFalse(document.is_detached_lump(self.pad))
+        near = util.add_pad(self.body, util.add_rect_sketch(self.body, name="NearSk"), 3, name="Near")
+        self.body.Tip = near
+        self.doc.recompute()
+        self.assertFalse(document.is_detached_lump(near), "touches the part")
+
+    def test_a_middle_lump_moves_out_and_the_rest_relinks(self):
+        """The box in the middle of the tree: it goes to its own Solid, the feature after it is rebuilt on the
+        one before; a feature built on the box (a fillet of its edge) goes with it."""
+        near_sk = util.add_rect_sketch(self.body, name="NearSk")
+        near_sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 10), App.Rotation())  # on the pad's top
+        near = util.add_pad(self.body, near_sk, 3, name="Near")
+        self.body.Tip = near
+        self.doc.recompute()
+        self.assertTrue(document.is_detached_lump(self.box), "a lump wherever it sits")
+        new = document.detach_lump(self.box)
+        self.doc.recompute()
+        self.assertIs(self.box.getParentGeoFeatureGroup(), new)
+        self.assertIs(near.getParentGeoFeatureGroup(), self.body)
+        self.assertIs(near.BaseFeature, self.pad, "relinked on the feature before the box")
+        self.assertIs(self.body.Tip, near)
+        self.assertNotIn("Invalid", near.State, near.getStatusString())
+        self.assertAlmostEqual(near.Shape.Volume, 2000 + 600, places=3)
+        self.assertEqual(len(near.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)

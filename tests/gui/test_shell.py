@@ -137,5 +137,45 @@ def test_3_shell_a_box_drawn_away_from_the_part():
     assert body.Tip is pad and abs(pad.Shape.Volume - 2000) < 1e-6, "the part is untouched"
 
 
+def test_4_shell_a_box_left_in_the_parts_body_by_an_older_file():
+    """The user's file: the box was extruded into the part's body before InCad split such pieces off. Picking
+    its face in the Shell dialog moves it to its own Solid and hollows it."""
+    from incad.core import document
+    sh = shell.instance()
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    body = _body()
+    pad = util.add_pad(body, util.add_rect_sketch(body), 10)
+    far = util.add_rect_sketch(body, name="Far")
+    far.AttachmentOffset = App.Placement(App.Vector(50, 50, 0), App.Rotation())
+    box = util.add_pad(body, far, 10, name="OldBox")  # raw, as an older InCad did
+    body.Tip = box
+    App.ActiveDocument.recompute()
+    document.show_result(body)
+    sh.schedule_refresh()
+    harness.pump(600)
+    assert len(body.Tip.Shape.Solids) == 2
+    top = [i + 1 for i, f in enumerate(box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6 and f.CenterOfMass.x > 40][0]
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("feature.shell")
+    harness.pump(800)
+    fs = sh.feature_session
+    fs.dialog.set_pick("faces", "%s:Face%d" % (box.Name, top))
+    harness.pump(1500)
+    assert fs.dialog.error_text() == "", fs.dialog.error_text()
+    QTest.mouseClick(fs.dialog.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(900)
+    assert sh.feature_session is None
+    other = box.getParentGeoFeatureGroup()
+    assert other is not body and len(document.bodies(App.ActiveDocument)) == 2
+    shells = [o for o in App.ActiveDocument.Objects if o.TypeId == "PartDesign::Thickness"]
+    assert len(shells) == 1 and shells[0].getParentGeoFeatureGroup() is other and "Invalid" not in shells[0].State
+    assert abs(shells[0].Shape.Volume - (2000 - 18 * 8 * 9)) < 2.0, shells[0].Shape.Volume
+    assert body.Tip is pad and len(pad.Shape.Solids) == 1
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(900)
+    assert box.getParentGeoFeatureGroup() is body and body.Tip is box, "one undo step puts the box back"
+
+
 harness.run([test_0_part, test_1_shell_the_box_open_at_the_top, test_2_the_real_part_offers_a_shell_before_the_thread,
-             test_3_shell_a_box_drawn_away_from_the_part])
+             test_3_shell_a_box_drawn_away_from_the_part, test_4_shell_a_box_left_in_the_parts_body_by_an_older_file])
