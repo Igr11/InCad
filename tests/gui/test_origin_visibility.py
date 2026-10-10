@@ -76,12 +76,27 @@ def test_1_tree_menu_hide_show_on_a_plane():
     assert sh.browser.item_by_label("XY Plane").data(0, STATE_ROLE) == "hidden"
 
 
+def _click_row(label, modifier=QtCore.Qt.NoModifier):
+    from PySide6.QtTest import QTest
+    b = shell.instance().browser
+    item = b.item_by_label(label)
+    parent = item.parent()
+    while parent is not None:
+        parent.setExpanded(True)
+        parent = parent.parent()
+    harness.pump(100)
+    QTest.mouseClick(b.tree.viewport(), QtCore.Qt.LeftButton, modifier, b.tree.visualItemRect(item).center())
+    harness.pump(400)
+
+
 def test_2_two_selected_axes_toggle_together():
     sh = shell.instance()
     from incad.core import context
     context.set_target(None)
-    sh.browser.item_by_label("X Axis").setSelected(True)
-    sh.browser.item_by_label("Y Axis").setSelected(True)
+    _click_row("X Axis")
+    _click_row("Y Axis", QtCore.Qt.ControlModifier)  # Cmd-click on macOS: adds the row
+    assert sh.browser.selected_names() == ["X_Axis", "Y_Axis"], sh.browser.selected_names()
+    assert sorted(s.ObjectName for s in Gui.Selection.getSelectionEx()) == ["X_Axis", "Y_Axis"]
     r = commands.REGISTRY.run("view.toggle_visibility")
     assert r.ok, r.error
     harness.pump(400)

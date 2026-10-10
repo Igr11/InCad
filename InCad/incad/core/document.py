@@ -183,7 +183,9 @@ def toggle_visibility(objects):
         elif o.TypeId in ORIGIN_TYPES:
             targets.append(o)
     if not targets:
-        raise ValueError("Select a plane, an axis, the centre point or an unused sketch first")
+        seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
+        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, the centre point or an unused sketch"
+                         % seen if seen else "Select a plane, an axis, the centre point or an unused sketch first")
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag

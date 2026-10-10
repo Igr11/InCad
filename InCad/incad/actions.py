@@ -168,8 +168,8 @@ def toggle_suppress():
 
 
 def _visibility_targets():
-    """What Hide / Show acts on: the tree's selected rows, else the row the menu was opened on, else the
-    origin items and sketches selected in the 3D view."""
+    """What Hide / Show acts on: the model's selection (a tree click and a 3D pick both set it), else the row
+    the menu was opened on, else the tree's selected rows."""
     import FreeCAD as App
     import FreeCADGui as Gui
     from incad.core import context
@@ -177,19 +177,22 @@ def _visibility_targets():
     doc = App.ActiveDocument
     if doc is None:
         raise ValueError("Open a part first")
-    inst = shell.instance()
-    names = inst.browser.selected_names() if inst is not None else []
-    if not names and context.target():
-        names = [context.target()]
-    objs = [o for o in (doc.getObject(n) for n in names) if o is not None]
+    objs = list(dict.fromkeys(s.Object for s in Gui.Selection.getSelectionEx(doc.Name)))
     if not objs:
-        objs = [s.Object for s in Gui.Selection.getSelectionEx(doc.Name)]
+        inst = shell.instance()
+        names = [context.target()] if context.target() else []
+        if not names and inst is not None:
+            names = inst.browser.selected_names()
+        objs = [o for o in (doc.getObject(n) for n in names) if o is not None]
     return objs
 
 
 def toggle_visibility():
     from incad.core import document, log
     from incad.ui import shell
+    inst = shell.instance()
+    if inst is not None:
+        inst.end_peek()  # the temporary "shown while selected" ends: the toggle acts on the real state
     flag = document.toggle_visibility(_visibility_targets())
     log.report("info", "Shown" if flag else "Hidden")
     inst = shell.instance()
@@ -739,7 +742,7 @@ def commands():
                 handler=lambda: start_feature("cylindrical"), contexts=frozenset({"assembly"})),
         Command(id="joint.ball", label="Ball", icon="ball", handler=lambda: start_feature("ball"),
                 contexts=frozenset({"assembly"})),
-        Command(id="feature.combine", label="Combine", icon="combine", handler=lambda: start_feature("combine"),
+        Command(id="feature.combine", label="Boolean", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
         Command(id="sketch.construction", label="Construction", icon="construction",
                 handler=lambda: _construction(), contexts=frozenset({"sketch"}), checkable=True,

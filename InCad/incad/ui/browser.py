@@ -122,6 +122,8 @@ class ModelBrowser(QtWidgets.QWidget):
         self.tree.itemClicked.connect(self._on_click)
         self.tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
+        self.tree.itemExpanded.connect(lambda item: self._on_expanded(item, True))
+        self.tree.itemCollapsed.connect(lambda item: self._on_expanded(item, False))
         col.addWidget(self.tree, 3)
         bar = QtWidgets.QWidget()
         row = QtWidgets.QHBoxLayout(bar)
@@ -155,14 +157,44 @@ class ModelBrowser(QtWidgets.QWidget):
 
     # ----- tree -----
     def set_nodes(self, nodes):
+        """Rebuild the tree; the selected rows and an Origin the user opened survive the rebuild."""
+        selected = self.selected_names()
         self._nodes = nodes
-        self.tree.clear()
-        for node in nodes:
-            self.tree.addTopLevelItem(self._item(node))
-        self.tree.expandAll()
-        for item in self._items():
-            if item.data(0, KIND_ROLE) == "origin":
-                item.setExpanded(False)
+        self._rebuilding = True
+        try:
+            self.tree.clear()
+            for node in nodes:
+                self.tree.addTopLevelItem(self._item(node))
+            self.tree.expandAll()
+            for item in self._items():
+                if item.data(0, KIND_ROLE) == "origin":
+                    item.setExpanded(getattr(self, "_origin_open", False))
+        finally:
+            self._rebuilding = False
+        if selected:
+            self.select_names(selected)
+
+    def select_names(self, names):
+        """Highlight the rows of these FreeCAD objects (the model's selection shown in the tree), opening their
+        parents; no signal is emitted (nothing is picked again)."""
+        names = list(names)
+        self.tree.blockSignals(True)
+        try:
+            self.tree.clearSelection()
+            for item in self._items():
+                if item.data(0, NAME_ROLE) in names:
+                    parent = item.parent()
+                    while parent is not None:
+                        if not parent.isExpanded():
+                            parent.setExpanded(True)
+                        parent = parent.parent()
+                    item.setSelected(True)  # highlighted only: the current row stays the one the user clicked
+        finally:
+            self.tree.blockSignals(False)
+
+    def _on_expanded(self, item, expanded):
+        if item.data(0, KIND_ROLE) == "origin" and not getattr(self, "_rebuilding", False):
+            self._origin_open = expanded
 
     def _item(self, node):
         item = QtWidgets.QTreeWidgetItem([node.label + ("    " + node.detail if node.detail else "")])

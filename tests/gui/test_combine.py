@@ -84,7 +84,7 @@ def test_2_cut_with_a_fit_copy():
     assert base.Tip.TypeId == "PartDesign::Boolean", base.Tip.TypeId
     assert [b.Label for b in document.bodies(doc()) if b.Label.endswith(" fit")] == ["Pin fit"]
     assert doc().getObject(ST["tool"]) is not None
-    assert doc().UndoNames[0] == "Combine" and len(doc().UndoNames) == undo + 1, doc().UndoNames
+    assert doc().UndoNames[0] == "Boolean" and len(doc().UndoNames) == undo + 1, doc().UndoNames
 
 
 harness.run([test_0_setup, test_1_cancel_leaves_nothing, test_2_cut_with_a_fit_copy])

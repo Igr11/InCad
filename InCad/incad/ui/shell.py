@@ -199,14 +199,24 @@ class _PointPick:
         return best
 
 
-class _PeekWatch:
-    """Selection observer while a sketch is shown for its tree row: any change that drops it ends the peek."""
+class _SelectionWatch:
+    """Selection observer while InCad is active: the tree follows the model's selection (deferred, once per burst)."""
 
     def __init__(self, shell):
         self.shell = shell
+        self._due = False
 
     def _check(self):
-        QtCore.QTimer.singleShot(0, self.shell._peek_selection_changed)
+        if not self._due:
+            self._due = True
+            QtCore.QTimer.singleShot(0, self._fire)
+
+    def _fire(self):
+        self._due = False
+        try:
+            self.shell._on_model_selection_changed()
+        except Exception:
+            log.logger().exception("InCad selection sync")
 
     def addSelection(self, doc, obj, sub, pnt):
         self._check()
@@ -289,8 +299,9 @@ class Shell(QtCore.QObject):
         self._geometry_counts = {}
         self.section_panel = None
         self._point_pick = None  # waiting for three clicks on the section markers
-        self._peeked = None      # (document, sketch name, was visible): a sketch shown while its tree row is selected
-        self._peek_watch = None
+        self._peeked = None      # (document, object name, [(obj, was visible)]): shown while its tree row is selected
+        self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
+        self._sel_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
@@ -658,6 +669,14 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
+        if self._sel_watch is not None:
+            try:
+                import FreeCADGui as Gui
+                Gui.Selection.removeObserver(self._sel_watch)
+            except Exception:
+                pass
+            self._sel_watch = None
+        self._peeked = None
         self.stop_slot_tool()
         self._stop_measuring()
         self.stop_section(keep_cut=False)
@@ -881,79 +900,103 @@ class Shell(QtCore.QObject):
         return self._show_marking_menu(kind, global_pos, flick)
 
     def _on_browser_select(self, name):
-        """A click in the model tree selects the object in the model too, so a dialog waiting for a sketch or a
-        feature takes it (Inventor picks from the browser). A sketch row shows its sketch in the view while it is
-        selected (a consumed one too); the next row, Esc or a cleared selection hides it again."""
+        """A click in the model tree selects the object in the model: the view highlights it, a dialog waiting
+        for a sketch or a feature takes it (Inventor picks from the browser). A hidden plane, axis, point or
+        sketch is shown while its row is selected; the next selection, Esc or a cleared selection hides it again."""
         import FreeCAD as App
         import FreeCADGui as Gui
-        from incad.core import sketch as sketches
         doc = App.ActiveDocument
         obj = doc.getObject(name) if doc is not None else None
         if obj is None:
             return
         if self._peeked is not None and self._peeked[1] != name:
-            self._unpeek_sketch()
-        waiting = (self.feature_session is not None and self.feature_session.dialog is not None
-                   and self.feature_session.dialog.active_pick() is not None) or self._profile_pick is not None \
-            or self.sketches.picking or self._measure is not None or self._region_pick is not None
-        if sketches.is_sketch(obj) and self.sketches.editing() is None:
-            self._peek_sketch(obj)
-        elif not waiting:
-            return  # just looking at the tree: the 3D selection stays
-        Gui.Selection.clearSelection()
-        Gui.Selection.addSelection(doc.Name, name)
-
-    def _peek_sketch(self, sk):
-        """Show `sk` in the view while its row is selected; nothing is saved (the sketch's own rule comes back)."""
-        import FreeCADGui as Gui
-        if self._peeked is not None and self._peeked[1] == sk.Name:
-            return
-        self._peeked = (sk.Document.Name, sk.Name, bool(sk.Visibility))
+            self._unpeek()
+        if self.sketches.editing() is None:
+            self._peek(obj)
+        names = self.browser.selected_names() if self.browser is not None else []
+        if name not in names:
+            names = [name]  # a plain click: the clicked row alone (Shift/Cmd-clicks keep the others)
+        self._syncing = True
         try:
-            sk.ViewObject.Visibility = True
-        except Exception:
-            pass
-        if self._peek_watch is None:
-            self._peek_watch = _PeekWatch(self)
-            Gui.Selection.addObserver(self._peek_watch)
-        self.schedule_refresh()
+            Gui.Selection.clearSelection()
+            for n in names:
+                if doc.getObject(n) is not None:
+                    Gui.Selection.addSelection(doc.Name, n)
+        finally:
+            self._syncing = False
 
-    def _unpeek_sketch(self):
-        import FreeCAD as App
-        import FreeCADGui as Gui
-        peeked, self._peeked = self._peeked, None
-        if self._peek_watch is not None:
+    def _peek(self, obj):
+        """Show a hidden plane, axis, point or sketch while its row is selected; nothing is saved (its own rule
+        comes back when the selection moves on)."""
+        from incad.core import document
+        if self._peeked is not None and self._peeked[1] == obj.Name:
+            return
+        if obj.TypeId in document.ORIGIN_TYPES:
+            if document.is_shown(obj):
+                return
+            origin = next((o for o in obj.InList if o.TypeId == "App::Origin"), None)
+            was = [(o, bool(o.Visibility)) for o in ([origin] if origin is not None else []) + list(origin.OriginFeatures if origin else [])]
+            self._peeked = (obj.Document.Name, obj.Name, was)
             try:
-                Gui.Selection.removeObserver(self._peek_watch)
+                document.set_visibility([obj], True)
             except Exception:
                 pass
-            self._peek_watch = None
+        elif obj.TypeId == "Sketcher::SketchObject":
+            if obj.Visibility:
+                return
+            self._peeked = (obj.Document.Name, obj.Name, [(obj, False)])
+            try:
+                obj.ViewObject.Visibility = True
+            except Exception:
+                pass
+        else:
+            return
+        self.schedule_refresh()
+
+    def _unpeek(self):
+        """Put back what a peek changed (unless the user made a choice meanwhile: forget_peek dropped it)."""
+        import FreeCAD as App
+        peeked, self._peeked = self._peeked, None
         if peeked is None:
             return
-        doc = App.getDocument(peeked[0]) if peeked[0] in App.listDocuments() else None
-        sk = doc.getObject(peeked[1]) if doc is not None else None
-        if sk is not None:
-            try:
-                from incad.core import document
-                sk.ViewObject.Visibility = peeked[2] or document.sketch_shown(sk)
-            except Exception:
-                pass
+        if peeked[0] in App.listDocuments():
+            for o, vis in peeked[2]:
+                try:
+                    o.Visibility = vis
+                except Exception:
+                    pass
         self.schedule_refresh()
 
-    def _peek_selection_changed(self):
-        """The 3D selection moved away from the peeked sketch (a click elsewhere, a cleared selection)."""
+    def forget_peek(self):
+        """A sketch goes into edit mode: FreeCAD shows it and restores it after, the peek has nothing to put back."""
+        self._peeked = None
+
+    def end_peek(self):
+        """Hide / Show is about to run: the temporary show ends first, so the toggle sees the real state (a
+        hidden axis shown for its row is hidden, and the toggle shows it for good)."""
+        self._unpeek()
+
+    def _on_model_selection_changed(self):
+        """The model's selection changed (a 3D pick, a cleared selection, a tree click): the tree shows it, and a
+        peek whose object left the selection ends."""
+        import FreeCAD as App
         import FreeCADGui as Gui
-        if self._peeked is None:
+        if not self.active or self._syncing or self.browser is None:
             return
-        doc_name, name, _ = self._peeked
-        still = any(s.ObjectName == name and s.DocumentName == doc_name for s in Gui.Selection.getSelectionEx())
-        if not still:
-            self._unpeek_sketch()
+        doc = App.ActiveDocument
+        names = [s.ObjectName for s in Gui.Selection.getSelectionEx(doc.Name)] if doc is not None else []
+        if self._peeked is not None and self._peeked[1] not in names:
+            self._unpeek()
+        try:
+            self.browser.select_names(list(dict.fromkeys(names)))
+        except RuntimeError:
+            pass
 
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
         from incad.core import context
         context.set_target(name)
+        self._on_browser_select(name)  # the row's object is the selection: shown in the view while the menu is up
         obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
         kind = "origin" if obj is not None and obj.TypeId in ("App::Plane", "App::Line", "App::Point") else "browser"
         self._show_marking_menu(kind, global_pos)
@@ -983,7 +1026,7 @@ class Shell(QtCore.QObject):
         """Esc, Inventor style: the value box first, then InCad's own picks and tools, then the feature dialog,
         else the running Sketcher tool (the sketch itself is left with Finish Sketch, never with Esc)."""
         if self._peeked is not None:
-            self._unpeek_sketch()  # the sketch shown for its tree row goes back to its rule
+            self._unpeek()  # the object shown for its tree row goes back to its rule
         if self.value_box is not None:
             self.value_box.closed_by_user = True  # Esc
             self._close_value_box()
@@ -1758,6 +1801,10 @@ class Shell(QtCore.QObject):
 
     # ----- hooks -----
     def _install_hooks(self):
+        import FreeCADGui as Gui
+        if self._sel_watch is None:
+            self._sel_watch = _SelectionWatch(self)
+            Gui.Selection.addObserver(self._sel_watch)
         import FreeCAD as App
         log.set_reporter(self._report)
         from incad.core import safe
@@ -1981,6 +2028,8 @@ class Shell(QtCore.QObject):
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)
+        if editing is not None and self._peeked is not None:
+            self.forget_peek()  # FreeCAD shows the sketch for editing and restores it after
         if editing is not None and self._profile_pick is not None:
             self._cancel_profile_pick()  # the user went sketching instead: a pick would finish the sketch under them
         if editing is None and self.slot_tool is not None:

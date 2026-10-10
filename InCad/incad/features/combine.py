@@ -11,7 +11,7 @@ import FreeCAD as App
 
 from incad.features.common import Field, format_picks, parse_picks, resolve
 
-TITLE = "Combine"
+TITLE = "Boolean"  # the ribbon button and the dialog (Inventor calls it Combine)
 ICON = "combine"
 TYPES = ("PartDesign::Boolean",)
 NEEDS_PROFILE = False
@@ -307,7 +307,7 @@ def update(doc, f, values):
     body = f.getParentGeoFeatureGroup()
     bases = _bodies(doc, values.get("base"))
     if bases and bases[0] is not body:
-        raise ValueError("The base can't change on an existing Combine: cancel and start Combine on the other "
+        raise ValueError("The base can't change on an existing Boolean: cancel and start Boolean on the other "
                          "solid")
     return _build(doc, f, body, values)
 

@@ -85,6 +85,16 @@ Three things the user asked for after trying the sketch tools on splines:
   Sweep on it the sketch and markers disappear; the Sweep dialog shows markers on the picked path. Real part:
   `Sketch7` (two open chains) of the frozen fixture is visible with its ends lit.
 
+## 6a. Added after the user's first try (2026-10-10)
+
+- **One selection for the tree and the view.** A click on a tree row (plane, axis, centre point, sketch, feature,
+  part) selects the object in the model and the view highlights it; Shift/Cmd-clicks keep the others. A 3D pick
+  highlights the row (opening Origin if needed). The tree keeps its selected rows and an Origin the user opened
+  across refreshes. A hidden plane, axis, point or consumed sketch is **shown while its row is selected** (a
+  peek: nothing saved; the next selection, Esc or a cleared selection puts it back). Hide / Show acts on the
+  model's selection, ends a peek first, and names what was selected when nothing qualifies.
+- The part's Combine button and dialog are named **Boolean** (the assembly's Combine keeps its name).
+
 ## 7. Out of scope
 
 Hiding bodies, features or consumed sketches by command (Inventor's Visibility on features), per-plane ribbon
