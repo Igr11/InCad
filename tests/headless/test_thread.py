@@ -633,3 +633,73 @@ class ThreadHoleFitTest(unittest.TestCase):
         self.assertIn("size", str(ctx.exception).lower())
         self.assertIs(self.body.Tip, self.bore)
         self.assertFalse([o for o in self.body.Group if getattr(o, "InCadHelperOf", None)])
+
+
+class ThreadFinTest(unittest.TestCase):
+    """User report: M2.5 on a Ø2.594 rod came out sloppy. With the print clearance the groove reaches its widest
+    (pitch less a hair) below the rod's surface: a 0.04 mm fin was left on every crest (on Ø2.5 too). The rod is
+    turned down (a hole bored out) to where the groove reaches its width, so the crests are clean."""
+    def setUp(self):
+        self.doc = util.new_doc("Fn")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    @staticmethod
+    def widest(spec, internal, clearance):
+        """The radii where the groove profile is at its full width (the fin zone starts past them)."""
+        g = profile.groove(spec, internal, clearance)
+        half = profile.max_width(g) / 2.0
+        return [r for r, z in g if abs(abs(z) - half) < 1e-9]
+
+    def material(self, r, z0, z1, n=240):
+        shape = self.body.Shape
+        pts = [App.Vector(r * math.cos(a), r * math.sin(a), z0 + (z1 - z0) * i / (n - 1))
+               for i in range(n) for a in (0.0, 1.3, 2.9, 4.4)]
+        return sum(1 for p in pts if shape.isInside(p, 1e-7, True))
+
+    def test_no_fins_on_a_slightly_oversize_rod_or_an_exact_one(self):
+        for radius in (2.594 / 2, 2.5 / 2):
+            pad = shaft(self.doc, self.body, radius=radius, length=8.0, name="Rod%d" % int(radius * 1000))
+            f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                              face=cyl_face(pad, radius), size="M2.5",
+                                                              clearance="0.2 mm"))
+            self.doc.recompute()
+            self.assertTrue(self.body.Shape.isValid())
+            knee = min(self.widest(thread._spec(dict(standard="iso", size="M2.5"), 2 * radius, False, 0.2),
+                                   False, 0.2))
+            self.assertLess(knee, radius - 0.01)  # the fin zone exists for this size
+            self.assertEqual(self.material((knee + radius) / 2.0, 2.0, 6.0), 0, radius)
+            self.tearDown()
+            self.setUp()
+
+    def test_no_fins_with_a_small_clearance_either(self):
+        radius = 2.594 / 2
+        pad = shaft(self.doc, self.body, radius=radius, length=8.0, name="Rod")
+        thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                      face=cyl_face(pad, radius), size="M2.5", clearance="0.1 mm"))
+        self.doc.recompute()
+        knee = min(self.widest(thread._spec(dict(standard="iso", size="M2.5"), 2 * radius, False, 0.1), False, 0.1))
+        self.assertEqual(self.material((knee + radius) / 2.0, 2.0, 6.0), 0)
+
+    def test_no_fins_inside_a_tapped_hole(self):
+        shaft(self.doc, self.body, radius=6.0, length=8.0, name="Block")
+        s = st.spec("iso", "M2.5")
+        bore_r = st.bore_diameter(s, 0.2) / 2
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), bore_r))
+        bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        self.body.Tip = bore
+        self.doc.recompute()
+        thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                      face=cyl_face(bore, bore_r), size="M2.5", clearance="0.2 mm"))
+        self.doc.recompute()
+        knee = max(self.widest(s, True, 0.2))
+        if knee > bore_r + 0.01:  # the fin zone exists inside the hole
+            self.assertEqual(self.material((knee + bore_r) / 2.0, 2.0, 6.0), 0)

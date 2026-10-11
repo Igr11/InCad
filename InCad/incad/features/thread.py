@@ -163,6 +163,7 @@ def _geometry(obj, face, flip, start_plane=None):
 
 
 _PREP_TOL = 0.05  # mm (radial): a hole this close to the tap size is threaded as it is
+_FIN_TOL = 0.005  # mm (radial): any fin taller than this is turned (bored) away
 
 
 def _fit(spec, internal, radius, clearance):
@@ -186,6 +187,9 @@ def _fit(spec, internal, radius, clearance):
             raise ValueError("This size is too %s for the hole (Ø%.2f): pick a %s size" % (
                 ("small", 2 * radius, "larger") if tap < radius else ("large", 2 * radius, "smaller")))
         hole = tap if abs(radius - tap) > _PREP_TOL else radius
+        crest = profile.knee(spec, True, clearance)  # below it a hair-thin fin would stay on every crest
+        if crest > hole + _FIN_TOL:
+            hole = crest
         return run + max(0.0, r_min - hole), hole
     root = R - spec.crest_drop - spec.depth - clearance / 2.0
     if root < 0.3 * R:
@@ -194,7 +198,9 @@ def _fit(spec, internal, radius, clearance):
         raise ValueError("This size is too large for the shaft (Ø%.2f): pick a smaller size" % (2 * radius))
     if radius > R + max(0.5, 0.5 * spec.depth):
         raise ValueError("This size is too small for the shaft (Ø%.2f): pick a larger size" % (2 * radius))
-    return run + max(0.0, radius - R), radius
+    crest = profile.knee(spec, False, clearance)  # above it a hair-thin fin would stay on every crest
+    rod = crest if radius > crest + _FIN_TOL and not spec.taper else radius
+    return run + max(0.0, rod - R), rod
 
 
 def _spec(values, diameter, internal, clearance):
@@ -364,7 +370,7 @@ def _build(doc, body, f, values):
     expr = dict(f.ExpressionEngine).get("Height")
     height = f.evalExpression(expr).Value if expr else f.Height.Value
     _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height, face_len,
-          start_free, end_free)
+          start_free, end_free, internal)
     chamfer = _chamfer(doc, body, f, obj, edge, internal, hole, sign, face_len, start_free, end_free,
                        values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
@@ -450,11 +456,12 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
     return g
 
 
-def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free):
+def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free, internal=True):
     """Fill the hole (a Revolution) or bore it out (a Groove) to the thread's tap radius along the threaded span,
     right before the thread; removed when the hole already fits. None or the helper."""
     existing = [h for h in helpers_of(f) if _role(h) == "prep"]
-    want = None if abs(hole - radius) < 1e-9 else ("PartDesign::Revolution" if hole < radius else "PartDesign::Groove")
+    adds = hole < radius if internal else hole > radius  # a hole filled in / a rod built up; else cut
+    want = None if abs(hole - radius) < 1e-9 else ("PartDesign::Revolution" if adds else "PartDesign::Groove")
     if existing and (want is None or existing[0].TypeId != want):
         _remove_helpers(doc, body, f, "prep")
         existing = []
@@ -467,11 +474,10 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
     sk.MapMode = "SectionOfRevolution"
     sk.deleteAllGeometry()
     sk.recompute()  # placed (the walls are sampled in its frame); no feature is recomputed with an empty profile
+    lo, hi = (hole, radius + 0.02) if hole < radius else (radius - 0.02, hole)
     if want == "PartDesign::Revolution":  # new material only where the hole has a wall all round, joined to it
-        lo, hi = hole, radius + 0.02
         spans = _walled(obj.Shape, sk.getGlobalPlacement(), sign, radius, max(a0, 0.0), min(a1, face_len))
     else:  # a cut may run past a free end, so the mouth opens cleanly
-        lo, hi = radius - 0.02, hole
         spans = [(-0.2 if a0 <= 0.0 and start_free else max(a0, 0.0),
                   face_len + 0.2 if a1 >= face_len and end_free else min(a1, face_len))]
     spans = [(b0, b1) for b0, b1 in spans if b1 - b0 > 1e-3]
@@ -481,7 +487,8 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
         _remove_helpers(doc, body, f, "prep")
         return None
     if g is None:
-        g = doc.addObject(want, "ThreadFill" if want == "PartDesign::Revolution" else "ThreadBore")
+        g = doc.addObject(want, "ThreadFill" if want == "PartDesign::Revolution" else
+                          "ThreadBore" if internal else "ThreadTrim")
         base = f.BaseFeature
         body.insertObject(g, f, False)  # right before the thread, which cuts the filled / bored hole
         g.BaseFeature = base

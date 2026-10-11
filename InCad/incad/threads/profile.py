@@ -23,6 +23,15 @@ def _width_fn(spec, internal, c):
     return (lambda r: min(wm, base - 2.0 * (R - c - r) * t)), t, base, R
 
 
+def knee(spec, internal, clearance=0.0):
+    """The radius where the groove reaches its full width (the pitch less a hair). Past it, towards the surface, a
+    hair-thin fin would stay between the turns: an external thread's rod is turned down to it, a hole bored out."""
+    c = clearance / 2.0
+    _, t, base, ref = _width_fn(spec, internal, c)
+    wm = _wmax(spec.pitch)
+    return ref + c + (base - wm) / (2.0 * t) if internal else ref - c - (base - wm) / (2.0 * t)
+
+
 def groove(spec, internal, clearance=0.0, runout=None):
     c = clearance / 2.0
     run = runout if runout is not None else max(0.5, 0.3 * spec.pitch)

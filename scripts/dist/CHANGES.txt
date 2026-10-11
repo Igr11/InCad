@@ -23,6 +23,9 @@ Bug fixes
   one). It now turns those threads off too; the holes themselves stay.
 - Wireframe was nearly invisible in the dark theme. Its lines are now light (dark in the light theme)
   and thicker; Shaded puts the normal lines back.
+- Thread on a rod came out sloppy: with the print clearance a hair-thin fin (about 0.04 mm) stayed on
+  every crest, worse when the rod was a little larger than the size (M2.5 on Ø2.594). The rod is now
+  turned down to the thread's crests first (a ThreadTrim step under the Thread), so the crests are clean.
 - Parameters lost their units in a file opened again (an angle showed 90 instead of 90°, a length 12
   instead of 12 mm) in the Parameters list and in the dialogs. They keep them now.
 
