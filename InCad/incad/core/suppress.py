@@ -54,9 +54,15 @@ def threads(doc):
     return [o for o in doc.Objects if thread.claims(o) and not getattr(o, "InCadHelperOf", None)]
 
 
+def tapped_holes(doc):
+    """Holes with a modeled thread (Hole > Tapped): Threads Off turns the thread off, never the hole."""
+    return [o for o in doc.Objects if o.TypeId == "PartDesign::Hole" and getattr(o, "Threaded", False)]
+
+
 def threads_off(doc):
     """True while the 'all threads off' switch holds threads off."""
-    return any(getattr(t, OFF_MARK, False) and t.Suppressed for t in threads(doc))
+    return any(getattr(t, OFF_MARK, False) and t.Suppressed for t in threads(doc)) or \
+        any(getattr(h, OFF_MARK, False) and not h.ModelThread for h in tapped_holes(doc))
 
 
 def _mark(t, on):
@@ -69,15 +75,18 @@ def _mark(t, on):
 
 
 def toggle_threads(doc):
-    """Every thread off (those already off are left alone), or back on: 'off' or 'on'."""
-    ts = threads(doc)
-    if not ts:
+    """Every thread off — Thread features suppressed, tapped Holes without their modeled thread (the holes stay);
+    those already off are left alone — or back on: 'off' or 'on'."""
+    ts, holes = threads(doc), tapped_holes(doc)
+    if not ts and not holes:
         raise ValueError("This part has no threads")
     _repair(doc)
-    marked = [t for t in ts if getattr(t, OFF_MARK, False)]
+    marked = [t for t in ts + holes if getattr(t, OFF_MARK, False)]
     if marked:
         for t in marked:
-            if t.Suppressed:
+            if t in holes:
+                t.ModelThread = True
+            elif t.Suppressed:
                 set_suppressed(t, False)
             _mark(t, False)
         return "on"
@@ -85,4 +94,8 @@ def toggle_threads(doc):
         if not t.Suppressed:
             set_suppressed(t, True)
             _mark(t, True)
+    for h in holes:  # the hole stays (its tap drill size); only its modeled thread goes
+        if h.ModelThread and not getattr(h, "Suppressed", False):
+            h.ModelThread = False
+            _mark(h, True)
     return "off"

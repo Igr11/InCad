@@ -161,3 +161,67 @@ class ThreadOnAThreadTest(unittest.TestCase):
         self.assertEqual(self.supports(b), {self.bores.Name})
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
         self.assertAlmostEqual(self.body.Shape.Volume, self.bores.Shape.Volume, places=3)
+
+
+class TappedHoleThreadsTest(unittest.TestCase):
+    """User: 'a thread is Thread, but a thread in a hole is Hole' — Threads Off left the modeled thread of a tapped
+    Hole on, so after making one the button seemed dead. Off turns the hole's modeled thread off (the hole stays),
+    On brings it back; a hole whose thread the user turned off stays plain."""
+    def setUp(self):
+        self.doc = util.new_doc("Th")
+        self.body = document.make_part(self.doc)
+        shaft(self.doc, self.body, radius=12.0, length=15.0, name="Block")
+        self.holes = [self.hole(x) for x in (-5.0, 5.0)]
+
+    def hole(self, x):
+        sk = self.body.newObject("Sketcher::SketchObject", "HoleSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 15), App.Rotation())
+        sk.addGeometry(Part.Circle(App.Vector(x, 0, 0), App.Vector(0, 0, 1), 2.5))
+        h = self.body.newObject("PartDesign::Hole", "Hole")
+        h.Profile = sk
+        h.Threaded = True
+        h.ThreadType = "ISOMetricProfile"
+        h.ThreadSize = "M6x1.0"
+        h.ModelThread = True
+        h.DepthType = "ThroughAll"
+        self.body.Tip = h
+        self.doc.recompute()
+        self.assertTrue(h.Shape.isValid())
+        return h
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_threads_off_and_on_includes_tapped_holes(self):
+        a, b = self.holes
+        b.ModelThread = False  # the user's own choice: a plain tapped hole
+        self.doc.recompute()
+        threaded = self.body.Shape.Volume
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertFalse(a.ModelThread)
+        self.assertFalse(a.Suppressed)  # the hole itself stays
+        self.assertTrue(suppress.threads_off(self.doc))
+        self.assertNotAlmostEqual(self.body.Shape.Volume, threaded, places=1)
+        self.assertEqual(suppress.toggle_threads(self.doc), "on")
+        self.doc.recompute()
+        self.assertTrue(a.ModelThread)
+        self.assertFalse(b.ModelThread)  # stays as the user left it
+        self.assertAlmostEqual(self.body.Shape.Volume, threaded, places=3)
+        self.assertFalse(suppress.threads_off(self.doc))
+
+    def test_a_thread_and_a_tapped_hole_together(self):
+        t = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                          face=cyl_face(self.doc.getObject("Block"), 12.0),
+                                                          size="M24"))
+        self.doc.recompute()
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertTrue(t.Suppressed)
+        self.assertFalse(self.holes[0].ModelThread)
+        self.assertEqual(suppress.toggle_threads(self.doc), "on")
+        self.doc.recompute()
+        self.assertFalse(t.Suppressed)
+        self.assertTrue(self.holes[0].ModelThread)

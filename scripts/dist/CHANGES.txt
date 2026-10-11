@@ -19,6 +19,8 @@ Bug fixes
 - Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was
   made after the first: it hung on the first thread. Threads now attach to the hole itself, and
   older files are repaired the first time threads are turned off.
+- Threads Off / On left the modeled thread of a tapped Hole on (the button looked dead after making
+  one). It now turns those threads off too; the holes themselves stay.
 - Parameters lost their units in a file opened again (an angle showed 90 instead of 90°, a length 12
   instead of 12 mm) in the Parameters list and in the dialogs. They keep them now.
 
