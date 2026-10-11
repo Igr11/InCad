@@ -35,7 +35,13 @@ def set_suppressed(feature, on):
             o.Suppressed = on
 
 
+def _repair(doc):
+    from incad.features import thread
+    thread.repair(doc)  # a thread hung on another one would break when that one goes off
+
+
 def toggle(obj):
+    _repair(obj.Document)
     feature = owner_of(obj)
     if "Suppressed" not in feature.PropertiesList:
         raise ValueError("%s cannot be suppressed" % feature.Label)
@@ -67,6 +73,7 @@ def toggle_threads(doc):
     ts = threads(doc)
     if not ts:
         raise ValueError("This part has no threads")
+    _repair(doc)
     marked = [t for t in ts if getattr(t, OFF_MARK, False)]
     if marked:
         for t in marked:

@@ -258,7 +258,67 @@ def _start_face_on(doc, f, obj, text):
     return text
 
 
+def _is_piece(doc, o):
+    """A thread or something InCad made for one (its fill, bore, chamfer)."""
+    if o is None:
+        return False
+    if claims(o):
+        return True
+    owner = getattr(o, HELPER, None)
+    return bool(owner) and doc.getObject(owner) is not None and claims(doc.getObject(owner))
+
+
+def _same_face(base, face):
+    """The name of the face of `base` that `face` is part of (same surface, a point of it lies on it), or None."""
+    u0, u1, v0, v1 = face.ParameterRange
+    point = Part.Vertex(face.valueAt((u0 + u1) / 2.0, (v0 + v1) / 2.0))
+    for i, f in enumerate(base.Shape.Faces):
+        if f.Surface.TypeId != face.Surface.TypeId:
+            continue
+        if f.Surface.TypeId == "Part::GeomCylinder":
+            a, b = App.Vector(f.Surface.Axis), App.Vector(face.Surface.Axis)
+            if abs(f.Surface.Radius - face.Surface.Radius) > 1e-6 or abs(abs(a.normalize().dot(b.normalize())) - 1) > 1e-7:
+                continue
+        if f.distToShape(point)[0] < 1e-6:
+            return "Face%d" % (i + 1)
+    return None
+
+
+def rehome(doc, values):
+    """Faces picked on a thread or on its fill / chamfer (the tip when the next hole is threaded) named on the
+    feature below the threads: a thread hung on another thread's edges broke when that one was suppressed."""
+    out = dict(values)
+    for key in ("face", "start_face"):
+        picks = parse_picks(doc, out.get(key))
+        if not picks:
+            continue
+        o, sub = resolve(*picks[0])
+        if not sub.startswith("Face") or not _is_piece(doc, o):
+            continue
+        base = o
+        while base is not None and _is_piece(doc, base):
+            base = base.BaseFeature
+        name = _same_face(base, o.getSubObject(sub)) if base is not None else None
+        if name:
+            out[key] = "%s:%s" % (base.Name, name)
+    return out
+
+
+def repair(doc):
+    """Threads an older InCad hung on another thread (their sketches attached to it) are rebuilt on the feature
+    below the threads. Returns their names."""
+    fixed = []
+    for t in [o for o in doc.Objects if claims(o) and not getattr(o, HELPER, None)]:
+        sketches = [x.Profile[0] for x in [t] + helpers_of(t)
+                    if isinstance(x.Profile, (tuple, list)) and x.Profile]
+        if any(_is_piece(doc, a) and a is not t for sk in sketches for a, _ in sk.AttachmentSupport):
+            update(doc, t, read(doc, t))
+            fixed.append(t.Name)
+    return fixed
+
+
 def _build(doc, body, f, values):
+    values = rehome(doc, values)
     obj, sub, face = _face(doc, values)
     if values.get("start_face"):
         values = dict(values, start_face=_start_face_on(doc, f, obj, values.get("start_face")))
@@ -472,6 +532,7 @@ def _walled(solid, placement, sign, radius, a0, a1, angles=12):
 
 
 def create(doc, body, profile_, values):
+    values = rehome(doc, values)
     obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
     _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     tip = body.Tip

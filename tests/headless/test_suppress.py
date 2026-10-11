@@ -88,3 +88,76 @@ class SuppressTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThreadOnAThreadTest(unittest.TestCase):
+    """User report (Thread_1.FCStd): Threads Off did nothing. The second thread was picked on a face of the first
+    Thread (the tip then), so its sketches hung on 'Thread.Edge41': suppressing the first thread broke the second
+    and the step was rolled back."""
+    def setUp(self):
+        self.doc = util.new_doc("Tt")
+        self.body = document.make_part(self.doc)
+        shaft(self.doc, self.body, radius=10.0, length=20.0, name="Block")
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        for x in (-4.0, 4.0):
+            sk.addGeometry(Part.Circle(App.Vector(x, 0, 0), App.Vector(0, 0, 1), 1.5))
+        self.bores = self.body.newObject("PartDesign::Pocket", "Bores")
+        self.bores.Profile = sk
+        self.bores.Type = "ThroughAll"
+        self.bores.Reversed = True
+        self.body.Tip = self.bores
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    @staticmethod
+    def bore_face(feature, x):
+        return "%s:Face%d" % (feature.Name, [i + 1 for i, f in enumerate(feature.Shape.Faces)
+                                             if f.Surface.TypeId == "Part::GeomCylinder"
+                                             and abs(f.Surface.Radius - 1.5) < 1e-6
+                                             and abs(f.Surface.Center.x - x) < 1e-6][0])
+
+    def make(self, face):
+        f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None), face=face,
+                                                          size="M3"))
+        self.doc.recompute()
+        return f
+
+    def supports(self, f):
+        return {a.Name for o in [f] + thread.helpers_of(f)
+                for prof in [o.Profile[0] if isinstance(o.Profile, (tuple, list)) and o.Profile else None]
+                if prof is not None for a, _ in prof.AttachmentSupport}
+
+    def test_a_thread_picked_on_another_thread_hangs_on_the_hole(self):
+        a = self.make(self.bore_face(self.bores, -4.0))
+        b = self.make(self.bore_face(a, 4.0))  # the tip is Thread a: the second hole's face is picked on it
+        self.assertEqual(self.supports(b), {self.bores.Name})
+        self.assertTrue(thread.read(self.doc, b)["face"].startswith(self.bores.Name + ":"))
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+        self.assertAlmostEqual(self.body.Shape.Volume, self.bores.Shape.Volume, places=3)
+
+    def test_an_old_file_is_repaired_when_threads_go_off(self):
+        a = self.make(self.bore_face(self.bores, -4.0))
+        b = self.make(self.bore_face(self.bores, 4.0))
+        old = self.bore_face(a, 4.0)  # what an older InCad stored: the face named on Thread a
+        for prof in [o.Profile[0] for o in [b] + thread.helpers_of(b)]:
+            src, subs = prof.AttachmentSupport[0]
+            circle = src.Shape.getElement(subs[0]).Curve
+            same = [i + 1 for i, e in enumerate(a.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                    and abs(e.Curve.Radius - circle.Radius) < 1e-6 and (e.Curve.Center - circle.Center).Length < 1e-6]
+            prof.AttachmentSupport = [(a, "Edge%d" % same[0])]
+        data = thread._load(b)
+        data["face"] = old
+        thread._store(b, data)
+        self.doc.recompute()
+        self.assertIn(a.Name, self.supports(b))
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertEqual(self.supports(b), {self.bores.Name})
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+        self.assertAlmostEqual(self.body.Shape.Volume, self.bores.Shape.Volume, places=3)
