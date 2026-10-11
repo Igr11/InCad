@@ -1,0 +1,145 @@
+"""Hole ▸ Chamfer: a 45° lead-in at the mouth of every hole of a Hole feature (Start) and at the exit of a through
+hole (Both ends). A step right after the Hole (a PartDesign::FeaturePython, InCadHelperOf the Hole) that cuts cones
+computed from the hole itself on every recompute — its centres, direction, diameter (a tapped hole: the thread's
+diameter, so a screw starts easily) — so it never depends on edge names. A hole with a seat (counterbore,
+countersink, spotface) keeps its seat at the start; only the exit is chamfered."""
+import FreeCAD as App
+import Part
+
+HELPER = "InCadHelperOf"
+_E = 0.01  # the cone starts this far outside the part, so the cut opens cleanly
+
+
+def _centres(sk):
+    pl = sk.getGlobalPlacement()
+    out = []
+    for i, g in enumerate(sk.Geometry):
+        if sk.getConstruction(i):
+            continue
+        if g.TypeId in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+            out.append(pl.multVec(g.Center))
+        elif g.TypeId == "Part::GeomPoint":
+            out.append(pl.multVec(App.Vector(g.X, g.Y, g.Z)))
+    return out, pl.Rotation.multVec(App.Vector(0, 0, 1))
+
+
+def _runs(solid, p, d, reach):
+    """[(t_in, t_out)] where the line p + t·d runs through material."""
+    line = Part.LineSegment(p - d * reach, p + d * reach).toShape()
+    out = []
+    for e in solid.common(line).Edges:
+        a, b = (e.Vertexes[0].Point - p).dot(d), (e.Vertexes[-1].Point - p).dot(d)
+        out.append((min(a, b), max(a, b)))
+    return sorted(out)
+
+
+def _cone(at, d, r, s):
+    return Part.makeCone(r + s + _E, r, s + _E, at - d * _E, d)
+
+
+def tools(hole, ends, size):
+    """The cones the chamfer cuts, as one compound (None when there is nothing to cut)."""
+    if size <= 0 or ends not in ("start", "both"):
+        return None
+    sk = hole.Profile[0] if isinstance(hole.Profile, (tuple, list)) else hole.Profile
+    before = hole.BaseFeature.Shape if hole.BaseFeature is not None else None
+    if sk is None or before is None or before.isNull():
+        return None
+    centres, normal = _centres(sk)
+    d = normal if hole.Reversed else -normal  # a Hole drills against its sketch's normal
+    threaded = getattr(hole, "Threaded", False)
+    r = (hole.ThreadDiameter.Value if threaded else hole.Diameter.Value) / 2.0
+    seat = getattr(hole, "HoleCutType", "None") not in ("None", "")
+    reach = before.BoundBox.DiagonalLength + 10.0
+    through = hole.DepthType == "ThroughAll"
+    cones = []
+    for p in centres:
+        runs = [run for run in _runs(before, p, d, reach) if run[1] > 1e-6]
+        if not runs:
+            continue
+        if not seat:
+            cones.append(_cone(p + d * max(runs[0][0], 0.0), d, r, size))
+        if ends == "both":
+            exit_t = runs[-1][1]
+            if through or (hole.DepthType == "Dimension" and hole.Depth.Value >= exit_t - 1e-6):
+                cones.append(_cone(p + d * exit_t, -d, r, size))
+    return Part.makeCompound(cones) if cones else None
+
+
+class HoleChamferFeature:
+    """The proxy. FreeCAD saves its module path (incad.features.hole_chamfer) and class name in the file."""
+    def __init__(self, obj):
+        for prop, kind in (("Hole", "App::PropertyLink"), ("Ends", "App::PropertyString"),
+                           ("Size", "App::PropertyDistance")):
+            if prop not in obj.PropertiesList:
+                obj.addProperty(kind, prop, "Chamfer", "")
+        obj.Proxy = self
+
+    def execute(self, obj):
+        base = obj.BaseFeature
+        if base is None or base.Shape.isNull():
+            return
+        cut = tools(obj.Hole, obj.Ends, obj.Size.Value) if obj.Hole is not None else None
+        shape = base.Shape.copy()
+        if cut is not None:
+            shape = shape.cut(cut)
+            if len(shape.Solids) == 1:
+                shape = shape.Solids[0]
+        obj.Shape = shape
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
+
+
+def of(hole):
+    body = hole.getParentGeoFeatureGroup()
+    return next((o for o in (body.Group if body is not None else [])
+                 if getattr(o, HELPER, None) == hole.Name and hasattr(o, "Ends")), None)
+
+
+def _remove(doc, body, hole, g):
+    if body.Tip is g:
+        body.Tip = hole
+    body.removeObject(g)
+    doc.removeObject(g.Name)
+
+
+def sync(doc, hole, mode, size_text):
+    """Make, update or remove the Hole's chamfer step."""
+    from incad.features.common import value_param
+    body = hole.getParentGeoFeatureGroup()
+    g = of(hole)
+    if mode not in ("start", "both"):
+        if g is not None:
+            _remove(doc, body, hole, g)
+        return None
+    if g is None:
+        g = doc.addObject("PartDesign::FeaturePython", "HoleChamfer")
+        HoleChamferFeature(g)
+        g.addProperty("App::PropertyString", HELPER, "InCad", "The hole this chamfer belongs to")
+        g.setPropertyStatus(HELPER, "Hidden")
+        setattr(g, HELPER, hole.Name)
+        after = [o for o in body.Group if getattr(o, "BaseFeature", None) is hole]
+        was_tip = body.Tip is hole
+        body.insertObject(g, hole, True)  # right after the hole
+        g.BaseFeature = hole
+        for o in after:
+            o.BaseFeature = g
+        if was_tip:
+            body.Tip = g
+    g.Hole = hole
+    g.Ends = mode
+    value_param(doc, g, "Size", size_text or "0.5 mm", "length")
+    return g
+
+
+def read(doc, hole):
+    """(mode, size text) of the Hole's chamfer: ('none', '0.5 mm') when it has none."""
+    from incad.features.common import value_text
+    g = of(hole)
+    if g is None:
+        return "none", "0.5 mm"
+    return g.Ends or "start", value_text(doc, g, "Size") or "0.5 mm"

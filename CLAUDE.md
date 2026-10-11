@@ -34,3 +34,5 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
 - Thread helpers: a fill (Revolution) or bore-out (Groove) with `InCadHelperRole = "prep"` sits right before the thread
   (a hole off the size's tap diameter, filled only where the hole is walled all round), the chamfer Groove after it;
   Suppress acts on the owner with all its helpers, and a profile sketch or helper means its owner (`incad.core.suppress`).
+- Hole ▸ Chamfer is a `PartDesign::FeaturePython` helper (`incad.features.hole_chamfer`) right after the Hole that cuts
+  cones computed from the hole on every recompute (no edge names); a kind may grey out choices with `unavailable(values)`.

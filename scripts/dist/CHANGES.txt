@@ -14,6 +14,10 @@ Improvements
   see it in the sketch; check rows and press Delete selected (one undo step). Constraints that hold
   a sketch pattern, and dimensions used in a formula, are kept, and the window says why.
 - Sketch: right-click a line or point to delete one of its constraints, or all of them.
+- Hole: new Chamfer option for every hole (None / Start / Both ends, with a size): a 45° lead-in at the
+  mouth of each hole of the Hole and, for a through hole, at its exit. A tapped hole is chamfered from
+  the thread's diameter, so a screw starts easily. With a seat (counterbore, countersink, spotface)
+  only the exit can be chamfered.
 
 Bug fixes
 - Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was

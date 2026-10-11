@@ -52,6 +52,8 @@ FIELDS = (
     Field("hand", "Direction", "choice", (("right", "Right hand"), ("left", "Left hand")), "right",
           show_if=("hole_type", ("tapped",))),
     Field("flip", "Flip direction", "bool", default=False),
+    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
+    Field("chamfer_size", "Chamfer size", "value_length", default="0.5 mm", show_if=("chamfer", ("start", "both"))),
 )
 _THREAD_TYPES = {"iso": "ISOMetricProfile", "iso_fine": "ISOMetricFineProfile", "unc": "UNC", "unf": "UNF",
                  "unef": "UNEF", "npt": "NPT", "g": "BSP", "bsw": "BSW", "bsf": "BSF"}
@@ -175,7 +177,20 @@ def _depth_to(doc, f, text):
     return depth
 
 
+def unavailable(values):
+    """Choices the dialog greys out now: a seat (counterbore, countersink, spotface) is the start of the hole, so
+    its chamfer can only be at the exit."""
+    return {"chamfer": {"start"} if (values.get("seat") or "none") != "none" else set()}
+
+
 def _apply(doc, f, values):
+    from incad.core import model
+    from incad.features import hole_chamfer
+    _apply_hole(doc, f, values)
+    hole_chamfer.sync(doc, f, values.get("chamfer") or "none", values.get("chamfer_size") or "0.5 mm")
+
+
+def _apply_hole(doc, f, values):
     from incad.core import model
     seat = values.get("seat") or "none"
     f.HoleCutType = _CUT.get(seat, "None")
@@ -314,6 +329,8 @@ def read(doc, f):
     if seat == "spotface":
         values.update(spot_diameter=value_text(doc, f, "HoleCutDiameter") or "10 mm",
                       spot_depth=value_text(doc, f, "HoleCutDepth") or "0.5 mm")
+    from incad.features import hole_chamfer
+    values["chamfer"], values["chamfer_size"] = hole_chamfer.read(doc, f)
     return values
 
 

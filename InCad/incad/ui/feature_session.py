@@ -80,6 +80,7 @@ class FeatureSession(QtCore.QObject):
                 if key in self.dialog._widgets:
                     self.dialog.field(key).setEnabled(False)
         self.dialog.changed.connect(self._changed)
+        self._sync_choices(self.dialog.values())
         self.dialog.accepted.connect(self.ok)
         self.dialog.applied.connect(self.apply)
         self.dialog.cancelled.connect(self.cancel)
@@ -524,7 +525,22 @@ class FeatureSession(QtCore.QObject):
                     target = self.kind._pad_of(self.feature) if hasattr(self.kind, "_pad_of") else self.feature
                     self.dialog.set_param_name(f.key, model.bound_parameter(target, prop) if target else None)
 
+    def _sync_choices(self, values):
+        """Choices the kind says are not available with these values are greyed out (kind.unavailable)."""
+        fn = getattr(self.kind, "unavailable", None)
+        if fn is None or self.dialog is None:
+            return
+        try:
+            off = fn(values)
+        except Exception:
+            return
+        for key, values_off in off.items():
+            w = self.dialog._widgets.get(key)
+            for value in (getattr(w, "_buttons", None) or {}):
+                self.dialog.set_choice_enabled(key, value, value not in values_off)
+
     def _changed(self, values):
+        self._sync_choices(values)
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values

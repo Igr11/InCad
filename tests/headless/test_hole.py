@@ -181,3 +181,90 @@ class HoleTest(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(f.Depth.Value, 7, places=4)  # from the top (z 10) down to the plane at z 3
         self.assertEqual(hole.read(self.doc, f)["depth_type"], "to")
+
+
+def cone_cut(r, s):
+    """Material a 45° chamfer of size s takes off the mouth of a hole of radius r."""
+    R = r + s
+    return math.pi * s / 3.0 * (R * R + R * r + r * r) - math.pi * r * r * s
+
+
+class HoleChamferTest(unittest.TestCase):
+    """User request: a Chamfer option in Hole for every hole (None / Start / Both ends), like Thread's."""
+    setUp, tearDown, sketch_with_circle = HoleTest.setUp, HoleTest.tearDown, HoleTest.sketch_with_circle
+
+    def make(self, sk=None, **kw):
+        sk = sk or self.sketch_with_circle()
+        v = dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name, depth_type="through_all", diameter="4 mm")
+        v.update(kw)
+        f = hole.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        return f
+
+    def helper(self, f):
+        return [o for o in self.body.Group if getattr(o, "InCadHelperOf", None) == f.Name]
+
+    def mouth_radii(self, z):
+        return sorted(round(e.Curve.Radius, 4) for e in self.body.Shape.Edges
+                      if e.Curve.TypeId == "Part::GeomCircle" and abs(e.Curve.Center.z - z) < 1e-6)
+
+    def test_start_chamfer_on_a_through_hole(self):
+        f = self.make(chamfer="start", chamfer_size="0.5 mm")
+        self.assertEqual(len(self.helper(f)), 1)
+        self.assertIs(self.body.Tip, self.helper(f)[0])
+        self.assertTrue(self.body.Shape.isValid())
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 10 - cone_cut(2, 0.5), places=2)
+        self.assertIn(2.5, self.mouth_radii(10))
+        v = hole.read(self.doc, f)
+        self.assertEqual((v["chamfer"], v["chamfer_size"]), ("start", "0.5 mm"))
+
+    def test_both_ends_of_a_through_hole(self):
+        self.make(chamfer="both", chamfer_size="0.5 mm")
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 10 - 2 * cone_cut(2, 0.5), places=2)
+        self.assertIn(2.5, self.mouth_radii(0))
+
+    def test_every_hole_of_the_sketch(self):
+        sk = self.sketch_with_circle()
+        sk.addGeometry(Part.Circle(App.Vector(4, 5, 0), App.Vector(0, 0, 1), 1))
+        self.doc.recompute()
+        self.make(sk, chamfer="start", chamfer_size="0.5 mm")
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - 2 * (math.pi * 4 * 10 + cone_cut(2, 0.5)), places=2)
+
+    def test_a_blind_hole_gets_only_its_mouth(self):
+        self.make(depth_type="distance", depth="5 mm", tip="flat", chamfer="both", chamfer_size="0.5 mm")
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 5 - cone_cut(2, 0.5), places=2)
+
+    def test_a_tapped_hole_is_chamfered_from_the_thread_diameter(self):
+        f = self.make(hole_type="tapped", thread_standard="iso", thread_size="M6x1.0", chamfer="start",
+                      chamfer_size="0.5 mm")
+        self.assertTrue(self.body.Shape.isValid())
+        self.assertIn(3.5, self.mouth_radii(10))  # M6: Ø6 + 2 × 0.5
+
+    def test_with_a_seat_only_the_exit(self):
+        f = self.make(seat="counterbore", diameter="3 mm", cbore_diameter="6 mm", cbore_depth="2 mm",
+                      chamfer="both", chamfer_size="0.5 mm")
+        self.assertIn(2.0, self.mouth_radii(0))  # Ø3 + 2 × 0.5 at the exit
+        self.assertNotIn(2.0, self.mouth_radii(8))  # nothing at the counterbore floor
+
+    def test_the_chamfer_follows_the_hole_and_goes_with_it(self):
+        from incad.core import delete
+        f = self.make(chamfer="start", chamfer_size="0.5 mm")
+        hole.update(self.doc, f, dict(hole.read(self.doc, f), diameter="5 mm"))
+        self.doc.recompute()
+        self.assertIn(3.0, self.mouth_radii(10))
+        hole.update(self.doc, f, dict(hole.read(self.doc, f), chamfer="none"))
+        self.doc.recompute()
+        self.assertEqual(self.helper(f), [])
+        self.assertIs(self.body.Tip, f)
+        hole.update(self.doc, f, dict(hole.read(self.doc, f), chamfer="both"))
+        self.doc.recompute()
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertFalse([o for o in self.body.Group if getattr(o, "InCadHelperOf", None)])
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000, places=3)
+
+    def test_start_is_unavailable_with_a_seat(self):
+        self.assertEqual(hole.unavailable(dict(hole.defaults(self.doc, self.body, None), seat="counterbore")),
+                         {"chamfer": {"start"}})
+        self.assertEqual(hole.unavailable(dict(hole.defaults(self.doc, self.body, None), seat="none")),
+                         {"chamfer": set()})
