@@ -212,7 +212,10 @@ class FeatureSession(QtCore.QObject):
         if getattr(self.kind, "IN_SKETCH", False):
             return None  # picks are the sketch's own elements: nothing to show or check
         if self.feature is not None:
-            return getattr(self.feature, "BaseFeature", None)
+            base = getattr(self.feature, "BaseFeature", None)
+            while base is not None and getattr(base, "InCadHelperOf", None) == self.feature.Name:
+                base = getattr(base, "BaseFeature", None)  # a thread's own fill / bore / trim: picks go on the part
+            return base
         return self.body.Tip if self.body is not None else None
 
     def _retarget_body(self, pairs):
