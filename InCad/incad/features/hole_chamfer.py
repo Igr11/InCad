@@ -10,8 +10,11 @@ HELPER = "InCadHelperOf"
 _E = 0.01  # the cone starts this far outside the part, so the cut opens cleanly
 
 
-def _centres(sk):
+def _centres(sk, body=None):
+    """The hole centres and the sketch normal in the body's own frame (where the shapes are)."""
     pl = sk.getGlobalPlacement()
+    if body is not None:
+        pl = body.getGlobalPlacement().inverse().multiply(pl)
     out = []
     for i, g in enumerate(sk.Geometry):
         if sk.getConstruction(i):
@@ -33,8 +36,11 @@ def _runs(solid, p, d, reach):
     return sorted(out)
 
 
-def _cone(at, d, r, s):
-    return Part.makeCone(r + s + _E, r, s + _E, at - d * _E, d)
+def _cone(at, d, r_drill, r_mouth, s):
+    """45° from r_mouth + s at the surface down to the drilled radius (a tapped hole's mouth is its thread's
+    diameter: the cone runs on to the drill, no flat ledge)."""
+    depth = s + (r_mouth - r_drill)
+    return Part.makeCone(r_drill + depth + _E, r_drill, depth + _E, at - d * _E, d)
 
 
 def tools(hole, ends, size):
@@ -45,24 +51,30 @@ def tools(hole, ends, size):
     before = hole.BaseFeature.Shape if hole.BaseFeature is not None else None
     if sk is None or before is None or before.isNull():
         return None
-    centres, normal = _centres(sk)
+    centres, normal = _centres(sk, hole.getParentGeoFeatureGroup())
     d = normal if hole.Reversed else -normal  # a Hole drills against its sketch's normal
     threaded = getattr(hole, "Threaded", False)
-    r = (hole.ThreadDiameter.Value if threaded else hole.Diameter.Value) / 2.0
+    r_drill = hole.Diameter.Value / 2.0
+    r_thread = hole.ThreadDiameter.Value / 2.0 if threaded else r_drill
+    thread_len = hole.ThreadDepth.Value if threaded and hole.ThreadDepthType == "Dimension" else None
     seat = getattr(hole, "HoleCutType", "None") not in ("None", "")
-    reach = before.BoundBox.DiagonalLength + 10.0
+    bb = before.BoundBox
     through = hole.DepthType == "ThroughAll"
     cones = []
     for p in centres:
+        reach = (p - bb.Center).Length + bb.DiagonalLength + 10.0  # a sketch may sit far from the part
         runs = [run for run in _runs(before, p, d, reach) if run[1] > 1e-6]
         if not runs:
             continue
-        if not seat:
-            cones.append(_cone(p + d * max(runs[0][0], 0.0), d, r, size))
+        entry = runs[0][0] if runs[0][0] > -1e-6 else None  # a hole starting inside the part has no mouth
+        if not seat and entry is not None:
+            cones.append(_cone(p + d * max(entry, 0.0), d, r_drill, r_thread, size))
         if ends == "both":
             exit_t = runs[-1][1]
             if through or (hole.DepthType == "Dimension" and hole.Depth.Value >= exit_t - 1e-6):
-                cones.append(_cone(p + d * exit_t, -d, r, size))
+                start = max(entry or 0.0, 0.0)
+                threaded_there = thread_len is None or start + thread_len >= exit_t - 1e-6
+                cones.append(_cone(p + d * exit_t, -d, r_drill, r_thread if threaded_there else r_drill, size))
     return Part.makeCompound(cones) if cones else None
 
 

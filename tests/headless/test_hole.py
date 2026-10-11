@@ -268,3 +268,50 @@ class HoleChamferTest(unittest.TestCase):
                          {"chamfer": {"start"}})
         self.assertEqual(hole.unavailable(dict(hole.defaults(self.doc, self.body, None), seat="none")),
                          {"chamfer": set()})
+
+    def no_material(self, r, z, centre=(10, 5)):
+        pts = [App.Vector(centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), z) for a in (0.0, 1.6, 3.1, 4.7)]
+        return not [p for p in pts if self.body.Shape.isInside(p, 1e-7, True)]
+
+    def test_a_tapped_hole_chamfer_has_no_ledge(self):
+        """Review: the cone ended at the thread's diameter while the hole is drilled smaller: a flat ring at the
+        bottom of the chamfer (seen with the modeled thread off, as Threads Off does)."""
+        f = self.make(hole_type="tapped", thread_standard="iso", thread_size="M6x1.0", chamfer="start",
+                      chamfer_size="0.5 mm")
+        f.ModelThread = False
+        self.doc.recompute()
+        self.assertTrue(self.no_material(2.75, 9.45))
+
+    def test_an_exit_past_the_thread_is_chamfered_from_the_drill(self):
+        self.make(hole_type="tapped", thread_standard="iso", thread_size="M6x1.0", thread_depth="distance",
+                  thread_length="4 mm", chamfer="both", chamfer_size="0.5 mm")
+        radii = self.mouth_radii(0)
+        self.assertNotIn(3.5, radii)
+        self.assertTrue(self.no_material(2.75, 0.3))
+
+    def test_a_moved_body_is_chamfered_at_its_holes(self):
+        """Review: the hole centres were taken in the document's frame, the shapes in the body's."""
+        self.body.Placement = App.Placement(App.Vector(30, 0, 0), App.Rotation())
+        self.doc.recompute()
+        self.make(chamfer="start", chamfer_size="0.5 mm")
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 10 - cone_cut(2, 0.5), places=2)
+
+    def test_a_hole_starting_inside_the_part_gets_no_start_cone(self):
+        sk = self.body.newObject("Sketcher::SketchObject", "Inside")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 5), App.Rotation())
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 1))
+        self.doc.recompute()
+        self.make(sk, chamfer="start", chamfer_size="0.5 mm")
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 - math.pi * 4 * 5, places=2)
+
+    def test_a_sketch_far_above_the_part_still_chamfers_the_mouth(self):
+        sk = self.body.newObject("Sketcher::SketchObject", "Far")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 60), App.Rotation())
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 1))
+        self.doc.recompute()
+        self.make(sk, chamfer="start", chamfer_size="0.5 mm")
+        self.assertIn(2.5, self.mouth_radii(10))
