@@ -262,7 +262,11 @@ def parameter_text(doc, name):
     obj = _model_obj(doc)
     if obj is not None and name in _feature_names(doc):
         expr = _expression(obj, name)
-        return to_display(doc, expr) if expr and not document._is_literal(expr) else document._format(getattr(obj, name))
+        if expr and not document._is_literal(expr):
+            return to_display(doc, expr)
+        # a plain value: from what was stored, not from the property, whose unit FreeCAD does not save ('90°' read
+        # '90' after a reopen until the parameter was recomputed)
+        return document._format(App.Units.Quantity(expr) if expr else getattr(obj, name))
     sk, _ = sketch.find_dimension(doc, name)
     if sk is not None:
         expr = _expression(sk, "Constraints." + name)
@@ -332,3 +336,12 @@ def relink(doc):
     if repaired:
         doc.recompute()
     return repaired
+
+
+def restore_units(doc):
+    """Give the parameters their units back after a document opens: a parameter is an App::PropertyQuantity, whose
+    unit FreeCAD does not save ('90°' reads '90', '12 mm' reads '12' until it is recomputed). Recomputing the two
+    parameter holders (not the part) puts them back from their stored values and formulas."""
+    for obj in (document.parameters(doc, create=False), _model_obj(doc)):
+        if obj is not None and list(obj.ExpressionEngine):
+            obj.recompute()

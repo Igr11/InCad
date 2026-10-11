@@ -2119,6 +2119,12 @@ class Shell(QtCore.QObject):
                 document.apply_visibility(doc)
             except Exception as e:
                 log.logger().warning("Visibility on open: %s", e)
+            try:  # parameters lose their units in the file (FreeCAD does not save a quantity's unit)
+                from incad.core import model
+                if not getattr(doc, "Restoring", False):
+                    model.restore_units(doc)
+            except Exception as e:
+                log.logger().warning("Parameter units on open: %s", e)
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):

@@ -179,3 +179,56 @@ class FriendlyEverywhereTest(unittest.TestCase):
                 self.assertIn("Unknown name 'Nope'", str(ctx.exception))
         finally:
             App.closeDocument(doc.Name)
+
+
+class UnitsAfterReopenTest(unittest.TestCase):
+    """A parameter is an App::PropertyQuantity, whose unit FreeCAD does not save: after a reopen '90°' read '90' and
+    '12 mm' read '12' until the parameter was recomputed. Formulas using it still compute (checked here)."""
+    def setUp(self):
+        import os
+        import tempfile
+        self.path = os.path.join(tempfile.mkdtemp(), "units.FCStd")
+        self.doc = util.new_doc("Un")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def reopen(self):
+        self.doc.saveAs(self.path)
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(self.path)
+        model.restore_units(self.doc)  # what InCad does when it first shows an opened document
+
+    def test_angle_and_length_keep_their_units(self):
+        a = model.new_feature_parameter(self.doc, "90 °", "angle")
+        l_ = model.new_feature_parameter(self.doc, "12 mm", "length")
+        self.reopen()
+        self.assertEqual(model.parameter_text(self.doc, a), "90°")
+        self.assertEqual(model.parameter_text(self.doc, l_), "12 mm")
+
+    def test_a_formula_using_a_length_still_computes(self):
+        l_ = model.new_feature_parameter(self.doc, "12 mm", "length")
+        f = model.new_feature_parameter(self.doc, "%s + 5 mm" % l_, "length")
+        model.bind(self.pad, "Length", f)
+        self.doc.recompute()
+        pad_name = self.pad.Name
+        self.reopen()
+        pad = self.doc.getObject(pad_name)
+        pad.touch()
+        self.doc.recompute()
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+        self.assertAlmostEqual(pad.Length.Value, 17.0)
+        self.assertEqual(model.parameter_text(self.doc, f), "%s + 5 mm" % l_)
+
+    def test_the_parameter_lists_keep_units(self):
+        """The Parameters window: the value column of user parameters and of feature values."""
+        document.set_parameter(self.doc, "width", "40 mm")
+        document.set_parameter(self.doc, "tilt", "15 °")
+        a = model.new_feature_parameter(self.doc, "90 °", "angle")
+        f = model.new_feature_parameter(self.doc, "width / 2", "length")
+        self.reopen()
+        users = {n: v for n, _, v in document.list_parameters(self.doc)}
+        self.assertEqual((users["width"], users["tilt"]), ("40 mm", "15°"))
+        values = {n: v for n, _, v in model.feature_parameters(self.doc)}
+        self.assertEqual((values[a], values[f]), ("90°", "20 mm"))
