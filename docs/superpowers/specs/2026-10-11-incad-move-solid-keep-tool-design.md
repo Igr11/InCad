@@ -11,9 +11,17 @@ Boolean combines solids, but there was no way to put a solid into position, and 
 - **Command:** 3D Model ▸ Modify ▸ **Move Solid** (`feature.move_solid`), also in the face right-click list. Pick a face
   of the solid to move, or its row (a used-up Boolean tool's row under its Boolean too). Preselected: that solid.
 - **One dialog, live preview; the sections apply in this order:**
-  1. **Snap** (optional, one of): **None**, **Point to point** (a point on the solid → a target point: vertex,
-     edge midpoint, circle/arc centre), **Align faces** (a flat face of the solid → a flat target face, faces end up
-     coplanar and facing each other; **Flip**; **Gap** distance).
+  1. **Snap** (optional): **From** a feature of the moving solid **To** a feature of another solid (or of the
+     part); what happens follows from what was picked:
+     | From → To | Result |
+     |---|---|
+     | point → point | the points meet |
+     | point → edge / face | the point lands on it (the nearest spot) |
+     | circle → circle | **Insert**: axes in line, circles in one plane (pin into hole); Flip, Gap |
+     | straight edge → straight edge | the edges lie on one line (Flip reverses the direction) |
+     | face → face | **Mate**: flat against each other (Flip = flush); Gap |
+     | cylinder face → cylinder face | axes in line (concentric); slide along with Offset Z |
+     Points are vertices, edge midpoints and circle/arc centres. Any other pair is refused with what can be picked.
   2. **Pivot** (where the gizmo sits and which way its arrows point — Fusion's "Set pivot"), picked on the solid:
      - **Solid centre** (default): at the centre of mass, the part's X/Y/Z directions;
      - **Point** (vertex, edge midpoint, circle/arc centre): there, the part's directions;
@@ -69,11 +77,11 @@ Meaning unchanged, labels say how it is measured:
 
 ## 5. Testing
 
-- Headless: Move offsets/rotations (exact volumes after a Cut), point-to-point and align-faces maths (pure), pivot
+- Headless: Move offsets/rotations (exact volumes after a Cut), the six snap pairs (pure maths, Flip and Gap), pivot
   frames (point / edge / circle / face, World axes switch; a hinge rotation about an edge keeps the edge in place),
   rollback by End of Part, delete restores, save/reopen, parameters drive it, several Moves; Keep tool on/off/edit,
   delete restores the tool, old-file default, fit copy always visible, tree children under the Boolean.
-- GUI: Move Solid from the ribbon on a face, point-to-point pick in the view, OK = one undo step; Boolean with Keep
+- GUI: Move Solid from the ribbon on a face, an Insert snap (pin edge → hole edge) picked in the view, OK = one undo step; Boolean with Keep
   tool off then on (visibility and the tree); the labels.
 
 ## 6. Out of scope
