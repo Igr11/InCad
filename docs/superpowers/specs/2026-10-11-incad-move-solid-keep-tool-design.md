@@ -14,8 +14,16 @@ Boolean combines solids, but there was no way to put a solid into position, and 
   1. **Snap** (optional, one of): **None**, **Point to point** (a point on the solid → a target point: vertex,
      edge midpoint, circle/arc centre), **Align faces** (a flat face of the solid → a flat target face, faces end up
      coplanar and facing each other; **Flip**; **Gap** distance).
-  2. **Offset X / Y / Z** (lengths), added after the snap.
-  3. **Rotate X / Y / Z** (angles), about **Solid centre** / **Origin** / **Picked point**.
+  2. **Pivot** (where the gizmo sits and which way its arrows point — Fusion's "Set pivot"), picked on the solid:
+     - **Solid centre** (default): at the centre of mass, the part's X/Y/Z directions;
+     - **Point** (vertex, edge midpoint, circle/arc centre): there, the part's directions;
+     - **Edge**: at its middle (a circle: its centre), **X along the edge** (a circle: Z along its axis);
+     - **Face**: at its centre, **Z out of the face** (its normal), X along the face's first direction.
+     The pivot rides with the solid through the snap. A **World axes** switch keeps the pivot's point but uses the
+     part's X/Y/Z directions.
+  3. **Offset X / Y / Z** (lengths) along the pivot's axes, after the snap.
+  4. **Rotate X / Y / Z** (angles) about the pivot's axes through the pivot point (an edge pivot's X = a hinge).
+  The pivot is stored as numbers (point and directions) like the snap, and its pick only for showing on edit.
 - **Result:** a **Move** step at the end of that solid's history (a `PartDesign::FeaturePython` with the
   `InCadMove` store): the solid's own sketches and features stay where they are; only its result is moved (probed
   2026-10-11: exact rigid copy `transformShape(m, True)` — true cylinders/planes, exact volumes, rollback by End of
@@ -25,8 +33,8 @@ Boolean combines solids, but there was no way to put a solid into position, and 
   not follow (as Inventor's Move Bodies). The picks are stored only so the dialog can show them on edit.
 - **Any solid can be moved**, the main one too (then the whole part moves). A pick that is not on a solid is refused
   with "Pick a face of the solid to move".
-- **Phase 2 (separate plan, right after):** drag arrows and rotation rings in the 3D view that fill the Offset and
-  Rotate fields.
+- **Phase 2 (separate plan, right after):** drag arrows and rotation rings in the 3D view, drawn at the pivot along
+  its axes, that fill the Offset and Rotate fields.
 - **Note for users:** a Move needs InCad to recompute (like InCad's other custom pieces); without InCad the file
   opens with the last result.
 
@@ -61,7 +69,8 @@ Meaning unchanged, labels say how it is measured:
 
 ## 5. Testing
 
-- Headless: Move offsets/rotations (exact volumes after a Cut), point-to-point and align-faces maths (pure),
+- Headless: Move offsets/rotations (exact volumes after a Cut), point-to-point and align-faces maths (pure), pivot
+  frames (point / edge / circle / face, World axes switch; a hinge rotation about an edge keeps the edge in place),
   rollback by End of Part, delete restores, save/reopen, parameters drive it, several Moves; Keep tool on/off/edit,
   delete restores the tool, old-file default, fit copy always visible, tree children under the Boolean.
 - GUI: Move Solid from the ribbon on a face, point-to-point pick in the view, OK = one undo step; Boolean with Keep
