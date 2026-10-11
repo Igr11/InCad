@@ -94,9 +94,9 @@ def test_1_a_click_anywhere_on_the_pin_makes_it_the_tool():
 def test_2_a_click_on_the_base_does_not_make_it_a_tool():
     click_on(ST["base"], [App.Vector(10, 10, 10), App.Vector(20, 15, 10), App.Vector(30, 20, 10)])
     assert dialog().values()["tools"] == ST["tool"], dialog().values()
+
     shell.instance().feature_session.cancel()
     harness.pump(500)
-
 
 harness.run([test_0_a_block_and_a_pin_beside_it, test_1_a_click_anywhere_on_the_pin_makes_it_the_tool,
              test_2_a_click_on_the_base_does_not_make_it_a_tool])

@@ -318,9 +318,9 @@ class FeatureSession(QtCore.QObject):
         raw_pairs = self._selection()
         pairs = self._as_picks(f.pick, raw_pairs)
         if f.pick == "body":  # a solid already picked in another field (the base) is not a tool too
-            taken = {g.key: self.dialog.values().get(g.key) for g in self.kind.FIELDS
-                     if g.pick == "body" and g.key != key}
-            pairs = [(o, el) for o, el in pairs if o.Name not in taken.values()]
+            taken = {o.Name for g in self.kind.FIELDS if g.pick == "body" and g.key != key
+                     for o, _ in common.parse_picks(self.doc, self.dialog.values().get(g.key))}
+            pairs = [(o, el) for o, el in pairs if o.Name not in taken]
         pairs = self._retarget_body(pairs)
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
@@ -549,8 +549,15 @@ class FeatureSession(QtCore.QObject):
             return
         for key, values_off in off.items():
             w = self.dialog._widgets.get(key)
-            for value in (getattr(w, "_buttons", None) or {}):
+            choices = list(getattr(w, "_buttons", None) or {})
+            for value in choices:
                 self.dialog.set_choice_enabled(key, value, value not in values_off)
+            current = values.get(key)
+            if current in values_off:  # never a greyed-out choice: the next one that is available
+                later = choices[choices.index(current) + 1:] + choices[:choices.index(current)]
+                ok = [v for v in later if v not in values_off]
+                if ok:
+                    self.dialog.set_values({key: ok[0]})
 
     def _changed(self, values):
         self._sync_choices(values)

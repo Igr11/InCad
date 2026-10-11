@@ -64,9 +64,12 @@ def test_1_start_is_unavailable_with_a_seat():
     shell.edit_feature(h)
     harness.pump(900)
     assert dialog().field("chamfer").button("start").isEnabled()
+    dialog().field("chamfer").button("start").click()
+    harness.pump(800)
     dialog().field("seat").setCurrentIndex(dialog().field("seat").findData("counterbore"))
     harness.pump(1500)
     assert not dialog().field("chamfer").button("start").isEnabled(), "a seat is the start"
+    assert dialog().values()["chamfer"] == "both", dialog().values()["chamfer"]  # not a greyed-out choice
     assert dialog().field("chamfer").button("both").isEnabled()
     shell.instance().feature_session.cancel()
     harness.pump(600)
