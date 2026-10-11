@@ -19,6 +19,11 @@ def _views(doc):
             yield o, vo
 
 
+def _same(stored, color):
+    """A color as FreeCAD stores it (32-bit floats: 0.86 reads 0.8600000143) is the same as `color`."""
+    return all(abs(a - b) < 1e-3 for a, b in zip(tuple(stored)[:3], color))
+
+
 def _put_wire(doc, theme):
     color, width = WIRE.get(theme, WIRE["light"])
     views = list(_views(doc))
@@ -28,7 +33,7 @@ def _put_wire(doc, theme):
             vo.setPropertyStatus(KEEP, "Hidden")
             setattr(vo, KEEP, json.dumps([list(vo.LineColor), vo.LineWidth]))
     for o, vo in views:
-        if tuple(vo.LineColor)[:3] != color or vo.LineWidth != width:
+        if not _same(vo.LineColor, color) or abs(vo.LineWidth - width) > 1e-6:
             vo.LineColor = color
             vo.LineWidth = width
 
