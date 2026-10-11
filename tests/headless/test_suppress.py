@@ -225,3 +225,16 @@ class TappedHoleThreadsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertFalse(t.Suppressed)
         self.assertTrue(self.holes[0].ModelThread)
+
+    def test_a_stale_mark_does_not_eat_a_press(self):
+        """Review: a hole edited back to a modeled thread while Threads Off holds kept its mark; being the only
+        marked one, the next press 'turned threads on' (nothing) instead of off."""
+        a, b = self.holes
+        b.ModelThread = False
+        self.doc.recompute()
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        a.ModelThread = True  # the user edits the hole: its thread is on again
+        self.doc.recompute()
+        self.assertFalse(suppress.threads_off(self.doc))
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.assertFalse(a.ModelThread)

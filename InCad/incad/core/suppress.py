@@ -81,6 +81,9 @@ def toggle_threads(doc):
     if not ts and not holes:
         raise ValueError("This part has no threads")
     _repair(doc)
+    for t in ts + holes:  # turned back on by hand meanwhile (an edited hole, an unsuppressed thread): not ours
+        if getattr(t, OFF_MARK, False) and (t.ModelThread if t in holes else not t.Suppressed):
+            _mark(t, False)
     marked = [t for t in ts + holes if getattr(t, OFF_MARK, False)]
     if marked:
         for t in marked:
