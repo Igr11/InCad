@@ -35,7 +35,8 @@ def ring_rect(direction, w, h, radius=RADIUS):
 class MarkingMenu(QtWidgets.QWidget):
     triggered = Signal(str)
 
-    def __init__(self, registry, slots, items, theme="light", parent=None):
+    def __init__(self, registry, slots, items, theme="light", parent=None, extras=()):
+        """extras: (label, icon, callable) entries after the list (a gap above them), each running its own action."""
         super().__init__(parent, QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
         self.setObjectName("InCadMarkingMenu")
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
@@ -59,6 +60,18 @@ class MarkingMenu(QtWidgets.QWidget):
             b.setMinimumWidth(170)
             b.adjustSize()
             self._list.append(b)
+        self._extras = {}
+        for label, icon, fn in extras:
+            b = QtWidgets.QToolButton(self)
+            b.setIcon(themes.icon(icon, self._theme))
+            b.setIconSize(QtCore.QSize(20, 20))
+            b.setText(label)
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+            b.clicked.connect(lambda _=False, lb=label, f=fn: self._choose_extra(lb, f))
+            b.setMinimumWidth(170)
+            b.adjustSize()
+            self._list.append(b)
+            self._extras[label] = b
         # lay everything out around the centre (0, 0), then shift it into the widget
         boxes = [r for _, r in placed] + [QtCore.QRect(-DEAD_ZONE, -DEAD_ZONE, 2 * DEAD_ZONE, 2 * DEAD_ZONE)]
         left = min(r.left() for r in boxes)
@@ -72,7 +85,10 @@ class MarkingMenu(QtWidgets.QWidget):
         for b, r in placed:
             b.move(r.topLeft() + self._center)
         y = bottom + 16
+        first_extra = next(iter(self._extras.values()), None)
         for b in self._list:
+            if b is first_extra and len(self._list) > len(self._extras):
+                y += 8  # a gap between the menu's own list and the entries for the picked element
             b.move(self._center.x() - b.width() // 2, self._center.y() + y)
             y += b.height() + 2
         self.resize(right - left + 2 * pad, (y if self._list else bottom) - top + 2 * pad)
@@ -116,6 +132,14 @@ class MarkingMenu(QtWidgets.QWidget):
 
     def hot_direction(self):
         return self._hot
+
+    def extra_button(self, label):
+        return self._extras.get(label)
+
+    def _choose_extra(self, label, fn):
+        self.close()
+        self.triggered.emit("extra:" + label)
+        fn()
 
     def choose(self, cmd_id):
         self.close()
