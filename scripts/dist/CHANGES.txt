@@ -1,0 +1,33 @@
+InCad for FreeCAD - what changed
+================================
+
+This build: VERSION
+Newest build first. The build name is the name of the zip file.
+
+
+0.1.1
+-----
+Improvements
+- Thread: any sensible size works in a hole. A Ø3 hole takes M3 (the hole is filled back to the
+  M3 tap size first) or M4 (the hole is bored out to the M4 tap size first), always as a full,
+  printable thread with the print clearance. The fill goes only where the hole has a wall all round,
+  never into a crossing bore. A size far off the hole is still refused.
+- Thread: Size "Auto" now picks the bolt that matches the hole (Ø3 -> M3, Ø4 -> M4); a tap-drill
+  hole still gets its thread (Ø5.2 -> M6, Ø8.5 -> M10).
+- New ribbon button "Threads" (3D Model > Modify): turns every thread off for faster work and
+  redraws, and back on with a second click. A thread you turned off yourself stays off.
+- Suppress / Unsuppress on a thread also turns off its chamfer and its fill or bore-out, so the
+  part looks exactly as it did before the thread.
+
+Bug fixes
+- Thread on a through hole (or a rod free at both ends) started at the plain end, so the chamfered
+  mouth had no thread when the thread was shorter than the hole. It now starts at the chamfered or
+  rounded end.
+- Thread: picking the front face as the Start face of a hole with a chamfered mouth said "The start
+  face must be at one end of the threaded face". It is accepted now.
+- Suppress / Unsuppress on a thread could fail with "ThreadProfile cannot be suppressed".
+
+
+0.1.0
+-----
+First test build.

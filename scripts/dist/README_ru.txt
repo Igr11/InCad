@@ -2,6 +2,7 @@ InCad для FreeCAD
 =================
 
 Сборка: VERSION
+Что изменилось в этой сборке (улучшения и исправления): CHANGES_ru.txt
 
 InCad - это верстак (workbench) для FreeCAD с интерфейсом в стиле Autodesk Inventor /
 Alibre: лента команд, дерево модели с единой историей и маркером End of Part, диалоги

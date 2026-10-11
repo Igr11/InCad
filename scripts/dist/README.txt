@@ -2,6 +2,7 @@ InCad for FreeCAD
 =================
 
 Build: VERSION
+What changed in this build (improvements and bug fixes): CHANGES.txt
 
 InCad is a workbench for FreeCAD that gives it an Autodesk Inventor / Alibre style
 interface: a ribbon, a model browser with one history and End of Part, feature dialogs
