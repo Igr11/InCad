@@ -370,7 +370,7 @@ def _build(doc, body, f, values):
     expr = dict(f.ExpressionEngine).get("Height")
     height = f.evalExpression(expr).Value if expr else f.Height.Value
     _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
-                       face_len, start_free, end_free, internal)
+                       face_len, start_free, end_free, internal, spec.pitch)
     radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
     chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free,
                        values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
@@ -457,7 +457,8 @@ def _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_fre
     return g
 
 
-def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free, internal=True):
+def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free, internal=True,
+          pitch=0.0):
     """Fill the hole (a Revolution) or bore it out (a Groove) to the thread's tap radius along the threaded span,
     right before the thread; removed when the hole already fits. (helper or None, (reaches the start, reaches
     the end)): a chamfer at an end the helper does not reach starts from the part's own radius."""
@@ -479,9 +480,12 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
     lo, hi = (hole, radius + 0.02) if hole < radius else (radius - 0.02, hole)
     if want == "PartDesign::Revolution":  # new material only where the hole has a wall all round, joined to it
         spans = _walled(obj.Shape, sk.getGlobalPlacement(), sign, radius, max(a0, 0.0), min(a1, face_len))
-    else:  # a cut may run past a free end, so the mouth opens cleanly
-        spans = [(-0.2 if a0 <= 0.0 and start_free else max(a0, 0.0),
-                  face_len + 0.2 if a1 >= face_len and end_free else min(a1, face_len))]
+    else:  # a cut may run past a free end, so the mouth opens cleanly; at a closed end (a shoulder) the thread's
+        # last turn reaches it, so the cut does too (never into it)
+        b0 = -0.2 if a0 <= 0.0 and start_free else 0.0 if a0 <= pitch else max(a0, 0.0)
+        b1 = face_len + 0.2 if a1 >= face_len and end_free else face_len if a1 >= face_len - pitch else \
+            min(a1, face_len)
+        spans = [(b0, b1)]
     spans = [(b0, b1) for b0, b1 in spans if b1 - b0 > 1e-3]
     if not spans:
         if g is None:

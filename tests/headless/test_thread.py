@@ -683,26 +683,36 @@ class ThreadFinTest(unittest.TestCase):
         knee = min(self.widest(thread._spec(dict(standard="iso", size="M2.5"), 2 * radius, False, 0.1), False, 0.1))
         self.assertEqual(self.material((knee + radius) / 2.0, 2.0, 6.0), 0)
 
-    def test_no_fins_inside_a_tapped_hole(self):
-        shaft(self.doc, self.body, radius=6.0, length=8.0, name="Block")
-        s = st.spec("iso", "M2.5")
-        bore_r = st.bore_diameter(s, 0.2) / 2
-        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+    def test_no_fins_next_to_a_shoulder(self):
+        """Review: at a closed end the trim stopped half a groove short while the last turn reached the shoulder."""
+        shaft(self.doc, self.body, radius=6.0, length=5.0, name="Base")
+        sk = self.body.newObject("Sketcher::SketchObject", "RodSk")
         sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
         sk.MapMode = "FlatFace"
-        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), bore_r))
-        bore = self.body.newObject("PartDesign::Pocket", "Bore")
-        bore.Profile = sk
-        bore.Type = "ThroughAll"
-        bore.Reversed = True
-        self.body.Tip = bore
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 5), App.Rotation())
+        radius = 2.5 / 2
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), radius))
+        rod = util.add_pad(self.body, sk, 10.0, name="Rod")
+        self.body.Tip = rod
         self.doc.recompute()
         thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
-                                                      face=cyl_face(bore, bore_r), size="M2.5", clearance="0.2 mm"))
+                                                      face=cyl_face(rod, radius), size="M2.5", clearance="0.2 mm"))
         self.doc.recompute()
-        knee = max(self.widest(s, True, 0.2))
-        if knee > bore_r + 0.01:  # the fin zone exists inside the hole
-            self.assertEqual(self.material((knee + bore_r) / 2.0, 2.0, 6.0), 0)
+        self.assertTrue(self.body.Shape.isValid())
+        knee = min(self.widest(thread._spec(dict(standard="iso", size="M2.5"), 2 * radius, False, 0.2), False, 0.2))
+        self.assertEqual(self.material((knee + radius) / 2.0, 5.02, 6.0), 0)
+
+    def test_no_fin_zone_inside_standard_tapped_holes(self):
+        """Review: the old check here asserted nothing (it only ran 'if' a fin zone existed). For every standard
+        size and print clearance the internal groove is at full width inside the tap bore already, so a hole never
+        keeps a fin; the bore-to-knee rule in _fit only guards custom profiles."""
+        for std in ("iso", "iso_fine", "unc", "unf", "tr", "acme", "print"):
+            if std not in dict(st.STANDARDS):
+                continue
+            for size in st.sizes(std):
+                s = st.spec(std, size)
+                for c in (0.0, 0.2, 0.4):
+                    self.assertLessEqual(profile.knee(s, True, c), st.bore_diameter(s, c) / 2 + 0.005, (std, size, c))
 
     def test_a_chamfer_at_an_end_the_trim_does_not_reach_leaves_no_sleeve(self):
         """Review: the chamfer used the trimmed radius at an end the ThreadTrim did not reach (a short thread, an
