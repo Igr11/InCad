@@ -369,9 +369,10 @@ def _build(doc, body, f, values):
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
     expr = dict(f.ExpressionEngine).get("Height")
     height = f.evalExpression(expr).Value if expr else f.Height.Value
-    _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height, face_len,
-          start_free, end_free, internal)
-    chamfer = _chamfer(doc, body, f, obj, edge, internal, hole, sign, face_len, start_free, end_free,
+    _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
+                       face_len, start_free, end_free, internal)
+    radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
+    chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free,
                        values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
@@ -412,15 +413,15 @@ def _remove_helpers(doc, body, f, role=None):
                 doc.removeObject(o.Name)
 
 
-def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_free, end_free, mode, size):
+def _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free, mode, size):
     """A 45° lead-in chamfer at the free end(s) of the threaded face: a revolve cut (Groove) of a triangle on the
     thread's own section plane, so it needs no face names and the thread cuts through it. None when there is
     nothing to chamfer (no free end asked for)."""
     ends = []
     if mode in ("start", "both") and start_free:
-        ends.append((0.0, 1.0))
+        ends.append((0.0, 1.0, radii[0]))
     if mode == "both" and end_free:
-        ends.append((face_len, -1.0))
+        ends.append((face_len, -1.0, radii[1]))
     if not ends or size <= 0:
         _remove_helpers(doc, body, f, "chamfer")
         return None
@@ -436,7 +437,7 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
     sk.deleteAllGeometry()
     sk.recompute()  # the sketch alone: no feature is recomputed with an empty profile
     inward = size if internal else -size  # the end face is inside the shaft, outside the hole
-    for at, into in ends:
+    for at, into, radius in ends:
         y0 = sign * at
         pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0), App.Vector(radius, y0 + sign * into * size, 0)]
         sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 3]) for i in range(3)])
@@ -458,7 +459,8 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
 
 def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free, internal=True):
     """Fill the hole (a Revolution) or bore it out (a Groove) to the thread's tap radius along the threaded span,
-    right before the thread; removed when the hole already fits. None or the helper."""
+    right before the thread; removed when the hole already fits. (helper or None, (reaches the start, reaches
+    the end)): a chamfer at an end the helper does not reach starts from the part's own radius."""
     existing = [h for h in helpers_of(f) if _role(h) == "prep"]
     adds = hole < radius if internal else hole > radius  # a hole filled in / a rod built up; else cut
     want = None if abs(hole - radius) < 1e-9 else ("PartDesign::Revolution" if adds else "PartDesign::Groove")
@@ -466,7 +468,7 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
         _remove_helpers(doc, body, f, "prep")
         existing = []
     if want is None:
-        return None
+        return None, (False, False)
     g = existing[0] if existing else None
     sk = (g.Profile[0] if isinstance(g.Profile, (tuple, list)) else g.Profile) if g is not None else \
         body.newObject("Sketcher::SketchObject", "ThreadPrepProfile")
@@ -485,7 +487,7 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
         if g is None:
             doc.removeObject(sk.Name)
         _remove_helpers(doc, body, f, "prep")
-        return None
+        return None, (False, False)
     if g is None:
         g = doc.addObject(want, "ThreadFill" if want == "PartDesign::Revolution" else
                           "ThreadBore" if internal else "ThreadTrim")
@@ -508,7 +510,7 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
     sk.Visibility = False
     g.ReferenceAxis = (sk, ["V_Axis"])
     g.Visibility = False
-    return g
+    return g, (any(b0 <= 1e-6 for b0, _ in spans), any(b1 >= face_len - 1e-6 for _, b1 in spans))
 
 
 def _walled(solid, placement, sign, radius, a0, a1, angles=12):

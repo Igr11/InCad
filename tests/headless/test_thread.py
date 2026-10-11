@@ -703,3 +703,18 @@ class ThreadFinTest(unittest.TestCase):
         knee = max(self.widest(s, True, 0.2))
         if knee > bore_r + 0.01:  # the fin zone exists inside the hole
             self.assertEqual(self.material((knee + bore_r) / 2.0, 2.0, 6.0), 0)
+
+    def test_a_chamfer_at_an_end_the_trim_does_not_reach_leaves_no_sleeve(self):
+        """Review: the chamfer used the trimmed radius at an end the ThreadTrim did not reach (a short thread, an
+        offset), leaving a ~0.09 mm sleeve there."""
+        radius = 2.5 / 2
+        pad = shaft(self.doc, self.body, radius=radius, length=8.0, name="Rod")
+        thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                      face=cyl_face(pad, radius), size="M2.5", clearance="0.2 mm",
+                                                      length_mode="distance", length="4 mm", chamfer="both",
+                                                      chamfer_size="0.3 mm"))
+        self.doc.recompute()
+        self.assertTrue(self.body.Shape.isValid())
+        for z in (0.05, 0.1, 7.9, 7.95):  # both ends of the rod, inside the 0.3 mm chamfers
+            pts = [App.Vector(1.2 * math.cos(a), 1.2 * math.sin(a), z) for a in (0.0, 1.6, 3.1, 4.7)]
+            self.assertFalse([p for p in pts if self.body.Shape.isInside(p, 1e-7, True)], z)
