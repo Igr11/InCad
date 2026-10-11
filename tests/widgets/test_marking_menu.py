@@ -73,6 +73,22 @@ class MarkingMenuTest(unittest.TestCase):
         self.assertEqual(self.ran, [])
 
 
+    def test_extra_items_follow_the_list_and_run_their_callable(self):
+        ran = []
+        slots = [("N", self.reg.get("n"))]
+        menu = MarkingMenu(self.reg, slots, [self.reg.get("x")], "light",
+                           extras=[("Delete Horizontal", "delete", lambda: ran.append("h")),
+                                   ("Delete all constraints (3)", "delete", lambda: ran.append("all"))])
+        self.assertEqual(menu.list_labels(), ["Cmd x", "Delete Horizontal", "Delete all constraints (3)"])
+        b1, b2 = menu.extra_button("Delete Horizontal"), menu.extra_button("Delete all constraints (3)")
+        self.assertGreater(b1.y(), menu.findChildren(type(b1))[1].y())
+        seen = []
+        menu.triggered.connect(seen.append)
+        b1.click()
+        self.assertEqual(ran, ["h"])
+        self.assertEqual(seen, ["extra:Delete Horizontal"])
+        self.assertEqual(self.ran, [])  # no registered command ran
+
 class RingSpacingTest(unittest.TestCase):
     def test_eight_long_labels_never_overlap(self):
         qtapp.app()

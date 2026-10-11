@@ -22,6 +22,8 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   geometry; virtual space hides constraints, never geometry (sketch patterns: `incad.core.sketch_patterns`).
   A running Sketcher tool is visible to Python only as the bitmap cursor on the viewport; FreeCAD's spline
   and polyline tools finish on a right click (press+release), which `incad.ui.nav` replays while that cursor shows.
+  The Constraint List (`incad.core.sketch_constraints`, `incad.ui.constraints_panel`) lists and deletes constraints;
+  pattern ties and dimensions used by a formula are refused; FreeCAD's preselection can name a deleted object (guard it).
 - Visibility: a new part's origin planes say Visible while their App::Origin group is hidden (`document.is_shown` is the
   effective state); unused sketches follow `InCadShown` (`document.sketch_shown`: open contours shown by default);
   view markers (`incad.ui.point_markers`) are SoAnnotation nodes, never document objects; a raw `Gui.setEdit` on a

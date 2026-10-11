@@ -5,6 +5,22 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.1.2
+-----
+Improvements
+- Sketch: new Constraint List (ribbon Sketch > Constrain > List, or right-click in a sketch >
+  Constraint List). It lists the sketch's constraints, including the ones with no icon to click
+  (coincident points, point on a line). Pick a line or point to see only its own; select a row to
+  see it in the sketch; check rows and press Delete selected (one undo step). Constraints that hold
+  a sketch pattern, and dimensions used in a formula, are kept, and the window says why.
+- Sketch: right-click a line or point to delete one of its constraints, or all of them.
+
+Bug fixes
+- Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was
+  made after the first: it hung on the first thread. Threads now attach to the hole itself, and
+  older files are repaired the first time threads are turned off.
+
+
 0.1.1
 -----
 Improvements

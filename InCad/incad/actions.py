@@ -405,6 +405,12 @@ def _slot(mode):
     shell.start_slot_tool(mode)
 
 
+def open_constraints_window():
+    from incad.ui import shell
+    _editing_sketch()  # "Open a sketch first"
+    shell.open_constraints_window()
+
+
 def constraints_visible(show=None):
     """Inventor F8/F9: show or hide the constraint symbols of the sketch being edited (dimensions stay)."""
     from incad.core import safe, sketch
@@ -802,6 +808,9 @@ def commands():
         Command(id="sketch.slot_center", label="Center Point Slot", icon="slot_center",
                 handler=lambda: _slot("center"), contexts=frozenset({"sketch"}),
                 tooltip="Click the center, one end's center, then the width"),
+        Command(id="sketch.constraints_window", label="Constraint List", icon="constraints_window",
+                handler=open_constraints_window, contexts=frozenset({"sketch"}),
+                tooltip="List the sketch's constraints: pick a line or point to see its own, delete the ones you check"),
         Command(id="sketch.constraints_toggle", label="Show / Hide Constraints", icon="constraints_toggle",
                 handler=lambda: constraints_visible(), contexts=frozenset({"sketch"}),
                 tooltip="Hide or show the constraint symbols (dimensions stay)"),
@@ -892,7 +901,7 @@ SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", 
          "sketch.triangle": "Polygon", "sketch.square": "Polygon", "sketch.pentagon": "Polygon", "sketch.octagon": "Polygon",
          "sketch.polygon_n": "Polygon", "sketch.spline_cv": "Spline", "sketch.rect_pattern": "Pattern",
          "sketch.circ_pattern": "Pattern", "sketch.path_pattern": "Pattern",
-         "sketch.constraints_toggle": "Constraints", "sketch.show_dof": "Free DOF", "sketch.slice": "Slice",
+         "sketch.constraints_toggle": "Constraints", "sketch.constraints_window": "List", "sketch.show_dof": "Free DOF", "sketch.slice": "Slice",
          "sketch.project": "Project", "inspect.mass": "Mass", "feature.rect_pattern": "Pattern",
          "feature.circ_pattern": "Pattern"}
 
