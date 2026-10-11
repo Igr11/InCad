@@ -172,6 +172,28 @@ def test_delete_from_a_3d_face_selection_removes_only_the_thread():
     assert body.Shape.isValid() and body.Shape.Volume > v_before, (v_before, body.Shape.Volume)
 
 
+def test_4_threads_button_turns_every_thread_off_and_on():
+    """User request: threads off while designing (faster redraws), on at the end — from the ribbon."""
+    from incad.core import suppress, tree
+    t = doc().getObject(ST["thread"])
+    with_threads = body().Shape.Volume
+    button = s().ribbon.button("feature.threads_toggle")
+    assert button is not None and button.isVisible()
+    QTest.mouseClick(button, QtCore.Qt.LeftButton)
+    harness.pump(1500)
+    assert t.Suppressed and suppress.threads_off(doc())
+    assert button.isChecked()
+    assert body().Shape.Volume > with_threads + 1.0, (body().Shape.Volume, with_threads)  # threads gone from the part
+    states = {n.name: n.state for n in tree.build(doc())[0].children}
+    assert states.get(t.Name) == "suppressed", states
+    assert doc().UndoNames[0] == "Threads Off / On", doc().UndoNames
+    QTest.mouseClick(button, QtCore.Qt.LeftButton)
+    harness.pump(1500)
+    assert not t.Suppressed and not button.isChecked()
+    assert abs(body().Shape.Volume - with_threads) < 1e-3
+
+
 harness.run([test_0_setup, test_1_thread_on_a_selected_shaft_face, test_2_edit_the_thread_size,
-             test_3_threaded_hole, test_edit_changes_the_start_face_and_offset,
+             test_3_threaded_hole, test_4_threads_button_turns_every_thread_off_and_on,
+             test_edit_changes_the_start_face_and_offset,
              test_delete_from_a_3d_face_selection_removes_only_the_thread])

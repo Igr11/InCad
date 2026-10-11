@@ -29,3 +29,6 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
 - Sketch patterns Along Path (`core/sketch_patterns.build_path`) place copies exactly and tie them with constant
   constraints (re-placed on edit); a Sweep's Wall is an inner `PartDesign::SubtractivePipe` of the offset profile plus cap Pads (helpers with
   `InCadHelperOf`; `kind_for` claims none, their rows open the owner); a body-wide Thickness hollows the whole part.
+- Thread helpers: a fill (Revolution) or bore-out (Groove) with `InCadHelperRole = "prep"` sits right before the thread
+  (a hole off the size's tap diameter, filled only where the hole is walled all round), the chamfer Groove after it;
+  Suppress acts on the owner with all its helpers, and a profile sketch or helper means its owner (`incad.core.suppress`).

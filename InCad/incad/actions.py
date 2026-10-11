@@ -161,10 +161,26 @@ def _target_object():
 
 
 def toggle_suppress():
-    obj = _target_object()
-    if "Suppressed" not in obj.PropertiesList:
-        raise ValueError("%s cannot be suppressed" % obj.Label)
-    obj.Suppressed = not obj.Suppressed
+    """The picked feature on or off, with the pieces InCad made for it (a thread's fill and chamfer); its profile
+    sketch or one of those pieces means the feature."""
+    from incad.core import suppress
+    suppress.toggle(_target_object())
+
+
+def _threads_off():
+    import FreeCAD as App
+    from incad.core import suppress
+    return App.ActiveDocument is not None and suppress.threads_off(App.ActiveDocument)
+
+
+def toggle_threads():
+    """Every thread off for faster work, or back on (a thread that was already off stays off)."""
+    import FreeCAD as App
+    from incad.core import log, suppress
+    if App.ActiveDocument is None:
+        raise ValueError("Open a part first")
+    state = suppress.toggle_threads(App.ActiveDocument)
+    log.report("info", "Threads off" if state == "off" else "Threads on")
 
 
 def _visibility_targets():
@@ -815,6 +831,9 @@ def commands():
                 tooltip="Delete the selection (sketch geometry and dimensions, or features)"),
         Command(id="edit.delete_key", label="Delete", icon="delete", handler=delete_selection, shortcut="Del",
                 tooltip="Delete the selection"),
+        Command(id="feature.threads_toggle", label="Threads Off / On", icon="suppress", handler=toggle_threads,
+                transactional=True, checkable=True, is_checked=_threads_off,
+                tooltip="Suppress every thread while you work (faster redraws); click again to bring them back"),
         Command(id="feature.thread", label="Thread", icon="thread", handler=lambda: start_feature("thread"),
                 contexts=frozenset({"part"}), tooltip="Real thread on a shaft or in a hole (select its face)"),
         Command(id="feature.shell", label="Shell", icon="shell", handler=lambda: start_feature("shell"),
@@ -863,7 +882,7 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"view.section_points": "Section", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
+SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
          "view.origin_hide_all": "Hide All", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
