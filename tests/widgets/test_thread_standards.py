@@ -41,6 +41,9 @@ class StandardsTest(unittest.TestCase):
         self.assertEqual(st.suggest("iso", 10.0, False), "M10")
         self.assertEqual(st.suggest("iso", 8.6, True, 0.2), "M10")
         self.assertEqual(st.suggest("unc", 6.3, False), "1/4-20")
+        self.assertEqual(st.suggest("iso", 3.0, True, 0.2), "M3")  # a hole the bolt's size: the matching bolt
+        self.assertEqual(st.suggest("iso", 4.0, True, 0.2), "M4")
+        self.assertEqual(st.suggest("iso", 5.2, True, 0.2), "M6")  # a tap drill: its thread
 
     def test_bore_diameter(self):
         s = st.spec("iso", "M10")

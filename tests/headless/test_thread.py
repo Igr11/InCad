@@ -387,6 +387,45 @@ class ThreadChamferTest(unittest.TestCase):
         g = thread.helpers_of(f)[0]
         self.assertEqual(len(g.Profile[0].Geometry), 3)  # only the free end gets a chamfer, never the shoulder
 
+    def chamfered(self, base, z):
+        """A Chamfer feature on the round edge of `base` at height z (radius < 8: the bore or the rod, not a block)."""
+        edge = [i + 1 for i, e in enumerate(base.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                and abs(e.Curve.Center.z - z) < 1e-6 and e.Curve.Radius < 7.9][0]
+        ch = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        ch.Base = (base, ["Edge%d" % edge])
+        ch.Size = 0.5
+        self.body.Tip = ch
+        self.doc.recompute()
+        self.assertTrue(ch.Shape.isValid())
+        return ch
+
+    def test_through_bore_starts_at_its_chamfered_mouth(self):
+        """User report: Ø3 through hole chamfered at one end, Thread (Distance) cut from the plain end, so the
+        chamfered mouth had no thread. With both ends open, the chamfered one is the entrance."""
+        shaft(self.doc, self.body, radius=8.0, length=20.0, name="Block")
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 1.5))
+        bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        self.body.Tip = bore
+        self.doc.recompute()
+        ch = self.chamfered(bore, 0.0)  # the end nearer the origin: the old rule started at z = 20
+        f = self.make(face=cyl_face(ch, 1.5), standard="iso", size="M3.5", length_mode="distance", length="6 mm")
+        cut = ch.Shape.cut(self.body.Shape)
+        self.assertLess(cut.BoundBox.ZMax, 8.0, cut.BoundBox)
+        self.assertLess(cut.BoundBox.ZMin, 0.5, cut.BoundBox)
+
+    def test_rod_starts_at_its_chamfered_tip(self):
+        pad = shaft(self.doc, self.body, radius=5.0, length=20.0)  # both ends free: the old rule took z = 20
+        ch = self.chamfered(pad, 0.0)
+        f = self.make(face=cyl_face(ch, 5.0), standard="iso", size="M10", length_mode="distance", length="6 mm")
+        cut = ch.Shape.cut(self.body.Shape)
+        self.assertLess(cut.BoundBox.ZMax, 9.0, cut.BoundBox)
+
 
 class ThreadEditAndDeleteTest(unittest.TestCase):
     """User reports: deleting a thread deleted the part; editing kept the previous start; the thread must start
@@ -457,3 +496,140 @@ class ThreadEditAndDeleteTest(unittest.TestCase):
         expected = math.pi * 25 * 20 + math.pi * 9 * 5
         self.assertAlmostEqual(self.body.Shape.Volume, expected, delta=1.0)
         self.assertGreater(self.body.Shape.Volume, v_with)
+
+
+class ThreadHoleFitTest(unittest.TestCase):
+    """User request: M3 or M4 must work in a Ø3 hole. The thread first fills or bores the hole to the size's tap
+    diameter (a helper before the thread), so the result is a full thread with no thin rings."""
+    def setUp(self):
+        self.doc = util.new_doc("Tf")
+        self.body = document.make_part(self.doc)
+        shaft(self.doc, self.body, radius=8.0, length=20.0, name="Block")
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 1.5))
+        self.bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        self.bore.Profile = sk
+        self.bore.Type = "ThroughAll"
+        self.bore.Reversed = True
+        self.body.Tip = self.bore
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def make(self, **values):
+        v = dict(thread.defaults(self.doc, self.body, None), face=cyl_face(self.bore, 1.5), **values)
+        f = thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        return f
+
+    def solid_at(self, r, z0=1.0, z1=19.0, n=150):
+        """How many of n points on a helix-free sampling line at radius r (z0..z1, a few angles) are in material."""
+        shape = self.body.Shape
+        pts = [App.Vector(r * math.cos(a), r * math.sin(a), z0 + (z1 - z0) * i / (n - 1))
+               for i in range(n) for a in (0.0, 2.1)]
+        return sum(1 for p in pts if shape.isInside(p, 1e-6, True)), len(pts)
+
+    def test_auto_size_is_the_matching_bolt(self):
+        f = self.make(size="")
+        self.assertEqual(thread.read(self.doc, f)["size"], "M3")
+
+    def test_m3_fills_the_hole_to_its_tap_size(self):
+        f = self.make(size="M3")
+        self.assertTrue(self.body.Shape.isValid())
+        prep = [h for h in thread.helpers_of(f) if h.TypeId == "PartDesign::Revolution"]
+        self.assertEqual(len(prep), 1)
+        self.assertIs(f.BaseFeature, prep[0])  # the fill comes before the thread, which cuts it
+        rb = st.bore_diameter(st.spec("iso", "M3"), 0.2) / 2.0
+        inside, total = self.solid_at((rb + 1.5) / 2.0)  # between the tap size and the old wall: the teeth
+        self.assertGreater(inside, total * 0.2)
+        self.assertLess(inside, total * 0.8)
+        self.assertEqual(self.solid_at(rb - 0.05)[0], 0)  # the bore itself stays open
+
+    def test_m4_bores_the_hole_out_without_thin_rings(self):
+        f = self.make(size="M4")
+        self.assertTrue(self.body.Shape.isValid())
+        prep = [h for h in thread.helpers_of(f) if h.TypeId == "PartDesign::Groove" and h.BaseFeature is self.bore]
+        self.assertEqual(len(prep), 1)
+        self.assertIs(f.BaseFeature, prep[0])
+        rb = st.bore_diameter(st.spec("iso", "M4"), 0.2) / 2.0
+        self.assertEqual(self.solid_at((rb + 1.5) / 2.0)[0], 0)  # old wall .. tap size: all bored away
+        inside, total = self.solid_at(rb + 0.15)
+        self.assertGreater(inside, total * 0.2)  # the teeth start at the tap size
+        self.assertLess(inside, total * 0.8)
+
+    def test_editing_to_a_size_that_fits_removes_the_prep_and_delete_cleans_up(self):
+        from incad.core import delete
+        f = self.make(size="M3")
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), size="M4"))
+        self.doc.recompute()
+        self.assertEqual([h.TypeId for h in thread.helpers_of(f)], ["PartDesign::Groove"])
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), size="M3.5"))  # tap Ø3.05 in Ø3: no prep
+        self.doc.recompute()
+        self.assertEqual(thread.helpers_of(f), [])
+        self.assertIs(f.BaseFeature, self.bore)
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), size="M3", chamfer="both", chamfer_size="0.3 mm"))
+        self.doc.recompute()
+        self.assertTrue(self.body.Shape.isValid())
+        self.assertEqual(sorted(h.TypeId for h in thread.helpers_of(f)),
+                         ["PartDesign::Groove", "PartDesign::Revolution"])
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertFalse([o for o in self.body.Group if o.TypeId in ("PartDesign::Groove", "PartDesign::Revolution")])
+        self.assertIs(self.body.Tip, self.bore)
+        self.assertAlmostEqual(self.body.Shape.Volume, self.bore.Shape.Volume, places=3)
+
+    def test_fill_never_grows_into_a_crossing_bore(self):
+        """User's part: a big bore crosses beside the Ø3 hole and opens a window in its wall; the fill put rings of
+        teeth into the big bore there. The hole is filled only where it has a wall all round."""
+        cross = self.body.newObject("PartDesign::SubtractiveCylinder", "Cross")
+        cross.Radius, cross.Height = 7.0, 40.0
+        cross.Placement = App.Placement(App.Vector(-20, 7.5, 10), App.Rotation(App.Vector(0, 1, 0), 90))
+        self.body.Tip = cross
+        self.doc.recompute()
+        f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None),
+                                                           face=cyl_face(cross, 1.5), size="M3"))
+        self.doc.recompute()
+        self.assertTrue(self.body.Shape.isValid())
+        self.assertEqual(len(self.body.Shape.Solids), 1)
+        bore_space = Part.makeCylinder(7.0, 40.0, App.Vector(-20, 7.5, 10), App.Vector(1, 0, 0))
+        self.assertAlmostEqual(self.body.Shape.common(bore_space).Volume, 0, 3)
+        rb = st.bore_diameter(st.spec("iso", "M3"), 0.2) / 2.0
+        inside, total = self.solid_at((rb + 1.5) / 2.0, 1.0, 4.0)  # below the window: still a full thread
+        self.assertGreater(inside, total * 0.2)
+
+    def test_start_face_at_a_chamfered_mouth_and_on_a_helper(self):
+        """User report: picking the front face of a hole whose mouth is chamfered said 'The start face must be at one
+        end of the threaded face' (the hole's end edge is behind the chamfer), and the pick named ThreadFill."""
+        ch = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        edge = [i + 1 for i, e in enumerate(self.bore.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                and abs(e.Curve.Radius - 1.5) < 1e-6 and abs(e.Curve.Center.z) < 1e-6][0]
+        ch.Base = (self.bore, ["Edge%d" % edge])
+        ch.Size = 0.5
+        self.body.Tip = ch
+        self.doc.recompute()
+        bottom = [i + 1 for i, fc in enumerate(ch.Shape.Faces) if fc.Surface.TypeId == "Part::GeomPlane"
+                  and abs(fc.BoundBox.ZMax) < 1e-6][0]
+        values = dict(thread.defaults(self.doc, self.body, None), face=cyl_face(ch, 1.5), size="M3",
+                      length_mode="distance", length="6 mm", start_face="%s:Face%d" % (ch.Name, bottom))
+        f = thread.create(self.doc, self.body, None, values)
+        self.doc.recompute()
+        cut = ch.Shape.cut(self.body.Shape)
+        self.assertLess(cut.BoundBox.ZMax, 8.0, cut.BoundBox)  # from the bottom (chamfered) mouth
+        fill = [h for h in thread.helpers_of(f) if h.TypeId == "PartDesign::Revolution"][0]
+        top = [i + 1 for i, fc in enumerate(fill.Shape.Faces) if fc.Surface.TypeId == "Part::GeomPlane"
+               and abs(fc.BoundBox.ZMin - 20) < 1e-6][0]
+        thread.update(self.doc, f, dict(thread.read(self.doc, f), start_face="%s:Face%d" % (fill.Name, top)))
+        self.doc.recompute()
+        self.assertTrue(thread.read(self.doc, f)["start_face"].startswith(ch.Name + ":"))  # never the helper
+        cut = ch.Shape.cut(self.body.Shape)
+        self.assertGreater(cut.BoundBox.ZMin, 12.0, cut.BoundBox)  # now from the top
+
+    def test_a_far_off_size_is_refused(self):
+        with self.assertRaises(ValueError) as ctx:
+            self.make(size="M8")
+        self.assertIn("size", str(ctx.exception).lower())
+        self.assertIs(self.body.Tip, self.bore)
+        self.assertFalse([o for o in self.body.Group if getattr(o, "InCadHelperOf", None)])

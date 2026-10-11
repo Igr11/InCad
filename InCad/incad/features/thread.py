@@ -78,10 +78,24 @@ def _face(doc, values):
     return obj, sub, face
 
 
-def _is_free(solid, centre, outward, radial, radius):
-    """No material just beyond this end (inside the thread's radius): a free end, not a shoulder or a floor."""
+def _lead_in_faces(solid, edge):
+    """The chamfer, countersink or round that meets the face at this end: the entrance a bolt or a nut goes in from."""
+    return [f for f in solid.Faces
+            if f.Surface.TypeId in ("Part::GeomCone", "Part::GeomToroid") and any(e.isSame(edge) for e in f.Edges)]
+
+
+def _is_lead_in(solid, edge):
+    return bool(_lead_in_faces(solid, edge))
+
+
+def _is_free(solid, edge, outward, radial, radius):
+    """No material just beyond this end (inside the thread's radius): a free end, not a shoulder or a floor.
+    A chamfered end is probed past its chamfer (next to the chamfer the part is still solid)."""
+    centre = edge.Curve.Center
     eps = max(0.05, 0.01 * radius)
-    probe = centre + outward * eps + radial * (0.5 * radius)
+    past = max([0.0] + [(p - centre).dot(outward) for f in _lead_in_faces(solid, edge) for e in f.Edges
+                        for p in e.discretize(8)])
+    probe = centre + outward * (past + eps) + radial * (0.5 * radius)
     return not solid.isInside(probe, 1e-7, True)
 
 
@@ -100,7 +114,8 @@ def _plane_of(doc, text):
 def _geometry(obj, face, flip, start_plane=None):
     """Facts about a cylindrical face: internal?, radius, start edge name, length along the axis, vector to the
     far end, and whether the start / far end are free. The start is a free end (the tip of a shaft, the mouth of
-    a hole); with both ends free, the one farther from the origin; "flip" takes the other end."""
+    a hole); with both ends free, the chamfered (or rounded) one, else the one farther from the origin; "flip"
+    takes the other end."""
     surf = face.Surface
     axis, centre = App.Vector(surf.Axis).normalize(), surf.Center
     u0, u1, v0, v1 = face.ParameterRange
@@ -118,15 +133,23 @@ def _geometry(obj, face, flip, start_plane=None):
     for e, other in ((ends[0], ends[1]), (ends[1], ends[0])):
         out = e.Curve.Center - other.Curve.Center
         out.normalize()
-        free.append(_is_free(obj.Shape, e.Curve.Center, out, radial, surf.Radius))
+        free.append(_is_free(obj.Shape, e, out, radial, surf.Radius))
     if start_plane is not None:  # the picked start face names the end
         point, normal = start_plane
-        on = [i for i, e in enumerate(ends) if abs((e.Curve.Center - point).dot(normal)) < 1e-4]
+        def gap(e):  # a chamfered mouth: the face's end edge lies behind the end face, by the chamfer's depth
+            out = e.Curve.Center - (ends[1] if e is ends[0] else ends[0]).Curve.Center
+            out.normalize()
+            depth = max([0.0] + [(p - e.Curve.Center).dot(out) for f in _lead_in_faces(obj.Shape, e)
+                                 for x in f.Edges for p in x.discretize(8)])
+            return abs(abs((e.Curve.Center - point).dot(normal)) - depth)
+        on = [i for i, e in enumerate(ends) if gap(e) < 1e-4]
         if not on:
             raise ValueError("The start face must be at one end of the threaded face")
         pick = on[0]
     elif free[0] != free[1]:
         pick = 0 if free[0] else 1
+    elif free[0] and _is_lead_in(obj.Shape, ends[0]) != _is_lead_in(obj.Shape, ends[1]):
+        pick = 0 if _is_lead_in(obj.Shape, ends[0]) else 1  # both open (a through hole, a loose rod)
     else:
         pick = 0 if ends[0].Curve.Center.Length > ends[1].Curve.Center.Length else 1
     if flip:
@@ -139,19 +162,31 @@ def _geometry(obj, face, flip, start_plane=None):
     return internal, surf.Radius, name, length, other.Curve.Center - start.Curve.Center, free[pick], free[1 - pick]
 
 
+_PREP_TOL = 0.05  # mm (radial): a hole this close to the tap size is threaded as it is
+
+
 def _fit(spec, internal, radius, clearance):
-    """Check the size and clearance against the face; the run-out that opens the groove at the face."""
+    """Check the size and clearance against the face. Returns the run-out that opens the groove at the face and
+    the radius the thread works on: a hole off the size's tap diameter is filled or bored to it first (M3 or M4
+    in a Ø3 hole), so the thread is always full and has no hair-thin rings."""
     R = spec.major / 2.0
     run = max(0.5, 0.3 * spec.pitch)
     if clearance < 0:
         raise ValueError("Print clearance can't be negative")
     if internal:
         r_min = R - spec.depth_int
-        if radius > R + clearance / 2.0 - 0.5 * spec.depth_int:
-            raise ValueError("This size is too small for the hole (Ø%.2f): pick a larger size" % (2 * radius))
-        if radius < r_min - max(0.5, 0.5 * spec.depth_int):
-            raise ValueError("This size is too large for the hole (Ø%.2f): pick a smaller size" % (2 * radius))
-        return run + max(0.0, r_min - radius)
+        tap = standards.bore_diameter(spec, clearance) / 2.0
+        if spec.taper:  # a tapered pipe thread is cut into the hole as it is
+            if radius > R + clearance / 2.0 - 0.5 * spec.depth_int:
+                raise ValueError("This size is too small for the hole (Ø%.2f): pick a larger size" % (2 * radius))
+            if radius < r_min - max(0.5, 0.5 * spec.depth_int):
+                raise ValueError("This size is too large for the hole (Ø%.2f): pick a smaller size" % (2 * radius))
+            return run + max(0.0, r_min - radius), radius
+        if abs(radius - tap) > max(1.0, 0.5 * radius):
+            raise ValueError("This size is too %s for the hole (Ø%.2f): pick a %s size" % (
+                ("small", 2 * radius, "larger") if tap < radius else ("large", 2 * radius, "smaller")))
+        hole = tap if abs(radius - tap) > _PREP_TOL else radius
+        return run + max(0.0, r_min - hole), hole
     root = R - spec.crest_drop - spec.depth - clearance / 2.0
     if root < 0.3 * R:
         raise ValueError("Print clearance is too large for this thread size")
@@ -159,7 +194,7 @@ def _fit(spec, internal, radius, clearance):
         raise ValueError("This size is too large for the shaft (Ø%.2f): pick a smaller size" % (2 * radius))
     if radius > R + max(0.5, 0.5 * spec.depth):
         raise ValueError("This size is too small for the shaft (Ø%.2f): pick a larger size" % (2 * radius))
-    return run + max(0.0, radius - R)
+    return run + max(0.0, radius - R), radius
 
 
 def _spec(values, diameter, internal, clearance):
@@ -203,13 +238,35 @@ def _load(f):
         return {}
 
 
+def _start_face_on(doc, f, obj, text):
+    """A start face picked on the thread or on one of its helpers (ThreadFill is what the view shows) named on
+    the threaded feature instead: the helpers come and go with the size."""
+    picks = parse_picks(doc, text)
+    if not picks:
+        return text
+    o, sub = resolve(*picks[0])
+    if o is not f and getattr(o, HELPER, None) != f.Name or not sub.startswith("Face"):
+        return text
+    plane = o.getSubObject(sub)
+    if plane.Surface.TypeId != "Part::GeomPlane":
+        return text
+    n = plane.normalAt(0, 0)
+    for i, fc in enumerate(obj.Shape.Faces):
+        if fc.Surface.TypeId == "Part::GeomPlane" and abs(abs(fc.normalAt(0, 0).dot(n)) - 1) < 1e-7 \
+                and abs((fc.Surface.Position - plane.Surface.Position).dot(n)) < 1e-6:
+            return "%s:Face%d" % (obj.Name, i + 1)
+    return text
+
+
 def _build(doc, body, f, values):
     obj, sub, face = _face(doc, values)
+    if values.get("start_face"):
+        values = dict(values, start_face=_start_face_on(doc, f, obj, values.get("start_face")))
     internal, radius, edge, face_len, to_other, start_free, end_free = _geometry(
         obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     clearance = _mm(values.get("clearance"), 0.2)
     spec = _spec(values, 2 * radius, internal, clearance)
-    runout = _fit(spec, internal, radius, clearance)
+    runout, hole = _fit(spec, internal, radius, clearance)
     groove = profile.groove(spec, internal, clearance, runout)
     half = profile.max_width(groove) / 2.0
     offset = _mm(values.get("offset"), 0.0)
@@ -244,7 +301,11 @@ def _build(doc, body, f, values):
     else:
         f.setExpression("Height", None)
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
-    chamfer = _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_free, end_free,
+    expr = dict(f.ExpressionEngine).get("Height")
+    height = f.evalExpression(expr).Value if expr else f.Height.Value
+    _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height, face_len,
+          start_free, end_free)
+    chamfer = _chamfer(doc, body, f, obj, edge, internal, hole, sign, face_len, start_free, end_free,
                        values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
@@ -260,6 +321,7 @@ def _build(doc, body, f, values):
 
 
 HELPER = "InCadHelperOf"  # on objects InCad makes for a feature (the thread's chamfer): shown under it, deleted with it
+ROLE = "InCadHelperRole"  # "prep" (fill / bore before the thread); none = the chamfer after it
 
 
 def helpers_of(f):
@@ -267,8 +329,14 @@ def helpers_of(f):
     return [o for o in (body.Group if body is not None else []) if getattr(o, HELPER, None) == f.Name]
 
 
-def _remove_helpers(doc, body, f):
+def _role(g):
+    return getattr(g, ROLE, "") or "chamfer"
+
+
+def _remove_helpers(doc, body, f, role=None):
     for g in helpers_of(f):
+        if role is not None and _role(g) != role:
+            continue
         prof = g.Profile[0] if isinstance(g.Profile, (tuple, list)) and g.Profile else None
         if body.Tip is g:
             body.Tip = g.BaseFeature if g.BaseFeature is not None else f
@@ -288,9 +356,9 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
     if mode == "both" and end_free:
         ends.append((face_len, -1.0))
     if not ends or size <= 0:
-        _remove_helpers(doc, body, f)
+        _remove_helpers(doc, body, f, "chamfer")
         return None
-    existing = helpers_of(f)
+    existing = [h for h in helpers_of(f) if _role(h) == "chamfer"]
     g = existing[0] if existing else None
     sk = g.Profile[0] if g is not None and isinstance(g.Profile, (tuple, list)) and g.Profile else None
     old_tip = body.Tip
@@ -322,6 +390,87 @@ def _chamfer(doc, body, f, obj, edge, internal, radius, sign, face_len, start_fr
     return g
 
 
+def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_free, end_free):
+    """Fill the hole (a Revolution) or bore it out (a Groove) to the thread's tap radius along the threaded span,
+    right before the thread; removed when the hole already fits. None or the helper."""
+    existing = [h for h in helpers_of(f) if _role(h) == "prep"]
+    want = None if abs(hole - radius) < 1e-9 else ("PartDesign::Revolution" if hole < radius else "PartDesign::Groove")
+    if existing and (want is None or existing[0].TypeId != want):
+        _remove_helpers(doc, body, f, "prep")
+        existing = []
+    if want is None:
+        return None
+    g = existing[0] if existing else None
+    sk = (g.Profile[0] if isinstance(g.Profile, (tuple, list)) else g.Profile) if g is not None else \
+        body.newObject("Sketcher::SketchObject", "ThreadPrepProfile")
+    sk.AttachmentSupport = [(obj, edge)]
+    sk.MapMode = "SectionOfRevolution"
+    sk.deleteAllGeometry()
+    sk.recompute()  # placed (the walls are sampled in its frame); no feature is recomputed with an empty profile
+    if want == "PartDesign::Revolution":  # new material only where the hole has a wall all round, joined to it
+        lo, hi = hole, radius + 0.02
+        spans = _walled(obj.Shape, sk.getGlobalPlacement(), sign, radius, max(a0, 0.0), min(a1, face_len))
+    else:  # a cut may run past a free end, so the mouth opens cleanly
+        lo, hi = radius - 0.02, hole
+        spans = [(-0.2 if a0 <= 0.0 and start_free else max(a0, 0.0),
+                  face_len + 0.2 if a1 >= face_len and end_free else min(a1, face_len))]
+    spans = [(b0, b1) for b0, b1 in spans if b1 - b0 > 1e-3]
+    if not spans:
+        if g is None:
+            doc.removeObject(sk.Name)
+        _remove_helpers(doc, body, f, "prep")
+        return None
+    if g is None:
+        g = doc.addObject(want, "ThreadFill" if want == "PartDesign::Revolution" else "ThreadBore")
+        base = f.BaseFeature
+        body.insertObject(g, f, False)  # right before the thread, which cuts the filled / bored hole
+        g.BaseFeature = base
+        f.BaseFeature = g
+        for prop, text in ((HELPER, "The thread this belongs to"), (ROLE, "What it does for the thread")):
+            g.addProperty("App::PropertyString", prop, "InCad", text)
+            g.setPropertyStatus(prop, "Hidden")
+        setattr(g, HELPER, f.Name)
+        setattr(g, ROLE, "prep")
+        g.Profile = sk
+        g.Angle = 360.0
+        g.Refine = False
+    for b0, b1 in spans:
+        pts = [App.Vector(lo, sign * b0, 0), App.Vector(hi, sign * b0, 0), App.Vector(hi, sign * b1, 0),
+               App.Vector(lo, sign * b1, 0)]
+        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 4]) for i in range(4)])
+    sk.Visibility = False
+    g.ReferenceAxis = (sk, ["V_Axis"])
+    g.Visibility = False
+    return g
+
+
+def _walled(solid, placement, sign, radius, a0, a1, angles=12):
+    """The stretches of [a0, a1] along the hole where it has material all round just outside its wall (a crossing
+    bore or a slot opens a window: no fill there, it would grow into that space). In the section sketch's frame
+    the hole's axis is the local y axis."""
+    import math
+    step = 0.1
+    n = max(2, int(math.ceil((a1 - a0) / step)) + 1)
+    rr = radius + 0.1
+    ring = [(rr * math.cos(2 * math.pi * k / angles), rr * math.sin(2 * math.pi * k / angles)) for k in range(angles)]
+
+    def walled(a):
+        return all(solid.isInside(placement.multVec(App.Vector(x, sign * a, z)), 1e-6, True) for x, z in ring)
+
+    spans, begin = [], None
+    for i in range(n):
+        a = a0 + (a1 - a0) * i / (n - 1)
+        if walled(a):
+            if begin is None:
+                begin = a
+        elif begin is not None:
+            spans.append((begin, a - step))
+            begin = None
+    if begin is not None:
+        spans.append((begin, a1))
+    return [(b0, b1) for b0, b1 in spans if b1 - b0 >= 0.3]
+
+
 def create(doc, body, profile_, values):
     obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
     _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
@@ -339,8 +488,8 @@ def create(doc, body, profile_, values):
         body.Tip = tip
         doc.recompute()
         raise
-    helpers = helpers_of(f)
-    body.Tip = helpers[-1] if helpers else f
+    after = [h for h in helpers_of(f) if _role(h) == "chamfer"]
+    body.Tip = after[-1] if after else f
     return f
 
 

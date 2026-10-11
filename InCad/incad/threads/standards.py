@@ -162,11 +162,15 @@ def bore_diameter(s, clearance=0.0):
 
 
 def suggest(std, diameter, internal, clearance=0.0):
-    """The size whose major (shaft) or bore diameter (hole) is nearest to `diameter`."""
+    """The size whose major diameter (shaft) is nearest to `diameter`; for a hole, the size whose major (a hole the
+    bolt's size: Ø3 -> M3) or bore diameter (a tap drill: Ø8.5 -> M10) is nearest. Thread fills or bores the
+    hole to the bore diameter, so either works."""
     names = sizes(std)
     if not names:
         return ""
-    def target(name):
+    def miss(name):
         s = spec(std, name)
-        return bore_diameter(s, clearance) if internal else s.major
-    return min(names, key=lambda n: abs(target(n) - diameter))
+        if not internal:
+            return abs(s.major - diameter)
+        return min(abs(s.major - diameter), abs(bore_diameter(s, clearance) - diameter))
+    return min(names, key=miss)
