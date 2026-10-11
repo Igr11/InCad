@@ -15,6 +15,11 @@ Improvements
   a sketch pattern, and dimensions used in a formula, are kept, and the window says why.
 - Sketch: right-click a line or point to delete one of its constraints, or all of them.
 
+Bug fixes
+- Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was
+  made after the first: it hung on the first thread. Threads now attach to the hole itself, and
+  older files are repaired the first time threads are turned off.
+
 
 0.1.1
 -----
