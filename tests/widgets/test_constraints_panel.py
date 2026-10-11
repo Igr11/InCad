@@ -62,3 +62,37 @@ class ConstraintsPanelTest(unittest.TestCase):
         self.assertEqual(self.p.selected(), 8)
         self.p.set_rows("Constraints — Sketch2", "Picked: Line 2", ROWS[:1])
         self.assertIsNone(self.p.selected())
+
+
+class ConstraintsPanelRefreshTest(unittest.TestCase):
+    """Review: a refresh (any selection change, a row click highlights in the sketch) wiped every check, and after
+    a delete the current row moved silently to another constraint."""
+    def setUp(self):
+        qtapp.app()
+        self.p = ConstraintsPanel("light")
+        self.p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS)
+
+    def test_a_refresh_with_the_same_rows_keeps_checks_current_row_and_items(self):
+        self.p.set_checked(0, True)
+        self.p.set_checked(8, True)
+        self.p.select_index(4)
+        item = self.p.table.topLevelItem(0)
+        self.p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS)
+        self.assertIs(self.p.table.topLevelItem(0), item)  # not rebuilt: a click in progress survives
+        self.assertEqual(self.p.checked(), [0, 8])
+        self.assertEqual(self.p.selected(), 4)
+
+    def test_checks_survive_a_filter_and_come_back(self):
+        self.p.set_checked(0, True)
+        self.p.set_checked(8, True)
+        self.p.set_rows("Constraints — Sketch2", "Picked: Line 1", ROWS[1:3])
+        self.assertEqual(self.p.checked(), [8])  # only what is listed is deleted
+        self.p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS)
+        self.assertEqual(self.p.checked(), [0, 8])
+
+    def test_a_reset_clears_checks_and_the_current_row(self):
+        self.p.set_checked(0, True)
+        self.p.select_index(4)
+        self.p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS, reset=True)
+        self.assertEqual(self.p.checked(), [])
+        self.assertIsNone(self.p.selected())

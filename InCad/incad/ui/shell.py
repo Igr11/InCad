@@ -2552,11 +2552,17 @@ class Shell(QtCore.QObject):
 
 
     # ----- sketch Constraint List -----
-    def open_constraints_window(self):
+    def open_constraints_window(self, subs=None):
+        """subs: the line or point to filter by (the right-click entry: the one under the cursor), picked for it."""
+        import FreeCADGui as Gui
         from incad.ui.constraints_panel import ConstraintsPanel
         sk = self.sketches.editing()
         if sk is None:
             raise ValueError("Open a sketch first")
+        if subs:
+            Gui.Selection.clearSelection()
+            for sub in subs:
+                Gui.Selection.addSelection(sk.Document.Name, sk.Name, sub)
         if self.constraints_panel is None:
             parent = self._mdi().viewport() if self._mdi() is not None else self.mw
             p = ConstraintsPanel(self.theme, parent)
@@ -2600,12 +2606,16 @@ class Shell(QtCore.QObject):
         from incad.core import sketch_patterns as sp
         return sp.element(sk, sub)
 
-    def refresh_constraints_window(self):
+    def refresh_constraints_window(self, reset=False):
         from incad.core import sketch_constraints as sc
         p, sk = self.constraints_panel, self.sketches.editing()
         if p is None or sk is None:
             return
         try:
+            shape = [(c.Type, c.Name) + tuple(sc.ties_of(c)) for c in sk.Constraints]
+            if shape != getattr(self, "_constraints_shape", None):
+                reset = True  # a delete, an undo: the same index is another constraint now
+                self._constraints_shape = shape
             subs = self._picked_sketch_elements(sk)
             rows = sc.for_elements(sk, subs)
             names = []
@@ -2618,7 +2628,7 @@ class Shell(QtCore.QObject):
                 else "All constraints (%d)" % len(sk.Constraints)
             p.set_rows("Constraints — %s" % sk.Label, header,
                        [(r.index, r.type, r.text, ("%s = %s" % (r.name, r.value)) if r.value else "", bool(r.owner))
-                        for r in rows])
+                        for r in rows], reset=reset)
             self._constraints_subs = subs
         except RuntimeError:
             pass
@@ -2636,12 +2646,19 @@ class Shell(QtCore.QObject):
         sk = self.sketches.editing()
         if sk is None or index < 0 or index >= len(sk.Constraints):
             return
-        row = sc.rows(sk)[index]
+        from incad.core import sketch_patterns as sp
+        geos = sk.Geometry
         Gui.Selection.clearSelection()
         Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Constraint%d" % (index + 1))
-        for geo, _pos in row.ties:
-            if geo >= 0:
-                Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Edge%d" % (geo + 1))
+        for geo, _pos in sc.ties_of(sk.Constraints[index]):
+            if 0 <= geo < len(geos):  # a sketch Point is a vertex in the Sketcher, every other curve an edge
+                point = geos[geo].TypeId == "Part::GeomPoint"
+                try:
+                    sub = sp.sub_of(sk, geo, 1) if point else "Edge%d" % (geo + 1)
+                except ValueError:  # no vertex for it right now: the constraint alone is selected
+                    sub = None
+                if sub:
+                    Gui.Selection.addSelection(sk.Document.Name, sk.Name, sub)
 
     def _delete_constraints(self, indices):
         from incad.core import safe, sketch_constraints as sc
@@ -2694,9 +2711,11 @@ class Shell(QtCore.QObject):
                 if r.value:
                     label += " %s = %s" % (r.name, r.value)
                 items.append((label, "delete", lambda i=r.index: self._delete_constraints([i])))
-        items.append(("Delete all constraints (%d)" % len(rows), "delete",
-                      lambda ids=[r.index for r in rows]: self._delete_constraints(ids)))
-        items.append(("Constraints…", "constraints_window", self.open_constraints_window))
+        free = sc.deletable(rows)  # a sketch pattern's ties stay: they would refuse the whole delete
+        if free:
+            items.append(("Delete all constraints (%d)" % len(free), "delete",
+                          lambda ids=free: self._delete_constraints(ids)))
+        items.append(("Constraints…", "constraints_window", lambda picked=list(subs): self.open_constraints_window(picked)))
         return items
 
     def open_sketch_menu_for_test(self):

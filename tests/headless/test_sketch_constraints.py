@@ -129,3 +129,40 @@ class RowsTest(unittest.TestCase):
         sc.delete(self.sk, [9])
         self.assertIsNone(sketch.reconcile_replaced(self.sk, known))
         self.assertNotIn("d2", [c.Name for c in self.sk.Constraints])
+
+
+class ReviewTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = util.new_doc("Sr")
+        self.body = document.make_part(self.doc)
+        self.sk = self.body.newObject("Sketcher::SketchObject", "Sk")
+        self.sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        self.sk.MapMode = "FlatFace"
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_delete_all_leaves_out_pattern_ties(self):
+        rect(self.sk)
+        i = self.sk.addConstraint(Sketcher.Constraint("Equal", 0, 2))
+        self.sk.renameConstraint(i, "pat3_0")
+        rows = sc.for_elements(self.sk, ["Edge1"])
+        self.assertIn(i, [r.index for r in rows])
+        self.assertEqual(sc.deletable(rows), [r.index for r in rows if r.index != i])
+
+    def test_rows_of_a_big_sketch_are_quick(self):
+        """Review: element_name copied the whole geometry list per tie (0.6 s for 1000 constraints)."""
+        import time
+        sk = self.sk
+        for k in range(100):
+            p = [App.Vector(k * 70, 0, 0), App.Vector(k * 70 + 60, 0, 0), App.Vector(k * 70 + 60, 45, 0),
+                 App.Vector(k * 70, 45, 0)]
+            base = sk.GeometryCount
+            sk.addGeometry([Part.LineSegment(p[i], p[(i + 1) % 4]) for i in range(4)])
+            sk.addConstraint([Sketcher.Constraint("Coincident", base + i, 2, base + (i + 1) % 4, 1) for i in range(4)]
+                             + [Sketcher.Constraint("Horizontal", base), Sketcher.Constraint("Vertical", base + 1)])
+        self.assertEqual(len(sk.Constraints), 600)
+        t = time.time()
+        rows = sc.rows(sk)
+        self.assertEqual(len(rows), 600)
+        self.assertLess(time.time() - t, 0.12)

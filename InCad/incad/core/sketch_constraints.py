@@ -26,14 +26,16 @@ class Row:
     owner: str
 
 
-def element_name(sk, geo, pos=0):
+def element_name(sk, geo, pos=0, geos=None):
+    """'Line 3 start', 'X axis', 'Projected edge 1' ... (geos: sk.Geometry read once by the caller: every read
+    copies the whole list)."""
     if geo == -1:
         return "Origin" if pos == 1 else "X axis"
     if geo == -2:
         return "Y axis"
     if geo <= -3:
         return "Projected edge %d" % (-geo - 2)
-    g = sk.Geometry[geo]
+    g = (geos if geos is not None else sk.Geometry)[geo]
     kind = next((k for t, k in _KINDS if g.TypeId == t), "Curve")
     name = "%s %d" % (kind, geo + 1)
     if pos in _POS and kind != "Point":
@@ -43,7 +45,7 @@ def element_name(sk, geo, pos=0):
     return name
 
 
-def _ties(c):
+def ties_of(c):
     out = []
     for geo, pos in ((c.First, int(c.FirstPos)), (c.Second, int(c.SecondPos)), (c.Third, int(c.ThirdPos))):
         if geo != UNDEF:
@@ -71,12 +73,17 @@ def _owner(c):
 
 
 def rows(sk):
-    out = []
+    out, geos = [], sk.Geometry
     for i, c in enumerate(sk.Constraints):
-        ties = _ties(c)
+        ties = ties_of(c)
         out.append(Row(i, c.Name or "", _TYPES.get(c.Type, c.Type), ties,
-                       " ↔ ".join(element_name(sk, g, p) for g, p in ties), _value(sk, c), _owner(c)))
+                       " ↔ ".join(element_name(sk, g, p, geos) for g, p in ties), _value(sk, c), _owner(c)))
     return out
+
+
+def deletable(rows_):
+    """The indices "Delete all" takes: a sketch pattern's ties stay (they are refused anyway)."""
+    return [r.index for r in rows_ if not r.owner]
 
 
 def for_elements(sk, subs):

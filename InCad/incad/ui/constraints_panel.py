@@ -32,6 +32,9 @@ class ConstraintsPanel(QtWidgets.QFrame):
         self.table.setRootIsDecorated(False)
         self.table.setMinimumSize(360, 240)
         self.table.currentItemChanged.connect(self._current_changed)
+        self.table.itemChanged.connect(self._item_changed)
+        self._rows = None      # what is listed now (a refresh with the same rows changes nothing)
+        self._checked = set()  # checked constraint indices, kept while a filter hides them
         col.addWidget(self.table, 1)
         self.message = QtWidgets.QLabel("")
         self.message.setWordWrap(True)
@@ -59,10 +62,25 @@ class ConstraintsPanel(QtWidgets.QFrame):
             " border-radius: 6px; padding: 4px 12px; }}".format(**p))
 
     # ----- content -----
-    def set_rows(self, title, header, rows):
-        keep = self.selected()
+    def set_rows(self, title, header, rows, reset=False):
+        """reset: the sketch's constraints changed (a delete, an undo): indices now mean other constraints, so
+        the checks and the current row go. Otherwise (a new pick, a row's highlight) they stay, and the same
+        rows again leave the list untouched (a click in progress on it survives)."""
+        rows = [tuple(r) for r in rows]
         self.title.setText(title)
         self.header.setText(header)
+        if reset:
+            self._checked.clear()
+            had = self.selected() is not None
+            self.table.blockSignals(True)
+            self.table.setCurrentItem(None)
+            self.table.blockSignals(False)
+            if had:
+                self.highlight.emit(-1)
+        elif rows == self._rows:
+            return
+        self._rows = rows
+        keep = self.selected()
         self.table.blockSignals(True)
         self.table.clear()
         current = None
@@ -70,7 +88,7 @@ class ConstraintsPanel(QtWidgets.QFrame):
             item = QtWidgets.QTreeWidgetItem([("🔒 " if locked else "") + kind, text, value])
             item.setData(0, QtCore.Qt.UserRole, index)
             item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-            item.setCheckState(0, QtCore.Qt.Unchecked)
+            item.setCheckState(0, QtCore.Qt.Checked if index in self._checked else QtCore.Qt.Unchecked)
             self.table.addTopLevelItem(item)
             if index == keep:
                 current = item
@@ -121,6 +139,13 @@ class ConstraintsPanel(QtWidgets.QFrame):
         return [(it.text(0).replace("🔒 ", ""), it.text(1), it.text(2)) for it in self._items()]
 
     # ----- actions -----
+    def _item_changed(self, item, _column):
+        index = item.data(0, QtCore.Qt.UserRole)
+        if item.checkState(0) == QtCore.Qt.Checked:
+            self._checked.add(index)
+        else:
+            self._checked.discard(index)
+
     def _current_changed(self, item, _previous):
         self.highlight.emit(item.data(0, QtCore.Qt.UserRole) if item is not None else -1)
 
