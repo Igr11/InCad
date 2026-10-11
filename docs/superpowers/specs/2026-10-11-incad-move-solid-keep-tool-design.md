@@ -23,8 +23,8 @@ Boolean combines solids, but there was no way to put a solid into position, and 
 - **Values are model parameters** (offsets, angles, gap), so formulas work as for any feature value.
 - **Snaps are applied once:** the snapped placement is stored as numbers. If the target later moves, the solid does
   not follow (as Inventor's Move Bodies). The picks are stored only so the dialog can show them on edit.
-- **Refusals:** a solid that is a Boolean's base with the Boolean in the same history — moving the result of the
-  part itself is allowed (it moves the whole part); a pick that is not on a solid → "Pick a face of the solid to move".
+- **Any solid can be moved**, the main one too (then the whole part moves). A pick that is not on a solid is refused
+  with "Pick a face of the solid to move".
 - **Phase 2 (separate plan, right after):** drag arrows and rotation rings in the 3D view that fill the Offset and
   Rotate fields.
 - **Note for users:** a Move needs InCad to recompute (like InCad's other custom pieces); without InCad the file
