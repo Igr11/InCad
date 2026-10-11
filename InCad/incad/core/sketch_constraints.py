@@ -2,6 +2,7 @@
 user's words), its value; filtered by picked lines and points; refused or deleted. Pure model logic: no Qt."""
 import dataclasses
 import math
+import re
 
 from incad.core import sketch as sketches, sketch_patterns as sp
 
@@ -92,3 +93,53 @@ def for_elements(sk, subs):
     def hit(r):
         return any(g == pg and (whole or p == pp) for g, p in r.ties for pg, pp, whole in picks)
     return [r for r in all_rows if hit(r)]
+
+
+def _users(sk, name):
+    """Who uses dimension `name` of this sketch in a formula: other dimensions of it by name, other objects by
+    label (feature values in the Model Parameters by their own name)."""
+    from incad.core import model
+    own = "Constraints." + name
+    here = re.compile(r"(?:(?<![\w.])|%s\.)\.?Constraints\.%s(?!\w)" % (re.escape(sk.Name), re.escape(name)))
+    there = re.compile(r"(?<![\w.])%s\.Constraints\.%s(?!\w)" % (re.escape(sk.Name), re.escape(name)))
+    model_obj = sk.Document.getObject(model.MODEL_NAME)
+    out = []
+    for obj in sk.Document.Objects:
+        for path, expr in getattr(obj, "ExpressionEngine", []) or []:
+            if obj is sk:
+                if path.lstrip(".") != own and here.search(expr):
+                    out.append(path.lstrip(".").split(".", 1)[-1])
+            elif there.search(expr):
+                out.append(path.lstrip(".") if obj is model_obj else obj.Label)
+                if obj is not model_obj:
+                    break
+    return list(dict.fromkeys(out))
+
+
+def refusal(sk, indices):
+    """Why these constraints can't be deleted (the first reason found), or None."""
+    cs = sk.Constraints
+    for i in sorted(set(indices)):
+        c = cs[i]
+        owner = _owner(c)
+        if owner:
+            return "Part of %s: edit or delete the pattern" % owner
+        if c.Name and c.Type in sketches.DIMENSIONAL:
+            users = _users(sk, c.Name)
+            if users:
+                return "%s is used by %s: change %s first" % (c.Name, ", ".join(users),
+                                                              "that" if len(users) == 1 else "those")
+    return None
+
+
+def delete(sk, indices):
+    """Delete these constraints (highest index first, so the others keep theirs). Refused as a whole when any
+    of them is a pattern tie or a dimension a formula uses."""
+    why = refusal(sk, indices)
+    if why:
+        raise ValueError(why)
+    done = 0
+    for i in sorted(set(indices), reverse=True):
+        sk.delConstraint(i)
+        done += 1
+    return done

@@ -76,3 +76,56 @@ class RowsTest(unittest.TestCase):
         i = self.sk.addConstraint(Sketcher.Constraint("Equal", 0, 2))
         self.sk.renameConstraint(i, "pat3_0")
         self.assertEqual(sc.rows(self.sk)[i].owner, "Pattern3")
+
+    def test_delete_several_highest_first(self):
+        n = sc.delete(self.sk, [4, 1])  # Horizontal (Line 1) and the Line 2/3 coincident
+        self.doc.recompute()
+        self.assertEqual(n, 2)
+        left = [(r.type, r.text) for r in sc.rows(self.sk)]
+        self.assertNotIn(("Horizontal", "Line 1"), left)
+        self.assertNotIn(("Coincident", "Line 2 end ↔ Line 3 start"), left)
+        self.assertEqual(len(left), 8)
+
+    def test_a_pattern_tie_is_refused(self):
+        i = self.sk.addConstraint(Sketcher.Constraint("Equal", 0, 2))
+        self.sk.renameConstraint(i, "pat3_0")
+        with self.assertRaises(ValueError) as ctx:
+            sc.delete(self.sk, [0, i])
+        self.assertIn("Part of Pattern3", str(ctx.exception))
+        self.assertEqual(len(self.sk.Constraints), 11)  # nothing deleted
+
+    def test_a_dimension_used_by_a_formula_is_refused_a_free_one_deleted(self):
+        self.sk.setExpression("Constraints.d2", "Sk.Constraints.d1 / 2")
+        self.doc.recompute()
+        self.assertEqual(sc.refusal(self.sk, [8]), "d1 is used by d2: change that first")
+        self.assertIsNone(sc.refusal(self.sk, [9]))
+        sc.delete(self.sk, [9])
+        self.assertIsNone(sc.refusal(self.sk, [8]))
+
+    def test_used_by_a_feature_value(self):
+        pad = util.add_pad(self.body, self.sk, 5.0)
+        pad.setExpression("Length", "Sk.Constraints.d1 / 10")
+        self.doc.recompute()
+        self.assertEqual(sc.refusal(self.sk, [8]), "d1 is used by %s: change that first" % pad.Label)
+
+    def test_delete_works_on_a_conflicting_sketch(self):
+        self.sk.addConstraint(Sketcher.Constraint("Vertical", 0))  # Line 1 horizontal and vertical: conflict
+        self.doc.recompute()
+        self.assertEqual(sc.delete(self.sk, [10]), 1)
+        self.doc.recompute()
+        self.assertFalse(self.sk.ConflictingConstraints)
+
+    def test_undo_restores_a_delete(self):
+        self.doc.UndoMode = 1
+        self.doc.openTransaction("Delete Constraints")
+        sc.delete(self.sk, [0, 5])
+        self.doc.commitTransaction()
+        self.doc.undo()
+        self.assertEqual(len(self.sk.Constraints), 10)
+
+    def test_a_delete_is_not_read_as_a_replaced_dimension(self):
+        from incad.core import sketch
+        known = sketch.dimension_snapshot(self.sk)
+        sc.delete(self.sk, [9])
+        self.assertIsNone(sketch.reconcile_replaced(self.sk, known))
+        self.assertNotIn("d2", [c.Name for c in self.sk.Constraints])
