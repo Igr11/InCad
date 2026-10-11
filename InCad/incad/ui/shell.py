@@ -298,6 +298,9 @@ class Shell(QtCore.QObject):
         self._shortcuts = {}
         self._geometry_counts = {}
         self.section_panel = None
+        self.constraints_panel = None  # the sketch's Constraint List window
+        self._constraints_owner = None
+        self._constraints_subs = []
         self._point_pick = None  # waiting for three clicks on the section markers
         self._peeked = None      # (document, object name, [(obj, was visible)]): shown while its tree row is selected
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
@@ -681,6 +684,7 @@ class Shell(QtCore.QObject):
         self._peeked = None
         self.stop_slot_tool()
         self._stop_measuring()
+        self.close_constraints_window()
         self.stop_section(keep_cut=False)
         self._cancel_point_pick()
         self._cancel_region_pick()
@@ -780,6 +784,8 @@ class Shell(QtCore.QObject):
         self._drop_sketch_markers()  # the next refresh draws them in the new colours
         if self.plane_panel is not None:
             self.plane_panel.set_theme(self.theme)
+        if self.constraints_panel is not None:
+            self.constraints_panel.set_theme(self.theme)
         qss = themes.stylesheet(self.theme)
         for w in self._widgets:
             w.setStyleSheet(qss)
@@ -837,7 +843,7 @@ class Shell(QtCore.QObject):
 
     def _raise_overlays(self):
         fs = self.feature_session
-        for w in (self.strip, self.plane_panel, self.info_panel, self.value_box, self.section_panel,
+        for w in (self.strip, self.plane_panel, self.info_panel, self.value_box, self.section_panel, self.constraints_panel,
                   fs.dialog if fs is not None else None):
             try:
                 if w is not None and w.isVisible():
@@ -853,16 +859,16 @@ class Shell(QtCore.QObject):
                      "pan": "Pan: drag with the left button (click Pan again to stop)"}
             self.status.set_prompt(hints.get(mode, "Ready"))
 
-    def _show_marking_menu(self, kind, global_pos, flick=False):
+    def _show_marking_menu(self, kind, global_pos, flick=False, extras=()):
         slots, items = marking_layout.resolve(kind, self.registry)
-        if not slots and not items:
+        if not slots and not items and not extras:
             return None
         if self.marking_menu is not None:
             try:
                 self.marking_menu.close()
             except RuntimeError:
                 pass
-        menu = MarkingMenu(self.registry, slots, items, self.theme, self.mw)
+        menu = MarkingMenu(self.registry, slots, items, self.theme, self.mw, extras=extras)
         menu.destroyed.connect(lambda _=None: setattr(self, "marking_menu", None))
         self.marking_menu, self.menu_kind = menu, kind
         menu.show_at(global_pos)
@@ -875,7 +881,7 @@ class Shell(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.core import context, document
         if self.sketches.editing() is not None:
-            return self._show_marking_menu("sketch", global_pos, flick)
+            return self._show_marking_menu("sketch", global_pos, flick, extras=self._constraint_menu_items())
         doc = App.ActiveDocument
         info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
         context.set_target(None)
@@ -1052,6 +1058,7 @@ class Shell(QtCore.QObject):
             self.browser.select_names(list(dict.fromkeys(rows)))
         except RuntimeError:
             pass
+        self.refresh_constraints_window()  # a picked line or point filters the Constraint List
 
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
@@ -1168,6 +1175,7 @@ class Shell(QtCore.QObject):
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
+        QtCore.QTimer.singleShot(0, self.refresh_constraints_window)  # a delete, an undo: never stale rows
 
     def toggle_construction(self):
         """Inventor's Construction button: with sketch geometry selected, switch it (and end the drawing mode if it
@@ -2120,6 +2128,9 @@ class Shell(QtCore.QObject):
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)
+        if self.constraints_panel is not None and (editing is None or
+                                                   (editing.Document.Name, editing.Name) != self._constraints_owner):
+            self.close_constraints_window()
         if editing is not None and self._peeked is not None:
             self.forget_peek()  # FreeCAD shows the sketch for editing and restores it after
         if editing is not None and self._profile_pick is not None:
@@ -2539,6 +2550,161 @@ class Shell(QtCore.QObject):
             self._section_base = None
         self.schedule_refresh()
 
+
+    # ----- sketch Constraint List -----
+    def open_constraints_window(self):
+        from incad.ui.constraints_panel import ConstraintsPanel
+        sk = self.sketches.editing()
+        if sk is None:
+            raise ValueError("Open a sketch first")
+        if self.constraints_panel is None:
+            parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+            p = ConstraintsPanel(self.theme, parent)
+            p.delete_requested.connect(self._delete_constraints)
+            p.highlight.connect(self._highlight_constraint)
+            p.show_all.connect(self._constraints_filter_clear)
+            p.closed.connect(self.close_constraints_window)
+            p.move(16, 16)
+            p.show()
+            self.constraints_panel = p
+        self._constraints_owner = (sk.Document.Name, sk.Name)
+        self.refresh_constraints_window()
+        self.constraints_panel.raise_()
+
+    def close_constraints_window(self):
+        if self.constraints_panel is not None:
+            try:
+                self.constraints_panel.close()
+                dispose(self.constraints_panel)
+            except RuntimeError:
+                pass
+            self.constraints_panel = None
+        self._constraints_subs = []
+
+    def _picked_sketch_elements(self, sk):
+        """Lines and points picked in the sketch. While a row's constraint is selected (its highlight), the pick
+        the list was filtered by stays."""
+        import FreeCADGui as Gui
+        subs, constraint = [], False
+        for sel in Gui.Selection.getSelectionEx(sk.Document.Name):
+            if sel.Object is sk:
+                for n in sel.SubElementNames:
+                    if n.startswith("Constraint"):
+                        constraint = True
+                    else:
+                        subs.append(n)
+        return list(self._constraints_subs) if constraint else subs
+
+    @staticmethod
+    def _element(sk, sub):
+        from incad.core import sketch_patterns as sp
+        return sp.element(sk, sub)
+
+    def refresh_constraints_window(self):
+        from incad.core import sketch_constraints as sc
+        p, sk = self.constraints_panel, self.sketches.editing()
+        if p is None or sk is None:
+            return
+        try:
+            subs = self._picked_sketch_elements(sk)
+            rows = sc.for_elements(sk, subs)
+            names = []
+            for sub in subs[:3]:
+                try:
+                    names.append(sc.element_name(sk, *self._element(sk, sub)))
+                except (ValueError, IndexError):
+                    pass
+            header = ("Picked: %s  ·  Esc shows all" % ", ".join(dict.fromkeys(names))) if subs \
+                else "All constraints (%d)" % len(sk.Constraints)
+            p.set_rows("Constraints — %s" % sk.Label, header,
+                       [(r.index, r.type, r.text, ("%s = %s" % (r.name, r.value)) if r.value else "", bool(r.owner))
+                        for r in rows])
+            self._constraints_subs = subs
+        except RuntimeError:
+            pass
+
+    def _constraints_filter_clear(self):
+        import FreeCADGui as Gui
+        self._constraints_subs = []
+        Gui.Selection.clearSelection()
+        self.refresh_constraints_window()
+
+    def _highlight_constraint(self, index):
+        """A row selected in the list: its constraint and the lines it ties are selected in the sketch."""
+        import FreeCADGui as Gui
+        from incad.core import sketch_constraints as sc
+        sk = self.sketches.editing()
+        if sk is None or index < 0 or index >= len(sk.Constraints):
+            return
+        row = sc.rows(sk)[index]
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Constraint%d" % (index + 1))
+        for geo, _pos in row.ties:
+            if geo >= 0:
+                Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Edge%d" % (geo + 1))
+
+    def _delete_constraints(self, indices):
+        from incad.core import safe, sketch_constraints as sc
+        sk = self.sketches.editing()
+        if sk is None:
+            return
+        valid = [i for i in indices if 0 <= i < len(sk.Constraints)]
+        why = sc.refusal(sk, valid)
+        if why:
+            if self.constraints_panel is not None:
+                self.constraints_panel.set_message(why)
+            else:
+                log.report("warning", why)
+            return
+        r = safe.run_safely("Delete Constraints", lambda: sc.delete(sk, valid), sk.Document)
+        if self.constraints_panel is not None:
+            self.constraints_panel.set_message(("Deleted %d" % r.value) if r.ok else r.error, ok=r.ok)
+        elif not r.ok:
+            log.report("warning", r.error)
+        self.refresh_constraints_window()
+
+    def _constraint_menu_items(self):
+        """Per-constraint Delete entries for the line or point under the cursor (else the picked one)."""
+        import FreeCADGui as Gui
+        from incad.core import sketch_constraints as sc
+        sk = self.sketches.editing()
+        if sk is None:
+            return []
+        try:
+            pre = Gui.Selection.getPreselection()
+            pre_subs = [n for n in (getattr(pre, "SubElementNames", ()) or ()) if n and not n.startswith("Constraint")] \
+                if getattr(pre, "Object", None) is sk else []
+        except RuntimeError:  # the preselected object was just deleted (a stale preselection)
+            pre_subs = []
+        subs = pre_subs[:1] or self._picked_sketch_elements(sk)[:1]
+        if not subs:
+            return []
+        rows = sc.for_elements(sk, subs)
+        if not rows:
+            return []
+        try:
+            geo, _pos = self._element(sk, subs[0])
+        except (ValueError, IndexError):
+            return []
+        items = []
+        if len(rows) <= 8:
+            for r in rows:
+                others = [sc.element_name(sk, g, p) for g, p in r.ties if g != geo]
+                label = "Delete %s" % r.type + (" (%s)" % ", ".join(others) if others else "")
+                if r.value:
+                    label += " %s = %s" % (r.name, r.value)
+                items.append((label, "delete", lambda i=r.index: self._delete_constraints([i])))
+        items.append(("Delete all constraints (%d)" % len(rows), "delete",
+                      lambda ids=[r.index for r in rows]: self._delete_constraints(ids)))
+        items.append(("Constraints…", "constraints_window", self.open_constraints_window))
+        return items
+
+    def open_sketch_menu_for_test(self):
+        """The sketch right-click menu at the view's centre, as a right click opens it (GUI tests)."""
+        view = self._mdi().viewport()
+        return self._show_marking_menu("sketch", view.mapToGlobal(view.rect().center()), False,
+                                       extras=self._constraint_menu_items())
+
     def _start_measuring(self, mode):
         """Measure stays live, as in Inventor: every change of the selection measures again (Esc finishes)."""
         import FreeCADGui as Gui
@@ -2830,6 +2996,12 @@ def sketch_session():
     if _shell is None or not _shell.active:
         raise ValueError("InCad is not active")
     return _shell.sketches
+
+
+def open_constraints_window():
+    if _shell is None or not _shell.active:
+        raise ValueError("InCad is not active")
+    _shell.open_constraints_window()
 
 
 def start_feature(kind):

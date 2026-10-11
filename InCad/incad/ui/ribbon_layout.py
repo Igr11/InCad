@@ -37,7 +37,7 @@ LAYOUT = {
                     ["Dimension", ["sketch.dimension"]],
                     ["Constrain", ["sketch.coincident", "sketch.horizontal", "sketch.vertical", "sketch.parallel",
                                    "sketch.perpendicular", "sketch.tangent", "sketch.equal", "sketch.symmetric",
-                                   "sketch.fix"], "stacked"],
+                                   "sketch.fix", "sketch.constraints_window"], "stacked"],
                     ["Insert", ["sketch.project"]],
                     ["Format", ["sketch.construction", "sketch.constraints_toggle", "sketch.show_dof", "sketch.slice"],
                      "stacked"],
