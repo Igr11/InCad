@@ -174,8 +174,17 @@ class FeatureSession(QtCore.QObject):
 
     @staticmethod
     def _as_picks(pick, pairs):
-        """A feature pick also takes a face/edge clicked in the view: it stands for the feature that created it."""
+        """A feature pick also takes a face/edge clicked in the view: it stands for the feature that created it. A
+        solid pick (Boolean's base and tools) takes a click anywhere on the solid: it stands for the whole solid."""
         from incad.features import common
+        if pick == "body":
+            from incad.features.combine import body_of
+            out = []
+            for o, el in pairs:
+                b = body_of(o, el)
+                if b is not None and (b, "") not in out:
+                    out.append((b, ""))
+            return out
         if pick != "feature":
             return pairs
         out = []
@@ -308,6 +317,10 @@ class FeatureSession(QtCore.QObject):
             return  # taken by clicks on the markers, not by the selection
         raw_pairs = self._selection()
         pairs = self._as_picks(f.pick, raw_pairs)
+        if f.pick == "body":  # a solid already picked in another field (the base) is not a tool too
+            taken = {g.key: self.dialog.values().get(g.key) for g in self.kind.FIELDS
+                     if g.pick == "body" and g.key != key}
+            pairs = [(o, el) for o, el in pairs if o.Name not in taken.values()]
         pairs = self._retarget_body(pairs)
         if f.pick in self._GEOMETRY and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
