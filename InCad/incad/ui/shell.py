@@ -784,6 +784,12 @@ class Shell(QtCore.QObject):
         self._drop_sketch_markers()  # the next refresh draws them in the new colours
         if self.plane_panel is not None:
             self.plane_panel.set_theme(self.theme)
+        try:
+            import FreeCAD as App
+            from incad.ui import wire_style
+            wire_style.refresh(App.ActiveDocument, self.theme)  # Wireframe lines in the new theme's color
+        except Exception as e:
+            log.logger().warning("Wireframe lines: %s", e)
         if self.constraints_panel is not None:
             self.constraints_panel.set_theme(self.theme)
         qss = themes.stylesheet(self.theme)
@@ -2110,6 +2116,11 @@ class Shell(QtCore.QObject):
         is_part = document.is_incad_part(doc)
         is_asm = assemblies.is_assembly(doc)
         editing = self.sketches.editing() if is_part else None
+        try:
+            from incad.ui import wire_style
+            wire_style.refresh(doc, self.theme)  # objects made while Wireframe is on; a file saved in it
+        except Exception as e:
+            log.logger().warning("Wireframe lines: %s", e)
         self.sketches.sync()
         if is_part and editing is None and fs is None and self._body_hidden(doc):
             document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank

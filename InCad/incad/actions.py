@@ -615,7 +615,12 @@ def _std(cmd_id, label, icon, shortcut=""):
     def handler():
         if cmd_id in _GUARDED:
             _refuse_while_busy()
-        return run_std(name, index)
+        result = run_std(name, index)
+        if cmd_id in ("view.style_shaded", "view.style_wireframe"):
+            import FreeCAD as App
+            from incad.ui import theme, wire_style
+            wire_style.set_wireframe(App.ActiveDocument, cmd_id == "view.style_wireframe", theme.current())
+        return result
     return Command(id=cmd_id, label=label, icon=icon, handler=handler, shortcut=shortcut)
 
 
