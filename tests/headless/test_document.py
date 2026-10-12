@@ -620,11 +620,14 @@ class HideShowSolidTest(unittest.TestCase):
         base = next(o for o in self.piece.Group if o.TypeId == "PartDesign::FeatureBase")
         self.assertFalse(document.toggle_visibility([base]))
         self.assertFalse(self.piece.Visibility)
+        self.assertFalse(base.Visibility, "the piece's base (its Tip) draws even inside a hidden Body: hidden too")
         self.assertTrue(self.body.Visibility, "the other piece stays")
         document.show_result(self.piece)  # a refresh does not bring it back
         self.assertFalse(self.piece.Visibility)
+        self.assertFalse(base.Visibility)
         self.assertTrue(document.toggle_visibility([self.piece.BaseFeature]))  # its SplitPiece: the same Solid
         self.assertTrue(self.piece.Visibility)
+        self.assertTrue(base.Visibility)
 
     def test_the_main_piece_hides_by_its_split(self):
         self.assertFalse(document.toggle_visibility([self.split]))

@@ -384,15 +384,16 @@ def show_result(body):
             if not _broken_shape(o):
                 shown = o
                 break
+    chosen = bool(getattr(body, SHOWN_PROP, True))
     try:
         # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides it in sketch edit mode):
         # shown features inside a hidden Body show nothing. A Solid hidden by Hide / Show stays hidden.
-        body.Visibility = bool(getattr(body, SHOWN_PROP, True))
+        body.Visibility = chosen
     except Exception:
         pass
     for o in feats:
         try:
-            o.Visibility = (o is shown)
+            o.Visibility = (o is shown) and chosen  # a Split piece's base draws even inside a hidden Body
         except Exception:
             pass
     for o in body.Group:  # profile sketches shouldn't linger in the model view after a tip move; an unused
@@ -481,6 +482,7 @@ def set_visibility(objects, flag, record=True):
                     other.Visibility = other in objects
                 origin.Visibility = True
         o.Visibility = bool(flag)
+        _tip_follows(o)
 
 
 def apply_visibility(doc):
@@ -508,6 +510,7 @@ def apply_visibility(doc):
             want = sketch_shown(o)
         elif o.TypeId in ("PartDesign::Body", "App::Link") and chosen:  # a Solid / component hidden by choice
             want = bool(getattr(o, SHOWN_PROP))
+            _tip_follows(o, want)
         else:
             continue
         if bool(o.Visibility) != want:
@@ -523,6 +526,16 @@ def apply_visibility(doc):
             origin.Visibility = True
         elif not chosen_shown and origin.Visibility and not any(bool(i.Visibility) for i in items):
             origin.Visibility = False
+
+
+def _tip_follows(o, flag=None):
+    """A Solid hidden or shown: its Tip too (a Split piece's base keeps drawing inside a hidden Body)."""
+    tip = getattr(o, "Tip", None) if o.TypeId == "PartDesign::Body" else None
+    if tip is not None:
+        try:
+            tip.Visibility = bool(o.Visibility if flag is None else flag)
+        except Exception:
+            pass
 
 
 def _solid_of(o):

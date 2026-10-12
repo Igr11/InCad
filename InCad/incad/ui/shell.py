@@ -1063,6 +1063,12 @@ class Shell(QtCore.QObject):
                         rows.append(sel.ObjectName)
             else:
                 rows.append(sel.ObjectName)
+        from incad.core import document
+        for i, name in enumerate(rows):  # a Split piece's base has no row of its own: its Solid's row
+            o = doc.getObject(name) if doc is not None else None
+            if o is not None and (o.TypeId == "PartDesign::FeatureBase" or getattr(o, "InCadSplitPiece", False)):
+                solid = document._solid_of(o)
+                rows[i] = solid.Name if solid is not None else name
         try:
             self.browser.select_names(list(dict.fromkeys(rows)))
         except RuntimeError:
