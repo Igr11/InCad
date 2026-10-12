@@ -182,7 +182,8 @@ def _assembly(doc):
                 tooltip="Parts changed: Refresh updates the assembly" if assembly.needs_update(doc) else "")
     for c in assembly.components(doc):
         root.children.append(Node("component", c.Label, c.Name,
-                                  state="suppressed" if assembly.is_suppressed(c) else "",
+                                  state="suppressed" if assembly.is_suppressed(c) else
+                                  ("" if document.is_shown(c) else "hidden"),
                                   detail="grounded" if assembly.is_grounded(c) else "",
                                   tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else ""),
                                   children=_component_rows(c)))
@@ -215,7 +216,9 @@ def build(doc):
     listed = [b for b in all_bodies if b.Name not in used]  # a used-up tool sits under its Boolean
     if len(listed) > 1:
         root.children.append(Node("solids", "Solid Bodies (%d)" % len(listed),
-                                  children=[Node("body", b.Label, b.Name) for b in listed]))
+                                  children=[Node("body", b.Label, b.Name, "" if document.is_shown(b) else "hidden",
+                                                 "" if document.is_shown(b) else "Hidden (Hide / Show brings it back)")
+                                            for b in listed]))
     if primary is not None:
         root.children.extend(_history(doc, primary))
     return [root]

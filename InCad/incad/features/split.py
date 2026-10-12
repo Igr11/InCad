@@ -184,6 +184,9 @@ def delete(doc, f):
 def upgrade(doc):
     """A Split saved before Keep all gave each piece a Solid holds every piece in its own Solid: give the others
     their Solids now. Returns the Splits upgraded."""
+    for o in doc.Objects:  # a piece shape left visible by an earlier version draws beside its Solid
+        if is_piece(o) and o.Visibility:
+            o.Visibility = False
     done = []
     for f in [o for o in doc.Objects if claims(o)]:
         if f.Mode == "split" and not f.Keep and not piece_bodies(f) and not f.Shape.isNull() \
@@ -207,6 +210,7 @@ def _new_piece_body(doc, f, point):
     if owner is not None:
         body.Placement = owner.Placement  # the piece is in the Split's body frame
     body.BaseFeature = piece
+    piece.Visibility = False  # again: setting a Body's base can show it, and it would draw beside the Solid
     return body
 
 

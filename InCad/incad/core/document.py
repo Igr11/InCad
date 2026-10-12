@@ -385,6 +385,9 @@ def show_result(body):
                 shown = o
                 break
     chosen = bool(getattr(body, SHOWN_PROP, True))
+    base = getattr(body, "BaseFeature", None)
+    if base is not None and getattr(base, "InCadSplitPiece", False) and base.Visibility:
+        base.Visibility = False  # a Split's piece is drawn by the Solid made on it, never on its own
     try:
         # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides it in sketch edit mode):
         # shown features inside a hidden Body show nothing. A Solid hidden by Hide / Show stays hidden.

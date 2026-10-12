@@ -629,6 +629,21 @@ class HideShowSolidTest(unittest.TestCase):
         self.assertTrue(self.piece.Visibility)
         self.assertTrue(base.Visibility)
 
+    def test_the_piece_shape_never_draws_on_its_own(self):
+        """The user's Thread_1: the SplitPiece (outside the Solid made on it) was visible, so hiding Solid2 left
+        the piece on the screen."""
+        self.piece.BaseFeature.Visibility = True
+        document.show_result(self.piece)
+        self.assertFalse(self.piece.BaseFeature.Visibility)
+
+    def test_a_hidden_solid_is_dimmed_in_the_tree(self):
+        from incad.core import tree
+        from incad.core.nodes import flatten
+        document.toggle_visibility([self.piece])
+        rows = {n.name: n for _, n in flatten(tree.build(self.doc)) if n.kind == "body"}
+        self.assertEqual(rows[self.piece.Name].state, "hidden")
+        self.assertEqual(rows[self.body.Name].state, "")
+
     def test_the_main_piece_hides_by_its_split(self):
         self.assertFalse(document.toggle_visibility([self.split]))
         self.assertFalse(self.body.Visibility)
