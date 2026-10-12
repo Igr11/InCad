@@ -27,6 +27,9 @@ Bug fixes
   older files are repaired the first time threads are turned off.
 - Threads Off / On left the modeled thread of a tapped Hole on (the button looked dead after making
   one). It now turns those threads off too; the holes themselves stay.
+- Threads Off / On (and Suppress on a thread) did nothing when something was made on a face of a
+  later feature while the threads were off: the threads renumber that feature's faces and the sketch
+  lost its face. InCad now finds the same face again by its geometry.
 - Wireframe was nearly invisible in the dark theme. Its lines are now light (dark in the light theme)
   and thicker; Shaded puts the normal lines back.
 - Thread on a rod came out sloppy: with the print clearance a hair-thin fin (about 0.04 mm) stayed on

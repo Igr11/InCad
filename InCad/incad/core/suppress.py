@@ -2,9 +2,110 @@
 chamfer, a sweep's wall), so the part looks as it did before the feature; its profile sketch or one of those pieces
 means the feature. Threads can also go off all at once (faster redraws while designing) and come back on at the end;
 a thread that was off before stays off."""
+import FreeCAD as App
+
 from incad.core import document
 
 OFF_MARK = "InCadThreadsOff"  # on a thread the 'all threads off' switch turned off
+
+
+def _signature(el):
+    """What an element is, independent of its number: kind, type, the surface / curve it lies on, and its centre.
+    Threads change a face's outline (its area, a little its centre), never the plane or cylinder it lies on."""
+    if el.ShapeType == "Vertex":
+        return ("Vertex", "", el.Point, None)
+    if el.ShapeType == "Edge":
+        c = el.Curve
+        geom = (App.Vector(c.Center), App.Vector(c.Axis), c.Radius) if hasattr(c, "Radius") and hasattr(c, "Axis") \
+            else (App.Vector(el.Vertexes[0].Point), (el.Vertexes[-1].Point - el.Vertexes[0].Point).normalize()) \
+            if c.TypeId in ("Part::GeomLine", "Part::GeomLineSegment") else None
+        return ("Edge", c.TypeId, el.CenterOfMass, geom)
+    srf = el.Surface
+    if srf.TypeId == "Part::GeomPlane":
+        n = App.Vector(srf.Axis).normalize()
+        geom = (n, n.dot(srf.Position))
+    elif hasattr(srf, "Radius") and hasattr(srf, "Axis"):
+        geom = (App.Vector(srf.Center), App.Vector(srf.Axis).normalize(), srf.Radius)
+    else:
+        geom = None
+    return ("Face", srf.TypeId, el.CenterOfMass, geom)
+
+
+def _same_place(a, b):
+    """The same surface / curve (or the same point): the element can be found again on it."""
+    if a[0] != b[0] or a[1] != b[1]:
+        return False
+    if a[0] == "Vertex":
+        return (a[2] - b[2]).Length < 1e-6
+    ga, gb = a[3], b[3]
+    if ga is None or gb is None:
+        return (a[2] - b[2]).Length < 1e-6
+    if len(ga) == 2 and a[0] == "Face":  # a plane: its normal and offset
+        return abs(abs(ga[0].dot(gb[0])) - 1) < 1e-7 and abs(ga[1] * ga[0].dot(gb[0]) - gb[1]) < 1e-6
+    if len(ga) == 2:  # a line: parallel and on it
+        d = gb[0] - ga[0]
+        return abs(abs(ga[1].dot(gb[1])) - 1) < 1e-7 and (d - ga[1] * d.dot(ga[1])).Length < 1e-6
+    axis_ok = abs(abs(ga[1].dot(gb[1])) - 1) < 1e-7
+    d = gb[0] - ga[0]
+    return axis_ok and abs(ga[2] - gb[2]) < 1e-6 and (d - ga[1] * d.dot(ga[1])).Length < 1e-6
+
+
+def _same(a, b):
+    return _same_place(a, b) and (a[2] - b[2]).Length < 1e-6
+
+
+def _snapshot(doc):
+    """Every attachment to a feature's face, edge or vertex, with what that element is now. Threads going on or off
+    renumber the elements of the features after them; FreeCAD does not always find them again ('subshape not
+    found Extrude001.?Face10')."""
+    out = []
+    for o in doc.Objects:
+        for i, (ref, subs) in enumerate(getattr(o, "AttachmentSupport", None) or []):
+            if ref is None or not ref.isDerivedFrom("PartDesign::Feature"):
+                continue
+            for sub in subs:
+                if sub.startswith(("Face", "Edge", "Vertex")):
+                    try:
+                        el = ref.Shape.getElement(sub)
+                    except Exception:  # a name FreeCAD already lost: nothing to keep
+                        continue
+                    out.append((o, i, ref, sub, _signature(el)))
+    return out
+
+
+def _reattach(doc, snap):
+    """Point each attachment at the element that is still the same one (found by its geometry)."""
+    changed = False
+    for o, i, ref, sub, sig in snap:
+        try:
+            el = ref.Shape.getElement(sub)
+        except Exception:  # gone after the change
+            el = None
+        if el is not None and _same(_signature(el), sig):
+            continue
+        kind = sig[0]
+        items = {"Face": ref.Shape.Faces, "Edge": ref.Shape.Edges, "Vertex": ref.Shape.Vertexes}[kind]
+        on_it = [(n, (_signature(el)[2] - sig[2]).Length) for n, el in enumerate(items)
+                 if _same_place(_signature(el), sig)]
+        found = "%s%d" % (kind, min(on_it, key=lambda t: t[1])[0] + 1) if on_it else None  # the nearest on it
+        if found is None:
+            continue
+        support = [(r, list(ss)) for r, ss in o.AttachmentSupport]
+        # FreeCAD marks a name it lost with '?' ('?Face10') once a recompute failed to find it
+        support[i] = (support[i][0], [found if x.split(".")[-1].lstrip("?") == sub else x for x in support[i][1]])
+        o.AttachmentSupport = [(r, tuple(ss)) for r, ss in support]
+        changed = True
+    if changed:
+        doc.recompute()
+
+
+def _keeping_attachments(doc, change):
+    """Run change() (threads on or off) and keep what is attached to the part's faces on the same faces."""
+    snap = _snapshot(doc)
+    result = change()
+    doc.recompute()
+    _reattach(doc, snap)
+    return result
 
 
 def _profile(feature):
@@ -45,7 +146,7 @@ def toggle(obj):
     feature = owner_of(obj)
     if "Suppressed" not in feature.PropertiesList:
         raise ValueError("%s cannot be suppressed" % feature.Label)
-    set_suppressed(feature, not feature.Suppressed)
+    _keeping_attachments(obj.Document, lambda: set_suppressed(feature, not feature.Suppressed))
     return feature
 
 
@@ -84,6 +185,10 @@ def toggle_threads(doc):
     for t in ts + holes:  # turned back on by hand meanwhile (an edited hole, an unsuppressed thread): not ours
         if getattr(t, OFF_MARK, False) and (t.ModelThread if t in holes else not t.Suppressed):
             _mark(t, False)
+    return _keeping_attachments(doc, lambda: _switch_threads(ts, holes))
+
+
+def _switch_threads(ts, holes):
     marked = [t for t in ts + holes if getattr(t, OFF_MARK, False)]
     if marked:
         for t in marked:

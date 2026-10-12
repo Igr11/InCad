@@ -238,3 +238,35 @@ class TappedHoleThreadsTest(unittest.TestCase):
         self.assertFalse(suppress.threads_off(self.doc))
         self.assertEqual(suppress.toggle_threads(self.doc), "off")
         self.assertFalse(a.ModelThread)
+
+
+class UserFileAttachedAfterThreadsTest(unittest.TestCase):
+    """The user's part (Thread_1): with Threads Off, Sketch4 (Extrude002's profile) was made on Extrude001.Face10;
+    Threads On renumbered Extrude001's faces, FreeCAD could not find Face10 ('subshape not found
+    Extrude001.?Face10') and the step was rolled back — the button seemed dead. Attachments are found again by their
+    geometry."""
+    def setUp(self):
+        import os
+        import shutil
+        import tempfile
+        src = os.path.join(os.environ["INCAD_REPO"], "tests", "gui", "data", "thread_off_sketch.FCStd")
+        self.path = os.path.join(tempfile.mkdtemp(), "thread_off_sketch.FCStd")
+        shutil.copy(src, self.path)
+        self.doc = App.openDocument(self.path)
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_threads_on_keeps_a_sketch_made_with_threads_off(self):
+        sk = self.doc.getObject("Sketch003")
+        before = App.Placement(sk.Placement)
+        self.assertTrue(suppress.threads_off(self.doc))
+        self.assertEqual(suppress.toggle_threads(self.doc), "on")
+        self.doc.recompute()
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State or "Error" in o.State])
+        self.assertTrue(before.isSame(sk.Placement, 1e-6), (before, sk.Placement))
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State or "Error" in o.State])
+        self.assertTrue(before.isSame(sk.Placement, 1e-6), (before, sk.Placement))
