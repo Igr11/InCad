@@ -333,8 +333,8 @@ class ModelBrowser(QtWidgets.QWidget):
 
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
-        if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch", "origin_item"):
-            return
+        if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch", "origin_item", "body", "component"):
+            return  # a Solid's row and an assembly part's row have their menus too (Hide / Show…)
         self.tree.setCurrentItem(item)
         self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
 

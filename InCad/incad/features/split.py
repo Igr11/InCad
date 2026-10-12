@@ -181,6 +181,20 @@ def delete(doc, f):
         doc.removeObject(piece.Name)
 
 
+def upgrade(doc):
+    """A Split saved before Keep all gave each piece a Solid holds every piece in its own Solid: give the others
+    their Solids now. Returns the Splits upgraded."""
+    done = []
+    for f in [o for o in doc.Objects if claims(o)]:
+        if f.Mode == "split" and not f.Keep and not piece_bodies(f) and not f.Shape.isNull() \
+                and len(f.Shape.Solids) > 1:
+            _sync_pieces(doc, f)
+            done.append(f)
+    if done:
+        doc.recompute()
+    return done
+
+
 def _new_piece_body(doc, f, point):
     from incad.core import document
     piece = doc.addObject("Part::FeaturePython", "SplitPiece")

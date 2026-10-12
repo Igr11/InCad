@@ -1126,6 +1126,8 @@ class Shell(QtCore.QObject):
         kind = "origin" if obj is not None and obj.TypeId in ("App::Plane", "App::Line", "App::Point") else "browser"
         if obj is not None and obj.TypeId == "App::Link":  # a component's row (or a row of its history)
             kind = "asm_face"
+        elif obj is not None and obj.TypeId == "PartDesign::Body":  # a Solid's row (Solid Bodies)
+            kind = "solid"
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
@@ -2191,6 +2193,12 @@ class Shell(QtCore.QObject):
                     model.restore_units(doc)
             except Exception as e:
                 log.logger().warning("Parameter units on open: %s", e)
+            try:  # a Split made before Keep all gave each piece its own Solid: its pieces get their Solids now
+                from incad.features import split
+                if not getattr(doc, "Restoring", False) and split.upgrade(doc):
+                    log.report("info", "Split pieces are separate Solids now (hide or show each one)")
+            except Exception as e:
+                log.logger().warning("Split pieces on open: %s", e)
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):

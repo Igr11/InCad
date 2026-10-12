@@ -194,5 +194,19 @@ class SplitTest(unittest.TestCase):
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
 
 
+    def test_an_old_split_gets_its_piece_solids(self):
+        """A file from before Keep all made piece Solids: both pieces in the Split's Solid until it is upgraded."""
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        for b in split.piece_bodies(f):  # back to the old state: no piece Solids, no kept point
+            split._drop_piece_body(self.doc, b)
+        f.Keep = []
+        self.doc.recompute()
+        self.assertEqual(len(f.Shape.Solids), 2)
+        self.assertEqual(split.upgrade(self.doc), [f])
+        self.assertEqual(len(f.Shape.Solids), 1)
+        self.assertEqual(len(split.piece_bodies(f)), 1)
+        self.assertEqual(split.upgrade(self.doc), [])
+
+
 if __name__ == "__main__":
     unittest.main()
