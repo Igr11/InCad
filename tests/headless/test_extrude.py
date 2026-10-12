@@ -172,6 +172,54 @@ class ExtrudeTest(unittest.TestCase):
         self.assertEqual(extrude.defaults(self.doc, self.body, mid)["operation"], "cut")
 
 
+class ToNextAndToFaceTest(unittest.TestCase):
+    """The user: a new sketch would not extrude To / To Next. To Next searched away from the part (FreeCAD: 'No
+    faces found in this direction'); To took only flat faces."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Tn")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)  # 20 x 10 x 10
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def sketch_at(self, z):
+        sk = util.add_rect_sketch(self.body, w=4, h=4, name="S")
+        sk.AttachmentOffset = App.Placement(App.Vector(2, 2, z), App.Rotation())
+        self.doc.recompute()
+        return sk
+
+    def make(self, sk, **changes):
+        values = extrude.defaults(self.doc, self.body, sk)
+        values.update(changes)
+        f = extrude.create(self.doc, self.body, sk, values)
+        self.doc.recompute()
+        return f
+
+    def test_to_next_goes_toward_the_part(self):
+        f = self.make(self.sketch_at(20), extent="to_next")
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 + 4 * 4 * 10, places=6)
+
+    def test_to_next_keeps_a_chosen_direction(self):
+        f = self.make(self.sketch_at(20), extent="to_next", direction="flip")
+        self.assertTrue(f.Reversed)
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+
+    def test_to_takes_a_curved_face(self):
+        from incad.features import common
+        cyl = self.body.newObject("PartDesign::AdditiveCylinder", "Post")
+        cyl.Radius, cyl.Height = 30, 5
+        cyl.Placement = App.Placement(App.Vector(10, 5, -30), App.Rotation(App.Vector(1, 0, 0), 90))
+        self.body.Tip = cyl
+        self.doc.recompute()
+        face = next(i + 1 for i, fc in enumerate(cyl.Shape.Faces) if fc.Surface.TypeId == "Part::GeomCylinder")
+        self.assertTrue(common.accepts("to_face", cyl, "Face%d" % face))
+        self.assertTrue(common.accepts("to_face", [o for o in self.body.Origin.OriginFeatures
+                                                   if o.Role == "XY_Plane"][0], ""))
+
+
 class SketchOnAnotherSolidTest(unittest.TestCase):
     """A sketch left in one Solid but drawn on a face of another (a piece moved after the sketch was made, or the
     sketch stayed behind when its feature was deleted): the feature goes to the Solid that owns the face, the

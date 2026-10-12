@@ -143,7 +143,7 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit")
+    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face")
     _ON_BASE = _GEOMETRY + ("two_points",)  # picks made on the shape: the base is shown while they are active
 
     def _observe(self, on):

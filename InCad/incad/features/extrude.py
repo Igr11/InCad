@@ -14,7 +14,7 @@ FIELDS = (
                                                ("new_solid", "New Solid")), "join"),
     Field("extent", "Extents", "choice", (("distance", "Distance"), ("to_next", "To Next"),
                                           ("through_all", "Through All"), ("to", "To")), "distance"),
-    Field("to_face", "Face", "pick", show_if=("extent", ("to",)), pick="plane"),
+    Field("to_face", "Face", "pick", show_if=("extent", ("to",)), pick="to_face"),
     Field("distance", "Distance", "value_length", default="10 mm", show_if=("extent", ("distance",))),
     Field("direction", "Direction", "choice", (("default", "→"), ("flip", "←"), ("symmetric", "⇆"),
                                                ("two_sides", "⇄ 2")), "default"),
@@ -61,10 +61,32 @@ def _apply(doc, f, values):
     direction = values.get("direction", "default")
     f.SideType = {"symmetric": "Symmetric", "two_sides": "Two sides"}.get(direction, "One side")
     f.Reversed = direction == "flip"
+    if extent == "to_next" and direction == "default" and _material_only_behind(f):
+        f.Reversed = True  # Inventor: To Next goes where the part is
     value_param(doc, f, "Length", values.get("distance") or "10 mm", "length")
     if direction == "two_sides":
         value_param(doc, f, "Length2", values.get("distance2") or "5 mm", "length")
     value_param(doc, f, "TaperAngle", values.get("taper") or "0 °", "angle")
+
+
+def _material_only_behind(f):
+    """True when the part lies only against this feature's default direction (a sketch above the part: To Next
+    would find nothing)."""
+    import Part
+    sk = profile_of(f)
+    base = f.BaseFeature.Shape if f.BaseFeature is not None else None
+    if sk is None or base is None or base.isNull() or sk.Shape.isNull():
+        return False
+    n = _normal(sk)
+    if f.TypeId == "PartDesign::Pocket":
+        n = -n  # a Pocket cuts against the sketch's normal
+    c = sk.Shape.BoundBox.Center
+    reach = base.BoundBox.DiagonalLength + (c - base.BoundBox.Center).Length + 1.0
+
+    def hits(d):
+        ray = Part.LineSegment(c + d * 1e-4, c + d * reach).toShape()
+        return any(e.Length > 1e-6 for e in base.common(ray).Edges)
+    return not hits(n) and hits(-n)
 
 
 def _solids(feature):

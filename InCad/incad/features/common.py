@@ -336,6 +336,10 @@ def accepts(kind, obj, sub):
         if sub.startswith("Edge"):
             return el is not None
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
+    if kind == "to_face":  # Extrude To: any face of the part (flat or curved), or a work plane
+        if not sub:
+            return tid in ("App::Plane", "PartDesign::Plane")
+        return sub.startswith("Face") and el is not None
     if kind == "plane":
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
@@ -369,7 +373,7 @@ def _accepts_sketch(kind, sk, sub):
 
 
 _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
-               "limit": "Click a face, edge or work plane…", "sketch_geometry": "Click the geometry to repeat…",
+               "limit": "Click a face, edge or work plane…", "to_face": "Click a face or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
                "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}
 _PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})
