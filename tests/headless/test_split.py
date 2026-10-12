@@ -208,5 +208,21 @@ class SplitTest(unittest.TestCase):
         self.assertEqual(split.upgrade(self.doc), [])
 
 
+    def test_a_piece_solid_used_by_a_boolean_is_not_deleted(self):
+        """The user's Thread_1: Solid2 was the tool of a Cut; deleting it broke the Cut ('No source shape linked')."""
+        from incad.core import delete
+        from incad.features import combine
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        tool = split.piece_bodies(f)[0]
+        cut = combine.create(self.doc, self.body, None, dict(combine.defaults(self.doc, self.body, None),
+                                                             base=self.body.Name, tools=tool.Name, keep_tool=True))
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as ctx:
+            delete.delete(tool)
+        self.assertIn(cut.Label, str(ctx.exception))
+        self.assertIsNotNone(self.doc.getObject(tool.Name))
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+
+
 if __name__ == "__main__":
     unittest.main()

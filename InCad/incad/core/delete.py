@@ -75,6 +75,10 @@ def _delete(obj):
     if obj.TypeId == "PartDesign::Body":
         if obj is document.primary_body(doc):
             raise ValueError("The main solid can't be deleted (delete its features instead)")
+        users = [f for f in doc.Objects if combine.claims(f) and obj.Name in combine._load(f).get("tools", [])]
+        if users:  # its Boolean would lose its tool ('No source shape linked')
+            raise ValueError("%s is used by %s (Boolean): delete or edit that first"
+                             % (obj.Label, ", ".join(f.Label for f in users)))
         piece = obj.BaseFeature
         obj.removeObjectsFromDocument()
         doc.removeObject(obj.Name)
