@@ -385,8 +385,10 @@ def show_result(body):
                 shown = o
                 break
     try:
-        body.Visibility = True  # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides
-    except Exception:           # it in sketch edit mode): shown features inside a hidden Body show nothing
+        # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides it in sketch edit mode):
+        # shown features inside a hidden Body show nothing. A Solid hidden by Hide / Show stays hidden.
+        body.Visibility = bool(getattr(body, SHOWN_PROP, True))
+    except Exception:
         pass
     for o in feats:
         try:
@@ -458,9 +460,10 @@ def prepare_choice(objects):
     """Before the Hide / Show step: give every target its InCadShown holding the state it has now. Done outside
     the transaction, so the step changes a value FreeCAD can restore (a property added inside the step would be
     removed by undo, taking the previous state with it)."""
-    for o in objects:
+    for o in list(objects) + [s for s in (_solid_of(x) for x in objects) if s is not None]:
         if SHOWN_PROP not in o.PropertiesList and (o.TypeId in ORIGIN_TYPES + DATUM_TYPES
-                                                    or o.TypeId == "Sketcher::SketchObject"):
+                                                    or o.TypeId in ("Sketcher::SketchObject", "PartDesign::Body",
+                                                                    "App::Link")):
             _record_choice(o, is_shown(o))
 
 
@@ -503,6 +506,8 @@ def apply_visibility(doc):
             if not chosen and is_unused_sketch(o):
                 continue
             want = sketch_shown(o)
+        elif o.TypeId in ("PartDesign::Body", "App::Link") and chosen:  # a Solid / component hidden by choice
+            want = bool(getattr(o, SHOWN_PROP))
         else:
             continue
         if bool(o.Visibility) != want:
@@ -520,14 +525,29 @@ def apply_visibility(doc):
             origin.Visibility = False
 
 
+def _solid_of(o):
+    """The Solid (or assembly component) a pick stands for: a Body itself, a feature or the stand-in base inside
+    it, a Split's piece (outside the Solid made on it), a component link; None for anything else."""
+    if o.TypeId in ("PartDesign::Body", "App::Link"):
+        return o
+    if getattr(o, "InCadSplitPiece", False):
+        return next((b for b in o.InList if b.TypeId == "PartDesign::Body" and b.BaseFeature is o), None)
+    parent = o.getParentGeoFeatureGroup() if hasattr(o, "getParentGeoFeatureGroup") else None
+    if parent is not None and parent.TypeId == "PartDesign::Body" and o.isDerivedFrom("PartDesign::Feature"):
+        return parent
+    return None
+
+
 def toggle_visibility(objects):
-    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state."""
+    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state. Sketches, planes,
+    axes and points as they are; anything of a Solid (a face, a feature) hides or shows that whole Solid."""
     targets = [o for o in objects if o.TypeId == "Sketcher::SketchObject" or o.TypeId in ORIGIN_TYPES
                or o.TypeId in DATUM_TYPES]
+    targets += [s for s in dict.fromkeys(_solid_of(o) for o in objects if o not in targets) if s is not None]
     if not targets:
         seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
-        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, a point or a sketch"
-                         % seen if seen else "Select a plane, an axis, a point or a sketch first")
+        raise ValueError("Nothing to hide or show in %s: select a solid, a plane, an axis, a point or a sketch"
+                         % seen if seen else "Select a solid, a plane, an axis, a point or a sketch first")
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag

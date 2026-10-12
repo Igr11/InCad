@@ -210,7 +210,13 @@ def _visibility_targets():
     doc = App.ActiveDocument
     if doc is None:
         raise ValueError("Open a part first")
-    objs = list(dict.fromkeys(s.Object for s in Gui.Selection.getSelectionEx(doc.Name)))
+    from incad.features import common
+    objs = []
+    for s in Gui.Selection.getSelectionEx(doc.Name):  # in an assembly a pick is 'Link.Body.Face5' on the assembly
+        for sub in (s.SubElementNames or ("",)):
+            obj = common.resolve(s.Object, sub)[0] if sub else s.Object
+            if obj is not None and obj not in objs:
+                objs.append(obj)
     if not objs:
         inst = shell.instance()
         names = [context.target()] if context.target() else []
@@ -788,8 +794,9 @@ def commands():
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
         Command(id="view.toggle_visibility", label="Hide / Show", icon="visibility", handler=toggle_visibility,
-                contexts=frozenset({"part", "origin", "browser"}),
-                tooltip="Hide or show the selected origin planes, axes, centre point and unused sketches"),
+                contexts=frozenset({"part", "origin", "browser", "assembly"}),
+                tooltip="Hide or show the selected solids (or assembly parts), origin planes, axes, centre point "
+                        "and sketches"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
                 handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
                 tooltip="Show every origin plane, axis and the centre point"),
@@ -833,6 +840,14 @@ def commands():
                 contexts=frozenset({"assembly"}), tooltip="Create a new part file in this assembly"),
         Command(id="assembly.ground", label="Ground", icon="ground", handler=lambda: _assembly("ground"),
                 contexts=frozenset({"assembly"}), tooltip="Ground or unground the selected component"),
+        Command(id="assembly.suppress", label="Suppress", icon="suppress", handler=lambda: _assembly("suppress"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Suppress the selected component (hidden, its constraints off) or bring it back"),
+        Command(id="assembly.edit", label="Edit", icon="part", handler=lambda: _assembly("edit"),
+                contexts=frozenset({"assembly"}), tooltip="Open the selected component's part to edit it"),
+        Command(id="assembly.remove", label="Remove from Assembly", icon="delete", handler=lambda: _assembly("remove"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Take the selected component out of the assembly (its part file stays)"),
         Command(id="assembly.combine", label="Boolean", icon="combine", handler=lambda: start_feature("asm_combine"),
                 contexts=frozenset({"assembly"}), tooltip="Cut a component by others (written into its part file)"),
         Command(id="constrain.mate", label="Mate", icon="mate", handler=lambda: start_feature("mate"), shortcut="C",

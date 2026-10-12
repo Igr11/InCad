@@ -181,6 +181,7 @@ def _assembly(doc):
     root = Node("assembly", doc.Label)
     for c in assembly.components(doc):
         root.children.append(Node("component", c.Label, c.Name,
+                                  state="suppressed" if assembly.is_suppressed(c) else "",
                                   detail="grounded" if assembly.is_grounded(c) else "",
                                   tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else ""),
                                   children=_component_rows(c)))

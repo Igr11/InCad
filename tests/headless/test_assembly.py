@@ -106,6 +106,34 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual({n.name for n in rows}, {a.Name}, "every row stands for the component (double-click opens it)")
         self.assertFalse([n for n in rows if n.kind == "end_of_part"])
 
+    def test_suppress_hide_and_remove_a_component(self):
+        """The user: an assembly needs Hide / Show, Suppress, Edit and Remove on a part."""
+        from incad.core import delete, tree
+        from incad.features import constraints as C
+        a = assembly.place(self.doc, self.plate)
+        b = assembly.place(self.doc, self.block)
+        self.doc.recompute()
+        top = [i + 1 for i, f in enumerate(a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        bot = [i + 1 for i, f in enumerate(b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z) < 1e-6][0]
+        mate = C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None),
+                                                        first="%s:Face%d" % (a.Name, top),
+                                                        second="%s:Face%d" % (b.Name, bot)))
+        self.assertTrue(assembly.toggle_suppressed(b))
+        self.assertFalse(b.Visibility)
+        self.assertTrue(mate.Suppressed)
+        comps = {n.name: n for n in tree.build(self.doc)[0].children if n.kind == "component"}
+        self.assertEqual(comps[b.Name].state, "suppressed")
+        self.assertFalse(assembly.toggle_suppressed(b))
+        self.assertTrue(b.Visibility)
+        self.assertFalse(mate.Suppressed)
+        self.assertFalse(document.toggle_visibility([b]))  # Hide / Show on a component
+        self.assertFalse(b.Visibility)
+        name = b.Name
+        delete.delete(b)  # Remove from Assembly: its constraint goes too, the part file stays
+        self.assertIsNone(self.doc.getObject(name))
+        self.assertEqual(len(assembly.components(self.doc)), 1)
+        self.assertTrue(os.path.exists(self.block))
+
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, self.doc.FileName)

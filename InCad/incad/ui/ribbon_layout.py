@@ -57,7 +57,8 @@ LAYOUT = {
                                  "joint.ball"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
-                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"]]],
+                  ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"],
+                                    "view.toggle_visibility"]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "empty": [

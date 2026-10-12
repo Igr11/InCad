@@ -196,3 +196,29 @@ def toggle_threads(doc):
             d.recompute()
     doc.recompute()
     return want
+
+
+SUPPRESSED = "InCadSuppressed"
+
+
+def is_suppressed(link):
+    return bool(getattr(link, SUPPRESSED, False))
+
+
+def toggle_suppressed(link):
+    """Suppress (Inventor) a component: hidden and its constraints / joints off, so it no longer counts; again to
+    bring it back. Returns True when it is suppressed now."""
+    doc = link.Document
+    on = not is_suppressed(link)
+    if SUPPRESSED not in link.PropertiesList:
+        link.addProperty("App::PropertyBool", SUPPRESSED, "InCad", "Suppressed in the assembly")
+        link.setPropertyStatus(SUPPRESSED, "Hidden")
+    setattr(link, SUPPRESSED, on)
+    link.Visibility = not on
+    for j in joints(doc):
+        refs = [(getattr(j, p, None) or (None,))[0] for p in ("Reference1", "Reference2")]
+        if link in refs and hasattr(j, "Suppressed"):
+            j.Suppressed = on
+    doc.recompute()
+    return on
+

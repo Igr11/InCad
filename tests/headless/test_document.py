@@ -231,11 +231,13 @@ class VisibilityTest(unittest.TestCase):
         document.show_result(self.body)
         self.assertFalse(self.path.Visibility, "show_result keeps the hidden choice")
 
-    def test_toggle_refuses_nothing_and_features(self):
+    def test_toggle_refuses_nothing_and_a_feature_hides_its_solid(self):
         with self.assertRaises(ValueError):
             document.toggle_visibility([])
-        with self.assertRaises(ValueError):
-            document.toggle_visibility([self.pad])
+        self.assertFalse(document.toggle_visibility([self.pad]))  # the user: a Solid can be hidden too
+        self.assertFalse(self.body.Visibility)
+        document.toggle_visibility([self.pad])
+        self.assertTrue(self.body.Visibility)
 
     def test_showing_one_plane_turns_the_origin_group_on_and_hides_the_rest(self):
         """A new part in the GUI: the Origin group is hidden while its items say Visible — nothing shows. Showing
@@ -591,3 +593,51 @@ class HistoryTest(unittest.TestCase):
         self.assertIsNone(self.body.Tip)
         self.assertIsNone(self.other.Tip)
         self.assertFalse(self.pad.Visibility)
+
+
+class HideShowSolidTest(unittest.TestCase):
+    """The user: after a Split, Hide / Show refused a piece ('Nothing to hide or show in BaseFeature / SplitPiece /
+    Split004') — it knew only sketches, planes, axes and points."""
+
+    def setUp(self):
+        from incad.features import split
+        self.doc = util.new_doc("Hs")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        sk = self.body.newObject("Sketcher::SketchObject", "Knife")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.LineSegment(App.Vector(5, -5, 0), App.Vector(5, 15, 0)))
+        self.doc.recompute()
+        self.split = split.create(self.doc, self.body, None, dict(split.defaults(self.doc, self.body, None),
+                                                                   sketch=sk.Name))
+        self.doc.recompute()
+        self.piece = split.piece_bodies(self.split)[0]
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_a_pick_on_a_piece_hides_its_solid(self):
+        base = next(o for o in self.piece.Group if o.TypeId == "PartDesign::FeatureBase")
+        self.assertFalse(document.toggle_visibility([base]))
+        self.assertFalse(self.piece.Visibility)
+        self.assertTrue(self.body.Visibility, "the other piece stays")
+        document.show_result(self.piece)  # a refresh does not bring it back
+        self.assertFalse(self.piece.Visibility)
+        self.assertTrue(document.toggle_visibility([self.piece.BaseFeature]))  # its SplitPiece: the same Solid
+        self.assertTrue(self.piece.Visibility)
+
+    def test_the_main_piece_hides_by_its_split(self):
+        self.assertFalse(document.toggle_visibility([self.split]))
+        self.assertFalse(self.body.Visibility)
+        self.assertTrue(self.piece.Visibility)
+
+    def test_undo_brings_a_hidden_solid_back(self):
+        self.doc.UndoMode = 1
+        document.prepare_choice([self.piece])
+        self.doc.openTransaction("Hide / Show")
+        document.toggle_visibility([self.piece])
+        self.doc.commitTransaction()
+        self.doc.undo()
+        document.apply_visibility(self.doc)
+        self.assertTrue(self.piece.Visibility)
+

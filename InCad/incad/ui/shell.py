@@ -1073,6 +1073,8 @@ class Shell(QtCore.QObject):
         self._on_browser_select(name)  # the row's object is the selection: shown in the view while the menu is up
         obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
         kind = "origin" if obj is not None and obj.TypeId in ("App::Plane", "App::Line", "App::Point") else "browser"
+        if obj is not None and obj.TypeId == "App::Link":  # a component's row (or a row of its history)
+            kind = "asm_face"
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
@@ -2290,11 +2292,11 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
         return result.value if result.ok else None
 
-    def assembly_ground(self, link=None):
+    def _picked_component(self, doc, link, what):
+        """The component the command acts on: given, the row the menu was opened on, or the 3D / tree pick."""
         import FreeCADGui as Gui
-        from incad.core import assembly, context, safe
+        from incad.core import assembly, context
         from incad.features import common
-        doc = self._assembly_doc()
         if link is None:
             name = context.target()
             link = doc.getObject(name) if name else None
@@ -2305,7 +2307,36 @@ class Shell(QtCore.QObject):
                     if obj is not None and obj.TypeId == "App::Link":
                         link = obj
         if link is None or link not in assembly.components(doc):
-            raise ValueError("Select a component to ground or unground")
+            raise ValueError("Select a component to %s" % what)
+        return link
+
+    def assembly_suppress(self, link=None):
+        from incad.core import assembly, log, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "suppress or unsuppress")
+        r = safe.run_safely("Suppress", lambda: assembly.toggle_suppressed(link), doc)
+        if r.ok:
+            log.report("info", "%s %s" % (link.Label, "suppressed" if r.value else "back"))
+        self.schedule_refresh()
+
+    def assembly_edit(self, link=None):
+        doc = self._assembly_doc()
+        self.open_component(self._picked_component(doc, link, "edit"))
+
+    def assembly_remove(self, link=None):
+        from incad.core import delete, log, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "remove")
+        label = link.Label
+        r = safe.run_safely("Remove from Assembly", lambda: delete.delete(link), doc)
+        if r.ok:
+            log.report("info", "%s removed from the assembly (its part file stays)" % label)
+        self.schedule_refresh()
+
+    def assembly_ground(self, link=None):
+        from incad.core import assembly, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "ground or unground")
         action = assembly.unground if assembly.is_grounded(link) else assembly.ground
         safe.run_safely("Ground", lambda: action(link), doc)
         self.schedule_refresh()
@@ -3090,6 +3121,18 @@ def assembly_create(name=None):
 
 def assembly_ground(link=None):
     return _active().assembly_ground(link)
+
+
+def assembly_suppress(link=None):
+    return _active().assembly_suppress(link)
+
+
+def assembly_edit(link=None):
+    return _active().assembly_edit(link)
+
+
+def assembly_remove(link=None):
+    return _active().assembly_remove(link)
 
 
 def current_tree_object():
