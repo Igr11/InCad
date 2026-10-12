@@ -493,6 +493,21 @@ def delete_target():
     from incad.ui import shell
     if shell.sketch_session().editing() is obj:
         shell.sketch_session().finish()  # the edit would be left half-reset on a deleted object
+    kw = {}
+    if obj.TypeId == "PartDesign::Body":  # Inventor asks instead of refusing
+        from incad.core import document
+        users = delete.users_of(obj)
+        if users:
+            names = ", ".join(f.Label for f in users)
+            if not shell.confirm("Delete", "%s is used by %s (Boolean). Delete %s too?" % (obj.Label, names, names)):
+                return
+            kw["with_users"] = True
+        nxt = delete.main_successor(obj) if obj is document.primary_body(doc) else None
+        if nxt is not None:
+            if not shell.confirm("Delete", "%s is the main solid. Delete it? %s becomes the main solid; solids split "
+                                           "from it keep their shape." % (obj.Label, nxt.Label)):
+                return
+            kw["replace_main"] = True
     extras = delete.documents(obj)
     for d in extras:
         if not d.UndoMode:
@@ -500,7 +515,7 @@ def delete_target():
         if d.HasPendingTransaction:
             d.abortTransaction()
         d.openTransaction("Delete")
-    res = safe.run_safely("Delete", lambda: delete.delete(obj), doc)
+    res = safe.run_safely("Delete", lambda: delete.delete(obj, **kw), doc)
     for d in extras:
         if res.ok:
             d.commitTransaction()

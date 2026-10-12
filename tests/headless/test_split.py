@@ -224,5 +224,36 @@ class SplitTest(unittest.TestCase):
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
 
 
+    def test_deleting_a_tool_solid_with_its_boolean(self):
+        from incad.core import delete
+        from incad.features import combine
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        tool = split.piece_bodies(f)[0]
+        cut = combine.create(self.doc, self.body, None, dict(combine.defaults(self.doc, self.body, None),
+                                                             base=self.body.Name, tools=tool.Name, keep_tool=True))
+        self.doc.recompute()
+        self.assertEqual(delete.users_of(tool), [cut])
+        tool_name, cut_name = tool.Name, cut.Name
+        delete.delete(tool, with_users=True)
+        self.doc.recompute()
+        self.assertIsNone(self.doc.getObject(tool_name))
+        self.assertIsNone(self.doc.getObject(cut_name))
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+
+    def test_deleting_the_main_solid_makes_the_piece_the_main_one(self):
+        """The user: 'The main solid can't be deleted' — keep only the second piece."""
+        from incad.core import delete
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        piece = split.piece_bodies(f)[0]
+        self.assertEqual(delete.main_successor(self.body), piece)
+        main_name = self.body.Name
+        delete.delete(self.body, replace_main=True)
+        self.doc.recompute()
+        self.assertIsNone(self.doc.getObject(main_name))
+        self.assertIs(document.primary_body(self.doc), piece)
+        self.assertAlmostEqual(piece.Shape.Volume, 500, places=6)  # frozen: its Split went with the main solid
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State or o.TypeId == "Part::FeaturePython"])
+
+
 if __name__ == "__main__":
     unittest.main()

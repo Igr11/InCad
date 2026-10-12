@@ -15,6 +15,22 @@ def _remove_feature(f):
     doc.removeObject(f.Name)
 
 
+def _hand_over_main(body):
+    """Before the main Solid goes: the Solids split from it keep their shape (frozen, their Split goes with it),
+    and the next Solid becomes the main one."""
+    from incad.core import document
+    from incad.features import split
+    doc = body.Document
+    if body is not document.primary_body(doc):
+        return
+    nxt = main_successor(body)
+    if nxt is None:
+        raise ValueError("The only solid can't be deleted (delete its features instead)")
+    for f in [o for o in body.Group if split.claims(o)]:
+        split.freeze_pieces(doc, f)
+    document._meta_set(doc, **{document.PRIMARY_KEY: nxt.Name})
+
+
 def documents(obj):
     """Other documents a delete changes (an assembly cut lives in its part file)."""
     from incad.core import asm_cut
@@ -24,10 +40,35 @@ def documents(obj):
     return []
 
 
-def delete(obj):
+def users_of(body):
+    """The Booleans that use this Solid as a tool (deleting it alone would break them)."""
+    from incad.features import combine
+    return [f for f in body.Document.Objects if combine.claims(f) and body.Name in combine._load(f).get("tools", [])]
+
+
+def main_successor(body):
+    """The Solid that becomes the main one when the main `body` is deleted: the largest other Solid that is no
+    Boolean's used-up tool; None when there is none."""
+    from incad.core import document
+    from incad.features import combine
+    used = combine.used_up_names(body.Document)
+    others = [b for b in document.bodies(body.Document) if b is not body and b.Name not in used
+              and not b.Shape.isNull()]
+    return max(others, key=lambda b: b.Shape.Volume) if others else None
+
+
+def delete(obj, with_users=False, replace_main=False):
     """Delete obj with what InCad made for it, then show the part's new End of Part (FreeCAD shows only the newest
-    feature, so the one before it was hidden and the view went blank when the newest was deleted)."""
+    feature, so the one before it was hidden and the view went blank when the newest was deleted).
+    with_users: a Solid's Booleans that use it as a tool go first. replace_main: the main Solid may go, another
+    becomes the main one (main_successor)."""
     body = obj.getParentGeoFeatureGroup() if obj is not None else None
+    if obj is not None and obj.TypeId == "PartDesign::Body":
+        if with_users:
+            for f in users_of(obj):
+                _delete(f)
+        if replace_main:
+            _hand_over_main(obj)
     _delete(obj)
     from incad.core import document
     if body is not None and body.TypeId == "PartDesign::Body" and body.Document.getObject(body.Name) is not None:

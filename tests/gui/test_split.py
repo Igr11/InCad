@@ -76,4 +76,48 @@ def test_1_split_then_cut_by_a_click():
         tip.ViewObject.DisplayMode, type(getattr(tip.ViewObject, "Proxy", None)).__name__, ST.get("preview_vo"), tip.Name)
 
 
-harness.run([test_0_box_and_a_knife, test_1_split_then_cut_by_a_click])
+def test_2_delete_asks_and_takes_the_boolean_and_the_main_solid():
+    """The user: Delete refused a piece used by a Boolean and the main solid; Inventor asks instead."""
+    from incad.core import document
+    from incad.features import combine, split
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    part = document.primary_body(doc())
+    box = part.newObject("PartDesign::AdditiveBox", "Box")
+    box.Length, box.Width, box.Height = 20, 10, 10
+    part.Tip = box
+    sk = part.newObject("Sketcher::SketchObject", "Knife")
+    sk.AttachmentSupport = [([o for o in part.Origin.OriginFeatures if o.Role == "XY_Plane"][0], "")]
+    sk.MapMode = "FlatFace"
+    sk.addGeometry(Part.LineSegment(App.Vector(5, -5, 0), App.Vector(5, 15, 0)))
+    doc().recompute()
+    f = split.create(doc(), part, None, dict(split.defaults(doc(), part, None), sketch=sk.Name))
+    piece = split.piece_bodies(f)[0]
+    combine.create(doc(), part, None, dict(combine.defaults(doc(), part, None), base=part.Name, tools=piece.Name,
+                                           keep_tool=True))
+    doc().recompute()
+    harness.pump(500)
+    asked = []
+    shell.CONFIRM = lambda title, text: (asked.append(text), True)[1]
+    try:
+        from incad.core import context
+        context.set_target(piece.Name)  # as a right-click on its row does
+        piece_name = piece.Name
+        commands.REGISTRY.run("browser.delete")
+        harness.pump(800)
+        assert asked and "Boolean" in asked[0], asked
+        assert doc().getObject(piece_name) is None
+        assert not [o.Name for o in doc().Objects if combine.claims(o)], "its Boolean went too"
+        main_name = part.Name
+        context.set_target(part.Name)
+        before = len(asked)
+        r = commands.REGISTRY.run("browser.delete")
+        harness.pump(800)
+        # the only solid left: no successor, so no question and a plain refusal
+        assert len(asked) == before and not getattr(r, "ok", True) or doc().getObject(main_name) is not None
+    finally:
+        shell.CONFIRM = None
+
+
+harness.run([test_0_box_and_a_knife, test_1_split_then_cut_by_a_click,
+             test_2_delete_asks_and_takes_the_boolean_and_the_main_solid])

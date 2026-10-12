@@ -165,6 +165,17 @@ def is_piece(obj):
     return bool(getattr(obj, _PIECE, False))
 
 
+def freeze_pieces(doc, f):
+    """Every piece Solid of the Split keeps its piece as a plain shape (the Split is going away with its Solid)."""
+    for b in piece_bodies(f):
+        piece = b.BaseFeature
+        frozen = doc.addObject("Part::Feature", "SplitPieceShape")
+        frozen.Shape = piece.Shape.copy()
+        frozen.Visibility = False
+        b.BaseFeature = frozen
+        doc.removeObject(piece.Name)
+
+
 def delete(doc, f):
     """Delete a Split: its empty piece Solids go with it; a piece Solid with work on it stays on a frozen copy of
     its piece (a plain shape: nothing links to the deleted Split)."""

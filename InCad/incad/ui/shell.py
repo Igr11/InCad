@@ -2966,6 +2966,17 @@ def _finish_open_tools():
 
 
 UPDATE_ASK = None  # tests: callable(assembly label) -> True to update
+CONFIRM = None  # tests: callable(title, text) -> True for Yes
+
+
+def confirm(title, text):
+    """A Yes / No question; True for Yes."""
+    import FreeCADGui as Gui
+    if CONFIRM is not None:
+        return CONFIRM(title, text)
+    return QtWidgets.QMessageBox.question(Gui.getMainWindow(), title, text,
+                                          QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) \
+        == QtWidgets.QMessageBox.Yes
 
 
 def ask_save(docs, action="quitting"):
