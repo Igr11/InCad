@@ -105,5 +105,22 @@ class SplitTest(unittest.TestCase):
         self.assertTrue(split.claims(g))
 
 
+    def test_the_knife_sketch_is_used_by_the_split(self):
+        """Review: the knife counted as an unused sketch, so it was shown again after OK."""
+        from incad.features import common
+        sk = line_sketch(self.body, ((5, -5), (5, 15)))
+        f = self.make(sk)
+        self.assertIn(f, common.consumers(sk))
+
+    def test_edit_reads_the_keep_picks_back(self):
+        """Review: read() gave 'x y z' numbers, so the first click while editing replaced every kept piece."""
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        big = max(f.Shape.Solids, key=lambda s: s.Volume)
+        face = next(i + 1 for i, fc in enumerate(f.Shape.Faces) if big.isInside(fc.CenterOfMass, 1e-6, True))
+        pick = "%s:Face%d" % (f.Name, face)
+        split.update(self.doc, f, dict(split.read(self.doc, f), mode="cut", keep=pick))
+        self.assertEqual(split.read(self.doc, f)["keep"], pick)
+
+
 if __name__ == "__main__":
     unittest.main()

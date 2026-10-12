@@ -133,7 +133,9 @@ def _build(doc, f, values):
     f.Sketch = sk
     f.Mode = values.get("mode") or "split"
     f.Keep = _points(doc, values.get("keep")) if f.Mode == "cut" else []
-    _store(f, {"sketch": sk.Name, "mode": f.Mode})
+    # the picks as typed ('Split:Face7', named on every piece shown while Keep is picked): edit reads them back, so a
+    # click adds to them instead of replacing them
+    _store(f, {"sketch": sk.Name, "mode": f.Mode, "keep": (values.get("keep") or "") if f.Mode == "cut" else ""})
     return f
 
 
@@ -166,7 +168,7 @@ def read(doc, f):
     data = _load(f)
     values = defaults(doc, f.getParentGeoFeatureGroup(), None)
     values.update(sketch=data.get("sketch", getattr(f.Sketch, "Name", "")), mode=data.get("mode", "split"),
-                  keep=", ".join("%g %g %g" % (p.x, p.y, p.z) for p in f.Keep))
+                  keep=data.get("keep") or ", ".join("%g %g %g" % (p.x, p.y, p.z) for p in f.Keep))
     return values
 
 
@@ -188,6 +190,7 @@ def keep_piece(f, point):
     f.Keep = [point]
     data = _load(f)
     data["mode"] = "cut"
+    data["keep"] = "%r %r %r" % (point.x, point.y, point.z)
     _store(f, data)
     f.touch()
 

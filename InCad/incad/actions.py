@@ -348,6 +348,7 @@ def make_assembly():
     from incad.core import make_assembly as ma
     from incad.ui.make_assembly_dialog import MakeAssemblyDialog
     from incad.ui.piece_marker import PieceMarker
+    _refuse_while_busy()  # an open dialog's preview would be written into every copy
     doc = App.ActiveDocument
     found = ma.pieces_or_refuse(doc)
     asm, names = ma.default_names(doc, len(found))

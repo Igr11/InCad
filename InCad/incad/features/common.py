@@ -59,6 +59,8 @@ def _linked(value):
 
 
 def _uses(feature, sk):
+    if hasattr(feature, "InCadSplit") and getattr(feature, "Sketch", None) is sk:
+        return True  # Split's knife
     if getattr(feature, "Profile", None) is not None and _profile(feature) is sk:
         return True
     for prop in ("Spine", "Sections"):

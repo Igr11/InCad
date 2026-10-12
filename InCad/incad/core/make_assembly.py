@@ -13,17 +13,30 @@ Piece = namedtuple("Piece", "body_name point volume")
 
 
 def _inside(solid):
-    """A point inside the solid (its centre of mass when that is inside, else a face's centre)."""
+    """A point strictly inside the solid: its centre of mass when that is inside (a C-shaped piece of a split ring
+    has it in the hole), else a face's middle pushed a little into the material — never a point on a face that two
+    split pieces share."""
     c = solid.CenterOfMass
-    if solid.isInside(c, 1e-6, False):
+    if solid.isInside(c, 1e-7, False):
         return c
-    return solid.Faces[0].CenterOfMass
+    for f in solid.Faces:
+        u0, u1, v0, v1 = f.ParameterRange
+        p, n = f.valueAt((u0 + u1) / 2, (v0 + v1) / 2), f.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
+        for step in (1e-3, 1e-2, 0.1):
+            for q in (p - n * step, p + n * step):
+                if solid.isInside(q, 1e-7, False):
+                    return q
+    return c
 
 
 def pieces(doc):
+    """Every solid of every Solid of the part, largest first; a Boolean's used-up tool is no piece (it lives on in the
+    hole it cut; its "fit" copy, the printed tool, is one)."""
+    from incad.features import combine
+    used = combine.used_up_names(doc)
     out = []
     for body in document.bodies(doc):
-        if body.Shape.isNull():
+        if body.Shape.isNull() or body.Name in used:
             continue
         for s in body.Shape.Solids:
             out.append(Piece(body.Name, _inside(s), s.Volume))
@@ -37,8 +50,27 @@ def pieces_or_refuse(doc):
         raise ValueError("Save the part first: its folder takes the new files")
     found = pieces(doc)
     if len(found) < 2:
+        joiner = _joiner(doc)
+        if joiner is not None:
+            raise ValueError("This part is one piece: %s joined the split pieces again (make it before the Split, "
+                             "or as a New Solid)" % joiner.Label)
         raise ValueError("This part is one piece: nothing to assemble")
     return found
+
+
+def _joiner(doc):
+    """The feature after a Split that fused its pieces back into fewer solids (any additive step does), or None."""
+    from incad.features import split
+    for b in document.bodies(doc):
+        split_count = 0
+        for f in b.Group:
+            if not f.isDerivedFrom("PartDesign::Feature") or f.Shape.isNull() or not f.Shape.Solids:
+                continue
+            if split.claims(f) and len(f.Shape.Solids) > 1:
+                split_count = len(f.Shape.Solids)
+            elif split_count and len(f.Shape.Solids) < split_count:
+                return f
+    return None
 
 
 def _stem(doc):
@@ -75,13 +107,32 @@ def _remove_body(d, body):
     d.removeObject(body.Name)
 
 
+def _has_split(body):
+    from incad.features import split
+    return any(split.claims(f) for f in body.Group)
+
+
 def _detach_all(d):
-    """Every separate piece left in a Solid by an older file goes to a Solid of its own."""
+    """Every separate piece left in a Solid by an older file goes to a Solid of its own; a Solid with a Split keeps
+    them (the Split's Cut picks the piece, lumps before it included: their knife may cross them)."""
     for _ in range(100):
-        lump = next((f for b in document.bodies(d) for f in b.Group if document.is_detached_lump(f)), None)
+        lump = next((f for b in document.bodies(d) if not _has_split(b) for f in b.Group
+                     if document.is_detached_lump(f)), None)
         if lump is None:
             return
         document.detach_lump(lump)
+        d.recompute()
+
+
+def _suppress_lost_steps(d, body, split_feature):
+    """Steps after the Split made on another piece (a fillet of its edge) lose their references in this copy: they
+    are suppressed here, the copy of that piece keeps them."""
+    after = body.Group[body.Group.index(split_feature) + 1:]
+    for _ in range(len(after)):
+        bad = next((o for o in after if "Invalid" in o.State and hasattr(o, "Suppressed") and not o.Suppressed), None)
+        if bad is None:
+            return
+        bad.Suppressed = True
         d.recompute()
 
 
@@ -92,21 +143,30 @@ def _finish_copy(path, point):
     try:
         d.recompute()
         _detach_all(d)
+        from incad.features import combine, split
+        used = combine.used_up_names(d)
         probe = Part.Vertex(point)
-        keep = min((b for b in document.bodies(d) if not b.Shape.isNull()),
+        keep = min((b for b in document.bodies(d) if not b.Shape.isNull() and b.Name not in used),
                    key=lambda b: b.Shape.distToShape(probe)[0])
+        needed = {o.getParentGeoFeatureGroup() for o in keep.OutListRecursive if hasattr(o, "getParentGeoFeatureGroup")}
+        needed |= {o for o in keep.OutListRecursive if o.TypeId == "PartDesign::Body"}
         for b in document.bodies(d):
-            if b is not keep:
+            if b is keep:
+                continue
+            if b in needed:  # a Boolean's tool (or what a fit copy grows from): kept, hidden, so the copy recomputes
+                b.Visibility = False
+            else:
                 _remove_body(d, b)
         if len(keep.Shape.Solids) > 1:
-            from incad.features import split
             last = next((f for f in reversed(keep.Group) if split.claims(f)), None)
             if last is None:
                 raise ValueError("%s: its pieces could not be separated" % os.path.basename(path))
             split.keep_piece(last, point)
+            d.recompute()
+            _suppress_lost_steps(d, keep, last)
         document._meta_set(d, **{document.PRIMARY_KEY: keep.Name})
         d.recompute()
-        bad = [o.Label for o in d.Objects if "Invalid" in o.State]
+        bad = ["%s (%s)" % (o.Label, o.getStatusString()) for o in d.Objects if "Invalid" in o.State]
         if bad or len(keep.Shape.Solids) != 1:
             raise ValueError("%s: %s" % (os.path.basename(path), ", ".join(bad) or "not one piece"))
         d.save()
@@ -141,15 +201,15 @@ def make(doc, asm_name, names):
     try:
         for piece, name in zip(found, names):
             path = _path(doc, name)
+            made.append(path)  # before writing: a write that fails half-way is removed too
             doc.saveCopy(path)
-            made.append(path)
             _finish_copy(path, piece.point)
         asm_path = _path(doc, asm_name)
         a = App.newDocument(asm_name, hidden=True)
         try:
             assembly.make_assembly(a, document.part_units(doc) or "mm")
-            a.saveAs(asm_path)
             made.append(asm_path)
+            a.saveAs(asm_path)
             for path in made[:-1]:  # largest first: the first placed is grounded
                 assembly.place(a, path, beside=False)
             a.recompute()
@@ -164,4 +224,5 @@ def make(doc, asm_name, names):
         for path in made:
             if os.path.exists(path):
                 os.remove(path)
+        _drop_backups(made)
         raise
