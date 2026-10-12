@@ -240,12 +240,25 @@ def parts_signature(doc):
     return tuple(out)
 
 
-def update_if_parts_changed(doc, seen):
-    """Back in the assembly: when a part changed since `seen` (a parts_signature), recompute and solve so the
-    assembly follows (Inventor updates by itself). Returns (changed, signature now)."""
-    now = parts_signature(doc)
-    if seen is None or now == seen:
-        return False, now
+_NEEDS_UPDATE = set()  # assemblies whose parts changed and whose update was declined (this session)
+
+
+def parts_changed(doc, seen):
+    """True when a part looks different from `seen` (a parts_signature)."""
+    return seen is not None and parts_signature(doc) != seen
+
+
+def mark_needs_update(doc):
+    _NEEDS_UPDATE.add(doc.Name)
+
+
+def needs_update(doc):
+    return doc is not None and doc.Name in _NEEDS_UPDATE
+
+
+def bring_parts_in(doc):
+    """Update the assembly to its parts as they are now (Yes, or Refresh): recompute and solve; the 'needs update'
+    sign goes."""
     for c in components(doc):
         c.touch()  # a link to another file is not touched by that file's recompute
     doc.recompute()
@@ -256,4 +269,5 @@ def update_if_parts_changed(doc, seen):
         except Exception:
             pass
         doc.recompute()
-    return True, parts_signature(doc)
+    _NEEDS_UPDATE.discard(doc.Name)
+    return parts_signature(doc)

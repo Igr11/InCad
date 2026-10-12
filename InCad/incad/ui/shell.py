@@ -1070,8 +1070,9 @@ class Shell(QtCore.QObject):
         self.refresh_constraints_window()  # a picked line or point filters the Constraint List
 
     def _document_activated(self, doc):
-        """Back in an assembly's tab: parts edited in their own tabs meanwhile come in by themselves (Inventor),
-        no Refresh needed. Deferred: FreeCAD is still switching the tab."""
+        """Back in an assembly's tab: when parts were edited in their own tabs meanwhile, ask whether to update
+        (declined: the tree shows that it needs an update until Refresh). Deferred: FreeCAD is still switching
+        the tab."""
         name = getattr(doc, "Name", None)
         if name:
             QtCore.QTimer.singleShot(0, lambda n=name: self._update_assembly(n))
@@ -1085,13 +1086,30 @@ class Shell(QtCore.QObject):
         seen = getattr(self, "_assembly_seen", {})
         self._assembly_seen = seen
         try:
-            changed, seen[name] = assembly.update_if_parts_changed(doc, seen.get(name))
+            changed = assembly.parts_changed(doc, seen.get(name))
+            seen[name] = assembly.parts_signature(doc)  # asked once per change
+            if not changed:
+                return
+            ask = UPDATE_ASK or (lambda label: QtWidgets.QMessageBox.question(
+                self.mw, "Update Assembly", "Parts of %s changed. Update the assembly now?" % label,
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes)
+            if ask(doc.Label):
+                seen[name] = assembly.bring_parts_in(doc)
+                log.report("info", "Updated %s" % doc.Label)
+            else:
+                assembly.mark_needs_update(doc)
+                log.report("info", "%s needs an update (Refresh)" % doc.Label)
         except Exception:
             log.logger().exception("assembly update on return")
             return
-        if changed:
-            log.report("info", "Updated %s (parts changed)" % doc.Label)
-            self.schedule_refresh()
+        self.schedule_refresh()
+
+    def assembly_refreshed(self, doc):
+        """Refresh brought the parts in: remember how they look, so returning to the tab does not ask again."""
+        from incad.core import assembly
+        seen = getattr(self, "_assembly_seen", {})
+        self._assembly_seen = seen
+        seen[doc.Name] = assembly.parts_signature(doc)
 
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
@@ -2931,6 +2949,9 @@ def _finish_open_tools():
             _shell.sketches.finish()
     except Exception as e:
         log.report("warning", "Could not close the open tools: %s" % e, traceback.format_exc())
+
+
+UPDATE_ASK = None  # tests: callable(assembly label) -> True to update
 
 
 def ask_save(docs, action="quitting"):

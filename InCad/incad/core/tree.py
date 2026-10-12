@@ -178,7 +178,8 @@ def _component_rows(link):
 def _assembly(doc):
     from incad.core import assembly
     from incad.features import constraints
-    root = Node("assembly", doc.Label)
+    root = Node("assembly", doc.Label, detail="⚡ Needs update" if assembly.needs_update(doc) else "",
+                tooltip="Parts changed: Refresh updates the assembly" if assembly.needs_update(doc) else "")
     for c in assembly.components(doc):
         root.children.append(Node("component", c.Label, c.Name,
                                   state="suppressed" if assembly.is_suppressed(c) else "",

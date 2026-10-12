@@ -134,20 +134,25 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual(len(assembly.components(self.doc)), 1)
         self.assertTrue(os.path.exists(self.block))
 
-    def test_parts_changed_elsewhere_are_noticed_and_brought_in(self):
-        """The user: after editing a part in its own tab, the assembly needed a Refresh click."""
+    def test_parts_changed_elsewhere_are_noticed_and_brought_in_on_request(self):
+        """The user: after editing a part in its own tab the assembly should ask to update, never update by itself;
+        declined, it shows that it needs an update until Refresh."""
+        from incad.core import tree
         b = assembly.place(self.doc, self.block)
         self.doc.recompute()
         seen = assembly.parts_signature(self.doc)
-        self.assertFalse(assembly.update_if_parts_changed(self.doc, seen)[0])
+        self.assertFalse(assembly.parts_changed(self.doc, seen))
         pad = self.block_doc.getObject("Pad")
         pad.Length = 25
         self.block_doc.recompute()
-        changed, seen2 = assembly.update_if_parts_changed(self.doc, seen)
-        self.assertTrue(changed)
-        self.assertNotEqual(seen, seen2)
+        self.assertTrue(assembly.parts_changed(self.doc, seen))
+        assembly.mark_needs_update(self.doc)  # declined
+        root = tree.build(self.doc)[0]
+        self.assertIn("needs update", root.detail.lower())
+        assembly.bring_parts_in(self.doc)  # Refresh (or Yes)
         self.assertAlmostEqual(b.Shape.BoundBox.ZLength, 25, places=6)
-        self.assertFalse(assembly.update_if_parts_changed(self.doc, seen2)[0])
+        self.assertFalse(assembly.needs_update(self.doc))
+        self.assertNotIn("needs update", tree.build(self.doc)[0].detail.lower())
 
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:

@@ -12,6 +12,7 @@ from incad.qt import QtCore, QtWidgets  # noqa: E402
 from incad.core import assembly, commands, document, prefs  # noqa: E402
 
 ST = {}
+REFRESH = "edit.update"
 
 
 def test_0_part_with_two_pieces():
@@ -73,8 +74,10 @@ def test_1_dialog_then_ok_opens_the_assembly():
     assert len(assembly.components(asm_doc)) == 2
 
 
-def test_2_a_part_edited_in_its_tab_comes_in_when_back_in_the_assembly():
-    """The user: after editing a part in its own tab the assembly needed a Refresh click."""
+def test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh():
+    """The user: no update by itself — ask; declined, show that it needs an update; Refresh clears it."""
+    from incad.core import tree
+    from incad.ui import shell
     asm_doc = next(d for d in App.listDocuments().values() if assembly.is_assembly(d))
     block = assembly.components(asm_doc)[1]
     part = block.LinkedObject.Document
@@ -84,10 +87,21 @@ def test_2_a_part_edited_in_its_tab_comes_in_when_back_in_the_assembly():
     box.Height = 25
     part.recompute()
     harness.pump(300)
-    App.setActiveDocument(asm_doc.Name)
-    harness.pump(1500)
+    asked = []
+    shell.UPDATE_ASK = lambda label: (asked.append(label), False)[1]
+    try:
+        App.setActiveDocument(asm_doc.Name)
+        harness.pump(1500)
+    finally:
+        shell.UPDATE_ASK = None
+    assert asked, "it asks"
+    # (a link always shows its part as it is now; the update is the assembly's own recompute: constraints, cuts)
+    assert "needs update" in tree.build(asm_doc)[0].detail.lower()
+    commands.REGISTRY.run(REFRESH)
+    harness.pump(1000)
     assert abs(block.Shape.BoundBox.ZLength - 25) < 1e-6, block.Shape.BoundBox
+    assert "needs update" not in tree.build(asm_doc)[0].detail.lower()
 
 
 harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly,
-             test_2_a_part_edited_in_its_tab_comes_in_when_back_in_the_assembly])
+             test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh])

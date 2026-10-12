@@ -710,7 +710,11 @@ def update_model():
     _refuse_while_busy()
     doc = App.ActiveDocument
     if doc is not None:
-        from incad.core import document
+        from incad.core import assembly, document
+        if assembly.is_assembly(doc):  # parts edited in their tabs come in; the 'needs update' sign goes
+            assembly.bring_parts_in(doc)
+            if shell.instance() is not None:
+                shell.instance().assembly_refreshed(doc)
         doc.recompute()
         for b in document.bodies(doc):  # the display follows the tip again (a view that drifted is put right)
             document.show_result(b)
