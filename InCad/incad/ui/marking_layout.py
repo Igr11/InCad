@@ -9,7 +9,7 @@ LAYOUT = {
     "part": {"N": "sketch.start", "NE": "edit.redo", "E": "view.style_shaded", "SE": "view.parameters",
              "S": "feature.extrude", "SW": "view.theme_toggle", "W": "view.style_wireframe", "NW": "edit.undo",
              "list": ["view.zoom_all", "view.home", "view.freecad", "view.toggle_visibility", "view.origin_show_all",
-                      "view.origin_hide_all"]},
+                      "view.origin_hide_all", "file.make_assembly"]},
     "face": {"N": "sketch.start", "NE": "view.look_at", "E": "view.style_shaded", "SE": "view.home",
              "S": "feature.extrude", "SW": "view.zoom_all", "W": "view.style_wireframe", "NW": "edit.undo",
              "list": ["view.show_in_browser", "view.zoom_selection", "feature.hole", "feature.fillet", "feature.thread",

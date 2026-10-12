@@ -339,6 +339,39 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def make_assembly():
+    """The part's pieces become part files and an assembly (names asked first); the assembly opens."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    import Part
+    from incad.qt import QtWidgets
+    from incad.core import make_assembly as ma
+    from incad.ui.make_assembly_dialog import MakeAssemblyDialog
+    from incad.ui.piece_marker import PieceMarker
+    doc = App.ActiveDocument
+    found = ma.pieces_or_refuse(doc)
+    asm, names = ma.default_names(doc, len(found))
+    rows = [(n, "%.0f mm³" % p.volume) for n, p in zip(names, found)]
+    dlg = MakeAssemblyDialog(asm, rows, lambda a, ns: ma.check_names(doc, a, ns), Gui.getMainWindow())
+    view = Gui.getDocument(doc.Name).ActiveView
+    marker = PieceMarker(view)
+    solids = []
+    for p in found:
+        body = doc.getObject(p.body_name)
+        probe = Part.Vertex(p.point)
+        solids.append(min(body.Shape.Solids, key=lambda s: s.distToShape(probe)[0]))
+    dlg.hovered.connect(lambda i: marker.show(solids[i] if i >= 0 else None))
+    try:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return None
+    finally:
+        marker.remove()
+    asm_name, part_names = dlg.names()
+    path = ma.make(doc, asm_name, part_names)
+    App.openDocument(path)
+    return path
+
+
 def _edit_sketch_pattern():
     from incad.ui import shell
     sk, name = shell.instance().selected_sketch_pattern()
@@ -802,6 +835,9 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Boolean", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="file.make_assembly", label="Make Assembly", icon="make_assembly", handler=make_assembly,
+                contexts=frozenset({"part"}),
+                tooltip="Each separate piece of this part becomes a part file (with its history), linked by a new assembly"),
         Command(id="feature.split", label="Split", icon="split", handler=lambda: start_feature("split"),
                 contexts=frozenset({"part"}),
                 tooltip="Cut the part along a sketch's lines (made into thin surfaces): keep every piece, or the ones you click"),

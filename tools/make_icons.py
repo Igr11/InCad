@@ -269,6 +269,7 @@ ICONS.update({
     'slot_arc_flat': '<path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="8" opacity=".35"/><path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="2"/><path d="M2 22 H10 M22 22 H30" stroke="{A}" stroke-width="2"/>',
     'slot_arc': '<path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="8" stroke-linecap="round" opacity=".35"/><path d="M6 22 A12 12 0 0 1 26 22" fill="none" stroke="{S}" stroke-width="2"/><circle cx="6" cy="22" r="2" fill="{A}"/><circle cx="26" cy="22" r="2" fill="{A}"/>',
     'spline_cv': '<path d="M4 24 L10 6 L22 28 L28 8" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/><path d="M4 24 C10 6 22 28 28 8" fill="none" stroke="{S}" stroke-width="2.4"/><rect x="8" y="4" width="4" height="4" fill="{A}"/><rect x="20" y="26" width="4" height="4" fill="{A}"/>',
+    'make_assembly': '<rect x="3" y="14" width="11" height="11" fill="{F}" stroke="{S}" stroke-width="1.6"/><rect x="18" y="7" width="11" height="11" fill="{F}" stroke="{S}" stroke-width="1.6"/><path d="M14 19 H18" stroke="{A}" stroke-width="2.2"/>',
     'split': '<rect x="4" y="8" width="24" height="16" fill="{F}" stroke="{S}" stroke-width="1.6"/><path d="M14 4 C18 12 12 20 16 28" stroke="{A}" stroke-width="2.2" fill="none"/>',
     "combine": ('<path d="M4 12 L14 7 L24 12 L24 24 L14 29 L4 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<circle cx="21" cy="11" r="7" fill="none" stroke="{A}" stroke-width="2"/>'
