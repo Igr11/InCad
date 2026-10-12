@@ -329,22 +329,27 @@ def _copies_of_external(sk, geo_id):
     return [i for i, ends in tied.items() if ends in ({1, 2}, {3})]
 
 
+_CLOSED = ("Part::GeomCircle", "Part::GeomEllipse")  # tied at the centre (point 3); the rest at both ends
+
+
 def _normal_copy_of_external(sk, geo_id):
-    """A normal line/arc/circle of the same size and place as the projected edge, joined to its ends (centre for a
-    circle). Returns the new geometry index, or None for a point or an unknown index."""
-    import Part
+    """A normal copy of the projected edge (line, arc, circle, spline, ellipse, arc of ellipse…), same size and
+    place, joined to its ends (centre for a full circle or ellipse). Returns the new geometry index, or None for a
+    point or an unknown index."""
     import Sketcher
     index = -geo_id - 1
     if index >= len(sk.ExternalGeo):
         return None
     src = sk.ExternalGeo[index]
     kind = src.TypeId
-    if kind not in ("Part::GeomLineSegment", "Part::GeomArcOfCircle", "Part::GeomCircle"):
+    if kind == "Part::GeomPoint":
         return None
     new = sk.addGeometry(src.copy(), False)
     sk.setConstruction(new, False)  # the copy keeps the projected edge's construction flag otherwise
-    if kind == "Part::GeomCircle":
+    if kind in _CLOSED:
         sk.addConstraint(Sketcher.Constraint("Coincident", new, 3, geo_id, 3))
+    elif getattr(src, "isPeriodic", lambda: False)():  # a closed spline has no ends: it stays where it is
+        sk.addConstraint(Sketcher.Constraint("Block", new))
     else:
         sk.addConstraint(Sketcher.Constraint("Coincident", new, 1, geo_id, 1))
         sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, geo_id, 2))

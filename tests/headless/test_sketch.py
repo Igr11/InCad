@@ -237,6 +237,37 @@ class ConstructionChainTest(unittest.TestCase):
             sketch.toggle_construction(self.sk, [g])
             self.assertEqual(self.sk.getConstruction(g), want)
 
+    def test_a_projected_curve_becomes_a_normal_curve_tied_to_it(self):
+        """The user: projected straight lines could be made normal, curves could not (only lines, arcs and circles
+        were copied; a spline, an ellipse, a circle seen at an angle did nothing)."""
+        import math
+        doc = util.new_doc("ProjC")
+        try:
+            body, pad = util.padded_part(doc, 10, incad=True)
+            src = sketch.make_sketch(body, plane(body, "XY_Plane"))
+            poles = [App.Vector(30, 0, 0), App.Vector(40, 10, 0), App.Vector(50, -5, 0), App.Vector(60, 5, 0)]
+            spline = Part.BSplineCurve()
+            spline.buildFromPoles(poles)
+            src.addGeometry(spline, False)
+            src.addGeometry(Part.Ellipse(App.Vector(80, 0, 0), 6, 3), False)
+            src.addGeometry(Part.ArcOfEllipse(Part.Ellipse(App.Vector(100, 0, 0), 6, 3), 0, math.pi / 2), False)
+            doc.recompute()
+            sk = sketch.make_sketch(body, plane(body, "XY_Plane"))
+            for i in range(3):
+                sk.addExternal(src.Name, "Edge%d" % (i + 1))
+            doc.recompute()
+            for ext, kind in ((-3, "BSpline"), (-4, "Ellipse"), (-5, "ArcOfEllipse")):
+                before = sk.GeometryCount
+                new = sketch.toggle_construction(sk, [ext])
+                self.assertEqual(sk.GeometryCount, before + 1, kind)
+                self.assertEqual(new, [before], kind)
+                self.assertFalse(sk.getConstruction(before), kind)
+                self.assertIn(kind, sk.Geometry[before].TypeId)
+                sketch.toggle_construction(sk, [ext])  # again: the copy goes, no pile of copies
+                self.assertEqual(sk.GeometryCount, before, kind)
+        finally:
+            App.closeDocument(doc.Name)
+
     def test_a_projected_line_becomes_a_normal_line_tied_to_it(self):
         """External (projected) geometry is always construction in FreeCAD and cannot be switched, so the
         Construction button puts a NORMAL line of the same size and place on it, joined at both ends."""
