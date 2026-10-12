@@ -811,7 +811,7 @@ def commands():
                 contexts=frozenset({"assembly"}), tooltip="Create a new part file in this assembly"),
         Command(id="assembly.ground", label="Ground", icon="ground", handler=lambda: _assembly("ground"),
                 contexts=frozenset({"assembly"}), tooltip="Ground or unground the selected component"),
-        Command(id="assembly.combine", label="Combine", icon="combine", handler=lambda: start_feature("asm_combine"),
+        Command(id="assembly.combine", label="Boolean", icon="combine", handler=lambda: start_feature("asm_combine"),
                 contexts=frozenset({"assembly"}), tooltip="Cut a component by others (written into its part file)"),
         Command(id="constrain.mate", label="Mate", icon="mate", handler=lambda: start_feature("mate"), shortcut="C",
                 contexts=frozenset({"assembly"}), tooltip="Faces against each other (with an offset)"),
