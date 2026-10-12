@@ -29,6 +29,12 @@ class PrefsMemoryTest(unittest.TestCase):
         prefs.clear_takeover_snapshot()
         self.assertEqual(prefs.takeover_snapshot(), "")
 
+    def test_new_remembers_part_or_assembly(self):
+        """The user ticked 'Remember my choice' at the start and could no longer make an assembly with New."""
+        self.assertEqual(prefs.new_kind(), "part")
+        prefs.set_new_kind("assembly")
+        self.assertEqual(prefs.new_kind(), "assembly")
+
     def test_a_saved_small_ribbon_becomes_the_default(self):
         prefs._s().set("str", "RibbonSize", "small")  # saved before the small size was removed
         self.assertEqual(prefs.ribbon_size(), "large")

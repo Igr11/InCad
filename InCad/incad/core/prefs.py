@@ -98,6 +98,15 @@ def set_remember_new_choice(value):
     _s().set("bool", "RememberNewChoice", bool(value))
 
 
+def new_kind():
+    """What New makes while the choice is remembered: 'part' or 'assembly'."""
+    return _choice("NewKind", ("part", "assembly"), "part")
+
+
+def set_new_kind(value):
+    _set_choice("NewKind", ("part", "assembly"), value)
+
+
 def last_workbench():
     return _s().get("str", "LastWorkbench", "") or "PartDesignWorkbench"
 

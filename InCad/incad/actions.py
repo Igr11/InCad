@@ -103,6 +103,13 @@ def ask_new():
     return dlg.choice() if dlg.exec() else None
 
 
+def _toggle_ask_on_new():
+    from incad.core import log
+    prefs.set_remember_new_choice(not prefs.remember_new_choice())
+    log.report("info", "New asks Part or Assembly" if not prefs.remember_new_choice()
+               else "New makes a %s without asking" % prefs.new_kind())
+
+
 def new_part(ask=None):
     """Create an InCad Part in a new document. ask() -> (kind, units, remember) | None (default: the New
     dialog). With 'Remember my choice' on, nothing is asked and the saved units are used."""
@@ -111,12 +118,14 @@ def new_part(ask=None):
     kind = "part"
     if prefs.remember_new_choice():
         units = prefs.default_units()
+        kind = prefs.new_kind()  # Part or Assembly, as chosen with 'Remember my choice'
     else:
         answer = (ask or ask_new)()
         if answer is None:
             return None
         kind, units, remember = answer
         prefs.set_default_units(units)
+        prefs.set_new_kind(kind)
         prefs.set_remember_new_choice(remember)
     if kind == "assembly":
         return new_assembly(units)
@@ -859,6 +868,9 @@ def commands():
                 contexts=frozenset({"part"})),
         Command(id="file.new_assembly", label="New Assembly", icon="assembly", handler=lambda: new_assembly(),
                 tooltip="New assembly of part files"),
+        Command(id="tools.ask_on_new", label="Ask on New", icon="new", handler=lambda: _toggle_ask_on_new(),
+                checkable=True, is_checked=lambda: not prefs.remember_new_choice(),
+                tooltip="On: New asks Part or Assembly (and the units); off: it makes what you chose last time"),
         Command(id="assembly.place", label="Place", icon="place", handler=lambda: _assembly("place"), shortcut="P",
                 contexts=frozenset({"assembly"}), tooltip="Place a part or assembly file"),
         Command(id="assembly.create", label="Create", icon="create_component", handler=lambda: _assembly("create"),

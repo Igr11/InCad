@@ -15,7 +15,7 @@ LAYOUT = {
         ["Sketch", []],
         ["Inspect", [["Measure", [["inspect.measure", "inspect.distance", "inspect.angle", "inspect.length",
                                    "inspect.area"], "inspect.mass"]]]],
-        ["Tools", [["Material", ["tools.material"]], ["Options", ["view.freecad"]]]],
+        ["Tools", [["Material", ["tools.material"]], ["Options", ["view.freecad", "tools.ask_on_new"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"],
