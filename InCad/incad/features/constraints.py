@@ -115,7 +115,13 @@ def _apply(doc, j, spec, values):
     elif spec.value == "angle":
         value_param(doc, j, "Angle", values.get("angle") or "90 °", "angle")
     _pre_align(doc, spec, values)
+    held = _placements(doc)
     j.Proxy.setJointConnectors(j, [[l1, [e1, e1]], [l2, [e2, e2]]])
+    for name, plc in held.items():  # FreeCAD's own pre-solve (Revolute: Insert) can move the grounded part
+        o = doc.getObject(name)
+        if not o.Placement.isSame(plc, 1e-12):
+            o.Placement = plc
+    doc.recompute()
     result = _solve(doc, l1)
     if spec.facing is not None:
         n1, n2 = _normal(l1, e1), _normal(l2, e2)

@@ -176,6 +176,41 @@ class AssemblyTest(unittest.TestCase):
         self.assertAlmostEqual(n1.dot(n2), -1, places=6)  # facing each other
         self.assertAlmostEqual((f1.CenterOfMass - f2.CenterOfMass).dot(n2), 0, places=4)  # touching
 
+    def test_insert_and_flush_from_a_far_turned_start(self):
+        """After the user's Mate: Flush and Insert from a start far off solve too, the grounded part stays."""
+        from incad.features import constraints as C
+        d = util.new_doc("Pin")
+        body = document.make_part(d)
+        cyl = body.newObject("PartDesign::AdditiveCylinder", "Pin")
+        cyl.Radius, cyl.Height = 3, 20
+        body.Tip = cyl
+        d.recompute()
+        pin_path = os.path.join(self.dir, "Pin.FCStd")
+        d.saveAs(pin_path)
+        hd = self.plate_doc
+        hb = document.primary_body(hd)
+        hole = hb.newObject("PartDesign::SubtractiveCylinder", "HoleCyl")
+        hole.Radius, hole.Height = 3, 10
+        hole.Placement = App.Placement(App.Vector(20, 15, 0), App.Rotation())
+        hb.Tip = hole
+        hd.recompute()
+        hd.save()
+        a = assembly.place(self.doc, self.plate)
+        p = assembly.place(self.doc, pin_path)
+        p.Placement = App.Placement(App.Vector(70, -30, 15), App.Rotation(App.Vector(1, 0.4, 0.2), 140))
+        self.doc.recompute()
+        grounded_at = App.Placement(a.Placement)
+        mouth = [i + 1 for i, e in enumerate(a.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                 and abs(e.Curve.Radius - 3) < 1e-6 and abs(e.Curve.Center.z - 10) < 1e-6][0]
+        end = [i + 1 for i, e in enumerate(p.LinkedObject.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+               and abs(e.Curve.Center.z) < 1e-6][0]
+        C.INSERT.create(self.doc, None, None, dict(C.INSERT.defaults(self.doc, None),
+                                                   first="%s:Edge%d" % (p.Name, end), second="%s:Edge%d" % (a.Name, mouth)))
+        self.assertTrue(a.Placement.isSame(grounded_at, 1e-7))
+        e1, e2 = p.Shape.getElement("Edge%d" % end), a.Shape.getElement("Edge%d" % mouth)
+        self.assertLess((e1.Curve.Center - e2.Curve.Center).Length, 1e-4)  # circle on circle
+        self.assertAlmostEqual(abs(e1.Curve.Axis.dot(e2.Curve.Axis)), 1, places=6)  # axes in line
+
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, self.doc.FileName)
