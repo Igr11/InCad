@@ -142,11 +142,14 @@ def create(doc, body, profile, values):
     f = body.newObject("PartDesign::FeaturePython", "Split")
     SplitFeature(f)
     f.BaseFeature = tip
+    from incad.core import document
+    document.show_like(f, tip)  # the view proxy first: FreeCAD then draws it in the base's display mode
     try:
         _build(doc, f, values)
         body.Tip = f
         sk = f.Sketch
         doc.recompute()
+        document.show_like(f, tip)
         if "Invalid" in f.State:
             raise ValueError(f.getStatusString() or "The sketch does not cut the part")
         sk.Visibility = False

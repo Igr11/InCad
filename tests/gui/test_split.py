@@ -68,6 +68,8 @@ def test_1_split_then_cut_by_a_click():
     assert abs(tip.Shape.Volume - 1500) < 1e-6, (tip.Shape.Volume, tip.Name, getattr(tip, "Mode", None),
                                                   getattr(tip, "Keep", None), getattr(tip, "ShowAll", None), tip.State)
     assert doc().UndoNames[0] == "Split", doc().UndoNames
+    # the user's report: the part disappeared — a Python feature made from code had no display mode
+    assert tip.ViewObject.DisplayMode in tip.ViewObject.listDisplayModes(), tip.ViewObject.DisplayMode
 
 
 harness.run([test_0_box_and_a_knife, test_1_split_then_cut_by_a_click])

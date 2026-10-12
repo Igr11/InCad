@@ -103,6 +103,32 @@ def _profile_of(feature):
     return prof[0] if isinstance(prof, (tuple, list)) and prof else prof
 
 
+def show_like(feature, base):
+    """A Python feature made from code (Split, Hole ▸ Chamfer) gets a view provider with no display mode, so it
+    draws nothing when it is the Tip: give it the display mode and look of the step before it."""
+    import FreeCAD as App
+    if not App.GuiUp or getattr(feature, "ViewObject", None) is None:
+        return
+    vo = feature.ViewObject
+    if getattr(vo, "Proxy", None) is None:
+        from incad.features.view_python import ViewProviderFeature
+        ViewProviderFeature(vo)
+    bvo = getattr(base, "ViewObject", None) if base is not None else None
+    for mode in (getattr(bvo, "DisplayMode", None), "Flat Lines"):  # modes may not be listed yet on a new one
+        if mode:
+            try:
+                vo.DisplayMode = mode
+                break
+            except Exception:
+                continue
+    for prop in ("ShapeAppearance", "LineColor", "PointColor", "LineWidth"):
+        if bvo is not None and hasattr(bvo, prop) and hasattr(vo, prop):
+            try:
+                setattr(vo, prop, getattr(bvo, prop))
+            except Exception:
+                pass
+
+
 def lump_at(body, point):
     """The feature that added the separate piece of `body` holding `point` (a box drawn away from the part, left in
     the part by an older file), or None when the body is one piece. The latest such feature wins."""
