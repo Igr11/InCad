@@ -86,8 +86,9 @@ def _depends_on(doc):
     return [App.getDocument(n) for n in seen]
 
 
-def place(doc, path):
-    """Link a part (or assembly) file; the first component is grounded, later ones go beside the others."""
+def place(doc, path, beside=True):
+    """Link a part (or assembly) file; the first component is grounded, later ones go beside the others (or stay
+    where the part file has them: beside=False, Make Assembly)."""
     _require_saved(doc)
     asm = assembly_of(doc)
     if asm is None:
@@ -105,7 +106,7 @@ def place(doc, path):
     doc.recompute()
     if not existing:
         ground(link)
-    else:
+    elif beside:
         boxes = [c.Shape.BoundBox for c in existing if not c.Shape.isNull()]
         right = max(bb.XMax for bb in boxes) if boxes else 0.0
         left = link.Shape.BoundBox.XMin if not link.Shape.isNull() else 0.0
