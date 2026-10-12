@@ -221,7 +221,7 @@ def _visibility_targets():
         raise ValueError("Open a part first")
     from incad.features import common
     objs = []
-    for s in Gui.Selection.getSelectionEx(doc.Name):  # in an assembly a pick is 'Link.Body.Face5' on the assembly
+    for s in common.selection_ex(doc.Name):  # in an assembly a pick is 'Link.Body.Face5' on the assembly
         for sub in (s.SubElementNames or ("",)):
             obj = common.resolve(s.Object, sub)[0] if sub else s.Object
             if obj is not None and obj not in objs:
@@ -590,7 +590,7 @@ def delete_selection():
         return
     from incad.features import common
     names = []
-    for sel in _gui().Selection.getSelectionEx():
+    for sel in common.selection_ex():
         for sub in (sel.SubElementNames or ("",)):
             obj, _ = common.resolve(sel.Object, sub)  # a face of the body names its feature ("Body.Thread.Face5")
             if obj is not None and obj.Name not in names:

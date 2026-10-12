@@ -213,7 +213,7 @@ class FeatureSession(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.features import common
         pairs = []
-        for sel in Gui.Selection.getSelectionEx(self.doc_name):
+        for sel in common.selection_ex(self.doc_name):  # in an assembly: the path through the component
             for sub in (sel.SubElementNames or ("",)):
                 obj, el = common.resolve(sel.Object, sub)
                 own = self.dialog is not None and self.dialog.active_pick() in getattr(self.kind, "PICKS_ON_SELF", ())

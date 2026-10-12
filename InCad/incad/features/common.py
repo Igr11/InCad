@@ -113,6 +113,19 @@ _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "p
            "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components"}
 
 
+def selection_ex(doc_name=""):
+    """Gui.Selection.getSelectionEx for doc_name, keeping the path through an assembly: FreeCAD resolves a pick in
+    an assembly to the deepest object (a part's feature), losing the component ('Pick the first item on a
+    component'). In an assembly the pick stays on the Assembly with 'Link.Body.Feature.Face5' (see resolve)."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from incad.core import assembly
+    doc = App.getDocument(doc_name) if doc_name else App.ActiveDocument
+    if doc is not None and assembly.is_assembly(doc):
+        return Gui.Selection.getSelectionEx(doc.Name, 0)
+    return Gui.Selection.getSelectionEx(doc_name) if doc_name else Gui.Selection.getSelectionEx()
+
+
 def resolve(obj, sub):
     """A pick on a Body means its Tip; 'Pad.Face6' style paths name the object and the element; in an assembly
     'Link.Body.Pad.Face5' means the component (the link) and its element."""

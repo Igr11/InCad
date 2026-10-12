@@ -135,6 +135,52 @@ def test_3_place_into_a_new_unsaved_assembly():
     assert len(assembly.components(asm_doc)) == 1
 
 
+def _pick_in_assembly(asm_doc, link, face):
+    """Select a face of a component as a click in the assembly view does: on the Assembly, by a path through the
+    component's link."""
+    asm = assembly.assembly_of(asm_doc)
+    feat = link.LinkedObject.Tip
+    for path in ("%s.%s.%s" % (link.Name, feat.Name, face), "%s.%s.%s.%s" % (link.Name, link.LinkedObject.Name,
+                                                                             feat.Name, face)):
+        if asm.getSubObject(path) is not None:
+            Gui.Selection.addSelection(asm_doc.Name, asm.Name, path)
+            return path
+    raise AssertionError("no path to %s of %s" % (face, link.Name))
+
+
+def test_4_mate_by_picks_in_the_assembly_view():
+    """The user: Mate wrote 'Extrude002 · Face6' (the part's feature, not the component) and said 'Pick the first
+    item on a component' — FreeCAD resolves a pick in an assembly to the deepest object."""
+    from incad.ui import shell
+    asm_doc = next(d for d in App.listDocuments().values() if assembly.is_assembly(d) and len(assembly.components(d)) >= 2)
+    App.setActiveDocument(asm_doc.Name)
+    Gui.ActiveDocument = Gui.getDocument(asm_doc.Name)
+    harness.pump(800)
+    a, b = assembly.components(asm_doc)[:2]
+    top = next(i + 1 for i, f in enumerate(a.LinkedObject.Tip.Shape.Faces)
+               if abs(f.normalAt(0, 0).z - 1) < 1e-6)
+    bot = next(i + 1 for i, f in enumerate(b.LinkedObject.Tip.Shape.Faces)
+               if abs(f.normalAt(0, 0).z + 1) < 1e-6)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("constrain.mate")
+    harness.pump(1200)
+    fs = shell.instance().feature_session
+    assert fs is not None, "Mate dialog"
+    _pick_in_assembly(asm_doc, b, "Face%d" % bot)
+    harness.pump(800)
+    Gui.Selection.clearSelection()
+    _pick_in_assembly(asm_doc, a, "Face%d" % top)
+    harness.pump(1500)
+    values = fs.dialog.values()
+    assert values["first"].startswith(b.Name) and values["second"].startswith(a.Name), values
+    assert not fs.dialog.error_text(), fs.dialog.error_text()
+    fs.dialog.ok_button.click()
+    harness.pump(1500)
+    top_z = max(v.Point.z for v in a.Shape.Vertexes)
+    bottom_z = min(v.Point.z for v in b.Shape.Vertexes)
+    assert abs(bottom_z - top_z) < 1e-4, ("mated: the block stands on the plate", bottom_z, top_z)
+
+
 harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly,
              test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh,
-             test_3_place_into_a_new_unsaved_assembly])
+             test_3_place_into_a_new_unsaved_assembly, test_4_mate_by_picks_in_the_assembly_view])

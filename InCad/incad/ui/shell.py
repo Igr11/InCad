@@ -1047,13 +1047,19 @@ class Shell(QtCore.QObject):
         if not self.active or self._syncing or self.browser is None:
             return
         doc = App.ActiveDocument
-        sels = Gui.Selection.getSelectionEx(doc.Name) if doc is not None else []
+        from incad.features import common as _common
+        sels = _common.selection_ex(doc.Name) if doc is not None else []
         names = [s.ObjectName for s in sels]
         if self._peeked is not None and self._peeked[1] not in names:
             self._unpeek()
         rows = []
         from incad.core import feature_faces
         for sel in sels:  # a face or edge of the shown solid: the feature that made it (Inventor)
+            if sel.Object.TypeId == "Assembly::AssemblyObject":  # a pick in an assembly: its component's row
+                for sub in (sel.SubElementNames or ("",)):
+                    obj = _common.resolve(sel.Object, sub)[0] if sub else sel.Object
+                    rows.append(obj.Name if obj is not None else sel.ObjectName)
+                continue
             subs = [n for n in sel.SubElementNames if n.startswith(("Face", "Edge"))]
             if subs and sel.Object.isDerivedFrom("PartDesign::Feature"):
                 for sub in subs:
@@ -2374,7 +2380,7 @@ class Shell(QtCore.QObject):
             name = context.target()
             link = doc.getObject(name) if name else None
         if link is None:
-            for sel in Gui.Selection.getSelectionEx(doc.Name):
+            for sel in common.selection_ex(doc.Name):
                 for sub in (sel.SubElementNames or ("",)):
                     obj, _ = common.resolve(sel.Object, sub)
                     if obj is not None and obj.TypeId == "App::Link":
