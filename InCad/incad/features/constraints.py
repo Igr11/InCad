@@ -59,6 +59,52 @@ def _solve(doc, anchor=None):
     return result
 
 
+def _frame(link, el):
+    """(point, direction) of a picked element in the assembly: a flat face (centre, normal), a circle (centre,
+    axis); None for anything else."""
+    import Part
+    try:
+        sh = link.Shape.getElement(el)
+    except Exception:
+        return None
+    if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane":
+        return sh.CenterOfMass, App.Vector(_normal(link, el)).normalize()
+    if sh.ShapeType == "Edge" and sh.Curve.TypeId in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+        return App.Vector(sh.Curve.Center), App.Vector(sh.Curve.Axis).normalize()
+    return None
+
+
+def _pre_align(doc, spec, values):
+    """Put the free part near the answer first: from a start far off (faces at a large angle) FreeCAD's solver
+    diverges and the constraint 'can't be met'. Only the part that is not grounded moves: its picked face turns to
+    the other one (towards it for Mate, the same way for Flush; a circle's axis onto the other's) and its centre
+    goes onto the other's; the solver does the rest."""
+    from incad.core import assembly
+    (l1, e1), (l2, e2) = _moving_refs(doc, values)
+    if assembly.is_grounded(l1) and assembly.is_grounded(l2):
+        return
+    # the grounded side stays; with nothing grounded _solve holds the first part still: the second one moves
+    first_moves = assembly.is_grounded(l2) and not assembly.is_grounded(l1)
+    moving, fixed = ((l1, e1), (l2, e2)) if first_moves else ((l2, e2), (l1, e1))
+    fm, ff = _frame(*moving), _frame(*fixed)
+    if fm is None or ff is None:
+        return
+    (pm, nm), (pf, nf) = fm, ff
+    if spec.facing == "opposed":
+        want = -nf
+    elif spec.facing == "aligned":
+        want = nf
+    elif spec.joint == "Revolute":  # Insert: axes in line, whichever way is nearer
+        want = nf if nm.dot(nf) >= 0 else -nf
+    else:
+        return
+    turn = App.Rotation(nm, want)
+    link = moving[0]
+    link.Placement = App.Placement(pf, App.Rotation()).multiply(App.Placement(App.Vector(), turn)) \
+        .multiply(App.Placement(-pm, App.Rotation())).multiply(link.Placement)
+    doc.recompute()
+
+
 def _apply(doc, j, spec, values):
     import JointObject
     (l1, e1), (l2, e2) = _moving_refs(doc, values)
@@ -68,6 +114,7 @@ def _apply(doc, j, spec, values):
         value_param(doc, j, "Distance", values.get("offset") or "0 mm", "length")
     elif spec.value == "angle":
         value_param(doc, j, "Angle", values.get("angle") or "90 °", "angle")
+    _pre_align(doc, spec, values)
     j.Proxy.setJointConnectors(j, [[l1, [e1, e1]], [l2, [e2, e2]]])
     result = _solve(doc, l1)
     if spec.facing is not None:

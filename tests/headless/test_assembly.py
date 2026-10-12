@@ -156,6 +156,26 @@ class AssemblyTest(unittest.TestCase):
         self.assertFalse(assembly.needs_update(self.doc))
         self.assertNotIn("needs update", tree.build(self.doc)[0].detail.lower())
 
+    def test_mate_from_a_far_turned_start_moves_only_the_free_part(self):
+        """The user's Thread_1-Assembly: a Mate between faces at a large angle said 'can't be met' (FreeCAD's solver
+        diverged from that start), and the pre-solve moved the grounded part."""
+        from incad.features import constraints as C
+        a = assembly.place(self.doc, self.plate)
+        b = assembly.place(self.doc, self.block)
+        b.Placement = App.Placement(App.Vector(60, 20, 7), App.Rotation(App.Vector(1, 1, 0.3), 134))
+        self.doc.recompute()
+        grounded_at = App.Placement(a.Placement)
+        top = [i + 1 for i, f in enumerate(a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        side = [i + 1 for i, f in enumerate(b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.x) < 1e-6][0]
+        C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None),
+                                                 first="%s:Face%d" % (b.Name, side), second="%s:Face%d" % (a.Name, top)))
+        self.assertTrue(a.Placement.isSame(grounded_at, 1e-7), "the grounded part stays put")
+        f1, f2 = b.Shape.getElement("Face%d" % side), a.Shape.getElement("Face%d" % top)
+        n1 = f1.normalAt(*f1.Surface.parameter(f1.CenterOfMass))
+        n2 = f2.normalAt(*f2.Surface.parameter(f2.CenterOfMass))
+        self.assertAlmostEqual(n1.dot(n2), -1, places=6)  # facing each other
+        self.assertAlmostEqual((f1.CenterOfMass - f2.CenterOfMass).dot(n2), 0, places=4)  # touching
+
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, self.doc.FileName)
