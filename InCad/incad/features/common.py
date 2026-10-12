@@ -87,12 +87,13 @@ def unconsumed_closed_sketches(body):
     return [o for o in body.Group if sketch.is_sketch(o) and usable_profile(o) and not consumers(o)]
 
 
-def value_param(doc, feature, prop, text, unit_kind):
-    """Bind feature.prop to a model parameter holding `text` (create one if the property has none yet)."""
+def value_param(doc, feature, prop, text, unit_kind, base=None):
+    """Bind feature.prop to a model parameter holding `text` (create one if the property has none yet); `base`
+    names a new one '<base>N' (a constraint: Mate1), else it is the next dN."""
     from incad.core import model
     name = model.bound_parameter(feature, prop)
     if name is None:
-        name = model.new_feature_parameter(doc, text, unit_kind)
+        name = model.new_feature_parameter(doc, text, unit_kind, base)
         model.bind(feature, prop, name)
     elif model.parameter_text(doc, name) != text:
         model.set_model_parameter(doc, name, text)

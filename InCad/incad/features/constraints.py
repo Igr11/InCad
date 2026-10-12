@@ -111,9 +111,9 @@ def _apply(doc, j, spec, values):
     if j.JointType != spec.joint:
         j.JointType = spec.joint
     if spec.value == "offset":
-        value_param(doc, j, "Distance", values.get("offset") or "0 mm", "length")
+        value_param(doc, j, "Distance", values.get("offset") or "0 mm", "length", base=spec.TITLE)
     elif spec.value == "angle":
-        value_param(doc, j, "Angle", values.get("angle") or "90 °", "angle")
+        value_param(doc, j, "Angle", values.get("angle") or "90 °", "angle", base=spec.TITLE)
     _pre_align(doc, spec, values)
     held = _placements(doc)
     j.Proxy.setJointConnectors(j, [[l1, [e1, e1]], [l2, [e2, e2]]])

@@ -179,6 +179,23 @@ def test_4_mate_by_picks_in_the_assembly_view():
     top_z = max(v.Point.z for v in a.Shape.Vertexes)
     bottom_z = min(v.Point.z for v in b.Shape.Vertexes)
     assert abs(bottom_z - top_z) < 1e-4, ("mated: the block stands on the plate", bottom_z, top_z)
+    # the user: edit the Mate in its dialog (a double-click on its Relationships row opens it)
+    from incad.features import constraints as C
+    from incad.core import model
+    joint = next(j for j in assembly.joints(asm_doc) if C.claims(j))
+    assert model.bound_parameter(joint, "Distance").startswith("Mate"), model.bound_parameter(joint, "Distance")
+    shell.edit_feature(joint)
+    harness.pump(1200)
+    fs = shell.instance().feature_session
+    assert fs is not None, "the Mate's dialog"
+    w = fs.dialog.field("offset")
+    w.setText("3 mm")
+    w.editingFinished.emit()
+    harness.pump(1500)
+    fs.dialog.ok_button.click()
+    harness.pump(1500)
+    gap = min(v.Point.z for v in b.Shape.Vertexes) - max(v.Point.z for v in a.Shape.Vertexes)
+    assert abs(abs(gap) - 3) < 1e-4, gap
 
 
 harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly,

@@ -80,6 +80,21 @@ class ConstraintsTest(unittest.TestCase):
         self.make(C.RIGID, first=face(self.plate, z_is(10)), second=face(self.block, z_is(0)))
         self.assertAlmostEqual(self.bb().ZMin, 10, places=4)
 
+    def test_a_constraint_value_is_named_after_it(self):
+        """The user: the parameters should read Mate1, Flush1 — not d1, d2."""
+        from incad.core import model
+        j1 = self.mate_bottom_on_top(offset="2 mm")
+        self.assertEqual(model.bound_parameter(j1, "Distance"), "Mate1")
+        self.assertEqual(model.parameter_text(self.doc, "Mate1"), "2 mm")
+
+    def test_editing_a_constraint_moves_the_part(self):
+        """The user: edit a Mate's picks and offset in its dialog, not only its number in Parameters."""
+        j = self.mate_bottom_on_top()
+        values = dict(C.MATE.read(self.doc, j), offset="5 mm")
+        C.MATE.update(self.doc, j, values)
+        self.doc.recompute()
+        self.assertAlmostEqual(self.bb().ZMin, 15, places=4)
+
     def test_two_ungrounded_components_still_solve(self):
         assembly.unground(self.plate)
         self.mate_bottom_on_top()
