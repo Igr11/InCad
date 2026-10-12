@@ -52,6 +52,14 @@ def _delete(obj):
     if kind is combine:
         combine.delete(doc, obj)
         return
+    from incad.features import split
+    if kind is split:
+        sk = getattr(obj, "Sketch", None)  # read before the feature goes
+        split.delete(doc, obj)
+        _remove_feature(obj)
+        if sk is not None and doc.getObject(sk.Name) is not None:
+            sk.Visibility = True  # the knife is a plain sketch again
+        return
     if kind is thread:
         profile = obj.Profile[0] if isinstance(obj.Profile, (tuple, list)) and obj.Profile else None
         body = obj.getParentGeoFeatureGroup()
@@ -67,8 +75,12 @@ def _delete(obj):
     if obj.TypeId == "PartDesign::Body":
         if obj is document.primary_body(doc):
             raise ValueError("The main solid can't be deleted (delete its features instead)")
+        piece = obj.BaseFeature
         obj.removeObjectsFromDocument()
         doc.removeObject(obj.Name)
+        from incad.features import split
+        if piece is not None and doc.getObject(piece.Name) is not None and split.is_piece(piece):
+            doc.removeObject(piece.Name)  # a Split's piece lives outside the Solid made on it
         return
     if obj.TypeId == "App::Link" and obj in assembly.components(doc):
         for j in assembly.joints(doc):  # its grounding and the constraints that use it go with it

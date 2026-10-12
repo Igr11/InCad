@@ -51,7 +51,10 @@ def test_1_split_then_cut_by_a_click():
     harness.pump(1500)
     assert dialog() is not None and dialog().values()["sketch"].startswith(ST["sk"]), dialog() and dialog().values()
     fs = shell.instance().feature_session
-    assert len(fs.feature.Shape.Solids) == 2, fs.feature.Shape.Solids
+    from incad.features import split
+    assert len(fs.feature.Shape.Solids) == 1 and len(split.piece_bodies(fs.feature)) == 1, \
+        "Keep all: the other piece is a Solid of its own (it can be hidden)"
+    ST["preview_vo"] = (fs.feature.ViewObject.DisplayMode, type(getattr(fs.feature.ViewObject, "Proxy", None)).__name__)
     dialog().field("mode").button("cut").click()
     harness.pump(800)
     assert dialog().active_pick() == "keep", dialog().active_pick()
@@ -69,7 +72,8 @@ def test_1_split_then_cut_by_a_click():
                                                   getattr(tip, "Keep", None), getattr(tip, "ShowAll", None), tip.State)
     assert doc().UndoNames[0] == "Split", doc().UndoNames
     # the user's report: the part disappeared — a Python feature made from code had no display mode
-    assert tip.ViewObject.DisplayMode in tip.ViewObject.listDisplayModes(), tip.ViewObject.DisplayMode
+    assert tip.ViewObject.DisplayMode in tip.ViewObject.listDisplayModes(), (
+        tip.ViewObject.DisplayMode, type(getattr(tip.ViewObject, "Proxy", None)).__name__, ST.get("preview_vo"), tip.Name)
 
 
 harness.run([test_0_box_and_a_knife, test_1_split_then_cut_by_a_click])

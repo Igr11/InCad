@@ -42,23 +42,67 @@ class SplitTest(unittest.TestCase):
         self.doc.recompute()
         return f
 
-    def test_a_line_through_the_box_gives_two_pieces(self):
+    def pieces(self, f):
+        """The Split's own piece and the Solids it made, as volumes (largest first)."""
+        return sorted([round(s.Volume, 6) for s in f.Shape.Solids] +
+                      [round(b.Shape.Volume, 6) for b in split.piece_bodies(f)], reverse=True)
+
+    def test_keep_all_puts_every_other_piece_in_its_own_solid(self):
+        """The user: with both pieces in one Solid, Hide / Show could not hide one of them (Inventor's Split Solid
+        makes separate bodies)."""
         f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
-        vols = sorted(round(s.Volume, 6) for s in f.Shape.Solids)
-        self.assertEqual(vols, [500.0, 1500.0])
+        self.assertEqual(len(f.Shape.Solids), 1)
+        self.assertAlmostEqual(f.Shape.Volume, 1500, places=6)  # the largest stays in this Solid
+        others = split.piece_bodies(f)
+        self.assertEqual(len(others), 1)
+        self.assertIsNot(others[0], self.body)
+        self.assertAlmostEqual(others[0].Shape.Volume, 500, places=6)
         self.assertIs(self.body.Tip, f)
-        self.assertNotIn("Invalid", f.State)
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+
+    def test_a_piece_solid_follows_the_sketch(self):
+        sk = line_sketch(self.body, ((5, -5), (5, 15)))
+        f = self.make(sk)
+        sk.delGeometry(0)
+        sk.addGeometry(Part.LineSegment(App.Vector(4, -5, 0), App.Vector(4, 15, 0)))
+        self.doc.recompute()
+        self.assertEqual(self.pieces(f), [1600.0, 400.0])
+
+    def test_a_pad_on_a_piece_solid_stays_in_it(self):
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        other = split.piece_bodies(f)[0]
+        top = util.add_rect_sketch(other, w=2, h=2, name="Bump")
+        top.AttachmentOffset = App.Placement(App.Vector(1, 1, 10), App.Rotation())
+        bump = util.add_pad(other, top, 3, name="BumpPad")
+        other.Tip = bump
+        self.doc.recompute()
+        self.assertAlmostEqual(other.Shape.Volume, 500 + 12, places=6)
+        self.assertAlmostEqual(f.Shape.Volume, 1500, places=6)  # nothing fused back
+
+    def test_keep_all_reads_no_picks(self):
+        """GUI: the Split's own piece point came back as a Keep pick, so switching to Keep picked did not start
+        picking."""
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        self.assertEqual(split.read(self.doc, f)["keep"], "")
+
+    def test_switching_to_keep_picked_removes_the_piece_solids(self):
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        split.update(self.doc, f, dict(split.read(self.doc, f), mode="cut", keep="2 1 5"))
+        self.doc.recompute()
+        self.assertEqual(split.piece_bodies(f), [])
+        self.assertEqual(len(document.bodies(self.doc)), 1)
 
     def test_an_arc_cuts_a_curved_face(self):
         import math
         f = self.make(line_sketch(self.body, ((0, 5), 8, -math.pi / 2, math.pi / 2)))
-        self.assertEqual(len(f.Shape.Solids), 2)
+        self.assertEqual(len(self.pieces(f)), 2)
         self.assertTrue(any(face.Surface.TypeId == "Part::GeomCylinder" for face in f.Shape.Faces))
-        self.assertAlmostEqual(sum(s.Volume for s in f.Shape.Solids), 2000, places=6)
+        self.assertAlmostEqual(sum(self.pieces(f)), 2000, places=6)
 
     def test_two_lines_give_three_pieces(self):
         f = self.make(line_sketch(self.body, ((5, -5), (5, 15)), ((15, -5), (15, 15))))
-        self.assertEqual(len(f.Shape.Solids), 3)
+        self.assertEqual(self.pieces(f), [1000.0, 500.0, 500.0])
+        self.assertEqual(len(split.piece_bodies(f)), 2)
 
     def test_cut_keeps_the_picked_piece(self):
         f = self.make(line_sketch(self.body, ((5, -5), (5, 15))), mode="cut", keep="2 1 5")
@@ -86,10 +130,10 @@ class SplitTest(unittest.TestCase):
 
     def test_keep_piece_switches_to_cut(self):
         f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
-        split.keep_piece(f, App.Vector(15, 5, 5))
+        split.keep_piece(f, App.Vector(2, 5, 5))
         self.doc.recompute()
         self.assertEqual(f.Mode, "cut")
-        self.assertAlmostEqual(f.Shape.Volume, 1500, places=6)
+        self.assertAlmostEqual(f.Shape.Volume, 500, places=6)
 
     def test_save_and_reopen(self):
         f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
@@ -101,7 +145,8 @@ class SplitTest(unittest.TestCase):
         g = self.doc.getObject(name)
         g.touch()
         self.doc.recompute()
-        self.assertEqual(len(g.Shape.Solids), 2)
+        self.assertEqual(self.pieces(g), [1500.0, 500.0])  # the piece Solid's proxy is found too
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
         self.assertTrue(split.claims(g))
 
 
@@ -120,6 +165,33 @@ class SplitTest(unittest.TestCase):
         pick = "%s:Face%d" % (f.Name, face)
         split.update(self.doc, f, dict(split.read(self.doc, f), mode="cut", keep=pick))
         self.assertEqual(split.read(self.doc, f)["keep"], pick)
+
+
+    def test_deleting_the_split_takes_its_empty_piece_solids_and_freezes_worked_ones(self):
+        from incad.core import delete
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15)), ((15, -5), (15, 15))))
+        empty, worked = split.piece_bodies(f)
+        top = util.add_rect_sketch(worked, w=2, h=2, name="Bump")
+        top.AttachmentOffset = App.Placement(App.Vector(16, 1, 10), App.Rotation())
+        worked.Tip = util.add_pad(worked, top, 3, name="BumpPad")
+        self.doc.recompute()
+        before = worked.Shape.Volume
+        empty_name, worked_name = empty.Name, worked.Name
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertIsNone(self.doc.getObject(empty_name))
+        self.assertIsNotNone(self.doc.getObject(worked_name))
+        self.assertAlmostEqual(worked.Shape.Volume, before, places=6)  # its piece kept, frozen
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State or o.TypeId == "Part::FeaturePython"])
+
+    def test_deleting_a_piece_solid_takes_its_piece(self):
+        from incad.core import delete
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        other = split.piece_bodies(f)[0]
+        delete.delete(other)
+        self.doc.recompute()
+        self.assertFalse([o.Name for o in self.doc.Objects if o.TypeId == "Part::FeaturePython"])
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
 
 
 if __name__ == "__main__":

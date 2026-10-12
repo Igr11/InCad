@@ -13,20 +13,8 @@ Piece = namedtuple("Piece", "body_name point volume")
 
 
 def _inside(solid):
-    """A point strictly inside the solid: its centre of mass when that is inside (a C-shaped piece of a split ring
-    has it in the hole), else a face's middle pushed a little into the material — never a point on a face that two
-    split pieces share."""
-    c = solid.CenterOfMass
-    if solid.isInside(c, 1e-7, False):
-        return c
-    for f in solid.Faces:
-        u0, u1, v0, v1 = f.ParameterRange
-        p, n = f.valueAt((u0 + u1) / 2, (v0 + v1) / 2), f.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
-        for step in (1e-3, 1e-2, 0.1):
-            for q in (p - n * step, p + n * step):
-                if solid.isInside(q, 1e-7, False):
-                    return q
-    return c
+    from incad.features import split
+    return split.inside_point(solid)
 
 
 def pieces(doc):

@@ -237,14 +237,17 @@ class MakeAssemblyReviewTest(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(self.dir)), ["Fb.FCStd"])
 
     def test_a_fillet_on_one_split_piece_does_not_stop_the_other(self):
+        from incad.features import split
         d, body, pad = self._part("Fs")
         split_f = self._split(d, body)
-        edge = next(i + 1 for i, e in enumerate(split_f.Shape.Edges)
-                    if e.BoundBox.XMax < 4 and abs(e.BoundBox.ZMax - 10) < 1e-6 and e.BoundBox.YLength > 9)
-        fil = body.newObject("PartDesign::Fillet", "Round")
-        fil.Base = (split_f, ["Edge%d" % edge])
+        small = split.piece_bodies(split_f)[0]  # Keep all: the small piece is a Solid of its own
+        base = next(o for o in small.Group if o.TypeId == "PartDesign::FeatureBase")
+        edge = next(i + 1 for i, e in enumerate(base.Shape.Edges)
+                    if e.BoundBox.XMax < 1 and abs(e.BoundBox.ZMax - 10) < 1e-6 and e.BoundBox.YLength > 9)
+        fil = small.newObject("PartDesign::Fillet", "Round")
+        fil.Base = (base, ["Edge%d" % edge])
         fil.Radius = 1
-        body.Tip = fil
+        small.Tip = fil
         d.recompute()
         self.assertNotIn("Invalid", fil.State, fil.getStatusString())
         d.saveAs(os.path.join(self.dir, "Fs.FCStd"))
@@ -290,12 +293,15 @@ class MakeAssemblyReviewTest(unittest.TestCase):
         d.saveAs(os.path.join(self.dir, "Ri.FCStd"))
         self._split(d, body, x=0, y0=-15, y1=15)  # two C halves: their centres of mass are in the hole
         for p in ma.pieces(d):
-            solid = min(document.bodies(d)[0].Shape.Solids, key=lambda s: s.distToShape(Part.Vertex(p.point))[0])
+            solid = min(d.getObject(p.body_name).Shape.Solids, key=lambda s: s.distToShape(Part.Vertex(p.point))[0])
             self.assertTrue(solid.isInside(p.point, 1e-7, False), p)
 
     def test_a_feature_that_joins_the_split_pieces_is_named(self):
+        from incad.features import split
         d, body, pad = self._part("Jn")
-        self._split(d, body)
+        f = self._split(d, body)
+        split.update(d, f, dict(split.read(d, f), mode="cut", keep="2 1 5, 15 5 5"))  # both kept in this Solid
+        d.recompute()
         top = util.add_rect_sketch(body, w=20, h=10, name="Lid")
         top.AttachmentOffset = App.Placement(App.Vector(0, 0, 10), App.Rotation())
         lid = util.add_pad(body, top, 2, name="Lid")

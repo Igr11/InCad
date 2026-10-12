@@ -28,8 +28,9 @@ Improvements
   that pick, and a click on the field the dialog already made active keeps picking (it no longer
   stops it).
 
-- New Split (3D Model > Modify): the lines of a sketch become thin surfaces that cut the part; Keep
-  all keeps every piece, Keep picked only the pieces you click.
+- New Split (3D Model > Modify): the lines of a sketch become thin surfaces that cut the part. Keep
+  all: every piece stays, each other piece as a Solid of its own (hide it, work on it, make it a
+  part), still following the sketch; Keep picked: only the pieces you click stay.
 - New Make Assembly (3D Model > Assemble, or right-click in the part): every separate piece of the
   part becomes a part file with its history, and a new assembly links them where they were (the
   largest grounded). Names are asked first; files go next to the part, nothing is overwritten, the
