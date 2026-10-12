@@ -2124,6 +2124,7 @@ class Shell(QtCore.QObject):
         self.sketches.sync()
         if is_part and editing is None and fs is None and self._body_hidden(doc):
             document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank
+        self._visibility_applied &= set(App.listDocuments())  # a closed file opened again is a new document
         if is_part and editing is None and fs is None and doc.Name not in self._visibility_applied:
             self._visibility_applied.add(doc.Name)  # once per document: a file saved with a feature's sketch
             try:                                     # left visible (an older InCad, FreeCAD's Space key) opens clean

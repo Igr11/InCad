@@ -35,7 +35,7 @@ FIELDS = (
     Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
     Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
     Field("chamfer_size", "Chamfer size", "value_length", default="1 mm", show_if=("chamfer", ("start", "both"))),
-    Field("clearance", "Print clearance", "value_length", default="0.2 mm"),
+    Field("clearance", "Print clearance (on diameter)", "value_length", default="0.2 mm"),
 )
 
 

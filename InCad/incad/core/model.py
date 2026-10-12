@@ -345,3 +345,4 @@ def restore_units(doc):
     for obj in (document.parameters(doc, create=False), _model_obj(doc)):
         if obj is not None and list(obj.ExpressionEngine):
             obj.recompute()
+            obj.purgeTouched()  # the values are the same numbers: nothing that uses them needs a recompute

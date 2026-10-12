@@ -490,6 +490,55 @@ class DetachLumpTest(unittest.TestCase):
         self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
 
 
+    def test_a_sketch_on_a_later_steps_face_of_the_part_stays(self):
+        """The user's Thread_1: a stub sketched on a face of the step after the box, a face on the part (that
+        step's shape holds both pieces), went into the box's Solid with its thread."""
+        top = [i + 1 for i, f in enumerate(self.box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6
+               and f.CenterOfMass.x < 40][0]  # the pad's top, named on the box step
+        on_part = self.body.newObject("Sketcher::SketchObject", "OnPart")
+        on_part.AttachmentSupport = [(self.box, "Face%d" % top)]
+        on_part.MapMode = "FlatFace"
+        on_part.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3))
+        stub = util.add_pad(self.body, on_part, 4, name="Stub")
+        self.body.Tip = stub
+        self.doc.recompute()
+        new = document.detach_lump(self.box)
+        self.doc.recompute()
+        self.assertIs(self.box.getParentGeoFeatureGroup(), new)
+        self.assertIs(stub.getParentGeoFeatureGroup(), self.body)
+        self.assertIs(on_part.getParentGeoFeatureGroup(), self.body)
+        self.assertIs(on_part.AttachmentSupport[0][0], self.pad, "the same face, named on the step before the box")
+        self.assertNotIn("Invalid", stub.State, stub.getStatusString())
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
+        self.assertEqual(len(new.Tip.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
+
+
+    def test_a_box_sketched_on_the_parts_face_leaves_the_part_behind(self):
+        """The user's Thread_1: the block's sketch sat on a face of the part, the block extruded away from it.
+        Split off, its Pad took the sketch's support as its base and kept the whole part (two pieces)."""
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        on_face = self.body.newObject("Sketcher::SketchObject", "OnFace")
+        on_face.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        on_face.MapMode = "FlatFace"
+        on_face.AttachmentOffset = App.Placement(App.Vector(60, 60, 5), App.Rotation())  # above, away from it
+        on_face.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(10, 0, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(10, 0, 0), App.Vector(10, 10, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(10, 10, 0), App.Vector(0, 10, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(0, 10, 0), App.Vector(0, 0, 0)))
+        block = util.add_pad(self.body, on_face, 4, name="Block")
+        self.body.Tip = block
+        self.doc.recompute()
+        self.assertTrue(document.is_detached_lump(block))
+        where = block.Shape.Solids[-1].BoundBox
+        new = document.detach_lump(block)
+        self.doc.recompute()
+        self.assertEqual(len(new.Tip.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 400, places=3)
+        self.assertTrue(new.Tip.Shape.BoundBox.isInside(where.Center), (new.Tip.Shape.BoundBox, where))  # in place
+        self.assertFalse(on_face.AttachmentSupport)
+
+
 class HistoryTest(unittest.TestCase):
     """One history for the part (Inventor): the features of every Solid in the order they were made, and one End
     of Part that rolls all Solids back to a point in it."""

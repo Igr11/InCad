@@ -96,8 +96,7 @@ class FeatureSession(QtCore.QObject):
         self.dialog.raise_()
         if self.feature is None:
             self._apply_preselection()
-            first_empty = next((f.key for f in self.kind.FIELDS if f.kind in ("pick", "picks")
-                                and self._shown(f) and not self.dialog.values().get(f.key)), None)
+            first_empty = next(iter(self._waiting_picks()), None)
             self._pending = self.dialog.values()
             self._preview()  # first try: defaults (+ preselection) may already be enough
             if self._closed:  # Esc or OK while that first preview computed (seconds for a thread)
@@ -108,6 +107,7 @@ class FeatureSession(QtCore.QObject):
             self._check()
         if self.dialog is not None:
             self.dialog.reset_history()  # seeding is not the user's change: Undo stops (and drops the dialog) here
+        self._seen_waiting = self._waiting_picks() if self.dialog is not None else []
         self._observe(True)
         self._sync_sketch_markers()  # an edited Sweep/Loft shows its sketches' points from the start
         return True
@@ -115,6 +115,12 @@ class FeatureSession(QtCore.QObject):
     def _shown(self, field):
         from incad.features.common import shown
         return shown(field, self.dialog.values())
+
+    def _waiting_picks(self):
+        """The pick fields still to fill, in dialog order: shown, empty and without a default (not optional)."""
+        values = self.dialog.values()
+        return [f.key for f in self.kind.FIELDS if f.kind in ("pick", "picks") and not f.optional
+                and self._shown(f) and not values.get(f.key)]
 
     def _refresh_options(self):
         """Combos whose items depend on other values (e.g. thread sizes of the chosen standard)."""
@@ -344,8 +350,7 @@ class FeatureSession(QtCore.QObject):
                 g.key == "children" for g in self.kind.FIELDS) and not self.dialog.values().get("children"):
             self.dialog.set_values({"children": True})
         if f.kind == "pick":  # a single pick is done: go on to the next empty one, or stop picking
-            nxt = next((g.key for g in self.kind.FIELDS if g.kind in ("pick", "picks") and g.key != key
-                        and self._shown(g) and not self.dialog.values().get(g.key)), None)
+            nxt = next((k for k in self._waiting_picks() if k != key), None)
             self.dialog.set_active_pick(nxt)
 
     def _sync_pick_view(self, seed=False):
@@ -561,11 +566,22 @@ class FeatureSession(QtCore.QObject):
 
     def _changed(self, values):
         self._sync_choices(values)
+        self._activate_revealed_pick()
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
         self._timer.start()
         self._sync_sketch_markers()
+
+    def _activate_revealed_pick(self):
+        """A choice that brings pick fields into view (Extrude's To face) makes the first of them the
+        active pick, so the next click fills it and not whatever was active before."""
+        waiting = self._waiting_picks()
+        revealed = [k for k in waiting if k not in getattr(self, "_seen_waiting", waiting)
+                    and self.dialog.field_def(k).pick != "two_points"]  # those show markers and refit the view
+        self._seen_waiting = waiting
+        if revealed and self.dialog.active_pick() not in waiting:
+            self.dialog.set_active_pick(revealed[0])
 
     def _picked_sketches(self):
         """The sketches named in the dialog's `sketch` fields (Sweep's profile and path, Loft's sections)."""
@@ -664,8 +680,7 @@ class FeatureSession(QtCore.QObject):
                 self._drop_partial()
             # nothing made yet while the user is still picking: the reason is a hint, not an error
             values = self.dialog.values()
-            empty = any(f.kind in ("pick", "picks") and self._shown(f) and not values.get(f.key)
-                        for f in self.kind.FIELDS)
+            empty = bool(self._waiting_picks())
             waiting = self.creating and self.feature is None and (self.dialog.active_pick() is not None or empty)
             self.dialog.set_error(str(e), waiting=waiting)
             return
@@ -788,7 +803,9 @@ class FeatureSession(QtCore.QObject):
                 plan = None
             if plan is not None:
                 rescue = (plan[0], lambda fn=plan[1], label=plan[0]: self._rescue(label, fn))
-        self.dialog.set_error(text, rescue)
+        hint = getattr(self.kind, "pending", None)
+        hint = hint(self.dialog.values()) if hint is not None and not text else ""
+        self.dialog.set_error(text or hint, rescue, waiting=bool(hint))
         self._show_base_while_broken(bool(found))
 
     def _rescue(self, label, fn):

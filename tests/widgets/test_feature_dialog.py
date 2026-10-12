@@ -31,6 +31,18 @@ class FeatureDialogTest(unittest.TestCase):
         self.assertEqual(self.d.values(), {"operation": "join", "extent": "distance", "to_face": "",
                                            "distance": "10 mm", "flip": False})
 
+    def test_many_choices_wrap_into_rows(self):
+        """The user: the Move Solid window was too wide (seven snap types in one row). Four per row at most."""
+        from incad.ui.feature_dialog import ChoiceField
+        seven = tuple(("c%d" % i, "Choice %d" % i) for i in range(7))
+        w = ChoiceField(seven)
+        w.show()
+        qtapp.app().processEvents()
+        first, fifth = w.button("c0"), w.button("c4")
+        self.assertEqual(fifth.x(), first.x())
+        self.assertGreater(fifth.y(), first.y())
+        w.close()
+
     def test_choice_change_emits(self):
         self.d.field("operation").button("cut").click()
         self.assertEqual(self.seen[-1]["operation"], "cut")
@@ -184,6 +196,16 @@ class PickFieldsTest(unittest.TestCase):
         self.d.field("edges").click()
         self.assertIsNone(self.d.active_pick())
         self.assertEqual(seen, ["edges", ""])
+
+    def test_a_click_on_a_field_the_dialog_made_active_keeps_it_active(self):
+        """The dialog activates a field by itself (at the start, or when a choice shows it); the user's habitual
+        click on its Select… button must start picking, not stop it. A second click stops it."""
+        self.d.set_active_pick("edges")
+        self.d.field("edges").click()
+        self.assertEqual(self.d.active_pick(), "edges")
+        self.assertTrue(self.d.field("edges").isChecked())
+        self.d.field("edges").click()
+        self.assertIsNone(self.d.active_pick())
 
 
 COMBO_FIELDS = (

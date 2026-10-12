@@ -69,7 +69,9 @@ def _history(doc, primary):
         owner = getattr(o, "InCadHelperOf", None)
         if owner:
             helpers.setdefault(owner, []).append(o)
-    tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip]
+    from incad.features import combine
+    used = combine.used_up_names(doc)  # tools a Boolean used up: under it
+    tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip and b.Name not in used]
     latest = hist[max(tip_positions)][1] if tip_positions else None  # the marker goes right after it
     out = []
     if latest is None:
@@ -78,13 +80,14 @@ def _history(doc, primary):
     def rolled(b, o):
         return groups[b.Name].index(o) > tips[b.Name]
 
-    for b, obj in hist:
+    def row(b, obj):
+        """The row of obj with its sketch and helpers under it, and those objects; None for a row not shown."""
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
-            continue
+            return None, []
         if getattr(obj, "InCadHelperOf", None) or regions.is_profile(obj):
-            continue
+            return None, []
         node = _obj_node(obj, rolled(b, obj))
-        if b is not primary:
+        if b is not primary and b.Name not in used:
             node.detail = (node.detail + "  ·  " + b.Label) if node.detail else b.Label
         under = []
         prof = _profile(obj)
@@ -97,6 +100,35 @@ def _history(doc, primary):
         for h in helpers.get(obj.Name, []):
             node.children.append(_obj_node(h, rolled(b, h)))
             under.append(h)
+        return node, under
+
+    tool_rows = {}  # a used-up tool's rows, built first: they may come later in the history than its Boolean
+    for b, obj in hist:
+        if b.Name in used:
+            node, _ = row(b, obj)
+            if node is not None:
+                tool_rows.setdefault(b.Name, []).append((obj, node))
+
+    def tools_under(node, obj, seen):
+        """A Boolean's used-up tools under its row, theirs under theirs (a pin cut into a plug cut into the part)."""
+        if not combine.claims(obj):
+            return
+        for t in combine.used_up_tools(obj):
+            if t.Name in seen:
+                continue
+            child = Node("body", t.Label, t.Name)
+            for sub_obj, sub_node in tool_rows.get(t.Name, []):
+                tools_under(sub_node, sub_obj, seen | {t.Name})
+                child.children.append(sub_node)
+            node.children.append(child)
+
+    for b, obj in hist:
+        if b.Name in used:
+            continue
+        node, under = row(b, obj)
+        if node is None:
+            continue
+        tools_under(node, obj, frozenset())
         out.append(node)
         if latest is not None and (obj is latest or latest in under):
             out.append(Node("end_of_part", "End of Part"))
@@ -157,9 +189,12 @@ def build(doc):
     root = Node("part", doc.Label, primary.Name if primary is not None else "")  # a click on it: the solid
     if primary is not None:
         root.children.append(_origin(primary))
-    if len(all_bodies) > 1:
-        root.children.append(Node("solids", "Solid Bodies (%d)" % len(all_bodies),
-                                  children=[Node("body", b.Label, b.Name) for b in all_bodies]))
+    from incad.features import combine
+    used = combine.used_up_names(doc)
+    listed = [b for b in all_bodies if b.Name not in used]  # a used-up tool sits under its Boolean
+    if len(listed) > 1:
+        root.children.append(Node("solids", "Solid Bodies (%d)" % len(listed),
+                                  children=[Node("body", b.Label, b.Name) for b in listed]))
     if primary is not None:
         root.children.extend(_history(doc, primary))
     return [root]

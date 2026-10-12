@@ -103,6 +103,41 @@ def _profile_of(feature):
     return prof[0] if isinstance(prof, (tuple, list)) and prof else prof
 
 
+def lump_at(body, point):
+    """The feature that added the separate piece of `body` holding `point` (a box drawn away from the part, left in
+    the part by an older file), or None when the body is one piece. The latest such feature wins."""
+    import Part
+    solids = body.Shape.Solids if body is not None and not body.Shape.isNull() else []
+    if len(solids) < 2:
+        return None
+    probe = Part.Vertex(point)
+    piece = min(solids, key=lambda s: s.distToShape(probe)[0])
+    found = None
+    for f in body.Group:
+        if not is_detached_lump(f):
+            continue
+        base = f.BaseFeature.Shape
+        added = [s for s in f.Shape.Solids if s.distToShape(base)[0] > 1e-7]
+        if any(s.distToShape(piece)[0] < 1e-7 for s in added):
+            found = f
+    return found
+
+
+def _on_piece(obj, subs, piece):
+    """Is the attachment (obj, subs) on the separate piece? A feature's shape holds the whole part, so its face may
+    lie on the rest of it; an element that can't be found counts as on the piece (as before)."""
+    if not piece or not subs or not hasattr(obj, "Shape"):
+        return True
+    for sub in subs:
+        try:
+            el = obj.Shape.getElement(sub)
+        except Exception:
+            return True
+        if any(el.distToShape(p)[0] < 1e-6 for p in piece):
+            return True
+    return False
+
+
 def detach_lump(feature):
     """Move a detached feature into a new Solid with its profile sketch and every later feature built on it;
     the features left behind are rebuilt on the one before it. Returns the new Solid."""
@@ -111,6 +146,9 @@ def detach_lump(feature):
     if not is_detached_lump(feature):
         raise ValueError("%s is not a separate piece of the part" % feature.Label)
     group = list(body.Group)
+    before = feature.BaseFeature  # what the part was before the piece: faces of the part named on the piece's
+    base = before.Shape           # steps are found again on it
+    piece = [p for p in feature.Shape.Solids if p.distToShape(base)[0] > 1e-7]
     related = [feature]  # the piece, its sketch, anything attached to it or built on those, in body order
     grown = True
     while grown:
@@ -118,8 +156,11 @@ def detach_lump(feature):
         for o in group:
             if o in related:
                 continue
-            links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
-            support = [sup for sup, _ in (getattr(o, "AttachmentSupport", None) or [])]
+            attached = getattr(o, "AttachmentSupport", None) or []
+            links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)
+                     and x not in [sup for sup, _ in attached]]
+            support = [sup for sup, subs in attached
+                       if _on_piece(sup, subs, piece)]  # a face of a later step may be on the rest of the part
             profiles = [_profile_of(r) for r in related]
             if (o in profiles or any(r in links or r in support for r in related)) and (
                     o.TypeId == "Sketcher::SketchObject" or o.isDerivedFrom("PartDesign::Feature")):
@@ -141,6 +182,14 @@ def detach_lump(feature):
             same = [o for o in new.Origin.OriginFeatures if o.Role == support[0][0].Role]
             if same:
                 p.AttachmentSupport = [(same[0], support[0][1])]
+        elif support and support[0][0] is not None and support[0][0] not in related:
+            # on a face of the part that stays behind (the box was sketched on the part, extruded away): a link
+            # out of the new Solid, and a Pad takes its sketch's support as its base, so it would keep the whole
+            # part. The sketch keeps its place, unattached.
+            glob = body.Placement.multiply(p.Placement)
+            p.MapMode = "Deactivated"
+            p.AttachmentSupport = None
+            p.Placement = new.Placement.inverse().multiply(glob)
         new.addObject(p)
     for i, m in enumerate(movers):
         new.addObject(m)
@@ -153,6 +202,21 @@ def detach_lump(feature):
     if was_tip:
         solids = [o for o in body.Group if _is_solid_feature(o)]
         body.Tip = solids[-1] if solids else None
+    doc.recompute()
+    for p in group:  # left behind, attached to a face of the part named on a moved step: the same face before it
+        support = getattr(p, "AttachmentSupport", None) if p not in related else None
+        if not support or support[0][0] is None or support[0][0].Name not in old_shapes:
+            continue
+        sub = support[0][1]
+        sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+        fresh = remap_sub(old_shapes[support[0][0].Name], before.Shape, sub) if sub else None
+        if fresh:
+            p.AttachmentSupport = [(before, fresh)]
+        else:  # not on the part before the piece: keep its place, unattached
+            glob = p.Placement
+            p.MapMode = "Deactivated"
+            p.AttachmentSupport = None
+            p.Placement = glob
     doc.recompute()
     for p in sketches:  # a sketch on a face of a moved piece: that face has a new number now
         support = p.AttachmentSupport

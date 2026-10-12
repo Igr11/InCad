@@ -216,3 +216,76 @@ class SecondSolidTest(unittest.TestCase):
         self.assertIs(document.body_of(self.pad), self.body)
         self.assertIs(document.body_of([o for o in other.Origin.OriginFeatures if o.Role == "XY_Plane"][0]), other)
         self.assertIsNone(document.body_of(None))
+
+
+class UsedUpToolTreeTest(unittest.TestCase):
+    def setUp(self):
+        from incad.features import combine
+        self.doc = util.new_doc("Ut")
+        self.part = document.make_part(self.doc)
+        box = self.part.newObject("PartDesign::AdditiveBox", "Box")
+        self.part.Tip = box
+        self.tool = document.new_solid(self.doc)
+        pin = self.tool.newObject("PartDesign::AdditiveCylinder", "Pin")
+        pin.Radius, pin.Height = 2, 30
+        self.tool.Tip = pin
+        self.doc.recompute()
+        self.f = combine.create(self.doc, self.part, None, dict(combine.defaults(self.doc, self.part),
+                                                                tools=self.tool.Name, operation="cut",
+                                                                clearance="0 mm"))
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def rows(self):
+        return tree.build(self.doc)[0].children
+
+    def test_a_used_up_tool_sits_under_its_boolean(self):
+        rows = self.rows()
+        names = [n.name for n in rows]
+        self.assertNotIn("Pin", names)  # not in the main history
+        node = next(n for n in rows if n.name == self.f.Name)
+        tool = next(c for c in node.children if c.kind == "body")
+        self.assertEqual(tool.name, self.tool.Name)
+        self.assertIn("Pin", [c.name for c in tool.children])
+        solids = next((n for n in rows if n.kind == "solids"), None)
+        self.assertIsNone(solids)  # one solid left that is not used up: no folder
+
+    def test_keep_tool_on_puts_it_back_in_the_list(self):
+        from incad.features import combine
+        combine.update(self.doc, self.f, dict(combine.read(self.doc, self.f), keep_tool=True))
+        self.doc.recompute()
+        rows = self.rows()
+        self.assertIn("Pin", [n.name for n in rows])
+        solids = next(n for n in rows if n.kind == "solids")
+        self.assertEqual(solids.label, "Solid Bodies (2)")
+
+
+class NestedUsedUpToolTreeTest(unittest.TestCase):
+    """Review: pin A cut into tool B (Keep tool off), B cut into the part: A vanished from the browser."""
+    def test_a_tool_used_up_inside_a_used_up_tool_is_under_it(self):
+        from incad.features import combine
+        doc = util.new_doc("Nu")
+        part = document.make_part(doc)
+        part.Tip = part.newObject("PartDesign::AdditiveBox", "Box")
+        b = document.new_solid(doc)
+        b.Tip = b.newObject("PartDesign::AdditiveCylinder", "Plug")
+        a = document.new_solid(doc)
+        a.Tip = a.newObject("PartDesign::AdditiveCylinder", "PinA")
+        doc.recompute()
+        cut_b = combine.create(doc, b, None, dict(combine.defaults(doc, b), tools=a.Name, operation="cut",
+                                                  clearance="0 mm"))
+        doc.recompute()
+        cut_part = combine.create(doc, part, None, dict(combine.defaults(doc, part), tools=b.Name, operation="cut",
+                                                        clearance="0 mm"))
+        doc.recompute()
+
+        def names(nodes):
+            out = []
+            for n in nodes:
+                out.append(n.name)
+                out.extend(names(n.children))
+            return out
+        self.assertIn("PinA", names(tree.build(doc)))
+        App.closeDocument(doc.Name)

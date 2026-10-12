@@ -26,9 +26,10 @@ FIELDS = (
     Field("tools", "Tools", "picks", pick="body"),
     Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut"), ("intersect", "Intersect")),
           "cut"),
-    Field("clearance", "Clearance", "value_length", default="0.2 mm", show_if=("operation", ("cut",))),
+    Field("clearance", "Clearance (per side)", "value_length", default="0.2 mm", show_if=("operation", ("cut",))),
     Field("apply_to", "Clearance on", "choice", (("cavity", "Cavity"), ("tool", "Tool"), ("split", "Split")),
           "cavity", show_if=("operation", ("cut",))),
+    Field("keep_tool", "Keep tool", "bool", default=False),
 )
 
 
@@ -207,7 +208,7 @@ def _build(doc, f, base, values):
             fit.Label = "%s fit" % tool.Label
             mine["fit"] = fit.Name
         helpers[tool.Name] = mine
-        tool.Visibility = False
+        tool.Visibility = bool(values.get("keep_tool"))  # off: used up (shown under the Boolean in the tree)
     f.Type = _TYPE.get(op, "Cut")
     f.Group = group
     for tool_name, old in old_helpers.items():  # drop helpers this setup no longer uses
@@ -222,7 +223,8 @@ def _build(doc, f, base, values):
     _check_helpers(doc, helpers, tools)
     _store(f, {"base": base.Name, "tools": [t.Name for t in tools], "operation": op, "apply_to": apply_to,
                "clearance_param": name or data.get("clearance_param"),
-               "clearance": values.get("clearance") or "0.2 mm", "helpers": helpers})
+               "clearance": values.get("clearance") or "0.2 mm", "helpers": helpers,
+               "keep_tool": bool(values.get("keep_tool"))})
     return f
 
 
@@ -300,7 +302,7 @@ def read(doc, f):
     return {"base": data.get("base", f.getParentGeoFeatureGroup().Name),
             "tools": format_picks([(t, "") for t in tools if t is not None]),
             "operation": data.get("operation", "cut"), "apply_to": data.get("apply_to", "cavity"),
-            "clearance": clearance}
+            "clearance": clearance, "keep_tool": bool(data.get("keep_tool", False))}
 
 
 def update(doc, f, values):
@@ -310,6 +312,23 @@ def update(doc, f, values):
         raise ValueError("The base can't change on an existing Boolean: cancel and start Boolean on the other "
                          "solid")
     return _build(doc, f, body, values)
+
+
+def used_up_tools(f):
+    """The tools this Boolean uses up (Keep tool off; older Booleans had no setting and hid their tools)."""
+    data = _load(f)
+    if data.get("keep_tool"):
+        return []
+    return [t for t in (f.Document.getObject(n) for n in data.get("tools", [])) if t is not None]
+
+
+def used_up_names(doc):
+    """Names of every solid some Boolean uses up (one pass over the document)."""
+    return {t.Name for f in doc.Objects if claims(f) for t in used_up_tools(f)}
+
+
+def is_used_up(body):
+    return body.Name in used_up_names(body.Document)
 
 
 def param_names(f):

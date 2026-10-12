@@ -20,8 +20,19 @@ Improvements
   only the exit can be chamfered.
 - Boolean: click anywhere on a solid to pick it as the base or a tool (the field names the solid, not
   the face clicked); a click on the base while picking tools is ignored.
+- Boolean: new "Keep tool" option. Off (as it opens): the tool is used up and shows under the Boolean
+  in the model tree. On: the tool stays a separate visible solid (print the pin and the box).
+- Clearance fields say how they are measured: Boolean "Clearance (per side)", Thread and Hole
+  "Print clearance (on diameter)".
+- Dialogs: long choice lists wrap four buttons per row; choosing an option that needs a pick starts
+  that pick, and a click on the field the dialog already made active keeps picking (it no longer
+  stops it).
 
 Bug fixes
+- A box drawn away from the part and split off into its own Solid no longer takes along what was
+  built on the part after it, and sketches left on the part stay attached.
+- Parameter units came back only on a file's first open in a FreeCAD session; opening a file no
+  longer marks its features for a recompute.
 - Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was
   made after the first: it hung on the first thread. Threads now attach to the hole itself, and
   older files are repaired the first time threads are turned off.
