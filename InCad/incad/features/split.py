@@ -145,8 +145,11 @@ def piece_bodies(f):
 
 
 def _drop_piece_body(doc, body):
-    """A piece's Solid goes with its piece, unless something was made on it (then it stays and shows the nearest
-    piece)."""
+    """A piece's Solid goes with its piece, unless something was made on it or a Boolean uses it as a tool (then it
+    stays)."""
+    from incad.features import combine
+    if any(combine.claims(f) and body.Name in combine._load(f).get("tools", []) for f in doc.Objects):
+        return
     origin = [body.Origin] + list(body.Origin.OriginFeatures) if body.Origin is not None else []
     stand_in = [o for o in body.Group if o.TypeId == "PartDesign::FeatureBase"]  # FreeCAD's for BaseFeature
     if any(o not in origin and o not in stand_in for o in body.Group):

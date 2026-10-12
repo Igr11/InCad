@@ -488,12 +488,18 @@ def quit_freecad():
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
-    obj = _target_object()
+    obj = delete.target_for(_target_object())  # a Split piece's base means its Solid
     doc = obj.Document
     from incad.ui import shell
     if shell.sketch_session().editing() is obj:
         shell.sketch_session().finish()  # the edit would be left half-reset on a deleted object
     kw = {}
+    from incad.features import split
+    if split.claims(obj) and split.piece_bodies(obj):
+        names = ", ".join(b.Label for b in split.piece_bodies(obj))
+        if not shell.confirm("Delete", "Deleting %s joins its pieces again: %s go (a Solid with work on it, or one a "
+                                       "Boolean uses, stays with its piece). Delete?" % (obj.Label, names)):
+            return
     if obj.TypeId == "PartDesign::Body":  # Inventor asks instead of refusing
         from incad.core import document
         users = delete.users_of(obj)

@@ -40,6 +40,17 @@ def documents(obj):
     return []
 
 
+def target_for(obj):
+    """What Delete removes for a pick: a Split piece's base (the stand-in FeatureBase of the Solid made on it, or the
+    SplitPiece outside it) means that Solid — the base alone is nothing to delete."""
+    from incad.core import document
+    if obj is not None and (obj.TypeId == "PartDesign::FeatureBase" or getattr(obj, "InCadSplitPiece", False)):
+        solid = document._solid_of(obj)
+        if solid is not None:
+            return solid
+    return obj
+
+
 def users_of(body):
     """The Booleans that use this Solid as a tool (deleting it alone would break them)."""
     from incad.features import combine
@@ -69,14 +80,15 @@ def delete(obj, with_users=False, replace_main=False):
                 _delete(f)
         if replace_main:
             _hand_over_main(obj)
+    doc = obj.Document
     _delete(obj)
     from incad.core import document
-    if body is not None and body.TypeId == "PartDesign::Body" and body.Document.getObject(body.Name) is not None:
-        try:
-            body.Document.recompute()
-            document.show_result(body)
-        except Exception:
-            pass
+    try:  # every Solid shows its End of Part again (a Boolean that went with a tool Solid lived in another Solid)
+        doc.recompute()
+        for b in document.bodies(doc):
+            document.show_result(b)
+    except Exception:
+        pass
 
 
 def _delete(obj):

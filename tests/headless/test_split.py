@@ -236,6 +236,7 @@ class SplitTest(unittest.TestCase):
         tool_name, cut_name = tool.Name, cut.Name
         delete.delete(tool, with_users=True)
         self.doc.recompute()
+        self.assertTrue(self.body.Tip.Visibility, "the user: Solid1 vanished too — its new End of Part was hidden")
         self.assertIsNone(self.doc.getObject(tool_name))
         self.assertIsNone(self.doc.getObject(cut_name))
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
@@ -253,6 +254,30 @@ class SplitTest(unittest.TestCase):
         self.assertIs(document.primary_body(self.doc), piece)
         self.assertAlmostEqual(piece.Shape.Volume, 500, places=6)  # frozen: its Split went with the main solid
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State or o.TypeId == "Part::FeaturePython"])
+
+
+    def test_deleting_the_split_keeps_a_piece_solid_that_a_boolean_uses(self):
+        from incad.core import delete
+        from incad.features import combine
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        tool = split.piece_bodies(f)[0]
+        combine.create(self.doc, self.body, None, dict(combine.defaults(self.doc, self.body, None),
+                                                       base=self.body.Name, tools=tool.Name, keep_tool=True))
+        self.doc.recompute()
+        tool_name = tool.Name
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertIsNotNone(self.doc.getObject(tool_name), "frozen, not dropped: its Boolean still needs it")
+        self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
+
+    def test_a_pick_on_a_piece_base_means_its_solid(self):
+        from incad.core import delete
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        piece = split.piece_bodies(f)[0]
+        base = next(o for o in piece.Group if o.TypeId == "PartDesign::FeatureBase")
+        self.assertIs(delete.target_for(base), piece)
+        self.assertIs(delete.target_for(piece.BaseFeature), piece)
+        self.assertIs(delete.target_for(f), f)
 
 
 if __name__ == "__main__":
