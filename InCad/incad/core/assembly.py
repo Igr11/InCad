@@ -222,3 +222,38 @@ def toggle_suppressed(link):
     doc.recompute()
     return on
 
+
+
+def parts_signature(doc):
+    """What the components' parts look like now (each part's volume and box): changed when a part was edited in
+    its own tab."""
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        shape = getattr(target, "Shape", None)
+        if shape is None or shape.isNull():
+            out.append((c.Name, None))
+            continue
+        bb = shape.BoundBox
+        out.append((c.Name, round(shape.Volume, 6),
+                    tuple(round(v, 6) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax))))
+    return tuple(out)
+
+
+def update_if_parts_changed(doc, seen):
+    """Back in the assembly: when a part changed since `seen` (a parts_signature), recompute and solve so the
+    assembly follows (Inventor updates by itself). Returns (changed, signature now)."""
+    now = parts_signature(doc)
+    if seen is None or now == seen:
+        return False, now
+    for c in components(doc):
+        c.touch()  # a link to another file is not touched by that file's recompute
+    doc.recompute()
+    asm = assembly_of(doc)
+    if asm is not None and hasattr(asm, "solve"):
+        try:
+            asm.solve()
+        except Exception:
+            pass
+        doc.recompute()
+    return True, parts_signature(doc)

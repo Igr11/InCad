@@ -57,10 +57,11 @@ def _std_new_actions():
 class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
-    def __init__(self, callback, sketch_callback=None, undo_callback=None):
+    def __init__(self, callback, sketch_callback=None, undo_callback=None, activate_callback=None):
         self.callback = callback
         self.sketch_callback = sketch_callback
         self.undo_callback = undo_callback
+        self.activate_callback = activate_callback
 
     def slotCreatedDocument(self, doc):
         self.callback()
@@ -73,6 +74,8 @@ class _DocObserver:
 
     def slotActivateDocument(self, doc):
         self.callback()
+        if self.activate_callback is not None:
+            self.activate_callback(doc)
 
     def slotCreatedObject(self, obj):
         self.callback()
@@ -1066,6 +1069,30 @@ class Shell(QtCore.QObject):
             pass
         self.refresh_constraints_window()  # a picked line or point filters the Constraint List
 
+    def _document_activated(self, doc):
+        """Back in an assembly's tab: parts edited in their own tabs meanwhile come in by themselves (Inventor),
+        no Refresh needed. Deferred: FreeCAD is still switching the tab."""
+        name = getattr(doc, "Name", None)
+        if name:
+            QtCore.QTimer.singleShot(0, lambda n=name: self._update_assembly(n))
+
+    def _update_assembly(self, name):
+        import FreeCAD as App
+        from incad.core import assembly, log, safe
+        doc = App.listDocuments().get(name)
+        if doc is None or getattr(doc, "Restoring", False) or not assembly.is_assembly(doc) or safe.busy():
+            return
+        seen = getattr(self, "_assembly_seen", {})
+        self._assembly_seen = seen
+        try:
+            changed, seen[name] = assembly.update_if_parts_changed(doc, seen.get(name))
+        except Exception:
+            log.logger().exception("assembly update on return")
+            return
+        if changed:
+            log.report("info", "Updated %s (parts changed)" % doc.Label)
+            self.schedule_refresh()
+
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
         from incad.core import context
@@ -1901,7 +1928,8 @@ class Shell(QtCore.QObject):
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
-        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo)
+        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo,
+                                      self._document_activated)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params

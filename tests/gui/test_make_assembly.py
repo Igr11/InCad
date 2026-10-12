@@ -73,4 +73,21 @@ def test_1_dialog_then_ok_opens_the_assembly():
     assert len(assembly.components(asm_doc)) == 2
 
 
-harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly])
+def test_2_a_part_edited_in_its_tab_comes_in_when_back_in_the_assembly():
+    """The user: after editing a part in its own tab the assembly needed a Refresh click."""
+    asm_doc = next(d for d in App.listDocuments().values() if assembly.is_assembly(d))
+    block = assembly.components(asm_doc)[1]
+    part = block.LinkedObject.Document
+    App.setActiveDocument(part.Name)
+    harness.pump(500)
+    box = next(o for o in part.Objects if o.TypeId == "PartDesign::AdditiveBox")
+    box.Height = 25
+    part.recompute()
+    harness.pump(300)
+    App.setActiveDocument(asm_doc.Name)
+    harness.pump(1500)
+    assert abs(block.Shape.BoundBox.ZLength - 25) < 1e-6, block.Shape.BoundBox
+
+
+harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly,
+             test_2_a_part_edited_in_its_tab_comes_in_when_back_in_the_assembly])

@@ -134,6 +134,21 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual(len(assembly.components(self.doc)), 1)
         self.assertTrue(os.path.exists(self.block))
 
+    def test_parts_changed_elsewhere_are_noticed_and_brought_in(self):
+        """The user: after editing a part in its own tab, the assembly needed a Refresh click."""
+        b = assembly.place(self.doc, self.block)
+        self.doc.recompute()
+        seen = assembly.parts_signature(self.doc)
+        self.assertFalse(assembly.update_if_parts_changed(self.doc, seen)[0])
+        pad = self.block_doc.getObject("Pad")
+        pad.Length = 25
+        self.block_doc.recompute()
+        changed, seen2 = assembly.update_if_parts_changed(self.doc, seen)
+        self.assertTrue(changed)
+        self.assertNotEqual(seen, seen2)
+        self.assertAlmostEqual(b.Shape.BoundBox.ZLength, 25, places=6)
+        self.assertFalse(assembly.update_if_parts_changed(self.doc, seen2)[0])
+
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, self.doc.FileName)
