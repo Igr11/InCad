@@ -353,7 +353,8 @@ class ModelBrowser(QtWidgets.QWidget):
 
     def _on_double_click(self, item, _column=0):
         kind = item.data(0, KIND_ROLE)
-        if kind in ("feature", "sketch", "origin_item"):  # an origin plane: a new sketch on it
+        if kind in ("feature", "sketch", "origin_item", "component"):  # an origin plane: a new sketch on it;
+            # a component (or a row of its history): its part file opens
             self.featureActivated.emit(item.data(0, NAME_ROLE))
         elif kind == "action":
             self.actionTriggered.emit(item.data(0, NAME_ROLE))

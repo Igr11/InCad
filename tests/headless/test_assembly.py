@@ -99,6 +99,12 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual([(n.label, n.detail) for n in comps], [("Plate", "grounded"), ("Block", "")])
         rel = [n for n in root.children if n.kind == "relationships"][0]
         self.assertEqual([n.label for n in rel.children], ["Mate"])
+        # the user: no part's history in the assembly (Inventor shows each component's features under it)
+        from incad.core.nodes import flatten
+        rows = [n for _, n in flatten(comps[0].children)]
+        self.assertTrue(any(n.kind == "feature" for n in rows), [(n.kind, n.label) for n in rows])
+        self.assertEqual({n.name for n in rows}, {a.Name}, "every row stands for the component (double-click opens it)")
+        self.assertFalse([n for n in rows if n.kind == "end_of_part"])
 
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:

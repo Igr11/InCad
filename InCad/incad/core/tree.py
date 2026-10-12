@@ -157,6 +157,24 @@ def _origin(body):
     return Node("origin", "Origin", origin.Name, children=items)
 
 
+def _component_rows(link):
+    """The component's part history under its row (Inventor): its sketches and features as in the part, each row
+    standing for the component itself (a click selects it, a double-click opens the part file)."""
+    target = link.LinkedObject
+    part = target.Document if target is not None else None
+    primary = document.primary_body(part) if part is not None and document.is_incad_part(part) else None
+    if primary is None:
+        return []
+
+    def recast(n):
+        if n.kind == "end_of_part":
+            return None
+        kids = [k for k in (recast(c) for c in n.children) if k is not None]
+        return Node(n.kind, n.label, link.Name, n.state, n.tooltip, n.detail, kids)
+
+    return [r for r in (recast(n) for n in _history(part, primary)) if r is not None]
+
+
 def _assembly(doc):
     from incad.core import assembly
     from incad.features import constraints
@@ -164,7 +182,8 @@ def _assembly(doc):
     for c in assembly.components(doc):
         root.children.append(Node("component", c.Label, c.Name,
                                   detail="grounded" if assembly.is_grounded(c) else "",
-                                  tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else "")))
+                                  tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else ""),
+                                  children=_component_rows(c)))
     from incad.core import asm_cut
     rel = [j for j in assembly.joints(doc) if constraints.claims(j)] + asm_cut.records(doc)
     root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
