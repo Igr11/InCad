@@ -14,6 +14,7 @@ TYPES = ("PartDesign::FeaturePython",)
 NEEDS_PROFILE = False
 STRUCTURAL = ()
 PICKS_ON_SELF = ("keep",)
+PRESELECT = {"sketch": "sketch"}  # a sketch selected before the command fills the field
 _STORE = "InCadSplit"
 
 FIELDS = (

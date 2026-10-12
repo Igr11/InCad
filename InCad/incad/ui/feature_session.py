@@ -216,7 +216,8 @@ class FeatureSession(QtCore.QObject):
         for sel in Gui.Selection.getSelectionEx(self.doc_name):
             for sub in (sel.SubElementNames or ("",)):
                 obj, el = common.resolve(sel.Object, sub)
-                if obj is not None and (obj is not self.feature or getattr(self.kind, "IN_SKETCH", False)):
+                own = self.dialog is not None and self.dialog.active_pick() in getattr(self.kind, "PICKS_ON_SELF", ())
+                if obj is not None and (obj is not self.feature or own or getattr(self.kind, "IN_SKETCH", False)):
                     # the feature being made can't be its own input (a sketch pattern's picks ARE on the sketch)
                     pairs.append((obj, el))
         return pairs
@@ -376,6 +377,12 @@ class FeatureSession(QtCore.QObject):
         if seed and key:
             self._seed_selection(key)
         self._sync_point_pick(key)
+        hook = getattr(self.kind, "picking", None)  # Split ▸ Keep picked: every piece shows while they are picked
+        if hook is not None and self.feature is not None and _feature_alive(self.feature):
+            active = bool(key) and key in getattr(self.kind, "PICKS_ON_SELF", ())
+            if bool(getattr(self.feature, "ShowAll", False)) != active:
+                hook(self.feature, active)
+                self.doc.recompute()
 
     def _sync_point_pick(self, key):
         """A 'two points' field that becomes active shows the part's markers (corners, edge middles, circle
@@ -867,6 +874,8 @@ class FeatureSession(QtCore.QObject):
             self._after_preview = "ok"  # taken when the preview (seconds for a thread) is done
             return
         self._timer.stop()
+        if self.dialog is not None and self.dialog.active_pick() is not None:
+            self.dialog.set_active_pick(None)  # picking ends (Split's Keep shows only the kept pieces again)
         if self.dialog is not None:
             current = self.dialog.values()
             if self._pending is not None or current != self._applied:

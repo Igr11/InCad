@@ -8,7 +8,7 @@ LAYOUT = {
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole",
                                   ["feature.sweep", "feature.loft", "feature.coil"]]],
                       ["Modify", [["feature.fillet", "feature.chamfer"], ["feature.shell", "feature.draft"],
-                                  "feature.thread", "feature.threads_toggle", "feature.combine"]],
+                                  "feature.thread", "feature.threads_toggle", "feature.combine", "feature.split"]],
                       ["Pattern", [["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"]]],
                       ["Work Features", [["work.plane", "work.axis", "work.point"]]]]],
         ["Sketch", []],

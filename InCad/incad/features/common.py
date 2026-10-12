@@ -313,6 +313,8 @@ def accepts(kind, obj, sub):
         return sub.startswith("Face") and el is not None
     if kind == "component":
         return tid == "App::Link"
+    if kind == "piece":  # a face of one of the feature's own pieces (Split ▸ Keep picked)
+        return sub.startswith("Face") and el is not None
     if kind == "element":
         return sub.startswith(("Face", "Edge", "Vertex")) and el is not None
     if kind == "cylinder":
