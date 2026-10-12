@@ -44,6 +44,7 @@ class MakeAssemblyTest(unittest.TestCase):
         self.assertEqual(asm_path, os.path.join(self.dir, "Plate-Assembly.FCStd"))
         self.assertEqual([d.Name for d in App.listDocuments().values()], [self.doc.Name],
                          "no copy or assembly is left open (hidden) after Make Assembly")
+        self.assertFalse([f for f in os.listdir(self.dir) if f.endswith(".FCBak")], "no backup files left behind")
         _close_all()
         vols = []
         for name, has in (("Plate-Solid1", "Pad"), ("Plate-Solid2", "Box")):

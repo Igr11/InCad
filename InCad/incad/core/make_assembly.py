@@ -114,6 +114,15 @@ def _finish_copy(path, point):
         App.closeDocument(d.Name)
 
 
+def _drop_backups(paths):
+    """FreeCAD keeps a .FCBak when a file is saved again; these files are new, so their backups are only ours."""
+    import glob
+    for path in paths:
+        stem = os.path.splitext(path)[0]
+        for bak in glob.glob(glob.escape(stem) + ".*.FCBak"):
+            os.remove(bak)
+
+
 def _close_paths(paths):
     wanted = {os.path.abspath(p) for p in paths}
     for d in list(App.listDocuments().values()):
@@ -148,6 +157,7 @@ def make(doc, asm_name, names):
         finally:
             App.closeDocument(a.Name)
             _close_paths(made)  # the part files place() opened hidden
+        _drop_backups(made)
         return asm_path
     except Exception:
         _close_paths(made)
