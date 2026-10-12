@@ -103,5 +103,38 @@ def test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh():
     assert "needs update" not in tree.build(asm_doc)[0].detail.lower()
 
 
+def test_3_place_into_a_new_unsaved_assembly():
+    """The user: Place in a new assembly showed 'Save the assembly first' (a save dialog: the part files greyed out),
+    so no part could be chosen. Now the part is chosen first and the assembly is saved next to it."""
+    from incad.ui import shell
+    from incad.core import prefs
+    seen_modals = []
+
+    def close_modal():
+        w = QtWidgets.QApplication.activeModalWidget()
+        if w is not None:
+            seen_modals.append((w.windowTitle(), w.metaObject().className(),
+                                getattr(w, "text", lambda: "")() if hasattr(w, "text") else ""))
+            w.reject() if hasattr(w, "reject") else w.close()
+    timer = QtCore.QTimer()
+    timer.timeout.connect(close_modal)
+    timer.start(300)
+    ST["modals"] = seen_modals
+    ST["timer"] = timer
+    commands.REGISTRY.run("file.new_assembly")
+    harness.pump(1000)
+    asm_doc = App.ActiveDocument
+    assert assembly.is_assembly(asm_doc) and not asm_doc.FileName
+    part = os.path.join(ST["folder"], "Bench-Solid1.FCStd")
+    link = shell.assembly_place(part)
+    harness.pump(1500)
+    timer.stop()
+    assert not seen_modals, seen_modals
+    assert link is not None, "placed"
+    assert asm_doc.FileName == os.path.join(ST["folder"], asm_doc.Label + ".FCStd"), asm_doc.FileName
+    assert len(assembly.components(asm_doc)) == 1
+
+
 harness.run([test_0_part_with_two_pieces, test_1_dialog_then_ok_opens_the_assembly,
-             test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh])
+             test_2_back_in_the_assembly_it_asks_and_a_no_shows_the_sign_until_refresh,
+             test_3_place_into_a_new_unsaved_assembly])

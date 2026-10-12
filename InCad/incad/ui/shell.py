@@ -2298,11 +2298,15 @@ class Shell(QtCore.QObject):
             raise self._dialog_first()
         return doc
 
-    def _ensure_saved(self, doc):
+    def _ensure_saved(self, doc, folder=""):
         """Linking needs the assembly on disk: ask for its file the first time."""
         if doc.FileName:
             return True
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self.mw, "Save the assembly first", doc.Label + ".FCStd",
+        QtWidgets.QMessageBox.information(self.mw, "Save the assembly",
+                                          "The assembly links to part files, so it is saved first: choose a name and "
+                                          "a folder for the assembly itself.")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self.mw, "Save the assembly (not the part)",
+                                                        os.path.join(folder, doc.Label + ".FCStd"),
                                                         "FreeCAD files (*.FCStd)")
         if not path:
             return False
@@ -2324,15 +2328,24 @@ class Shell(QtCore.QObject):
                     break
 
     def assembly_place(self, path=None):
-        from incad.core import assembly, safe
+        """Place: choose the part (or assembly) file first; a new assembly not saved yet is saved next to it (the
+        user took the old 'Save the assembly first' dialog for the part chooser: its files are greyed out)."""
+        from incad.core import assembly, log, safe
         doc = self._assembly_doc()
-        if not self._ensure_saved(doc):
-            return None
         if path is None:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(self.mw, "Place a part or assembly",
-                                                            os.path.dirname(doc.FileName), "FreeCAD files (*.FCStd)")
+                                                            os.path.dirname(doc.FileName or ""),
+                                                            "FreeCAD files (*.FCStd)")
             if not path:
                 return None
+        if not doc.FileName:
+            target = os.path.join(os.path.dirname(path), doc.Label + ".FCStd")
+            if os.path.exists(target) or os.path.abspath(target) == os.path.abspath(path):
+                if not self._ensure_saved(doc, os.path.dirname(path)):
+                    return None
+            else:
+                doc.saveAs(target)
+                log.report("info", "Assembly saved as %s (next to the part)" % target)
         result = safe.run_safely("Place", lambda: assembly.place(doc, path), doc)
         self._back_to(doc)
         self.schedule_refresh()

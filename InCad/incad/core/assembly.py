@@ -244,8 +244,12 @@ _NEEDS_UPDATE = set()  # assemblies whose parts changed and whose update was dec
 
 
 def parts_changed(doc, seen):
-    """True when a part looks different from `seen` (a parts_signature)."""
-    return seen is not None and parts_signature(doc) != seen
+    """True when a part already in the assembly looks different from `seen` (a parts_signature). A part placed or
+    removed meanwhile is the assembly's own change, not one to ask about."""
+    if seen is None:
+        return False
+    before = {row[0]: row for row in seen}
+    return any(row[0] in before and before[row[0]] != row for row in parts_signature(doc))
 
 
 def mark_needs_update(doc):

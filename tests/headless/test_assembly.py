@@ -142,6 +142,8 @@ class AssemblyTest(unittest.TestCase):
         self.doc.recompute()
         seen = assembly.parts_signature(self.doc)
         self.assertFalse(assembly.parts_changed(self.doc, seen))
+        assembly.place(self.doc, self.plate)  # a part placed meanwhile: the assembly's own change, no question
+        self.assertFalse(assembly.parts_changed(self.doc, seen))
         pad = self.block_doc.getObject("Pad")
         pad.Length = 25
         self.block_doc.recompute()
