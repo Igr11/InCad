@@ -157,3 +157,42 @@ def create_part(doc, name, units=None):
     part.recompute()
     part.saveAs(path)
     return place(doc, path)
+
+
+def part_documents(doc):
+    """The part files the components link to, each once, in component order."""
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        d = target.Document if target is not None else None
+        if d is not None and d is not doc and d not in out:
+            out.append(d)
+    return out
+
+
+def _threaded(doc):
+    from incad.core import suppress
+    return [d for d in part_documents(doc) if suppress.threads(d) or suppress.tapped_holes(d)]
+
+
+def threads_off(doc):
+    """True while every threaded part of the assembly has its threads off."""
+    from incad.core import suppress
+    parts = _threaded(doc)
+    return bool(parts) and all(suppress.threads_off(d) for d in parts)
+
+
+def toggle_threads(doc):
+    """Threads Off / On for the whole assembly: every threaded part's threads off, or (all off) back on, in their
+    part files (saved with them); 'off' or 'on'."""
+    from incad.core import suppress
+    parts = _threaded(doc)
+    if not parts:
+        raise ValueError("No part of this assembly has threads")
+    want = "on" if threads_off(doc) else "off"
+    for d in parts:
+        if ("off" if suppress.threads_off(d) else "on") != want:
+            suppress.toggle_threads(d)
+            d.recompute()
+    doc.recompute()
+    return want

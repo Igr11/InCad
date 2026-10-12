@@ -173,6 +173,23 @@ def _threads_off():
     return App.ActiveDocument is not None and suppress.threads_off(App.ActiveDocument)
 
 
+def toggle_assembly_threads():
+    """Threads Off / On from an assembly: in every part file it links to (a part made into an assembly with its
+    threads off gets them back here)."""
+    import FreeCAD as App
+    from incad.core import assembly, log
+    _refuse_while_busy()
+    state = assembly.toggle_threads(App.ActiveDocument)
+    log.report("info", ("Threads off" if state == "off" else "Threads on") + " in the parts (save them with the assembly)")
+
+
+def _assembly_threads_off():
+    import FreeCAD as App
+    from incad.core import assembly
+    return App.ActiveDocument is not None and assembly.is_assembly(App.ActiveDocument) and \
+        assembly.threads_off(App.ActiveDocument)
+
+
 def toggle_threads():
     """Every thread off for faster work, or back on (a thread that was already off stays off)."""
     import FreeCAD as App
@@ -885,6 +902,10 @@ def commands():
                 tooltip="Delete the selection (sketch geometry and dimensions, or features)"),
         Command(id="edit.delete_key", label="Delete", icon="delete", handler=delete_selection, shortcut="Del",
                 tooltip="Delete the selection"),
+        Command(id="assembly.threads_toggle", label="Threads Off / On", icon="suppress",
+                handler=toggle_assembly_threads, contexts=frozenset({"assembly"}), checkable=True,
+                is_checked=_assembly_threads_off,
+                tooltip="Every thread of the parts off (faster redraws), or back on; changes the part files"),
         Command(id="feature.threads_toggle", label="Threads Off / On", icon="suppress", handler=toggle_threads,
                 transactional=True, checkable=True, is_checked=_threads_off,
                 tooltip="Suppress every thread while you work (faster redraws); click again to bring them back"),
@@ -936,7 +957,7 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
+SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
          "view.origin_hide_all": "Hide All", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",

@@ -49,7 +49,8 @@ LAYOUT = {
                   ["Windows", ["view.parameters"]]]],
     ],
     "assembly": [
-        ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground", "assembly.combine"]],
+        ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground", "assembly.combine",
+                                     "assembly.threads_toggle"]],
                       ["Constrain", ["constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent",
                                      "constrain.insert"]],
                       ["Joint", ["joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical",

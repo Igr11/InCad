@@ -120,3 +120,64 @@ class AssemblyTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, outer.FileName)
         self.assertIn("contains", str(ctx.exception))
+
+
+class AssemblyThreadsTest(unittest.TestCase):
+    """The user: a part placed in an assembly with its threads off could not get them back from the assembly."""
+
+    def setUp(self):
+        import Part
+        from incad.core import suppress
+        from incad.features import thread
+        from headless.test_thread import cyl_face, shaft
+        self.dir = tempfile.mkdtemp(prefix="incad_asmt_")
+        d = util.new_doc("Nut")
+        body = document.make_part(d)
+        shaft(d, body, radius=8.0, length=20.0, name="Block")
+        sk = body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 1.5))
+        bore = body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        body.Tip = bore
+        d.recompute()
+        thread.create(d, body, None, dict(thread.defaults(d, body, None), face=cyl_face(bore, 1.5), size="M3"))
+        d.recompute()
+        suppress.toggle_threads(d)  # made into an assembly with its threads off
+        d.recompute()
+        self.nut = os.path.join(self.dir, "Nut.FCStd")
+        d.saveAs(self.nut)
+        self.nut_doc = d
+        _, self.block = save_part(self.dir, "Block", 10, 10, 10)
+        self.doc = App.newDocument("AsmT")
+        assembly.make_assembly(self.doc, "mm")
+        self.doc.saveAs(os.path.join(self.dir, "AsmT.FCStd"))
+        assembly.place(self.doc, self.nut)
+        assembly.place(self.doc, self.block)
+
+    def tearDown(self):
+        for name in list(App.listDocuments()):
+            App.closeDocument(name)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_threads_come_back_from_the_assembly_and_go_off_again(self):
+        from incad.core import suppress
+        self.assertTrue(assembly.threads_off(self.doc))
+        self.assertEqual(assembly.toggle_threads(self.doc), "on")
+        self.assertFalse(suppress.threads_off(self.nut_doc))
+        self.assertFalse(assembly.threads_off(self.doc))
+        self.assertEqual(assembly.toggle_threads(self.doc), "off")
+        self.assertTrue(suppress.threads_off(self.nut_doc))
+
+    def test_an_assembly_without_threads_says_so(self):
+        d = App.newDocument("AsmN")
+        assembly.make_assembly(d, "mm")
+        d.saveAs(os.path.join(self.dir, "AsmN.FCStd"))
+        assembly.place(d, self.block)
+        with self.assertRaises(ValueError) as ctx:
+            assembly.toggle_threads(d)
+        self.assertIn("has threads", str(ctx.exception))
+
