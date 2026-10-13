@@ -570,6 +570,36 @@ class FlipTest(unittest.TestCase):
         self.assertAlmostEqual(self.side(p), -4, places=4)  # the gap stays 1 mm, on the other side
         self.assertEqual(C.TANGENT.read(self.doc, j)["offset"], "1 mm")
 
+    def test_tangent_sits_outside_by_default_on_every_flat_face(self):
+        """The coordinator / Train_1: the default is the side the flat face's outward normal points to (outside the
+        part), whichever way FreeCAD's plane frame points (it follows the surface, reversed on half a box's faces);
+        Flip puts it inside."""
+        flats = [i + 1 for i, f in enumerate(self.plate.LinkedObject.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"]
+        self.assertEqual(len(flats), 6)
+        for k, n in enumerate(flats):
+            rod = self.rod(name="Rod%d" % k)
+            p, flat = round_face(rod), "%s:Face%d" % (self.plate.Name, n)
+            for picks in (dict(first=flat, second=p), dict(first=p, second=flat)):
+                rod.Placement = App.Placement(App.Vector(10, 10, 30), App.Rotation(App.Vector(1, 0, 0), 80))
+                self.doc.recompute()
+                j = self.make(C.TANGENT, **picks)
+                self.assertAlmostEqual(self.signed(flat, p), 3, places=4, msg=(n, "default outside"))
+                self.update(C.TANGENT, j, flip=True)
+                self.assertAlmostEqual(self.signed(flat, p), -3, places=4, msg=(n, "flipped inside"))
+                self.update(C.TANGENT, j, flip=False)
+                self.assertAlmostEqual(self.signed(flat, p), 3, places=4, msg=(n, "back outside"))
+                self.doc.removeObject(j.Name)
+            self.doc.removeObject(rod.Name)
+
+    def signed(self, flat, rod_pick):
+        """The rod axis' signed distance from the flat face along its outward normal (the axis lies along it)."""
+        name, _, sub = flat.partition(":")
+        f = self.doc.getObject(name).Shape.getElement(sub)
+        n = normal_of(self.doc, flat)
+        c, a = cylinder_of(self.doc, rod_pick)
+        self.assertAlmostEqual(a.dot(n), 0, places=6)
+        return (c - f.CenterOfMass).dot(n)
+
     def big(self):
         b = assembly.place(self.doc, save_cylinder(self.dir, "Big", 8, 20))
         b.Placement = App.Placement(App.Vector(0, 0, 60), App.Rotation(App.Vector(1, 0, 0), 90))

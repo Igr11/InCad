@@ -9,8 +9,9 @@ Perpendicular, Angle a <-> 90 deg - a; the model parameter keeps what the user t
 Picks are 'Link:Element'. Offsets/angles are model parameters. A constraint that can't be met is refused with the
 previous placements restored.
 Flip (the hidden bool InCadFlip on the joint) picks the other solution: Mate's faces face the same way, Flush's each
-other; Tangent's round face goes to the other side of the flat face (the flat face's joint frame turned over by its
-Offset) or, on two round faces, inside the other (the Distance bound as -(offset + 2 r)); Insert and the Rotational /
+other; Tangent's round face sits outside the flat face's part (its outward normal's side, whichever way FreeCAD's
+frame points: the frame is turned over by its Offset where they disagree) and Flip puts it inside; on two round faces
+it touches outside, Flip inside the other (the Distance bound as -(offset + 2 r)); Insert and the Rotational /
 Slider / Cylindrical joints turn the free part over about the joint frame's X (the solver keeps either way, so
 InCadFlip says which one is applied: re-applying the same choice turns nothing)."""
 import math
@@ -298,6 +299,8 @@ def _apply(doc, j, spec, values):
         if n1 is not None and n2 is not None and (n1.dot(n2) < 0) != (facing == "opposed"):
             j.Proxy.flipOnePart(j)
             result = _solve(doc, l1)
+    if spec.flip == "tangent" and _tangent_side(j, flip):  # the solve swapped the references
+        result = _solve(doc, l1)
     if spec.flip == "turn" and flip != _flipped(j) and result == 0:
         if _turn_over(doc, j, values):
             result = _solve(doc, l1)
@@ -352,22 +355,31 @@ def _bind_distance(doc, j, spec, text, inside):
 
 
 def _tangent_side(j, flip):
-    """A round face on a flat one: Flip turns the flat face's joint frame over (FreeCAD keeps the round face on
-    the side its Z points to). FreeCAD may swap the references, so the frame is found on the flat one each time."""
+    """A round face on a flat one sits outside the flat face's part (the side its outward normal points to), Flip
+    inside. FreeCAD keeps the round face on the side the flat face's joint frame Z points to, and that frame follows
+    the face's surface, not its outward normal (reversed on some faces: Train_1's hex), so the frame is turned over
+    (its Offset) where the two disagree. FreeCAD's solve may swap the references (not the Offsets): the flat one is
+    found each time. True when an Offset changed."""
+    import UtilsAssembly
+    changed = False
     for i in (1, 2):
         ref = getattr(j, "Reference%d" % i, None)
         prop = "Offset%d" % i
+        want = False
         try:
             sh = ref[0].Shape.getElement(ref[1][0])
-            flat = sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane"
+            if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane":
+                z = UtilsAssembly.getJcsGlobalPlc(UtilsAssembly.findPlacement(ref, True), ref) \
+                    .Rotation.multVec(App.Vector(0, 0, 1))  # FreeCAD's own frame, without any offset
+                want = (z.dot(_normal(ref[0], ref[1][0])) < 0) != bool(flip)
         except Exception:
-            flat = False
+            pass
         now = getattr(j, prop)
         turned = now.Rotation.isSame(_OVER, 1e-9) and now.Base.Length < 1e-12
-        if flip and flat and not turned:
-            setattr(j, prop, App.Placement(App.Vector(), _OVER))
-        elif turned and not (flip and flat):
-            setattr(j, prop, App.Placement())
+        if want != turned:
+            setattr(j, prop, App.Placement(App.Vector(), _OVER) if want else App.Placement())
+            changed = True
+    return changed
 
 
 def _turn_over(doc, j, values):
