@@ -35,25 +35,29 @@ class HitTest(unittest.TestCase):
         self.assertIsNone(H.nearest([], (0, 0)))
 
 
-class AngleTest(unittest.TestCase):
-    def test_signed_angle_counter_clockwise_on_screen_is_positive(self):
-        c = (100, 100)  # screen: y grows downwards
-        right, up, left, down = (110, 100), (100, 90), (90, 100), (100, 110)
-        self.assertAlmostEqual(H.signed_angle(c, right, up), 90)
-        self.assertAlmostEqual(H.signed_angle(c, up, left), 90)
-        self.assertAlmostEqual(H.signed_angle(c, left, down), 90)
-        self.assertAlmostEqual(H.signed_angle(c, down, right), 90)
-        self.assertAlmostEqual(H.signed_angle(c, right, down), -90)
-        self.assertAlmostEqual(H.signed_angle(c, up, (110, 90)), -45)
+class DirectionTest(unittest.TestCase):
+    """Where handles cross on screen, the first move picks the one it runs along."""
+    def test_segment_toward(self):
+        d, direction = H.segment_toward((5, 2), [[(0, 0), (10, 0), (10, 10)], [(20, 20), (30, 30)]])
+        self.assertAlmostEqual(d, 2)
+        self.assertEqual(direction, (1.0, 0.0))
 
-    def test_signed_angle_wraps_past_180(self):
-        c = (0, 0)
-        a = (-10, -1)   # just above the left (screen y up = negative)
-        b = (-10, 1)    # just below it: a small turn through 180°, not -358°
-        self.assertAlmostEqual(H.signed_angle(c, a, b), 2 * math.degrees(math.atan2(1, 10)), places=6)
+    def test_the_move_picks_the_handle_it_runs_along(self):
+        options = [(0, 3.0, (1.0, 0.0)), (1, 6.0, (0.0, 1.0))]  # an arrow along x, an arc running along y
+        self.assertEqual(H.by_direction(options, (1, 9)), 1, "moving along y: the arc, though farther")
+        self.assertEqual(H.by_direction(options, (9, -1)), 0)
+        self.assertEqual(H.by_direction(options, (5, 5)), 0, "as well aligned: the nearer one")
+        self.assertEqual(H.by_direction(options, (0, 0)), 0)
+        self.assertEqual(H.by_direction([(4, 2.0, (0.0, 1.0))], (9, 0)), 4, "one handle: that one")
+        self.assertIsNone(H.by_direction([], (1, 1)))
+
+
+class AngleTest(unittest.TestCase):
+    def test_wrap_keeps_steps_within_half_a_turn(self):
         self.assertAlmostEqual(H.wrap(190), -170)
         self.assertAlmostEqual(H.wrap(-190), 170)
         self.assertAlmostEqual(H.wrap(180), 180)
+        self.assertAlmostEqual(H.wrap(-358), 2)
 
     def test_plane_angle_reads_the_projected_ellipse(self):
         c, pu, pw = (100, 100), (40, 0), (0, -20)  # the arc's plane seen at a slant: a flat ellipse
@@ -64,6 +68,30 @@ class AngleTest(unittest.TestCase):
         self.assertAlmostEqual(H.plane_angle(c, pu, pw, (100, 130)), -90)  # off the ellipse: its direction
         self.assertIsNone(H.plane_angle(c, (40, 0), (39, 1), (120, 100)), "seen edge-on: no reading")
         self.assertIsNone(H.plane_angle(c, pu, pw, c), "on the centre: no direction")
+
+
+class TrackTest(unittest.TestCase):
+    """An arc seen edge-on is a line on screen: the reading follows the pointer along it from the last one."""
+    def test_edge_on_arc_follows_the_pointer(self):
+        c, pu, pw = (100, 100), (40, 0), (0, 0.5)  # nearly a line along x
+        self.assertIsNone(H.plane_angle(c, pu, pw, (120, 100)))
+        self.assertAlmostEqual(H.track_angle(c, pu, pw, (140, 100), None), 0, delta=1)
+        self.assertAlmostEqual(H.track_angle(c, pu, pw, (120, 100), 10), 60, delta=1)  # the front half, near 10°
+        self.assertAlmostEqual(H.track_angle(c, pu, pw, (120, 100), -10), -60, delta=1)  # the back half
+        last, seen = 0, []
+        for x in (135, 125, 110, 100, 90, 75, 62):  # along the line to the far end: half a turn
+            last = H.track_angle(c, pu, pw, (x, 100), last)
+            seen.append(last)
+        self.assertIn(seen, (sorted(seen), sorted(seen, reverse=True)), "it keeps turning one way")
+        self.assertAlmostEqual(abs(seen[-1]), 180 - math.degrees(math.acos(38 / 40)), delta=1.5)
+
+    def test_tilted_arc_reads_the_same_either_way(self):
+        c, pu, pw = (0, 0), (30, 10), (-5, 12)
+        for deg in (-150, -45, 0, 30, 100, 170):
+            r = math.radians(deg)
+            p = (pu[0] * math.cos(r) + pw[0] * math.sin(r), pu[1] * math.cos(r) + pw[1] * math.sin(r))
+            self.assertAlmostEqual(H.plane_angle(c, pu, pw, p), deg, places=6)
+            self.assertAlmostEqual(H.track_angle(c, pu, pw, p, deg + 20), deg, delta=0.5)
 
 
 class SlideTest(unittest.TestCase):

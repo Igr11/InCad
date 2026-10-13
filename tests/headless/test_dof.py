@@ -311,5 +311,15 @@ class GlyphTest(unittest.TestCase):
         (t,) = dof.handles(near, App.Placement(), centre, 4.0)
         self.assertAlmostEqual((t.point - App.Vector(3, 0, 5)).Length, 0, places=6)
 
+    def test_each_turn_has_its_own_ring(self):
+        """Arcs around one centre with one radius cross on screen: a press meant for one caught the other."""
+        axes = [App.Vector(1, 0, 0), App.Vector(0, 1, 0), App.Vector(0, 0, 1)]
+        f = dof.Freedom(3, [], [(App.Vector(), a) for a in axes], "")
+        hs = dof.handles(f, App.Placement(), App.Vector(), 4.0)
+        self.assertEqual([round(h.radius, 6) for h in hs], [2.4, 3.6, 4.8])
+        for h in hs:
+            for p in h.line:
+                self.assertAlmostEqual(p.Length, h.radius, places=6)
+
     def test_no_freedom_no_glyph(self):
         self.assertEqual(dof.glyph(dof.Freedom(0, [], [], ""), App.Placement(), App.Vector(), 4.0), ([], []))

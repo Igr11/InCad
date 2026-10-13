@@ -11,7 +11,7 @@ import math
 from incad.core import gestures, log
 
 HANDLE_PX = 12        # logical px around a handle's line or arrow head that catch it
-EDGE_ON = 0.1         # an arc plane seen flatter than this (sin of the angle) reads the mouse by screen angle
+EDGE_ON = 0.1         # an arc seen flatter than this (minor / major axis) is followed along its line instead
 
 
 def segment_distance(p, a, b):
@@ -37,6 +37,33 @@ def nearest(candidates, p, tol=HANDLE_PX):
     return best
 
 
+def segment_toward(p, polylines):
+    """(distance, unit direction) of the screen segment of `polylines` nearest p."""
+    best = (float("inf"), (0.0, 0.0))
+    for pl in polylines:
+        segs = list(zip(pl, pl[1:])) or [(pl[0], pl[0])]
+        for a, b in segs:
+            d = segment_distance(p, a, b)
+            if d < best[0]:
+                n = math.hypot(b[0] - a[0], b[1] - a[1])
+                best = (d, ((b[0] - a[0]) / n, (b[1] - a[1]) / n) if n else (0.0, 0.0))
+    return best
+
+
+def by_direction(options, motion, close=0.1):
+    """options: [(key, distance, direction)] of the handles near the press -> the one whose line runs the way the
+    pointer moved (the nearest of those about as well aligned): where an arc crosses an arrow or another arc on
+    screen, dragging along the one meant picks it."""
+    n = math.hypot(*motion)
+    if not options:
+        return None
+    if n == 0:
+        return min(options, key=lambda o: o[1])[0]
+    cos = [(abs(o[2][0] * motion[0] + o[2][1] * motion[1]) / n, o) for o in options]
+    top = max(c for c, _ in cos)
+    return min((o for c, o in cos if c >= top - close), key=lambda o: o[1])[0]
+
+
 def wrap(deg):
     """An angle step in (-180, 180]."""
     deg = math.fmod(deg, 360.0)
@@ -47,19 +74,14 @@ def wrap(deg):
     return deg
 
 
-def signed_angle(centre, a, b):
-    """Degrees from a to b around centre on screen, counter-clockwise as seen positive (screen y grows down)."""
-    ta = math.atan2(-(a[1] - centre[1]), a[0] - centre[0])
-    tb = math.atan2(-(b[1] - centre[1]), b[0] - centre[0])
-    return wrap(math.degrees(tb - ta))
-
-
 def plane_angle(centre, pu, pw, p):
     """The arc's own angle (degrees, from u towards w) of the screen point p: its plane's u and w axes seen on screen
     as the vectors pu, pw from the projected centre (an ellipse; exact for FreeCAD's orthographic camera). None when
     the plane is seen edge-on or p is on the centre."""
     det = pu[0] * pw[1] - pw[0] * pu[1]
-    if abs(det) < EDGE_ON * math.hypot(*pu) * math.hypot(*pw) or det == 0:
+    sq = pu[0] ** 2 + pu[1] ** 2 + pw[0] ** 2 + pw[1] ** 2
+    major2 = (sq + math.sqrt(max(sq * sq - 4 * det * det, 0.0))) / 2  # the ellipse's half-axes: s1 * s2 = |det|
+    if det == 0 or abs(det) < EDGE_ON * major2:  # minor / major below EDGE_ON: seen (nearly) edge-on
         return None
     mx, my = p[0] - centre[0], p[1] - centre[1]
     a = (mx * pw[1] - pw[0] * my) / det
@@ -67,6 +89,24 @@ def plane_angle(centre, pu, pw, p):
     if abs(a) < 1e-9 and abs(b) < 1e-9:
         return None
     return math.degrees(math.atan2(b, a))
+
+
+def track_angle(centre, pu, pw, p, last=None, window=90.0):
+    """The arc's own angle (degrees) of the point of its projected circle nearest the screen point p, searched within
+    `window` of the last reading (None: anywhere) and the nearest to it on a tie: it follows the pointer along an arc
+    seen edge-on (a line, where front and back points coincide)."""
+    best, best_key = None, None
+    for k in range(-360, 360):
+        t = k * 0.5
+        dt = abs(wrap(t - last)) if last is not None else 0.0
+        if dt > window:
+            continue
+        r = math.radians(t)
+        q = (centre[0] + pu[0] * math.cos(r) + pw[0] * math.sin(r), centre[1] + pu[1] * math.cos(r) + pw[1] * math.sin(r))
+        key = (round(math.hypot(p[0] - q[0], p[1] - q[1]), 6), dt)
+        if best_key is None or key < best_key:
+            best, best_key = t, key
+    return best
 
 
 def mm_along(delta, per_mm):
@@ -109,8 +149,13 @@ def selected_component(doc):
 class HandleDrag:
     """One drag of one handle: begun on the first move past DRAG_PX, finished on the release."""
 
-    def __init__(self, shell, doc, link, handle, view, viewport, x, y):
-        self.shell, self.doc_name, self.link_name, self.handle = shell, doc.Name, link.Name, handle
+    def __init__(self, owner, doc, link, handles, options, view, viewport, x, y):
+        """options: [(index, distance, screen direction)] of the handles near the press; the one dragged is chosen
+        by the first move (by_direction)."""
+        self.owner, self.shell = owner, owner.shell
+        self.doc_name, self.link_name, self.handles, self.options = doc.Name, link.Name, handles, options
+        self.index = min(options, key=lambda o: o[1])[0]
+        self.handle = handles[self.index]
         self.view, self.viewport, self.press = view, viewport, (x, y)
         self.started = False
         self.label = link.Label
@@ -136,8 +181,7 @@ class HandleDrag:
             self._centre = c
             pu, pw = sc(h.point + h.u * h.radius), sc(h.point + h.w * h.radius)
             self._pu, self._pw = (pu[0] - c[0], pu[1] - c[1]), (pw[0] - c[0], pw[1] - c[1])
-            a0, a1 = sc(h.line[0]), sc(h.line[1])
-            self._sense = 1 if signed_angle(c, a0, a1) >= 0 else -1  # a positive turn seen on screen
+            self._last = None
             self._last = self._angle(*self.press)
         else:
             a, b = sc(h.point), sc(h.point + h.axis)
@@ -158,10 +202,12 @@ class HandleDrag:
             assembly.ground(doc.getObject(name))
 
     def _angle(self, x, y):
+        """The arc's own angle under the pointer: read through the projected ellipse, or, seen edge-on, tracked
+        along it from the last reading."""
         a = plane_angle(self._centre, self._pu, self._pw, (x, y))
         if a is not None:
             return a
-        return self._sense * math.degrees(math.atan2(-(y - self._centre[1]), x - self._centre[0]))
+        return track_angle(self._centre, self._pu, self._pw, (x, y), self._last)
 
     def move(self, x, y):
         import FreeCAD as App
@@ -169,6 +215,9 @@ class HandleDrag:
         if not self.started:
             if math.hypot(x - self.press[0], y - self.press[1]) <= gestures.DRAG_PX:
                 return
+            self.index = by_direction(self.options, (x - self.press[0], y - self.press[1]))
+            self.handle = self.handles[self.index]
+            self.owner.lit = self.index
             self.begin()
         doc = self._doc()
         link = doc.getObject(self.link_name) if doc is not None else None
@@ -327,16 +376,20 @@ class Handles:
             self.finish()
         if self.drawn is None or not self.can_grab():
             return False
-        k = self.hit(view, viewport, x, y)
-        if k is None:
+        options = []
+        for k, polylines in self._candidates(view, viewport):
+            d, direction = segment_toward((x, y), polylines)
+            if d <= HANDLE_PX:
+                options.append((k, d, direction))
+        if not options:
             return False
         doc_name, name, handles = self.drawn[:3]
         doc = App.ActiveDocument
         link = doc.getObject(name) if doc is not None and doc.Name == doc_name else None
         if link is None:
             return False
-        self.lit = k
-        self.drag = HandleDrag(self.shell, doc, link, handles[k], view, viewport, x, y)
+        self.drag = HandleDrag(self, doc, link, handles, options, view, viewport, x, y)
+        self.lit = self.drag.index
         self._set_cursor(viewport, closed=True)
         return True
 

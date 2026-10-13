@@ -214,6 +214,7 @@ Handle = namedtuple("Handle", "kind index line heads axis point u w radius pivot
 or 'turn' (an arc of `radius` around `axis` through `point`, from `u` towards `w`, w = axis x u: a positive turn;
 `pivot`: a point of the line the part really turns about — `point` too unless that line is far from the part);
 index: its place among the freedom's slides or turns; line: its polyline; heads: [(tip, direction)...]."""
+RING = 0.3  # each further turn's arc is this many glyph sizes wider (0.6, 0.9, 1.2)
 FAR = 1.5  # a turn axis farther from the part's centre than this many glyph sizes: its arc is drawn at the centre
 
 
@@ -235,7 +236,7 @@ def handles(freedom, placement, centre, size):
             u = ax.cross(App.Vector(0, 1, 0))
         u.normalize()
         w = ax.cross(u)
-        r = size * 0.6
+        r = size * (0.6 + RING * i)  # each turn its own ring: arcs around one centre never meet
         ts = [1.5 * math.pi * k / 24 for k in range(25)]
         pts = [base + (u * math.cos(t) + w * math.sin(t)) * r for t in ts]
         end = ts[-1]

@@ -120,10 +120,21 @@ def hits_bar(pos):
     return bool(info) and (info.get("SubName") or "").split(".")[0] == ST["b"]
 
 
+def bar_spot():
+    """A point of the bar's top that picks the bar itself (FreeCAD's joint markers are picked on top of parts)."""
+    box = obj("b").Shape.BoundBox
+    for fx in (0.5, 0.3, 0.7, 0.15, 0.85):
+        q = screen_of(App.Vector(box.XMin + box.XLength * fx, box.Center.y, box.ZMax))
+        if hits_bar(q):
+            return q
+    return top_of("b")
+
+
 def select_bar():
     if gizmo() != ST["b"]:
-        click(top_of("b"))
-    assert gizmo() == ST["b"], ("the clicked bar shows its gizmo", gizmo())
+        click(bar_spot())
+    assert gizmo() == ST["b"], ("the clicked bar shows its gizmo", gizmo(),
+                                [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx("", 0)])
 
 
 def test_0_setup():
@@ -190,6 +201,10 @@ def arc_path(arc, t0, turn_deg, offset_px=8, steps=24):
     return out
 
 
+def pt(q):
+    return q.x(), q.y()
+
+
 def arc_angle_of(arc, point):
     v = point - arc.point
     return math.atan2(v.dot(arc.w), v.dot(arc.u))
@@ -218,6 +233,68 @@ def test_3_drag_the_arc_a_quarter_turn():
     commands.REGISTRY.run("edit.undo")
     harness.pump(800)
     assert same(b.Placement, bb), "Undo turns it back"
+
+
+def test_3b_every_arc_of_a_free_part_turns_by_the_pointer_both_ways():
+    """A free cube: three arcs about X, Y and Z around one centre, two of them tilted in the isometric view (the
+    user's Tangent part: an arc about a horizontal axis seen as a narrow ellipse). Each one, dragged 45° along the
+    arc 8 px outside it, either way, turns the part 45° about that arc's own axis."""
+    if "c" not in ST:
+        d, path = save_part(ST["dir"], "Cube", 10, 10, 10)
+        App.closeDocument(d.Name)
+        App.setActiveDocument(ST["asm"])
+        Gui.ActiveDocument = Gui.getDocument(ST["asm"])
+        ST["c"] = s().assembly_place(path).Name
+        obj("c").Placement = App.Placement(App.Vector(80, 0, 0), App.Rotation())
+        s().schedule_refresh()
+        harness.pump(1500)
+        assert rows()[ST["c"]] == "DOF 6", rows()
+    c = obj("c")
+    view().viewIsometric()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, c.Name)
+    Gui.SendMsgToActiveView("ViewSelection")
+    harness.pump(800)
+    assert gizmo() == ST["c"], gizmo()
+    turns = [(k, h) for k, h in enumerate(s().dof_handles.drawn[2]) if h.kind == "turn"]
+    assert len(turns) == 3, turns
+    results = []
+    for k, arc in turns:
+        for deg in (45, -45):
+            # start where this arc is the one lit under the pointer (where arcs cross on screen, the lit one is
+            # the one grabbed)
+            t0s = [0.3 + 0.1 * i for i in range(40)]
+            t0s = [t for t in t0s if 0 <= t + math.radians(deg) <= 1.5 * math.pi]
+            t0 = next((t for t in t0s if s().dof_handles.hit(view(), viewport(), *pt(arc_path(arc, t, deg)[0])) == k),
+                      None)
+            assert t0 is not None, ("a point 8 px outside the arc where it is the one lit", k)
+            start = App.Placement(c.Placement)
+            n0 = len(doc().UndoNames)
+            path = arc_path(arc, t0, deg)
+            drag_path(path, release=False)
+            g = s().dof_handles.drag
+            caught = (g.index, [(o[0], round(o[1], 1)) for o in g.options]) if g is not None else None
+            send(QtCore.QEvent.MouseButtonRelease, path[-1], L, N)
+            harness.pump(800)
+            rel = c.Placement.multiply(start.inverse())
+            along = rel.Rotation.Axis.dot(arc.axis)
+            angle = math.degrees(rel.Rotation.Angle) * (1 if along > 0 else -1)
+            angle = (angle + 180) % 360 - 180  # FreeCAD's Angle runs 0..360: 315 is -45
+            results.append((k, deg, caught, round(angle, 1), round(abs(along), 3), len(doc().UndoNames) - n0))
+            if len(doc().UndoNames) > n0:
+                commands.REGISTRY.run("edit.undo")
+                harness.pump(600)
+            assert same(c.Placement, start), "Undo turns it back"
+            if gizmo() != ST["c"]:
+                Gui.Selection.addSelection(doc().Name, c.Name)
+                harness.pump(500)
+    bad = [r for r in results if r[2] is None or r[2][0] != r[0] or abs(r[3] - r[1]) > 4 or r[4] < 0.999
+           or r[5] != 1]
+    assert not bad, ("(handle, mouse turn, (dragged, options), part turn, |axis . arc axis|, steps)", results)
+    Gui.Selection.clearSelection()
+    view().viewIsometric()
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(500)
 
 
 def test_4_drag_an_arrow_slides_along_it():
@@ -328,7 +405,8 @@ def test_9_cleanup():
 
 
 TESTS = [test_0_setup, test_1_a_click_shows_the_gizmo, test_2_the_gizmo_stays_on_the_way_to_an_arc_outside_the_part,
-         test_3_drag_the_arc_a_quarter_turn, test_4_drag_an_arrow_slides_along_it,
+         test_3_drag_the_arc_a_quarter_turn, test_3b_every_arc_of_a_free_part_turns_by_the_pointer_both_ways,
+         test_4_drag_an_arrow_slides_along_it,
          test_5_a_press_on_the_part_off_the_handles_is_freecads_drag, test_6_a_command_ends_a_handle_drag_first,
          test_7_a_click_on_empty_space_hides_the_gizmo, test_8_no_handle_while_a_constraint_dialog_is_open]
 harness.run(TESTS + [test_9_cleanup])
