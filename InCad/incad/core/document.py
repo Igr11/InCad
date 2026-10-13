@@ -77,6 +77,108 @@ def new_solid(doc):
     return body
 
 
+FACE_REF_PROP = "InCadFaceRefOf"
+
+
+def _foreign_support(sketch, body):
+    """The object of another Solid the sketch stands on (a face of the part), or None."""
+    sup = getattr(sketch, "AttachmentSupport", None) or []
+    obj = sup[0][0] if sup else None
+    if obj is None or getattr(obj, FACE_REF_PROP, None):
+        return None
+    owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+    if obj.TypeId == "PartDesign::Body":
+        owner = obj
+    return obj if owner is not None and owner is not body and owner.TypeId == "PartDesign::Body" else None
+
+
+def _projects_from(sketch, solid):
+    for obj, _subs in getattr(sketch, "ExternalGeometry", None) or []:
+        owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+        if obj is solid or owner is solid:
+            return True
+    return False
+
+
+def settle_support(sketch, body):
+    """A sketch in `body` standing on a face of another Solid. A Pad first in a Solid takes its sketch's support as
+    its base, so the new Solid would hold that whole other Solid too. With nothing projected from the other Solid
+    the face was only a plane: the sketch is left where it is, unattached (an independent Solid). With projections
+    it depends on that Solid: it is attached through a copy of the face inside `body` (a SubShapeBinder), so it
+    follows the face and the Solid still holds only its own piece. Returns True when it changed the sketch."""
+    obj = _foreign_support(sketch, body)
+    if obj is None:
+        return False
+    other = obj if obj.TypeId == "PartDesign::Body" else obj.getParentGeoFeatureGroup()
+    doc = sketch.Document
+    if _projects_from(sketch, other):
+        sub = sketch.AttachmentSupport[0][1]
+        sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+        ref = doc.addObject("PartDesign::SubShapeBinder", "FaceRef")
+        body.insertObject(ref, sketch, False)  # before the sketch it carries
+        ref.Support = [(obj, (sub,) if sub else ())]
+        ref.addProperty("App::PropertyString", FACE_REF_PROP, "InCad", "The sketch this face copy carries")
+        ref.setPropertyStatus(FACE_REF_PROP, "Hidden")
+        setattr(ref, FACE_REF_PROP, sketch.Name)
+        ref.Visibility = False
+        doc.recompute()
+        sketch.AttachmentSupport = [(ref, "Face1")]
+    else:
+        glob = sketch.getGlobalPlacement()
+        sketch.MapMode = "Deactivated"
+        sketch.AttachmentSupport = None
+        sketch.Placement = body.getGlobalPlacement().inverse().multiply(glob)
+    return True
+
+
+def settle_cross_solid_sketches(doc):
+    """Files from before: a sketch in one Solid still standing on a face of another (the new Solid then held that
+    other Solid too). Each is settled as settle_support does. Returns the sketches changed."""
+    changed = []
+    for b in bodies(doc):
+        old = {f.Name: f.Shape.copy() for f in b.Group
+               if f.isDerivedFrom("PartDesign::Feature") and not f.Shape.isNull()}
+        places = {o.Name: App.Placement(o.Placement) for o in b.Group if o.TypeId == "Sketcher::SketchObject"}
+        settled = [o for o in list(b.Group) if o.TypeId == "Sketcher::SketchObject" and settle_support(o, b)]
+        if not settled:
+            continue
+        changed += settled
+        for o in settled:
+            o.touch()  # untying moves nothing: the steps on it would keep the shape that held the other Solid
+        doc.recompute()
+        _refind_faces(b, old, places)
+    return changed
+
+
+def _refind_faces(body, old, places):
+    """The Solid's steps lost the other Solid's faces, so theirs are numbered anew: a sketch standing on one (a cut
+    sketched on the piece) and a fillet's or chamfer's edges are found again on the new shape. A sketch keeps the
+    place it had (`places`): the same face found again may lie the other way round in FreeCAD's eyes."""
+    doc = body.Document
+    for o in body.Group:
+        if o.TypeId == "Sketcher::SketchObject":
+            sup = o.AttachmentSupport
+            if not sup or sup[0][0] is None or sup[0][0].Name not in old:
+                continue
+            sub = sup[0][1]
+            sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+            fresh = remap_sub(old[sup[0][0].Name], sup[0][0].Shape, sub) if sub else None
+            if fresh and fresh != sub:
+                o.AttachmentSupport = [(sup[0][0], fresh)]
+                doc.recompute()
+                was = places.get(o.Name)
+                if was is not None and not o.Placement.isSame(was, 1e-9):
+                    o.AttachmentOffset = o.AttachmentOffset.multiply(o.Placement.inverse()).multiply(was)
+        elif o.isDerivedFrom("PartDesign::DressUp") and o.Base:
+            src, subs = o.Base[0], list(o.Base[1] or [])
+            if src is None or src.Name not in old:
+                continue
+            fresh = [remap_sub(old[src.Name], src.Shape, s) or s for s in subs]
+            if fresh != subs:
+                o.Base = (src, fresh)
+        doc.recompute()
+
+
 def _solid_count(obj):
     try:
         shape = obj.Shape
@@ -208,15 +310,11 @@ def detach_lump(feature):
             same = [o for o in new.Origin.OriginFeatures if o.Role == support[0][0].Role]
             if same:
                 p.AttachmentSupport = [(same[0], support[0][1])]
-        elif support and support[0][0] is not None and support[0][0] not in related:
-            # on a face of the part that stays behind (the box was sketched on the part, extruded away): a link
-            # out of the new Solid, and a Pad takes its sketch's support as its base, so it would keep the whole
-            # part. The sketch keeps its place, unattached.
-            glob = body.Placement.multiply(p.Placement)
-            p.MapMode = "Deactivated"
-            p.AttachmentSupport = None
-            p.Placement = new.Placement.inverse().multiply(glob)
         new.addObject(p)
+        # on a face of the part that stays behind (the box was sketched on the part, extruded away): a Pad takes
+        # its sketch's support as its base, so the new Solid would keep the whole part — independent unless it
+        # projects from the part (then it follows the face through a copy of it)
+        settle_support(p, new)
     for i, m in enumerate(movers):
         new.addObject(m)
         if i == 0:
@@ -263,7 +361,9 @@ def detach_lump(feature):
 
 def remap_sub(old_shape, new_shape, sub):
     """The element of `new_shape` that is the same face/edge/vertex as `sub` of `old_shape` (a feature moved to
-    its own Solid renumbers its elements): nearest centre of the same kind, or None."""
+    its own Solid renumbers its elements): nearest centre of the same kind, or None. FreeCAD marks an element it lost
+    '?Face12'."""
+    sub = sub.lstrip("?")
     try:
         old = old_shape.getElement(sub)
     except Exception:

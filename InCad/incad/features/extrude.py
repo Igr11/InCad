@@ -104,6 +104,7 @@ def create(doc, body, profile, values):
         target = document.new_solid(doc)
         body.removeObject(profile)
         target.addObject(profile)
+        document.settle_support(profile, target)  # on a face of the part: not the whole part in the new Solid
     before = _solids(body.Tip) if body.Tip is not None else 0
     f = target.newObject(_feature_type("cut" if operation == "cut" else "join"), "Extrude")
     f.Profile = profile
@@ -116,6 +117,7 @@ def create(doc, body, profile, values):
             target = document.new_solid(doc)
             body.removeObject(profile)
             target.addObject(profile)
+            document.settle_support(profile, target)
             f = target.newObject(_feature_type("join"), "Extrude")
             f.Profile = profile
             _apply(doc, f, values)

@@ -2318,6 +2318,15 @@ class Shell(QtCore.QObject):
                     log.report("info", "Split pieces are separate Solids now (hide or show each one)")
             except Exception as e:
                 log.logger().warning("Split pieces on open: %s", e)
+            try:  # a Solid sketched on another Solid's face held that whole Solid too (older InCad): settle them
+                if not getattr(doc, "Restoring", False):
+                    settled = document.settle_cross_solid_sketches(doc)
+                    if settled:
+                        doc.recompute()
+                        log.report("info", "%s: on another Solid's face, now holds only its own piece"
+                                   % ", ".join(s.Label for s in settled))
+            except Exception as e:
+                log.logger().warning("Sketches on another Solid's face on open: %s", e)
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):
