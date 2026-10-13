@@ -110,6 +110,49 @@ class DofTest(unittest.TestCase):
         self.assertAlmostEqual(abs(axis.z), 1, places=3)  # the pin's own axis (its frame: z along the pin)
         self.assertLess(App.Vector(point.x, point.y, 0).Length, 1e-3)  # through the pin's centre line
 
+    def test_tangent_on_a_turned_face_gives_two_slides_and_two_turns_on_the_part(self):
+        """The user's Train_1: a round part tangent to a hex's face at 60°. The probe moves along world X/Y/Z, and the
+        solver answers a slide or a turn with a little of the other: the glyph showed one arrow (the second slide
+        was lost) and arcs far off the part (each turn's axis point came from a slide-and-turn motion)."""
+        d = util.new_doc("Rod")
+        body = document.make_part(d)
+        cyl = body.newObject("PartDesign::AdditiveCylinder", "Rod")
+        cyl.Radius, cyl.Height = 3, 20
+        lug = body.newObject("PartDesign::AdditiveBox", "Lug")  # the D-shape: its centre off the round face's axis
+        lug.Length, lug.Width, lug.Height = 8, 4, 20
+        lug.Placement = App.Placement(App.Vector(0, -2, 0), App.Rotation())
+        for o in (cyl, lug):  # drawn away from its own origin (Train_1's D-part sits at x 13..22 in its file): the
+            o.Placement = App.Placement(App.Vector(20, 0, 0), App.Rotation()).multiply(o.Placement)  # solver turns
+        body.Tip = lug  # the part about that origin, so every test move comes back as a slide-and-turn
+        d.recompute()
+        rod_path = os.path.join(self.dir, "Rod.FCStd")
+        d.saveAs(rod_path)
+        self.a.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), 60))  # the face at 60°
+        self.doc.recompute()
+        rod = assembly.place(self.doc, rod_path)
+        side = [i + 1 for i, f in enumerate(self.a.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"
+                and abs(f.normalAt(*f.Surface.parameter(f.CenterOfMass)).z) < 1e-6][0]
+        round_face = [i + 1 for i, f in enumerate(rod.LinkedObject.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"][0]
+        make(self.doc, C.TANGENT, "%s:Face%d" % (rod.Name, round_face), "%s:Face%d" % (self.a.Name, side))
+        f = dof.compute(self.doc)[rod.Name]
+        self.assertEqual(f.n, 4)
+        self.assertEqual((len(f.slides), len(f.turns)), (2, 2), (f.slides, f.turns))
+        face = self.a.Shape.getElement("Face%d" % side)
+        normal = face.normalAt(*face.Surface.parameter(face.CenterOfMass))
+        rot = rod.Placement.Rotation
+        for s in f.slides:  # both slides lie in the face's plane
+            self.assertAlmostEqual(rot.multVec(s).dot(normal), 0, places=2)
+        bb = rod.Shape.BoundBox
+        axes = []
+        for point, axis in f.turns:  # each arc's axis runs through (or right by) the part
+            p, a = rod.Placement.multVec(point), rot.multVec(axis)
+            off = (bb.Center - p) - a * (bb.Center - p).dot(a)
+            self.assertLess(off.Length, bb.DiagonalLength, (p, a))
+            axes.append(a)
+        rod_axis = rot.multVec(App.Vector(0, 0, 1))
+        self.assertEqual(sorted(round(max(abs(a.dot(rod_axis)), abs(a.dot(normal))), 2) for a in axes), [1.0, 1.0],
+                         "one turn about the rod's axis, one about the face's normal")
+
     def test_count_is_relative_to_what_holds_it(self):
         _, mid_path = save_part(self.dir, "Mid", 20, 20, 10)
         m = assembly.place(self.doc, mid_path)  # free, no constraints

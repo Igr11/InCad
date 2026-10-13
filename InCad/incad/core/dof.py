@@ -120,25 +120,39 @@ def _probe(doc, asm, link, start):
         motions.append(rel)
     m = np.array(rows)
     n = int(np.linalg.matrix_rank(m, tol=TOL)) if m.any() else 0
-    trans = np.array([r[:3] for r in rows[:3] if np.linalg.norm(r[3:]) < TOL and np.linalg.norm(r[:3]) > TOL])
-    slides = []
-    if len(trans):
-        _, s, vt = np.linalg.svd(trans)
-        slides = [App.Vector(*vt[k]).normalize() for k in range(int((s > TOL).sum()))]
-    turns = []
-    for r, rel in zip(rows[3:], motions[3:]):
-        if np.linalg.norm(r[3:]) < TOL:
-            continue
-        axis = App.Vector(rel.Rotation.Axis).normalize()
-        if any(abs(axis.dot(a)) > 0.99 for _, a in turns):
-            continue
-        rot = np.array(rel.Rotation.toMatrix().A).reshape(4, 4)[:3, :3]
-        t = np.array([rel.Base.x, rel.Base.y, rel.Base.z])
-        p = np.linalg.lstsq(np.eye(3) - rot, t, rcond=None)[0]  # the line the part turned about
-        point = App.Vector(*p)
-        point = point + axis * (c - point).dot(axis)  # its point level with the part's centre
-        turns.append((point, axis))
+    slides, turns = _split(m, n, c)
     return Freedom(n, *_local(link, slides, turns), error="")
+
+
+def _split(m, n, c):
+    """The freedoms in the kept test moves `m` (rows: the centre's motion per STEP, the turn per TURN), rank `n`, as
+    slides and turns. FreeCAD's solver moves a part about its own origin, which can lie far from the part (a part
+    drawn away from its file's origin): a test push then comes back as a slide-and-turn, so no single row is a pure
+    slide or turn. Their span is right: the slides are the moves in it with no turn, the turns the rest, each turning
+    about its own axis (from the twist: the point where the motion is a pure turn, nearest the centre)."""
+    import numpy as np
+    if n == 0:
+        return [], []
+    _, _, vt = np.linalg.svd(m)
+    basis = vt[:n]
+    v = basis[:, :3] * STEP                      # mm: how the centre moves
+    w = basis[:, 3:] * math.radians(TURN)        # rad: how the part turns
+    _, sw, vtw = np.linalg.svd(w.T)              # w.T is 3 x n
+    r = int((sw > TOL * math.radians(TURN)).sum())
+    pure = vtw[r:] @ v                           # the combinations that do not turn: slides
+    slides = []
+    if len(pure):
+        _, sp, vts = np.linalg.svd(pure)
+        slides = [vts[k] for k in range(int((sp > TOL * STEP).sum()))]
+    turns = []
+    for coeff in vtw[:r]:
+        wv, vv = coeff @ w, coeff @ v
+        for sl in slides:  # a free slide may ride along with the turn: take it out
+            vv = vv - sl * vv.dot(sl)
+        axis = wv / np.linalg.norm(wv)
+        point = np.cross(wv, vv) / wv.dot(wv)     # from the centre to the turn's axis
+        turns.append((c + App.Vector(*point), App.Vector(*axis)))
+    return [App.Vector(*sl).normalize() for sl in slides], turns
 
 
 def loading():
