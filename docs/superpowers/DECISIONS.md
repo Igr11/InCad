@@ -306,3 +306,10 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
   Mate + 2 Flush 0, Insert (pin in a hole) 1 — all right; ~60 ms per part. Grounded parts must not be probed (the
   solver keeps a moved grounded part where it is). Open: a part held only by another free part counts that part's
   freedom too (fine for Inventor-style display?), probes must not leave undo steps.
+- Status (2026-10-13, spikes 3–4, scripts spike_drag3/4.py): FreeCAD's native drag PULLS a free neighbour along (Top
+  Mated on a free Mid: both moved). The user: drag only along the part's own DOF. Fix proven: setEdit FIRST, then
+  InCad's own openTransaction("Move part"), temporary grounds on every other free part, drag (MoveInCommand False),
+  ungrounds, commit, resetEdit → Mid stays, Top slides on its face, ONE undo step, undo/redo leave no ground. Grounds
+  added before setEdit split the step (resetEdit closes the transaction that was open at setEdit). Same reason: no
+  drag inside a constraint dialog (resetEdit committed the dialog's 'Mate' step, Cancel could not put the part back).
+  A DOF 0 part does not move but FreeCAD's drag leaves an empty step: InCad does not start a drag on it.

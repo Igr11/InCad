@@ -1,8 +1,8 @@
 # InCad — Assembly: drag parts, degrees of freedom, constraint rows (design)
 
 Agreed with the user on 2026-10-13 (Inventor's assembly drag, DOF and the browser's constraint menu). Built on
-FreeCAD's native Assembly drag and solver; the spike that proved both is in DECISIONS.md ("assembly drag + DOF
-spike", 2026-10-13) with its scripts in `docs/superpowers/spikes/2026-10-13-assembly-drag/`.
+FreeCAD's native Assembly drag and solver; the spikes that proved both are in DECISIONS.md ("assembly drag + DOF
+spike" and "spikes 3–4", 2026-10-13) with their scripts in `docs/superpowers/spikes/2026-10-13-assembly-drag/`.
 
 ## 1. Constraint rows (Relationships)
 
@@ -22,13 +22,21 @@ spike", 2026-10-13) with its scripts in `docs/superpowers/spikes/2026-10-13-asse
 
 ### 2.1 Behaviour
 
-- In an assembly tab, a **left drag that starts on a free component** moves it as FreeCAD's solver allows: a free part
-  moves in the screen plane, a Mated part slides on its face, an Inserted pin turns or slides in its hole.
+- In an assembly tab, a **left drag that starts on a free component** moves it **only the ways its own DOF allow**
+  (section 3): a free part moves in the screen plane, a Mated part slides and turns on its face, an Inserted pin turns
+  in its hole. It **never pulls other parts along** — the parts it is constrained to stay where they are, even when
+  they are free themselves (FreeCAD's own drag pulls them; spike 3).
+- A part with **DOF 0** is not dragged: the status line says "<Part> is fully constrained", no edit, no undo step.
 - A drag that starts on a **grounded** part or on **empty space** is what it is today (FreeCAD's own handling); on a
   grounded part the status line says "<Part> is grounded".
 - A plain **click** still selects; LMB+RMB still orbits; the right button stays InCad's.
-- Every drag is **one undo step "Move part"**; InCad's Undo puts the part back. After the drag the selection is empty
-  (FreeCAD clears it) and the status line says "Moved <Part>".
+- Every drag that moved the part is **one undo step "Move part"**; InCad's Undo puts the part back. A drag that moved
+  nothing leaves no step. After the drag the selection is empty (FreeCAD clears it) and the status line says
+  "Moved <Part>".
+- **No drag while a constraint dialog is open** (Mate, Flush, … Ball): a drag in the view then does what it does today.
+  Reason (spike 4): FreeCAD's `resetEdit` closes the transaction that was open at `setEdit` — the dialog's step — so
+  Cancel could no longer put the parts back. A later workaround is possible (the dialog re-opens its step and Cancel
+  undoes the closed part) at the cost of two undo steps; not now.
 
 ### 2.2 How it works
 
@@ -40,32 +48,24 @@ spike", 2026-10-13) with its scripts in `docs/superpowers/spikes/2026-10-13-asse
   `drag_start`. The machine stays pure (no Qt, no FreeCAD).
 - `ui/asm_drag.py` (new), used by the navigator through a hook as `click_hook` is (`Navigator.drag_hook`), so
   `nav.py` stays generic:
-  - `begin(view, viewport, x, y)` on `drag_start`: the active document is an assembly, no InCad tool or pick is
-    waiting, and `view.getObjectInfo(to_coin(...))` hits a component (first name of its `SubName`) that is not grounded
-    and not suppressed → `setEdit(assembly)` right before the press is replayed (no event pump needed, spike);
-    otherwise nothing (and "<Part> is grounded" for a grounded hit).
-  - `end()` on the release of that drag, deferred (`QTimer.singleShot(0)`) so FreeCAD handles the release first →
-    `resetEdit()`, refresh, status line. Also on a lost release (the gesture machine's "buttons gone" rule), and before
-    the assembly's tab or document closes.
+  - `begin(view, viewport, x, y)` on `drag_start`: the active document is an assembly, no InCad dialog, tool or pick
+    is open, and `view.getObjectInfo(to_coin(...))` hits a component (first name of its `SubName`) that is not
+    grounded, not suppressed and not DOF 0 → in this order (spike 4):
+    1. the assembly view provider's `MoveInCommand = False` (FreeCAD opens no command of its own);
+    2. `setEdit(assembly)` — **before** any transaction is open, so `resetEdit` has none to close;
+    3. `doc.openTransaction("Move part")`;
+    4. every **other** free, unsuppressed component gets a temporary ground (`assembly.ground`), so the solver moves
+       only the dragged part;
+    5. the press is replayed (no event pump needed, spike 2).
+    Otherwise nothing (and "<Part> is grounded" / "is fully constrained" for such a hit).
+  - `end()` on the release of that drag, deferred (`QTimer.singleShot(0)`) so FreeCAD handles the release first:
+    the temporary grounds are removed, the step is committed when the part moved (else aborted), `resetEdit()`,
+    `MoveInCommand = True`, refresh, status line. The same on a lost release (the gesture machine's "buttons gone"
+    rule) and before the assembly's tab or document closes; the clean-up runs in a `finally`.
+  - The grounds are added and removed inside the one step: undo / redo of "Move part" bring back only the placement
+    (spike 4: one step, no ground left after undo or redo).
 - While the drag's edit is open, `safe.edit_open()` and `shell._edit_open()` do not count it as "a FreeCAD task is
   open" (a flag in `asm_drag` both read): a refresh timer firing mid-drag must not show the wait notice.
-
-### 2.3 Dragging inside a constraint dialog
-
-- With a constraint dialog open (Mate, Flush, Angle, Tangent, Insert, Rigid, Rotational, Slider, Cylindrical, Ball), a
-  left **drag** on a free part moves it; a **click** stays a pick for First / Second.
-- Before both picks are made the drag respects the existing constraints (turn the part so the face you need shows);
-  once the preview constraint exists it respects that too (try the motion before OK).
-- **OK** keeps the constraint and where the part was dragged, as one undo step named as the dialog ("Mate");
-  **Cancel** puts every part back where it was when the dialog opened, drags included.
-- How: the dialog already holds an open transaction (`feature_session`); during a dialog the assembly's view provider
-  runs the drag with `MoveInCommand = False`, so FreeCAD opens no "Move part" command and the moves join the dialog's
-  step (Cancel's abort undoes them). After a drag the next preview update starts from where the part was left: the
-  constraint's pre-align ("bring the free part near the answer") runs only when the constraint is not met from the
-  current placement.
-- **First task of the plan**: verify that a drag with `MoveInCommand = False` leaves the dialog's transaction intact
-  (one step on OK, everything back on Cancel). If it does not, no drag while a dialog is open (a drag there orbits /
-  selects as now) and this section is dropped.
 
 ## 3. Degrees of freedom
 
@@ -79,6 +79,13 @@ spike", 2026-10-13) with its scripts in `docs/superpowers/spikes/2026-10-13-asse
   is around the pin's axis). The glyphs are view markers (`SoAnnotation`, as `ui/point_markers`), never document
   objects, sized to the part, in the theme's colours, rebuilt after every change while on. Off by default; switching
   tabs keeps the choice per assembly view.
+- Only **available** freedoms are ever drawn: a Mated block gets two slide arrows in its face's plane and one arc
+  about the face's normal, nothing for the blocked ones; a DOF 0 or grounded part gets no glyph.
+- **As a tip** (with the View button off too): while the pointer rests on a free part (FreeCAD's preselection of a
+  component) and during its drag, that part's own glyph is shown highlighted — "it can move this way" — and it goes
+  when the pointer leaves the part or the drag ends. A DOF 0 part under the pointer shows no glyph (the status line
+  says "fully constrained" when a drag is tried). With the View button on, the part under the pointer gets the
+  highlight colour and the others keep the normal one. Uses the cached count (section 3.3), never counts on hover.
 
 ### 3.2 How it is counted (`core/dof.py`, pure model logic)
 
@@ -105,8 +112,9 @@ spike", 2026-10-13) with its scripts in `docs/superpowers/spikes/2026-10-13-asse
 
 ## 4. Errors
 
-- Drag: `setEdit` failing or FreeCAD refusing the drag → the press goes to FreeCAD as a plain press (as today) and the
-  status line says why; a lost release ends the edit; closing the tab or document resets the edit first.
+- Drag: `setEdit` failing or FreeCAD refusing the drag → the temporary grounds are removed, the step aborted, the press
+  goes to FreeCAD as a plain press (as today) and the status line says why; a lost release ends the drag the same way;
+  closing the tab or document ends it first.
 - DOF: a failed solve in a probe → that part's **DOF ?** (reason in the tooltip); an exception is logged, the tree keeps
   working, no glyphs are drawn for that part.
 - Constraint rows: an Unsuppress that can't be met is refused, placements restored (section 1).
@@ -121,10 +129,12 @@ Only the affected files while working; the full suites at most once before a com
 - **Headless** constraint rows: Delete, Suppress / Unsuppress (DOF changes; an unmeetable Unsuppress refused, parts
   back), Rename — each one undo step.
 - **Widgets / pure**: the gesture machine's `drag_start` on a drag, none on a click.
-- **GUI** `tests/gui/test_assembly_drag.py` (from the spike): free part moves, grounded stays, a Mated part slides,
-  one "Move part" step, Undo; a click selects without entering edit; orbit works; a drag inside the Mate dialog,
-  Cancel puts the part back, OK keeps it as one "Mate" step; DOF text on the rows; View ▸ Degrees of Freedom adds and
-  removes the glyphs (counted as `SoAnnotation` nodes); the constraint-row menu and the Delete key.
+- **GUI** `tests/gui/test_assembly_drag.py` (from the spikes): free part moves, grounded stays, a Mated part slides
+  on its face while the free part it is Mated to stays put, a DOF 0 part does not move and leaves no step, one "Move
+  part" step, Undo / Redo with no ground left; a click selects without entering edit; orbit works; no drag while
+  the Mate dialog is open; DOF text on the rows; View ▸ Degrees of Freedom adds and
+  removes the glyphs (counted as `SoAnnotation` nodes), only the available freedoms (Mated block: 2 arrows + 1 arc);
+  the tip glyph appears on a free part under the pointer and during its drag, none on a DOF 0 part; the constraint-row menu and the Delete key.
 - **The user's file**: DOF and drag on a copy of `Thread_1-Assembly.FCStd` (with its part files) from
   `/Volumes/Docs/Plasticity_projects`, never the originals, before saying done.
 
