@@ -184,3 +184,23 @@ class DofTest(unittest.TestCase):
         counts = dof.compute(self.doc)  # no exception
         self.assertIn(e.Name, counts)
         self.assertEqual(counts[self.b.Name].n, 6)
+
+
+class GlyphTest(unittest.TestCase):
+    def test_slides_are_double_arrows_and_turns_are_arcs_on_their_axis(self):
+        z = App.Vector(0, 0, 1)
+        f = dof.Freedom(3, [App.Vector(1, 0, 0), App.Vector(0, 1, 0)], [(App.Vector(0, 0, 0), z)], "")
+        plc = App.Placement(App.Vector(10, 0, 0), App.Rotation(z, 90))  # the part moved and turned since the count
+        lines, heads = dof.glyph(f, plc, App.Vector(10, 0, 5), 4.0)
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(len(heads), 5)
+        a, b = lines[0]
+        self.assertAlmostEqual((b - a).normalize().dot(App.Vector(0, 1, 0)), 1, places=6)  # own X turned to global Y
+        arc = lines[2]
+        self.assertEqual(len(arc), 25)
+        for p in arc:
+            self.assertAlmostEqual(p.z, 5, places=6)  # level with the centre
+            self.assertAlmostEqual((p - App.Vector(10, 0, 5)).Length, 4.0 * 0.6, places=6)  # around the moved axis
+
+    def test_no_freedom_no_glyph(self):
+        self.assertEqual(dof.glyph(dof.Freedom(0, [], [], ""), App.Placement(), App.Vector(), 4.0), ([], []))

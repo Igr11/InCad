@@ -188,3 +188,31 @@ def compute(doc):
         if gdoc is not None:
             gdoc.Modified = modified
     return out
+
+
+def glyph(freedom, placement, centre, size):
+    """Inventor's DOF glyph for a part now at `placement`: a double arrow per slide through `centre`, a 270° arc per
+    turn around its axis (level with the centre). ([[Vector…]…] polylines, [(tip, direction)…] arrow heads)."""
+    lines, heads = [], []
+    rot = placement.Rotation
+    for d in freedom.slides:
+        g = rot.multVec(d).normalize()
+        a, b = centre - g * size, centre + g * size
+        lines.append([a, b])
+        heads += [(b, g), (a, g * -1)]
+    for point, axis in freedom.turns:
+        ax = rot.multVec(axis).normalize()
+        p = placement.multVec(point)
+        base = p + ax * (centre - p).dot(ax)
+        u = ax.cross(App.Vector(1, 0, 0))
+        if u.Length < 1e-6:
+            u = ax.cross(App.Vector(0, 1, 0))
+        u.normalize()
+        w = ax.cross(u)
+        r = size * 0.6
+        ts = [1.5 * math.pi * k / 24 for k in range(25)]
+        pts = [base + (u * math.cos(t) + w * math.sin(t)) * r for t in ts]
+        lines.append(pts)
+        end = ts[-1]
+        heads.append((pts[-1], (u * -math.sin(end) + w * math.cos(end)).normalize()))
+    return lines, heads
