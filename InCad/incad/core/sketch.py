@@ -409,14 +409,18 @@ def _set_strings(sk, prop, refs, doc):
     setattr(sk, prop, sorted(refs))
 
 
-_GROUPS = ("PartDesign::Body", "App::Part", "App::DocumentObjectGroup")
-
-
 def users(sk):
-    """What is built on the sketch: every object that links it (its InList, the body holding it aside) and its
-    InCad area profiles (separate sketches that name their source only in their data)."""
+    """What is built on the sketch: the features that consume it (features.common.consumers: a Profile, a Sweep's
+    path or a Loft's section, a Split's knife, the features on its areas), a revolve whose axis is one of its lines,
+    and its InCad area profiles (separate sketches that name their source only in their data). An expression
+    using one of its dimensions, a sketch attached to it or projecting from it does not make it used."""
     from incad.core import regions
-    out = [o for o in sk.InList if o.TypeId not in _GROUPS]
+    from incad.features import common
+    out = list(common.consumers(sk))
+    for o in sk.InList:
+        axis = getattr(o, "ReferenceAxis", None) if "ReferenceAxis" in getattr(o, "PropertiesList", ()) else None
+        if axis and axis[0] is sk and o not in out:
+            out.append(o)
     return out + [p for p in regions.profiles_of(sk) if p not in out]
 
 

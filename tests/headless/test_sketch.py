@@ -521,6 +521,79 @@ class ProjectedEdgesTest(unittest.TestCase):
         self.assertTrue(sketch.adopt_projections(sk))
         self.assertTrue(sketch.is_defining(sk, -3))
 
+    def test_a_dimension_used_in_a_formula_does_not_make_the_sketch_used(self):
+        """Review of 2147846: the model parameters link a sketch whose dimension a formula uses (an expression
+        link in its InList). Nothing is built on the sketch, so its projections still become normal."""
+        sk = self.top_sketch()
+        sk.addGeometry(Part.LineSegment(App.Vector(30, 0, 0), App.Vector(40, 0, 0)), False)
+        sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 10))
+        self.doc.recompute()
+        sketch.name_new_dimensions(self.doc)
+        name = sk.Constraints[0].Name
+        self.assertTrue(name, "the dimension is named")
+        from incad.core import model
+        model.new_feature_parameter(self.doc, "%s * 2" % name)
+        self.doc.recompute()
+        self.assertTrue([o for o in sk.InList if o.TypeId not in ("PartDesign::Body",)], "the formula links it")
+        self.assertEqual(sketch.users(sk), [])
+        notes = []
+        self.assertTrue(sketch.adopt_projections(sk, notes))
+        self.assertEqual(notes, [])
+        self.assertTrue(all(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
+
+    def test_a_sketch_attached_to_it_or_projecting_from_it_does_not_make_it_used(self):
+        sk = self.top_sketch()
+        sk.addGeometry(Part.LineSegment(App.Vector(2, 2, 0), App.Vector(8, 2, 0)), False)
+        self.doc.recompute()
+        on = self.body.newObject("Sketcher::SketchObject", "OnIt")
+        on.AttachmentSupport = [(sk, "")]
+        on.MapMode = "ObjectXY"
+        other = sketch.make_sketch(self.body, plane(self.body, "XY_Plane"))
+        other.addExternal(sk.Name, "Edge1")
+        self.doc.recompute()
+        self.assertIn(on, sk.InList)
+        self.assertIn(other, sk.InList)
+        self.assertEqual(sketch.users(sk), [])
+        self.assertTrue(sketch.adopt_projections(sk))
+        self.assertTrue(all(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
+
+    def test_a_hole_a_split_and_a_revolve_axis_make_the_sketch_used(self):
+        from incad.features import split
+        # a Hole on its circles
+        sk = self.top_sketch()
+        sk.addGeometry(Part.Circle(App.Vector(5, 5, 0), App.Vector(0, 0, 1), 1.5), False)
+        self.doc.recompute()
+        hole = self.body.newObject("PartDesign::Hole", "Hole")
+        hole.Profile = sk
+        hole.Diameter = 3
+        hole.Depth = 4
+        self.body.Tip = hole
+        self.doc.recompute()
+        self.assertEqual(sketch.users(sk), [hole])
+        self.assertFalse(sketch.adopt_projections(sk))
+        self.unuse(hole)
+        # a Split's knife
+        knife = self.top_sketch()
+        knife.addGeometry(Part.LineSegment(App.Vector(10, -5, 0), App.Vector(10, 15, 0)), False)  # the cut
+        self.doc.recompute()
+        f = split.create(self.doc, self.body, None, dict(split.defaults(self.doc, self.body, None), sketch=knife.Name))
+        self.doc.recompute()
+        self.assertIn(f, sketch.users(knife))
+        self.assertFalse(sketch.adopt_projections(knife))
+        # a revolve whose axis is a line of another sketch
+        axis = self.top_sketch()
+        prof = sketch.make_sketch(self.body, plane(self.body, "XZ_Plane"))
+        for i in range(4):
+            a, b = [(30, 5), (38, 5), (38, 15), (30, 15)][i], [(30, 5), (38, 5), (38, 15), (30, 15)][(i + 1) % 4]
+            prof.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0), App.Vector(b[0], b[1], 0)))
+        self.doc.recompute()
+        rev = self.body.newObject("PartDesign::Revolution", "Revolve")
+        rev.Profile = prof
+        rev.ReferenceAxis = (axis, ["V_Axis"])
+        self.doc.recompute()
+        self.assertEqual(sketch.users(axis), [rev])
+        self.assertFalse(sketch.adopt_projections(axis))
+
     def test_a_second_adopt_does_nothing(self):
         """One burst of changes at most: the second call neither sets a flag nor removes geometry."""
         sk = self.top_sketch()

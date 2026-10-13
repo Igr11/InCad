@@ -2318,13 +2318,13 @@ class Shell(QtCore.QObject):
                     log.report("info", "Split pieces are separate Solids now (hide or show each one)")
             except Exception as e:
                 log.logger().warning("Split pieces on open: %s", e)
-            self._adopt_all_projections(doc.Name)  # Inventor: projected edges are normal; old files follow
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):
                     doc.recompute()
             except Exception as e:
                 log.logger().warning("Orphan area copies on open: %s", e)
+            self._adopt_all_projections(doc.Name)  # after the purge: an orphan area copy uses nothing
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)
