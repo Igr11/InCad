@@ -74,16 +74,27 @@ def _path(doc, name):
     return os.path.join(os.path.dirname(doc.FileName), name + ".FCStd")
 
 
-def check_names(doc, asm_name, names):
-    """Why these names can't be used, or ''."""
+def existing(doc, asm_name, names):
+    """The names whose files are already in the part's folder (an earlier Make Assembly made them)."""
+    return [n for n in [asm_name] + list(names) if n.strip() and os.path.exists(_path(doc, n))]
+
+
+def check_names(doc, asm_name, names, replace=False):
+    """Why these names can't be used, or ''. With `replace` the files already there are overwritten (the user: making
+    the assembly again forced new names, Train_2, Train_3…) — never this part's own file."""
     every = [asm_name] + list(names)
     if any(not n.strip() or any(ch in n for ch in '/\\:') for n in every):
         return "A name is empty or has / \\ :"
     if len({n.lower() for n in every}) < len(every):
         return "A name is used twice"
+    own = os.path.abspath(doc.FileName)
     for n in every:
-        if os.path.exists(_path(doc, n)):
-            return "%s.FCStd exists in this folder (pick another name)" % n
+        if os.path.abspath(_path(doc, n)) == own:
+            return "%s is this part's own file: pick another name" % n
+    if not replace:
+        for n in every:
+            if os.path.exists(_path(doc, n)):
+                return "%s.FCStd exists in this folder (pick another name, or replace it)" % n
     return ""
 
 
@@ -178,23 +189,29 @@ def _close_paths(paths):
             App.closeDocument(d.Name)
 
 
-def make(doc, asm_name, names):
+def make(doc, asm_name, names, replace=False):
     """Write the part files and the assembly. The part stays FreeCAD's active document: the hidden copies opened here
     become active on open, and closing them would leave none (InCad then showed an empty screen, Undo did nothing)."""
     try:
-        return _make(doc, asm_name, names)
+        return _make(doc, asm_name, names, replace)
     finally:
         if doc.Name in App.listDocuments():
             App.setActiveDocument(doc.Name)
 
 
-def _make(doc, asm_name, names):
+def _make(doc, asm_name, names, replace=False):
     found = pieces_or_refuse(doc)
     if len(names) != len(found):
         raise ValueError("One name per piece")
-    reason = check_names(doc, asm_name, names)
+    reason = check_names(doc, asm_name, names, replace)
     if reason:
         raise ValueError(reason)
+    old = [_path(doc, n) for n in existing(doc, asm_name, names)] if replace else []
+    _close_paths(old)  # open in a tab (the assembly made last time): its file is about to change under it
+    kept = {}
+    for path in old:  # set aside, so a failure puts them back as they were
+        kept[path] = path + ".incad-replace"
+        os.replace(path, kept[path])
     made = []
     try:
         for piece, name in zip(found, names):
@@ -216,6 +233,8 @@ def _make(doc, asm_name, names):
             App.closeDocument(a.Name)
             _close_paths(made)  # the part files place() opened hidden
         _drop_backups(made)
+        for aside in kept.values():
+            os.remove(aside)
         return asm_path
     except Exception:
         _close_paths(made)
@@ -223,4 +242,6 @@ def _make(doc, asm_name, names):
             if os.path.exists(path):
                 os.remove(path)
         _drop_backups(made)
+        for path, aside in kept.items():
+            os.replace(aside, path)
         raise

@@ -414,7 +414,8 @@ def make_assembly():
     found = ma.pieces_or_refuse(doc)
     asm, names = ma.default_names(doc, len(found))
     rows = [(n, "%.0f mm³" % p.volume) for n, p in zip(names, found)]
-    dlg = MakeAssemblyDialog(asm, rows, lambda a, ns: ma.check_names(doc, a, ns), Gui.getMainWindow())
+    dlg = MakeAssemblyDialog(asm, rows, lambda a, ns, replace=False: ma.check_names(doc, a, ns, replace),
+                             Gui.getMainWindow(), existing=lambda a, ns: ma.existing(doc, a, ns))
     view = Gui.getDocument(doc.Name).ActiveView
     marker = PieceMarker(view)
     solids = []
@@ -429,10 +430,21 @@ def make_assembly():
     finally:
         marker.remove()
     asm_name, part_names = dlg.names()
+    replace = dlg.replace()
+    if replace:  # a file about to be replaced may be open with changes: ask before it is closed unsaved
+        import os
+        from incad.ui import shell
+        paths = {os.path.abspath(os.path.join(os.path.dirname(doc.FileName), n + ".FCStd"))
+                 for n in ma.existing(doc, asm_name, part_names)}
+        changed = [d.Label for d in App.listDocuments().values() if d.FileName and os.path.abspath(d.FileName) in paths
+                   and Gui.getDocument(d.Name) is not None and Gui.getDocument(d.Name).Modified]
+        if changed and not shell.confirm("Make Assembly", "%s %s open with unsaved changes. Close without saving and "
+                                         "replace?" % (", ".join(changed), "is" if len(changed) == 1 else "are")):
+            return None
     gdoc = Gui.getDocument(doc.Name)
     was_modified = gdoc.Modified
     try:
-        path = ma.make(doc, asm_name, part_names)
+        path = ma.make(doc, asm_name, part_names, replace)
     finally:
         Gui.ActiveDocument = gdoc  # the hidden copies took the active document while they were open
     if not was_modified:

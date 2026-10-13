@@ -20,6 +20,21 @@ class MakeAssemblyDialogTest(unittest.TestCase):
         self.assertFalse(self.d.ok_button.isEnabled())
         self.assertIn("twice", self.d.error_text())
 
+    def test_existing_files_can_be_replaced(self):
+        d = MakeAssemblyDialog("Plate-Assembly", [("Plate-Solid1", "2000 mm³")],
+                               lambda asm, names, replace=False: "" if replace else "Plate-Assembly.FCStd exists",
+                               existing=lambda asm, names: ["Plate-Assembly"])
+        self.assertFalse(d.ok_button.isEnabled())
+        self.assertFalse(d.replace_box.isHidden(), "the choice is offered when files exist")
+        d.replace_box.setChecked(True)
+        self.assertTrue(d.ok_button.isEnabled())
+        self.assertTrue(d.replace())
+        self.assertEqual(d.error_text(), "")
+
+    def test_no_replace_choice_without_existing_files(self):
+        self.assertTrue(self.d.replace_box.isHidden())
+        self.assertFalse(self.d.replace())
+
     def test_hover_reports_the_row(self):
         seen = []
         self.d.hovered.connect(seen.append)

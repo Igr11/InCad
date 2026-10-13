@@ -86,6 +86,44 @@ class MakeAssemblyTest(unittest.TestCase):
             ma.make(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid2"])
         self.assertFalse(os.path.exists(os.path.join(self.dir, "Plate-Solid1.FCStd")))
 
+    def test_replace_overwrites_the_files_of_an_earlier_make_assembly(self):
+        """The user: making the assembly again forced new names (Train_2, Train_3…): it may replace the old files."""
+        names = ["Plate-Solid1", "Plate-Solid2"]
+        ma.make(self.doc, "Plate-Assembly", names)
+        self.assertIn("exists", ma.check_names(self.doc, "Plate-Assembly", names))
+        self.assertEqual(sorted(ma.existing(self.doc, "Plate-Assembly", names)), ["Plate-Assembly", "Plate-Solid1",
+                                                                              "Plate-Solid2"])
+        self.assertEqual(ma.check_names(self.doc, "Plate-Assembly", names, replace=True), "")
+        stamp = os.path.getmtime(os.path.join(self.dir, "Plate-Solid1.FCStd"))
+        import time
+        time.sleep(1.1)
+        ma.make(self.doc, "Plate-Assembly", names, replace=True)
+        self.assertGreater(os.path.getmtime(os.path.join(self.dir, "Plate-Solid1.FCStd")), stamp)
+        self.assertEqual(sorted(f for f in os.listdir(self.dir) if not f.endswith(".FCBak")),
+                         ["Plate-Assembly.FCStd", "Plate-Solid1.FCStd", "Plate-Solid2.FCStd", "Plate.FCStd"])
+        self.assertIs(App.ActiveDocument, self.doc)
+
+    def test_a_replace_that_fails_puts_the_old_files_back(self):
+        names = ["Plate-Solid1", "Plate-Solid2"]
+        ma.make(self.doc, "Plate-Assembly", names)
+        before = {f: open(os.path.join(self.dir, f), "rb").read() for f in os.listdir(self.dir) if f.endswith(".FCStd")}
+        original = ma._finish_copy
+
+        def broken(*a, **kw):
+            raise ValueError("boom")
+        ma._finish_copy = broken
+        try:
+            with self.assertRaises(ValueError):
+                ma.make(self.doc, "Plate-Assembly", names, replace=True)
+        finally:
+            ma._finish_copy = original
+        after = {f: open(os.path.join(self.dir, f), "rb").read() for f in os.listdir(self.dir) if f.endswith(".FCStd")}
+        self.assertEqual(after, before, "the old files are back, untouched")
+        self.assertFalse([f for f in os.listdir(self.dir) if "replace" in f], "no leftovers")
+
+    def test_the_part_itself_is_never_replaced(self):
+        self.assertIn("this part", ma.check_names(self.doc, "Plate", ["Plate-Solid1", "Plate-Solid2"], replace=True))
+
     def test_duplicate_names_are_refused(self):
         self.assertIn("twice", ma.check_names(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid1"]))
 
