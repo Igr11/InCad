@@ -262,6 +262,16 @@ def _visibility_step(label, objects, change):
     return r.value
 
 
+def toggle_dof():
+    from incad.ui import shell
+    shell.toggle_dof()
+
+
+def dof_shown():
+    from incad.ui import shell
+    return shell.dof_shown()
+
+
 def toggle_visibility():
     from incad.core import document, log
     objects = _visibility_targets()
@@ -840,6 +850,9 @@ def commands():
                 contexts=frozenset({"part", "origin", "browser", "assembly"}),
                 tooltip="Hide or show the selected solids (or assembly parts), origin planes, axes, centre point "
                         "and sketches"),
+        Command(id="view.dof", label="Degrees of Freedom", icon="rotational", handler=toggle_dof,
+                checkable=True, is_checked=dof_shown, contexts=frozenset({"assembly"}),
+                tooltip="Show how each part can still move: arrows for slides, arcs for turns"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
                 handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
                 tooltip="Show every origin plane, axis and the centre point"),

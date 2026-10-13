@@ -267,6 +267,47 @@ def test_8c_closing_the_document_ends_a_drag():
     assert not s().asm_drag.active() and not safe.drag_edit() and not safe.edit_open()
 
 
+def glyph_parts():
+    g = s()._dof_glyphs
+    return 0 if g is None else g.count
+
+
+def test_9a_view_button_draws_only_available_freedoms():
+    from incad.core import dof
+    assert glyph_parts() == 0
+    commands.REGISTRY.run("view.dof")
+    harness.pump(800)
+    free = [n for n, f in (dof.last(doc()) or {}).items() if f.n]
+    assert glyph_parts() == len(free) and ST["t"] in free and ST["m"] not in free, (glyph_parts(), free)  # Mid is DOF 0
+    lines, heads = s()._dof_glyphs.parts[ST["t"]]
+    assert (lines, heads) == (3, 5), (lines, heads)  # Top on Mid: two slides (double arrows) and one turn
+    commands.REGISTRY.run("view.dof")
+    harness.pump(500)
+    assert glyph_parts() == 0
+
+
+def test_9b_hover_tip_on_a_free_part_only():
+    s()._on_dof_hover(ST["t"])
+    harness.pump(300)
+    assert glyph_parts() == 1 and s()._dof_glyphs.highlighted == [ST["t"]]
+    s()._on_dof_hover(ST["m"])  # DOF 0: no tip
+    harness.pump(300)
+    assert glyph_parts() == 0
+    s()._on_dof_hover(None)
+    harness.pump(300)
+    assert glyph_parts() == 0
+
+
+def test_9c_hover_from_real_preselection():
+    pos = top_of("t")
+    send(QtCore.QEvent.MouseMove, pos, QtCore.Qt.NoButton, QtCore.Qt.NoButton)
+    harness.pump(600)
+    assert glyph_parts() == 1, glyph_parts()
+    send(QtCore.QEvent.MouseMove, QtCore.QPointF(5, 5), QtCore.Qt.NoButton, QtCore.Qt.NoButton)  # empty corner
+    harness.pump(600)
+    assert glyph_parts() == 0, glyph_parts()
+
+
 def test_9_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -278,5 +319,6 @@ TESTS = [test_0_setup, test_1_rows_show_dof, test_2_undo_of_a_constraint_recount
          test_5_undo_and_redo_of_a_drag, test_5b_a_lost_release_does_not_block_the_next_drag,
          test_6_grounded_part_stays_and_says_so, test_7_a_click_selects_without_edit,
          test_8_fully_constrained_part_is_not_dragged, test_8b_no_drag_while_a_constraint_dialog_is_open,
-         test_8c_closing_the_document_ends_a_drag]
+         test_9a_view_button_draws_only_available_freedoms, test_9b_hover_tip_on_a_free_part_only,
+         test_9c_hover_from_real_preselection, test_8c_closing_the_document_ends_a_drag]  # 8c closes the document
 harness.run(TESTS + [test_9_cleanup])

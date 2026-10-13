@@ -325,6 +325,10 @@ class Shell(QtCore.QObject):
         self._wait_notice = None
         self._dof_pending = False
         self.asm_drag = None
+        self._dof_glyphs = None   # DofGlyphs on the active assembly view
+        self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
+        self._dof_hover = None    # the free part under the pointer (the tip)
+        self._hover_watch = None
         self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
@@ -693,6 +697,16 @@ class Shell(QtCore.QObject):
             except Exception:
                 pass
             self._sel_watch = None
+        if self._hover_watch is not None:
+            try:
+                import FreeCADGui as Gui
+                Gui.Selection.removeObserver(self._hover_watch)
+            except Exception:
+                pass
+            self._hover_watch = None
+        if self._dof_glyphs is not None:
+            self._dof_glyphs.remove()
+            self._dof_glyphs = None
         self._peeked = None
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish(moved_ok=False)
@@ -1967,6 +1981,10 @@ class Shell(QtCore.QObject):
         if self._sel_watch is None:
             self._sel_watch = _SelectionWatch(self)
             Gui.Selection.addObserver(self._sel_watch)
+        if self._hover_watch is None:
+            from incad.ui.dof_glyphs import HoverWatch
+            self._hover_watch = HoverWatch(self._on_dof_hover)
+            Gui.Selection.addObserver(self._hover_watch)
         import FreeCAD as App
         log.set_reporter(self._report)
         from incad.core import safe
@@ -2309,6 +2327,7 @@ class Shell(QtCore.QObject):
             self._close_wait_notice()
         if is_asm and fs is None:
             self._schedule_dof(doc)
+        self.dof_display_changed()  # a tab switch, an undo or a finished drag: glyphs at the parts' new places
 
     # ----- assemblies -----
     def _assembly_doc(self):
@@ -2470,7 +2489,54 @@ class Shell(QtCore.QObject):
             log.logger().exception("InCad drag on close")
 
     def dof_display_changed(self):
-        """Redraw the DOF glyphs (Task 8)."""
+        """Redraw the DOF glyphs: every free part while View > Degrees of Freedom is on, else the part under the
+        pointer or being dragged (highlighted). Only the freedoms a part has; none for DOF 0."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import assembly, dof
+        from incad.ui.dof_glyphs import DofGlyphs
+        doc = App.ActiveDocument
+        view = Gui.ActiveDocument.ActiveView if assembly.is_assembly(doc) and Gui.ActiveDocument else None
+        if self._dof_glyphs is not None and (view is None or self._dof_glyphs.view is not view):
+            self._dof_glyphs.remove()
+            self._dof_glyphs = None
+        if view is None or not hasattr(view, "getSceneGraph"):
+            return
+        counts = dof.last(doc) or {}
+        tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else self._dof_hover
+        names = list(counts) if doc.Name in self._dof_on else [tip] if tip else []
+        items = []
+        for name in names:
+            f, link = counts.get(name), doc.getObject(name)
+            if f is None or not f.n or link is None or link.Shape.isNull():
+                continue
+            bb = link.Shape.BoundBox
+            size = max(bb.DiagonalLength * 0.35, 5.0)
+            lines, heads = dof.glyph(f, link.Placement, bb.Center, size)
+            items.append((name, lines, heads, size, name == tip))
+        if self._dof_glyphs is None:
+            if not items:
+                return
+            self._dof_glyphs = DofGlyphs(view, self.theme)
+        self._dof_glyphs.set(items)
+
+    def toggle_dof(self):
+        import FreeCAD as App
+        from incad.core import assembly
+        doc = App.ActiveDocument
+        if not assembly.is_assembly(doc):
+            raise ValueError("Open an assembly first")
+        self._dof_on ^= {doc.Name}
+        self.dof_display_changed()
+        self.schedule_refresh()  # the ribbon button's checked state
+
+    def dof_shown(self):
+        import FreeCAD as App
+        return App.ActiveDocument is not None and App.ActiveDocument.Name in self._dof_on
+
+    def _on_dof_hover(self, name):
+        self._dof_hover = name
+        self.dof_display_changed()
 
     def open_component(self, link):
         """Open the component's file in its own tab (Inventor: Open)."""
@@ -3280,6 +3346,15 @@ def assembly_edit(link=None):
 
 def assembly_remove(link=None):
     return _active().assembly_remove(link)
+
+
+def toggle_dof():
+    return _active().toggle_dof()
+
+
+def dof_shown():
+    sh = _shell
+    return bool(sh is not None and sh.active and sh.dof_shown())
 
 
 def current_tree_object():

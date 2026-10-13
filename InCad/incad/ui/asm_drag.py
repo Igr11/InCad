@@ -9,6 +9,18 @@ from incad.core import assembly, dof, log, safe
 from incad.qt import QtCore
 
 
+def component_in_hits(doc, hits):
+    """The assembly component the first non-joint pick hit names (joint markers are drawn on top of the parts)."""
+    joints = assembly.joints(doc)
+    for hit in hits or []:
+        name = (hit.get("SubName") or "").split(".")[0]
+        o = doc.getObject(name) if name else None
+        if o is not None and o in joints:
+            continue
+        return o if o is not None and o in assembly.components(doc) else None
+    return None
+
+
 class AssemblyDrag:
     def __init__(self, shell):
         self.shell = shell
@@ -29,14 +41,7 @@ class AssemblyDrag:
         doc = App.ActiveDocument
         if not assembly.is_assembly(doc):
             return None, None
-        joints = assembly.joints(doc)
-        for hit in view.getObjectsInfo(to_coin(viewport, x, y)) or []:
-            name = (hit.get("SubName") or "").split(".")[0]
-            o = doc.getObject(name) if name else None
-            if o is not None and o in joints:
-                continue
-            return doc, (o if o is not None and o in assembly.components(doc) else None)
-        return doc, None
+        return doc, component_in_hits(doc, view.getObjectsInfo(to_coin(viewport, x, y)))
 
     @staticmethod
     def _markers_pickable(doc, on):
