@@ -297,6 +297,16 @@ class ToolRightClickTest(unittest.TestCase):
         self.assertEqual(self.w.seen, [("press", QtCore.Qt.RightButton), ("release", QtCore.Qt.RightButton)])
         self.assertEqual(self.menus, [])
 
+    def test_right_click_is_unchanged_with_a_handle_hook(self):
+        """The DOF handle hook is left-button only: a right press/release still reaches the gesture rules and opens
+        the marking menu, and the hook never hears of it."""
+        hook = self.nav.handle_hook = HandleHook(True)
+        self.right_click()
+        self.assertEqual(self.menus, [False])
+        self.assertEqual(self.w.seen, [], "FreeCAD gets nothing")
+        self.assertEqual(hook.seen, [])
+        self.assertEqual(self.nav._attached[self.w][1].state, "idle")
+
     def test_plain_cursor_opens_the_menu(self):
         self.assertFalse(Navigator.tool_cursor(self.w))
         self.right_click()

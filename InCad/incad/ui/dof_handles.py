@@ -312,6 +312,18 @@ class Handles:
     def dragging(self):
         return self.drag is not None
 
+    def wants_selection(self):
+        """A selection change matters to the gizmo only in an assembly (or while one is drawn): a part document's
+        clicks and menus run exactly as without it."""
+        if self.drawn is not None or self.drag is not None:
+            return True
+        try:
+            import FreeCAD as App
+            from incad.core import assembly
+            return assembly.is_assembly(App.ActiveDocument)
+        except Exception:
+            return False
+
     def gizmo_part(self, doc):
         """The part whose glyph gets handles: the one being dragged, else the selected free component while a
         handle could be grabbed."""
@@ -384,8 +396,8 @@ class Handles:
 
     # --- the navigator's hook ---
     def hover(self, view, viewport, x, y):
-        if self.drag is not None:
-            return
+        if self.drag is not None or self.drawn is None and self.lit is None and self._cursor is None:
+            return  # no gizmo (a part document, nothing selected): nothing to do
         k = self.hit(view, viewport, x, y) if self.drawn is not None and self.can_grab() else None
         self._set_cursor(viewport if k is not None else None)
         if k != self.lit:

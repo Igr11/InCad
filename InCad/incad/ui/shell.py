@@ -228,7 +228,9 @@ class _SelectionWatch:
             self.shell._on_model_selection_changed()
         except Exception:
             log.logger().exception("InCad selection sync")
-        self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes
+        handles = getattr(self.shell, "dof_handles", None)
+        if handles is not None and handles.wants_selection():
+            self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes (assemblies only)
 
     def addSelection(self, doc, obj, sub, pnt):
         self._check()
