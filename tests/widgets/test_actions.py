@@ -22,7 +22,7 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "sketch.constraints_show", "sketch.constraints_hide", "sketch.slot_overall",
             "sketch.slot_center", "sketch.construction", "file.quit", "sketch.rect_pattern", "sketch.circ_pattern",
             "sketch.path_pattern",
-            "sketch.edit_pattern", "sketch.delete_pattern"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
+            "sketch.edit_pattern", "sketch.delete_pattern", "view.dof", "constraint.suppress"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 
 
 class ActionsTest(unittest.TestCase):

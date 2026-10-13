@@ -313,3 +313,10 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
   added before setEdit split the step (resetEdit closes the transaction that was open at setEdit). Same reason: no
   drag inside a constraint dialog (resetEdit committed the dialog's 'Mate' step, Cancel could not put the part back).
   A DOF 0 part does not move but FreeCAD's drag leaves an empty step: InCad does not start a drag on it.
+- Status (2026-10-13, assembly drag + DOF + constraint rows done, Tasks 1–8, commits 51a35a1..e2f9c5e): checked on copies of
+  the user's Thread_1-Assembly: Solid1 grounded, Solid2 DOF 1 (one slide), its glyph is 1 line + 2 heads, a drag moved it
+  7.18 mm along that slide, one "Move part" step, Solid1 unmoved, InCad.log clean. Suites: widgets OK (after adding
+  view.dof / constraint.suppress to test_actions' expected ids), headless 654 OK, GUI 44 of 48 files pass, quit 6/6.
+  test_dimbox, test_features 9–12 and test_selection_sync 7 failed on keyboard focus while the user was using the Mac:
+  the pre-plan commit 1a3888e fails them the same way at that moment and they passed on an idle Mac earlier the same
+  day; test_pattern_real_part timed out once and passed 6/6 on rerun.
