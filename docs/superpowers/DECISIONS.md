@@ -325,3 +325,20 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
   writes the temporary grounds, a part's suppress/unsuppress keeps the constraints the user suppressed, unpickable
   glyphs, cleanup on close). On an idle Mac: test_dimbox 12/12, test_features 20/20, test_selection_sync 8/8,
   test_assembly_drag 21/21 — the earlier keyboard-focus failures were the Mac being in use.
+- Ruling (2026-10-13, user away; d677c54..1696a25): projected sketch edges are FreeCAD "defining" external geometry
+  (addExternal(..., True); the flag is toggled by writing a copy of sk.ExternalGeo back — survives a source change and
+  save/reload; getConstruction() still says True for them, never use it on external ids). Normal by default and
+  Construction switches them both ways (the user's choice is kept by Ref in InCadProjConstruction) — but only in a
+  sketch nothing is built on (common.consumers + revolve axis + InCad area profiles): in a used sketch new
+  projections stay construction with a note ("<Sketch> is used by <Feature>: … Construction makes them normal"), so an
+  existing Extrude never changes silently (review probe: a face loop projected around an extruded rectangle turned
+  2120 into 2880). Old tied copies are removed only in unused sketches. Formula links, attachments and other
+  sketches' projections don't make a sketch used.
+- Ruling (2026-10-13; e939669..a22c908): assembly Parallel / Perpendicular constraints and Angle on straight edges
+  (pick = flat face or straight edge). FreeCAD compares the picks' axes (face normal, edge direction), so for a face +
+  edge InCad swaps Parallel ↔ Perpendicular and binds Angle as 90° − the user's value (Angle 90° there = FreeCAD
+  Parallel); the joint label stays. A new / edited / unsuppressed constraint is refused only when it leaves another
+  previously-met constraint unmet (FreeCAD silently drops the old joint otherwise); a stale pick blocks nothing.
+  GUI: test_assembly 6/6, test_constraint_rows 7/7, test_assembly_drag 20/21 (test_9c hover needs an attended Mac),
+  test_projected_edges 8/8; test_constraints_window 6c/6d fail identically on older commits that passed them before
+  (real pointer position) — environmental.
