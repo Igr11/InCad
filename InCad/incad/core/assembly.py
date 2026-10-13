@@ -211,20 +211,44 @@ def is_suppressed(link):
     return bool(getattr(link, SUPPRESSED, False))
 
 
+KEPT_OFF = "InCadKeptOff"  # on a suppressed component: its constraints the user had suppressed (they stay off)
+
+
+def _kept_off(link):
+    return list(getattr(link, KEPT_OFF, None) or [])
+
+
 def toggle_suppressed(link):
     """Suppress (Inventor) a component: hidden and its constraints / joints off, so it no longer counts; again to
-    bring it back. Returns True when it is suppressed now."""
+    bring it back. A constraint the user suppressed stays suppressed when the part comes back, and one whose other
+    part is still suppressed stays off with it. Returns True when it is suppressed now."""
     doc = link.Document
     on = not is_suppressed(link)
-    if SUPPRESSED not in link.PropertiesList:
-        link.addProperty("App::PropertyBool", SUPPRESSED, "InCad", "Suppressed in the assembly")
-        link.setPropertyStatus(SUPPRESSED, "Hidden")
-    setattr(link, SUPPRESSED, on)
-    link.Visibility = not on
+    for name, kind, doc_text in ((SUPPRESSED, "App::PropertyBool", "Suppressed in the assembly"),
+                                 (KEPT_OFF, "App::PropertyStringList", "Constraints the user had suppressed")):
+        if name not in link.PropertiesList:
+            link.addProperty(kind, name, "InCad", doc_text)
+            link.setPropertyStatus(name, "Hidden")
+    mine = []
     for j in joints(doc):
         refs = [(getattr(j, p, None) or (None,))[0] for p in ("Reference1", "Reference2")]
         if link in refs and hasattr(j, "Suppressed"):
-            j.Suppressed = on
+            others = [c for c in refs if c is not None and c is not link and is_suppressed(c)]
+            mine.append((j, others))
+    if on:
+        # the user's own: suppressed while no part of it was, or kept off by its other (suppressed) part
+        setattr(link, KEPT_OFF, [j.Name for j, others in mine if j.Suppressed and (
+            not others or any(j.Name in _kept_off(c) for c in others))])
+        for j, _ in mine:
+            j.Suppressed = True
+    else:
+        kept = _kept_off(link)
+        for j, others in mine:
+            if j.Name not in kept and not others:
+                j.Suppressed = False
+        setattr(link, KEPT_OFF, [])
+    setattr(link, SUPPRESSED, on)
+    link.Visibility = not on
     doc.recompute()
     return on
 

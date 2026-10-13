@@ -158,6 +158,17 @@ class DofTest(unittest.TestCase):
             dof.compute(self.doc)
         self.doc.abortTransaction()
 
+    def test_busy_while_any_document_is_loading(self):
+        class Loading:
+            Restoring = True
+        real = App.listDocuments
+        App.listDocuments = lambda: dict(real(), Other=Loading())  # another file still loading (its progress bar)
+        try:
+            with self.assertRaises(dof.Busy):
+                dof.compute(self.doc)
+        finally:
+            App.listDocuments = real
+
     def test_cache_follows_constraints_not_placements(self):
         counts, computed = dof.ensure(self.doc)
         self.assertTrue(computed)

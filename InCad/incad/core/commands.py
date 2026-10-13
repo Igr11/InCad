@@ -6,6 +6,13 @@ from incad.core import log
 
 ANY = "any"
 
+_before_run = None  # callable() run before every command (the shell ends an active part drag there)
+
+
+def set_before_run_hook(fn):
+    global _before_run
+    _before_run = fn
+
 
 @dataclass(frozen=True)
 class Command:
@@ -59,6 +66,11 @@ class Registry:
         if cmd is None:
             log.report("error", "Unknown command %s" % cmd_id)
             return SafeResult(False, error="unknown command %s" % cmd_id)
+        if _before_run is not None:
+            try:
+                _before_run()
+            except Exception:
+                log.logger().exception("before %s", cmd_id)
         if cmd.transactional:
             from incad.core import safe
             return safe.run_safely(cmd.label, cmd.handler)

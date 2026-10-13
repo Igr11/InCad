@@ -1,7 +1,8 @@
 """Degrees of freedom of assembly components (Inventor), counted by probing FreeCAD's solver: six small test moves
 of a part, each solved; what the solver keeps is a freedom. Relative to what holds the part: every other free part
-is held still (temporary grounds) while it is counted. The count runs in a transaction that is aborted, so it leaves
-no undo step and nothing in the file. Pure model logic."""
+is held still (temporary grounds) while it is counted. No transaction (opening one, even to abort it, empties FreeCAD's
+redo stack): the grounds are removed and every placement put back by hand, so the count leaves no undo step, keeps
+Redo working and leaves nothing in the file. Pure model logic."""
 import math
 from collections import namedtuple
 
@@ -140,9 +141,15 @@ def _probe(doc, asm, link, start):
     return Freedom(n, *_local(link, slides, turns), error="")
 
 
+def loading():
+    """True while any open file is still loading: FreeCAD pumps events for its progress bar, and a solve now would
+    recompute a half-restored document."""
+    return any(getattr(d, "Restoring", False) for d in App.listDocuments().values())
+
+
 def compute(doc):
     """{link name: Freedom} for every free, unsuppressed component."""
-    if getattr(doc, "Restoring", False) or doc.HasPendingTransaction:
+    if loading() or getattr(doc, "Restoring", False) or doc.HasPendingTransaction:
         raise Busy()
     asm = assembly.assembly_of(doc)
     comps = assembly.components(doc)
@@ -180,9 +187,11 @@ def compute(doc):
         for name, plc in start.items():
             if doc.getObject(name) is not None:
                 doc.getObject(name).Placement = plc
-        doc.recompute()
-        if gdoc is not None:
-            gdoc.Modified = modified
+        try:
+            doc.recompute()
+        finally:
+            if gdoc is not None:
+                gdoc.Modified = modified
     return out
 
 

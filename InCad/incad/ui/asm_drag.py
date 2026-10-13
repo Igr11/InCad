@@ -60,6 +60,9 @@ class AssemblyDrag:
         if sh.feature_session is not None or any(
                 getattr(sh, a, None) is not None for a in ("_point_pick", "_region_pick", "_profile_pick")):
             return False  # a dialog, a tool or a pick owns the mouse
+        import FreeCADGui as Gui
+        if Gui.editDocument() is not None or Gui.Control.activeDialog():
+            return False  # a sketch or a FreeCAD task is open (in any tab): the drag's setEdit would close it
         doc, link = self._component_at(view, viewport, x, y)
         if link is None or assembly.is_suppressed(link):
             return False
@@ -73,7 +76,6 @@ class AssemblyDrag:
         if known is not None and known.n == 0:
             log.report("info", "%s is fully constrained" % link.Label)
             return False
-        import FreeCADGui as Gui
         asm = assembly.assembly_of(doc)
         if doc.HasPendingTransaction:  # a stray change: its own step, apart from the drag
             doc.commitTransaction()
@@ -85,7 +87,8 @@ class AssemblyDrag:
         try:
             asm.ViewObject.MoveInCommand = False
             safe.set_drag_edit(True)
-            Gui.getDocument(doc.Name).setEdit(asm.Name)
+            if not Gui.getDocument(doc.Name).setEdit(asm.Name):
+                raise RuntimeError("FreeCAD did not open the assembly for the drag")
             self._markers_pickable(doc, False)
             doc.openTransaction("Move part")
             self._held = [c.Name for c in assembly.components(doc) if c is not link

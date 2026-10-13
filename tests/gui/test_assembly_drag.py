@@ -248,7 +248,126 @@ def test_8b_no_drag_while_a_constraint_dialog_is_open():
     harness.pump(800)
 
 
+def temp_grounds():
+    return len([j for j in assembly.joints(doc()) if hasattr(j, "ObjectToGround")])
+
+
+def test_8d_a_command_ends_a_drag_first():
+    import re
+    import zipfile
+    t = obj("t")
+    bt = App.Placement(t.Placement)
+    pos = top_of("t")
+    assert s().asm_drag.begin(view(), viewport(), pos.x(), pos.y()), "a drag began"
+    assert temp_grounds() > 1, "the other free parts are held while it drags"
+    r = commands.REGISTRY.run("file.save")
+    harness.pump(500)
+    assert r.ok, r.error
+    assert not s().asm_drag.active() and not safe.drag_edit(), "the command ended the drag first"
+    assert temp_grounds() == 1, "only Plate's ground"
+    assert same(t.Placement, bt)
+    assert Gui.getDocument(ST["asm"]).getInEdit() is None
+    with zipfile.ZipFile(doc().FileName) as z:
+        xml = z.read("Document.xml").decode("utf-8")
+    saved = re.findall(r'<Object type="[^"]*" name="(GroundedJoint\d*)"', xml)
+    assert len(saved) == 1, ("the saved file has only the real ground", saved)
+
+
+def test_8e_a_failed_edit_is_no_drag():
+    t = obj("t")
+    bt = App.Placement(t.Placement)
+    n0 = len(doc().UndoNames)
+    real = Gui.getDocument
+
+    class Refusing:
+        def __init__(self, g):
+            self._g = g
+
+        def setEdit(self, *a):
+            return False  # FreeCAD said no
+
+        def __getattr__(self, name):
+            return getattr(self._g, name)
+
+    pos = top_of("t")
+    Gui.getDocument = lambda name: Refusing(real(name))
+    try:
+        began = s().asm_drag.begin(view(), viewport(), pos.x(), pos.y())
+    finally:
+        Gui.getDocument = real
+    harness.pump(300)
+    assert not began and not s().asm_drag.active() and not safe.drag_edit()
+    assert "Can't drag Top" in s().status.texts()["message"], s().status.texts()
+    assert temp_grounds() == 1 and same(t.Placement, bt) and len(doc().UndoNames) == n0
+
+
+def test_9e_dof_view_with_an_empty_part():
+    from headless import util
+    from incad.core import document, dof
+    d = util.new_doc("Empty")
+    document.make_part(d)
+    d.recompute()
+    path = os.path.join(ST["dir"], "Empty.FCStd")
+    d.saveAs(path)
+    App.closeDocument(d.Name)
+    App.setActiveDocument(ST["asm"])
+    Gui.ActiveDocument = Gui.getDocument(ST["asm"])
+    ST["e"] = s().assembly_place(path).Name
+    s().schedule_refresh()
+    harness.pump(1500)
+    assert (dof.last(doc()) or {}).get(ST["e"]) is not None, "the empty part is counted"
+    s().status.clear_message()
+    commands.REGISTRY.run("view.dof")
+    harness.pump(800)
+    s().dof_display_changed()  # no exception
+    s().schedule_refresh()
+    harness.pump(800)
+    assert "could not update" not in s().status.texts()["message"], s().status.texts()
+    assert glyph_parts() == 1 and ST["t"] in s()._dof_glyphs.parts, "Top's glyph is drawn"
+    commands.REGISTRY.run("view.dof")
+    harness.pump(500)
+    assert glyph_parts() == 0
+
+
+def test_8f_no_drag_while_a_sketch_is_open_in_another_tab():
+    t = obj("t")
+    bt = App.Placement(t.Placement)
+    s().open_component(obj("p"))
+    harness.pump(1000)
+    plate = App.ActiveDocument
+    assert plate.Name != ST["asm"]
+    s().sketches.edit(plate.getObject("S"))  # InCad's route, never a raw setEdit on a sketch
+    harness.pump(800)
+    assert Gui.getDocument(plate.Name).getInEdit() is not None
+    s()._back_to(doc())  # the assembly's tab
+    harness.pump(800)
+    assert App.ActiveDocument.Name == ST["asm"]
+    assert Gui.getDocument(plate.Name).getInEdit() is not None, "the sketch stays open in its own tab"
+    n0 = len(doc().UndoNames)
+    pos = top_of("t")
+    drag = s().asm_drag
+    drag._component_at = lambda *a: (doc(), obj("t"))  # Top under the pointer (this checks the edit, not the pick)
+    try:
+        began = drag.begin(view(), viewport(), pos.x(), pos.y())
+    finally:
+        del drag._component_at
+    harness.pump(300)
+    in_edit = Gui.getDocument(plate.Name).getInEdit() is not None
+    if began:
+        s().asm_drag.finish(moved_ok=False)
+    assert not began and in_edit and not s().asm_drag.active(), \
+        ("no drag while another tab edits a sketch, the sketch still open", began, in_edit)
+    assert same(t.Placement, bt) and len(doc().UndoNames) == n0 and temp_grounds() == 1
+    s()._back_to(plate)
+    harness.pump(500)
+    s().sketches.finish()
+    harness.pump(800)
+    s()._back_to(doc())
+    harness.pump(500)
+
+
 def test_8c_closing_the_document_ends_a_drag():
+    from incad.core import dof
     t = obj("t")
     bt = App.Placement(t.Placement)
     n0 = len(doc().UndoNames)
@@ -259,12 +378,19 @@ def test_8c_closing_the_document_ends_a_drag():
     assert same(t.Placement, bt) and len(doc().UndoNames) == n0, "nothing moved, no step"
     assert len([j for j in assembly.joints(doc()) if hasattr(j, "ObjectToGround")]) == 1, "only Plate's ground"
     assert Gui.getDocument(ST["asm"]).getInEdit() is None
+    commands.REGISTRY.run("view.dof")  # on for this document, with a tip
+    harness.pump(500)
+    s()._on_dof_hover(ST["t"])
+    assert s()._dof_glyphs is not None and ST["asm"] in s()._dof_on
     pos = top_of("t")
     assert s().asm_drag.begin(view(), viewport(), pos.x(), pos.y()), "a drag began"
     App.closeDocument(ST["asm"])  # mid-drag: its release never comes
     assert s().asm_drag.link_name is None, "the close itself ended the drag"
     harness.pump(800)
     assert not s().asm_drag.active() and not safe.drag_edit() and not safe.edit_open()
+    assert ST["asm"] not in s()._dof_on, "DOF view state of the closed file is gone"
+    assert s()._dof_hover is None and ST["asm"] not in dof._CACHE
+    assert s()._dof_glyphs is None or s()._dof_glyphs.doc_name != ST["asm"], "no glyphs of the closed file"
 
 
 def glyph_parts():
@@ -281,6 +407,9 @@ def test_9a_view_button_draws_only_available_freedoms():
     assert glyph_parts() == len(free) and ST["t"] in free and ST["m"] not in free, (glyph_parts(), free)  # Mid is DOF 0
     lines, heads = s()._dof_glyphs.parts[ST["t"]]
     assert (lines, heads) == (3, 5), (lines, heads)  # Top on Mid: two slides (double arrows) and one turn
+    first = s()._dof_glyphs.node.getChild(0)
+    assert first.isOfType(coin.SoPickStyle.getClassTypeId()), "a pick style first under the glyphs"
+    assert first.style.getValue() == coin.SoPickStyle.UNPICKABLE, "glyphs are never picked (the part under them is)"
     commands.REGISTRY.run("view.dof")
     harness.pump(500)
     assert glyph_parts() == 0
@@ -312,6 +441,8 @@ def glyph_rgb():
     g = s()._dof_glyphs
     for i in range(g.node.getNumChildren()):
         sep = g.node.getChild(i)
+        if not sep.isOfType(coin.SoGroup.getClassTypeId()):
+            continue
         for j in range(sep.getNumChildren()):
             c = sep.getChild(j)
             if c.getTypeId().getName().getString() == "BaseColor":
@@ -350,7 +481,10 @@ TESTS = [test_0_setup, test_1_rows_show_dof, test_2_undo_of_a_constraint_recount
          test_5_undo_and_redo_of_a_drag, test_5b_a_lost_release_does_not_block_the_next_drag,
          test_6_grounded_part_stays_and_says_so, test_7_a_click_selects_without_edit,
          test_8_fully_constrained_part_is_not_dragged, test_8b_no_drag_while_a_constraint_dialog_is_open,
+         test_8d_a_command_ends_a_drag_first, test_8e_a_failed_edit_is_no_drag,
          test_9a_view_button_draws_only_available_freedoms, test_9b_hover_tip_on_a_free_part_only,
          test_9c_hover_from_real_preselection, test_9d_glyphs_follow_the_theme,
+         test_9e_dof_view_with_an_empty_part,  # adds a part without a solid
+         test_8f_no_drag_while_a_sketch_is_open_in_another_tab,  # opens Plate in its own tab
          test_8c_closing_the_document_ends_a_drag]  # 8c closes the document
 harness.run(TESTS + [test_9_cleanup])

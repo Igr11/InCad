@@ -172,6 +172,33 @@ class ConstraintsTest(unittest.TestCase):
             C.toggle_suppressed(j)
         self.assertIn("Block is suppressed", str(e.exception))
 
+    def test_a_constraint_the_user_suppressed_stays_off_when_its_part_comes_back(self):
+        j = self._mate()
+        C.toggle_suppressed(j)  # the user's own
+        assembly.toggle_suppressed(self.block)
+        self.assertTrue(j.Suppressed)
+        assembly.toggle_suppressed(self.block)
+        self.assertFalse(assembly.is_suppressed(self.block))
+        self.assertTrue(j.Suppressed, "the user suppressed it: it stays suppressed")
+
+    def test_a_constraint_comes_back_only_with_both_its_parts(self):
+        j = self._mate()
+        assembly.toggle_suppressed(self.block)
+        assembly.toggle_suppressed(self.plate)
+        assembly.toggle_suppressed(self.block)
+        self.assertTrue(j.Suppressed, "its other part is still suppressed")
+        assembly.toggle_suppressed(self.plate)
+        self.assertFalse(j.Suppressed, "both parts back: so is the constraint")
+
+    def test_the_users_suppression_survives_both_parts_suppressed(self):
+        j = self._mate()
+        C.toggle_suppressed(j)
+        assembly.toggle_suppressed(self.block)
+        assembly.toggle_suppressed(self.plate)
+        assembly.toggle_suppressed(self.block)
+        assembly.toggle_suppressed(self.plate)
+        self.assertTrue(j.Suppressed)
+
     def test_grounding_is_not_a_constraint_to_suppress(self):
         g = [x for x in assembly.joints(self.doc) if hasattr(x, "ObjectToGround")][0]
         self.assertIsNone(C.kind_of(g))

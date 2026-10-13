@@ -1,5 +1,6 @@
 """Inventor's DOF glyphs on the 3D view (never in the document): a double arrow per direction a part can slide, an
-arc per axis it can turn about. Not clickable (SoAnnotation outside the document). HoverWatch tells which assembly
+arc per axis it can turn about. Never picked (an UNPICKABLE pick style first under the SoAnnotation, outside the
+document): a click or a drag on a glyph reaches the part under it. HoverWatch tells which assembly
 part the pointer rests on (FreeCAD's preselection), for the tip."""
 from incad.ui import theme as themes
 
@@ -10,12 +11,15 @@ def _rgb(hex_color):
 
 
 class DofGlyphs:
-    def __init__(self, view, theme="light"):
+    def __init__(self, view, theme="light", doc_name=None):
         from pivy import coin
-        self.view, self.theme = view, theme
+        self.view, self.theme, self.doc_name = view, theme, doc_name
         self.count, self.parts, self.highlighted = 0, {}, []
         self.node = coin.SoAnnotation()
         self.node.setName("InCadDOF")
+        self._pick = coin.SoPickStyle()
+        self._pick.style = coin.SoPickStyle.UNPICKABLE
+        self.node.addChild(self._pick)
         view.getSceneGraph().addChild(self.node)
 
     def set(self, items):
@@ -56,6 +60,7 @@ class DofGlyphs:
 
     def clear(self):
         self.node.removeAllChildren()
+        self.node.addChild(self._pick)
         self.count, self.parts, self.highlighted = 0, {}, []
 
     def remove(self):

@@ -115,6 +115,24 @@ def test_4_delete_key_on_a_selected_row():
     assert doc().getObject(j_name) is not None, "Undo brings the constraint back"
 
 
+def test_5_assembly_cut_row_has_no_suppress():
+    from incad.core import asm_cut
+    plate, block = assembly.components(doc())[:2]
+    rec = asm_cut.create(doc(), plate, [block], dict(clearance="0.2 mm", apply_to="cavity"))
+    doc().recompute()
+    s().schedule_refresh()
+    harness.pump(600)
+    s()._on_browser_marking_menu(rec.Name, QtCore.QPoint(300, 300))
+    harness.pump(300)
+    assert s().menu_kind == "asm_cut", s().menu_kind
+    menu = s().marking_menu
+    ids, texts = list(menu._slot_ids.values()), [b.text() for b in menu._list]
+    assert "constraint.suppress" not in ids and "Suppress / Unsuppress" not in texts, (ids, texts)
+    assert "browser.edit" in ids, ids
+    s().marking_menu.close()
+    harness.pump(200)
+
+
 def test_9_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -122,4 +140,5 @@ def test_9_cleanup():
 
 
 harness.run([test_0_setup, test_1_row_menu_is_the_constraint_menu, test_2_suppress_from_the_row_and_back,
-             test_3_rename_from_the_row, test_4_delete_key_on_a_selected_row, test_9_cleanup])
+             test_3_rename_from_the_row, test_4_delete_key_on_a_selected_row, test_5_assembly_cut_row_has_no_suppress,
+             test_9_cleanup])

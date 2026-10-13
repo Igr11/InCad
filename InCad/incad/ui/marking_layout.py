@@ -42,6 +42,8 @@ LAYOUT = {
                          "view.toggle_visibility"]},
     "joint": {"N": "browser.edit", "S": "browser.delete", "E": "constraint.suppress", "W": "browser.rename",
               "list": ["browser.edit", "browser.delete", "constraint.suppress", "browser.rename"]},
+    "asm_cut": {"N": "browser.edit", "S": "browser.delete", "W": "browser.rename",
+                "list": ["browser.edit", "browser.delete", "browser.rename"]},
 }
 
 

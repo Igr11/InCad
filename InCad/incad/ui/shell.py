@@ -327,7 +327,7 @@ class Shell(QtCore.QObject):
         self.asm_drag = None
         self._dof_glyphs = None   # DofGlyphs on the active assembly view
         self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
-        self._dof_hover = None    # the free part under the pointer (the tip)
+        self._dof_hover = None    # (document name, part name) under the pointer (the tip)
         self._hover_watch = None
         self._polygons_from = {}
         self.marking_menu = None
@@ -1161,8 +1161,10 @@ class Shell(QtCore.QObject):
         elif obj is not None and obj.TypeId == "PartDesign::Body":  # a Solid's row (Solid Bodies)
             kind = "solid"
         from incad.core import asm_cut, assembly
-        if obj is not None and (obj in assembly.joints(App.ActiveDocument) or asm_cut.is_record(obj)):
+        if obj is not None and obj in assembly.joints(App.ActiveDocument):
             kind = "joint"  # a Relationships row: Edit, Delete, Suppress, Rename
+        elif obj is not None and asm_cut.is_record(obj):
+            kind = "asm_cut"  # an assembly cut's row: no Suppress (it is no constraint)
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
@@ -1990,6 +1992,8 @@ class Shell(QtCore.QObject):
         log.set_reporter(self._report)
         from incad.core import safe
         safe.set_refused_hook(self._show_open_dialog)
+        from incad.core import commands
+        commands.set_before_run_hook(self._end_drag)
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
@@ -2022,6 +2026,8 @@ class Shell(QtCore.QObject):
         log.set_reporter(None)
         from incad.core import safe
         safe.set_refused_hook(None)
+        from incad.core import commands
+        commands.set_before_run_hook(None)
         if self._box_focus_hooked:
             try:
                 QtWidgets.QApplication.instance().focusChanged.disconnect(self._keep_box_keyboard)
@@ -2467,8 +2473,8 @@ class Shell(QtCore.QObject):
         import FreeCAD as App
         from incad.core import dof
         self._dof_pending = False
-        if name not in App.listDocuments() or self.feature_session is not None:
-            return
+        if name not in App.listDocuments() or self.feature_session is not None or dof.loading():
+            return  # a file still loading (any tab): the refresh after it counts
         drag = getattr(self, "asm_drag", None)
         if drag is not None and drag.active():
             return
@@ -2481,17 +2487,44 @@ class Shell(QtCore.QObject):
             self.schedule_refresh()  # the rows read the new counts (cached now: no second count)
         self.dof_display_changed()
 
+    def _end_drag(self):
+        """Before any command (Save, Undo, ...): a part drag still going ends first, so its open step and the
+        temporary grounds of the other parts never reach the command."""
+        if self.asm_drag is not None and self.asm_drag.active():
+            self.asm_drag.finish()
+
     def _document_deleted(self, doc):
-        """A document is closing: a drag of one of its parts ends now (its release will never come)."""
+        """A document is closing: a drag of one of its parts ends now (its release will never come), and its DOF
+        state goes (a file opened later under the same name starts clean)."""
         try:
             if self.asm_drag is not None and self.asm_drag.active() and self.asm_drag.doc_name == doc.Name:
                 self.asm_drag.finish(moved_ok=False, closing=True)
         except Exception:
             log.logger().exception("InCad drag on close")
+        try:
+            from incad.core import dof
+            self._dof_on.discard(doc.Name)
+            dof._CACHE.pop(doc.Name, None)
+            if self._dof_hover is not None and self._dof_hover[0] == doc.Name:
+                self._dof_hover = None
+                if self._hover_watch is not None:
+                    self._hover_watch.current = None
+            if self._dof_glyphs is not None and self._dof_glyphs.doc_name == doc.Name:
+                self._dof_glyphs.remove()
+                self._dof_glyphs = None
+        except Exception:
+            log.logger().exception("InCad DOF on close")
 
     def dof_display_changed(self):
         """Redraw the DOF glyphs: every free part while View > Degrees of Freedom is on, else the part under the
-        pointer or being dragged (highlighted). Only the freedoms a part has; none for DOF 0."""
+        pointer or being dragged (highlighted). Only the freedoms a part has; none for DOF 0, none for a part
+        without a solid. Never raises: it runs from a selection observer, timers and a drag's finally."""
+        try:
+            self._draw_dof()
+        except Exception:
+            log.logger().exception("DOF glyphs")
+
+    def _draw_dof(self):
         import FreeCAD as App
         import FreeCADGui as Gui
         from incad.core import assembly, dof
@@ -2504,21 +2537,22 @@ class Shell(QtCore.QObject):
         if view is None or not hasattr(view, "getSceneGraph"):
             return
         counts = dof.last(doc) or {}
-        tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else self._dof_hover
+        hover = self._dof_hover[1] if self._dof_hover is not None and self._dof_hover[0] == doc.Name else None
+        tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else hover
         names = list(counts) if doc.Name in self._dof_on else [tip] if tip else []
         items = []
         for name in names:
             f, link = counts.get(name), doc.getObject(name)
-            if f is None or not f.n or link is None or link.Shape.isNull():
+            bb = assembly._box(link) if link is not None else None  # an empty part's link has no Shape at all
+            if f is None or not f.n or bb is None:
                 continue
-            bb = link.Shape.BoundBox
             size = max(bb.DiagonalLength * 0.35, 5.0)
             lines, heads = dof.glyph(f, link.Placement, bb.Center, size)
             items.append((name, lines, heads, size, name == tip))
         if self._dof_glyphs is None:
             if not items:
                 return
-            self._dof_glyphs = DofGlyphs(view, self.theme)
+            self._dof_glyphs = DofGlyphs(view, self.theme, doc.Name)
         self._dof_glyphs.theme = self.theme
         self._dof_glyphs.set(items)
 
@@ -2537,7 +2571,9 @@ class Shell(QtCore.QObject):
         return App.ActiveDocument is not None and App.ActiveDocument.Name in self._dof_on
 
     def _on_dof_hover(self, name):
-        self._dof_hover = name
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        self._dof_hover = (doc.Name, name) if name and doc is not None else None  # (document, part)
         self.dof_display_changed()
 
     def open_component(self, link):

@@ -81,6 +81,33 @@ class HooksTest(unittest.TestCase):
         self.assertEqual(seen, ["replay"])
 
 
+    def test_a_failure_mid_drag_still_ends_the_drag(self):
+        L = QtCore.Qt.LeftButton
+        seen = []
+
+        class Hook:
+            def begin(self, *a):
+                seen.append("begin")
+
+            def end(self):
+                seen.append("end")
+
+        self.nav.drag_hook = Hook()
+        self.nav._replay = lambda *a, **k: None
+        move = lambda x: QtGui.QMouseEvent(QtCore.QEvent.MouseMove, QtCore.QPointF(x, 10), QtCore.QPointF(x, 10),
+                                           QtCore.Qt.NoButton, L, QtCore.Qt.NoModifier)
+        self.nav.eventFilter(self.w, ev("press", L, L))
+        self.nav.eventFilter(self.w, move(40))
+        machine = self.nav._attached[self.w][1]
+        self.assertEqual(machine.state, "passthrough")
+
+        def boom(*a):
+            raise RuntimeError("boom")
+        machine.feed = boom
+        self.nav.eventFilter(self.w, move(50))
+        self.assertEqual(seen, ["begin", "end"], "the reset drops the drag's release: the drag ends now")
+        self.assertEqual(machine.state, "idle")
+
 class Recorder(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()

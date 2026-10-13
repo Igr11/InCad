@@ -114,7 +114,13 @@ class Navigator(QtCore.QObject):
             return gestures.PASS not in actions
         except Exception:
             log.logger().exception("InCad navigation")
+            dragging = machine.state == "passthrough"
             machine.reset()
+            if dragging and self.drag_hook is not None:  # the reset drops the drag's release: end it now
+                try:
+                    self.drag_hook.end()
+                except Exception:
+                    log.logger().exception("InCad drag")
             return False
 
     def _do(self, viewport, view, action, press_modifiers):

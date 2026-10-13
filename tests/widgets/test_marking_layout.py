@@ -28,7 +28,7 @@ class MarkingLayoutTest(unittest.TestCase):
     def test_contexts(self):
         self.assertEqual(set(marking_layout.LAYOUT),
                          {"part", "face", "edge", "vertex", "empty", "browser", "origin", "sketch", "assembly",
-                          "asm_face", "asm_edge", "solid", "joint"})
+                          "asm_face", "asm_edge", "solid", "joint", "asm_cut"})
         self.assertEqual(marking_layout.LAYOUT["origin"]["list"], ["sketch.start", "view.toggle_visibility"])  # planes/axes
         for ctx in ("part", "face", "edge", "vertex", "browser", "origin"):  # Hide / Show from any RMB in the view
             self.assertIn("view.toggle_visibility", marking_layout.LAYOUT[ctx]["list"], ctx)
@@ -44,6 +44,9 @@ class MarkingLayoutTest(unittest.TestCase):
                          {"N": "browser.edit", "S": "browser.delete", "E": "constraint.suppress", "W": "browser.rename"})
         self.assertEqual(marking_layout.LAYOUT["joint"]["list"],
                          ["browser.edit", "browser.delete", "constraint.suppress", "browser.rename"])
+        cut = marking_layout.LAYOUT["asm_cut"]  # an assembly cut's row: no Suppress (it is no constraint)
+        self.assertNotIn("constraint.suppress", list(cut.values()) + cut["list"])
+        self.assertEqual(cut["list"], ["browser.edit", "browser.delete", "browser.rename"])
 
 
 class BrowserListTest(unittest.TestCase):
