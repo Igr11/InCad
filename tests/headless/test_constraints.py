@@ -455,3 +455,287 @@ class DirectionPickTest(unittest.TestCase):
             self.assertFalse(accepts("direction", box, "Vertex1"))
         finally:
             App.closeDocument(doc.Name)
+
+
+def save_cylinder(folder, name, radius, height):
+    """A part that is one cylinder (its axis the part's own Z)."""
+    d = util.new_doc(name)
+    body = document.make_part(d)
+    cyl = body.newObject("PartDesign::AdditiveCylinder", name)
+    cyl.Radius, cyl.Height = radius, height
+    body.Tip = cyl
+    d.recompute()
+    path = os.path.join(folder, name + ".FCStd")
+    d.saveAs(path)
+    return path
+
+
+def round_face(link):
+    return "%s:Face%d" % (link.Name, [i + 1 for i, f in enumerate(link.LinkedObject.Shape.Faces)
+                                      if f.Surface.TypeId == "Part::GeomCylinder"][0])
+
+
+def normal_of(doc, pick):
+    name, _, sub = pick.partition(":")
+    f = doc.getObject(name).Shape.getElement(sub)
+    return App.Vector(f.normalAt(*f.Surface.parameter(f.CenterOfMass))).normalize()
+
+
+def cylinder_of(doc, pick):
+    """(a point on the axis, the axis) of a round face in the assembly."""
+    name, _, sub = pick.partition(":")
+    s = doc.getObject(name).Shape.getElement(sub).Surface
+    return App.Vector(s.Center), App.Vector(s.Axis).normalize()
+
+
+class FlipTest(unittest.TestCase):
+    """The user: 'For tangent match (mate, constraint) need the option to flip the side' — 'Yes, and Flip on Mate
+    too'. Flip picks the constraint's other solution: Mate's faces face the same way, Flush's each other, Tangent's
+    round face on the other side of the face (two round faces: inside), Insert's pin the other way, a joint's part
+    turned over about the joint frame's X."""
+    tearDown, make, bb = ConstraintsTest.tearDown, ConstraintsTest.make, ConstraintsTest.bb
+
+    def setUp(self):
+        ConstraintsTest.setUp(self)
+        self.top, self.bottom = face(self.plate, z_is(10)), face(self.block, z_is(0))
+
+    def update(self, kind, j, **values):
+        kind.update(self.doc, j, dict(kind.read(self.doc, j), **values))
+        self.doc.recompute()
+
+    def test_flip_is_offered_where_there_is_another_solution(self):
+        for k in (C.MATE, C.FLUSH, C.TANGENT, C.INSERT, C.ROTATIONAL, C.SLIDER, C.CYLINDRICAL):
+            f = [f for f in k.FIELDS if f.key == "flip"]
+            self.assertEqual([(x.label, x.kind, x.default) for x in f], [("Flip", "bool", False)], k.TITLE)
+        for k in (C.ANGLE, C.PARALLEL, C.PERPENDICULAR, C.RIGID, C.BALL):
+            self.assertNotIn("flip", [f.key for f in k.FIELDS], k.TITLE)
+
+    def test_mate_flipped_faces_the_same_way_and_back(self):
+        j = self.make(C.MATE, first=self.top, second=self.bottom, flip=True)
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, self.bottom)), 1, places=6)
+        self.assertEqual((round(self.bb().ZMin, 4), round(self.bb().ZMax, 4)), (0, 10))  # bottom face on z 10, upside down
+        self.assertEqual((j.Label, C.MATE.read(self.doc, j)["flip"]), ("Mate", True))
+        self.update(C.MATE, j, flip=False)
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, self.bottom)), -1, places=6)
+        self.assertEqual((round(self.bb().ZMin, 4), round(self.bb().ZMax, 4)), (10, 20))
+        self.assertIs(C.MATE.read(self.doc, j)["flip"], False)
+
+    def test_mate_flipped_keeps_its_offset(self):
+        j = self.make(C.MATE, first=self.top, second=self.bottom, flip=True, offset="2 mm")
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, self.bottom)), 1, places=6)
+        f = self.block.Shape.getElement(self.bottom.partition(":")[2])
+        self.assertAlmostEqual(abs(f.CenterOfMass.z - 10), 2, places=4)
+        self.assertEqual(C.MATE.read(self.doc, j)["offset"], "2 mm")
+
+    def test_flush_flipped_faces_each_other(self):
+        block_top = face(self.block, z_is(10))
+        j = self.make(C.FLUSH, first=self.top, second=block_top, flip=True)
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, block_top)), -1, places=6)
+        self.assertEqual((round(self.bb().ZMin, 4), round(self.bb().ZMax, 4)), (10, 20))
+        self.assertEqual(j.Label, "Flush")
+        self.update(C.FLUSH, j, flip=False)
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, block_top)), 1, places=6)
+        self.assertAlmostEqual(self.bb().ZMax, 10, places=4)
+
+    def rod(self, radius=3, name="Rod"):
+        r = assembly.place(self.doc, save_cylinder(self.dir, name, radius, 20))
+        r.Placement = App.Placement(App.Vector(10, 10, 30), App.Rotation(App.Vector(1, 0, 0), 80))
+        self.doc.recompute()
+        return r
+
+    def side(self, rod_pick):
+        """The rod axis' signed distance from the plate's top face (all along it: the axis lies parallel)."""
+        c, a = cylinder_of(self.doc, rod_pick)
+        self.assertAlmostEqual(a.z, 0, places=6)
+        return c.z - 10
+
+    def test_tangent_flipped_puts_the_round_face_on_the_other_side(self):
+        for order in ("face first", "round face first"):
+            rod = self.rod(name="Rod%d" % len(order))
+            p = round_face(rod)
+            picks = dict(first=self.top, second=p) if order == "face first" else dict(first=p, second=self.top)
+            j = self.make(C.TANGENT, **picks)
+            self.assertAlmostEqual(self.side(p), 3, places=4, msg=order)
+            self.update(C.TANGENT, j, flip=True)
+            self.assertAlmostEqual(self.side(p), -3, places=4, msg=order)
+            self.assertIs(C.TANGENT.read(self.doc, j)["flip"], True)
+            self.update(C.TANGENT, j, flip=False)
+            self.assertAlmostEqual(self.side(p), 3, places=4, msg=order)
+            self.doc.removeObject(j.Name)
+
+    def test_tangent_flipped_from_the_start_and_with_an_offset(self):
+        rod = self.rod()
+        p = round_face(rod)
+        j = self.make(C.TANGENT, first=self.top, second=p, flip=True, offset="1 mm")
+        self.assertAlmostEqual(self.side(p), -4, places=4)  # the gap stays 1 mm, on the other side
+        self.assertEqual(C.TANGENT.read(self.doc, j)["offset"], "1 mm")
+
+    def big(self):
+        b = assembly.place(self.doc, save_cylinder(self.dir, "Big", 8, 20))
+        b.Placement = App.Placement(App.Vector(0, 0, 60), App.Rotation(App.Vector(1, 0, 0), 90))
+        self.doc.recompute()
+        assembly.ground(b)
+        return b
+
+    def axis_distance(self, p1, p2):
+        (c1, a1), (c2, a2) = cylinder_of(self.doc, p1), cylinder_of(self.doc, p2)
+        self.assertAlmostEqual(abs(a1.dot(a2)), 1, places=6)
+        d = c2 - c1
+        return (d - a1 * d.dot(a1)).Length
+
+    def test_two_round_faces_flipped_touch_inside(self):
+        b, rod = self.big(), self.rod()
+        p1, p2 = round_face(b), round_face(rod)
+        j = self.make(C.TANGENT, first=p1, second=p2)
+        self.assertAlmostEqual(self.axis_distance(p1, p2), 11, places=4)  # outside: 8 + 3
+        self.update(C.TANGENT, j, flip=True)
+        self.assertAlmostEqual(self.axis_distance(p1, p2), 5, places=4)  # inside: 8 - 3
+        r = C.TANGENT.read(self.doc, j)
+        self.assertEqual((r["flip"], r["offset"]), (True, "0 mm"))
+        self.assertEqual(C.TANGENT.param_names(j)["offset"], "Tangent1")
+        self.update(C.TANGENT, j, offset="1 mm")  # the gap between the faces, inside too
+        self.assertAlmostEqual(self.axis_distance(p1, p2), 4, places=4)
+        self.assertEqual(model.parameter_text(self.doc, "Tangent1"), "1 mm")
+        model.set_model_parameter(self.doc, "Tangent1", "2 mm")  # the parameter still drives it
+        self.doc.recompute()
+        self.assertAlmostEqual(self.axis_distance(p1, p2), 3, places=4)
+        self.update(C.TANGENT, j, flip=False)
+        self.assertAlmostEqual(self.axis_distance(p1, p2), 13, places=4)
+        self.assertEqual(model.bound_parameter(j, "Distance"), "Tangent1")  # plain again
+
+    def pin_in_hole(self):
+        hd = App.getDocument("Plate")
+        hb = document.primary_body(hd)
+        hole = hb.newObject("PartDesign::SubtractiveCylinder", "HoleCyl")
+        hole.Radius, hole.Height = 3, 10
+        hole.Placement = App.Placement(App.Vector(20, 15, 0), App.Rotation())
+        hb.Tip = hole
+        hd.recompute()
+        hd.save()
+        self.doc.recompute()
+        p = assembly.place(self.doc, save_cylinder(self.dir, "Pin", 3, 20))
+        p.Placement = App.Placement(App.Vector(70, -30, 15), App.Rotation(App.Vector(1, 0.4, 0.2), 140))
+        self.doc.recompute()
+        mouth = [i + 1 for i, e in enumerate(self.plate.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                 and abs(e.Curve.Radius - 3) < 1e-6 and abs(e.Curve.Center.z - 10) < 1e-6][0]
+        end = [i + 1 for i, e in enumerate(p.LinkedObject.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+               and abs(e.Curve.Center.z) < 1e-6][0]
+        return p, "%s:Edge%d" % (p.Name, end), "%s:Edge%d" % (self.plate.Name, mouth)
+
+    def pin_axis(self, p):
+        return p.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+
+    def on_hole_axis(self, p):
+        c = p.Placement.Base  # the pin's end circle centre
+        return App.Vector(c.x - 20, c.y - 15, 0).Length < 1e-4
+
+    def test_insert_flipped_turns_the_pin_the_other_way(self):
+        p, e1, e2 = self.pin_in_hole()
+        plate_at = App.Placement(self.plate.Placement)
+        j = self.make(C.INSERT, first=e1, second=e2)
+        before = self.pin_axis(p)
+        self.assertAlmostEqual(abs(before.z), 1, places=6)
+        self.update(C.INSERT, j, flip=True)
+        self.assertAlmostEqual(self.pin_axis(p).dot(before), -1, places=6)
+        self.assertTrue(self.on_hole_axis(p))
+        self.assertAlmostEqual(p.Placement.Base.z, 10, places=4)  # its end circle still on the hole's mouth
+        self.assertTrue(self.plate.Placement.isSame(plate_at, 1e-7), "the grounded plate stays")
+        self.update(C.INSERT, j, flip=False)
+        self.assertAlmostEqual(self.pin_axis(p).dot(before), 1, places=6)
+        self.assertTrue(self.on_hole_axis(p))
+
+    def test_joints_flipped_turn_the_part_over(self):
+        for kind in (C.ROTATIONAL, C.SLIDER, C.CYLINDRICAL):
+            if not hasattr(self, "pin"):
+                self.pin, self.e1, self.e2 = self.pin_in_hole()
+            p = self.pin
+            p.Placement = App.Placement(App.Vector(70, -30, 15), App.Rotation(App.Vector(1, 0.4, 0.2), 140))
+            self.doc.recompute()
+            j = self.make(kind, first=self.e1, second=self.e2)
+            before = self.pin_axis(p)
+            self.update(kind, j, flip=True)
+            self.assertAlmostEqual(self.pin_axis(p).dot(before), -1, places=6, msg=kind.TITLE)
+            self.assertTrue(self.on_hole_axis(p), kind.TITLE)
+            self.assertIs(kind.read(self.doc, j)["flip"], True)
+            self.update(kind, j, flip=False)
+            self.assertAlmostEqual(self.pin_axis(p).dot(before), 1, places=6, msg=kind.TITLE)
+            self.doc.removeObject(j.Name)
+
+    def test_a_flipped_joint_from_the_start(self):
+        p, e1, e2 = self.pin_in_hole()
+        j0 = self.make(C.INSERT, first=e1, second=e2)
+        natural = self.pin_axis(p)
+        self.doc.removeObject(j0.Name)
+        p.Placement = App.Placement(App.Vector(70, -30, 15), App.Rotation(App.Vector(1, 0.4, 0.2), 140))
+        self.doc.recompute()
+        self.make(C.INSERT, first=e1, second=e2, flip=True)
+        self.assertAlmostEqual(self.pin_axis(p).dot(natural), -1, places=6)
+
+    def test_reapplying_the_same_choice_flips_nothing(self):
+        p, e1, e2 = self.pin_in_hole()
+        j = self.make(C.INSERT, first=e1, second=e2, flip=True)
+        at = App.Placement(p.Placement)
+        for _ in range(2):  # a preview refresh, an Edit OK without a change
+            self.update(C.INSERT, j)
+            self.assertAlmostEqual(self.pin_axis(p).dot(at.Rotation.multVec(App.Vector(0, 0, 1))), 1, places=6)
+        assembly.assembly_of(self.doc).solve()  # a re-solve
+        self.doc.recompute()
+        self.assertAlmostEqual(self.pin_axis(p).dot(at.Rotation.multVec(App.Vector(0, 0, 1))), 1, places=6)
+        m = self.make(C.MATE, first=self.top, second=self.bottom, flip=True)
+        at = App.Placement(self.block.Placement)
+        self.update(C.MATE, m)
+        self.update(C.MATE, m)
+        self.assertTrue(self.block.Placement.isSame(at, 1e-6))
+
+    def test_flip_survives_save_and_reopen(self):
+        rod = self.rod()
+        p = round_face(rod)
+        t = self.make(C.TANGENT, first=self.top, second=p, flip=True)
+        m = self.make(C.MATE, first=self.top, second=self.bottom, flip=True)
+        names = (t.Name, m.Name)
+        self.doc.save()
+        path = self.doc.FileName
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(path)
+        self.doc.recompute()
+        t, m = [self.doc.getObject(n) for n in names]
+        self.assertIs(C.TANGENT.read(self.doc, t)["flip"], True)
+        self.assertIs(C.MATE.read(self.doc, m)["flip"], True)
+        assembly.assembly_of(self.doc).solve()
+        self.doc.recompute()
+        self.assertAlmostEqual(self.side(p), -3, places=4)
+        self.assertTrue(C._met(self.doc, m, C.MATE, C.MATE.read(self.doc, m)))
+        self.assertEqual(C._unmet(self.doc), set())
+
+    def test_old_constraints_read_unflipped(self):
+        j = self.make(C.MATE, first=self.top, second=self.bottom)
+        if C._FLIP in j.PropertiesList:
+            j.removeProperty(C._FLIP)  # a file from before Flip
+        self.assertIs(C.MATE.read(self.doc, j)["flip"], False)
+        self.update(C.MATE, j, flip=True)
+        self.assertAlmostEqual(normal_of(self.doc, self.top).dot(normal_of(self.doc, self.bottom)), 1, places=6)
+
+    def test_a_flip_that_cant_be_met_is_refused_and_the_parts_stay(self):
+        m = self.make(C.MATE, first=self.top, second=self.bottom)
+        self.make(C.FLUSH, first=face(self.plate, x_is(40)), second=face(self.block, x_is(10)))
+        self.make(C.FLUSH, first=face(self.plate, lambda f: f.Surface.TypeId == "Part::GeomPlane"
+                                       and abs(f.CenterOfMass.y - 30) < 1e-6),
+                  second=face(self.block, lambda f: f.Surface.TypeId == "Part::GeomPlane"
+                              and abs(f.CenterOfMass.y - 10) < 1e-6))
+        at = App.Placement(self.block.Placement)
+        with self.assertRaises(ValueError) as ctx:
+            C.MATE.update(self.doc, m, dict(C.MATE.read(self.doc, m), flip=True))
+        self.assertIn("Mate conflicts with the other constraints", str(ctx.exception))
+        self.assertTrue(self.block.Placement.isSame(at, 1e-6))
+        self.assertIs(C.MATE.read(self.doc, m)["flip"], False)
+        with self.assertRaises(ValueError):  # a new one too: refused, nothing moved, nothing left
+            self.make(C.FLUSH, first=self.top, second=face(self.block, z_is(10)), flip=True, offset="3 mm")
+        self.assertTrue(self.block.Placement.isSame(at, 1e-6))
+        self.assertEqual(len([j for j in assembly.joints(self.doc) if C.claims(j)]), 3)
+
+    def test_a_flipped_mate_leaves_the_freedoms_as_they_are(self):
+        from incad.core import dof
+        j = self.make(C.MATE, first=self.top, second=self.bottom)
+        n = dof.compute(self.doc)[self.block.Name].n
+        self.update(C.MATE, j, flip=True)
+        self.assertEqual(dof.compute(self.doc)[self.block.Name].n, n)

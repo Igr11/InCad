@@ -7,16 +7,49 @@ FreeCAD's Parallel / Perpendicular / Angle compare the picks' axes: a face's nor
 against an edge the user means the edge against the FACE, so InCad gives FreeCAD the other meaning (Parallel <->
 Perpendicular, Angle a <-> 90 deg - a; the model parameter keeps what the user typed).
 Picks are 'Link:Element'. Offsets/angles are model parameters. A constraint that can't be met is refused with the
-previous placements restored."""
+previous placements restored.
+Flip (the hidden bool InCadFlip on the joint) picks the other solution: Mate's faces face the same way, Flush's each
+other; Tangent's round face goes to the other side of the flat face (the flat face's joint frame turned over by its
+Offset) or, on two round faces, inside the other (the Distance bound as -(offset + 2 r)); Insert and the Rotational /
+Slider / Cylindrical joints turn the free part over about the joint frame's X (the solver keeps either way, so
+InCadFlip says which one is applied: re-applying the same choice turns nothing)."""
 import math
 import re
 from types import SimpleNamespace
 
 import FreeCAD as App
 
-from incad.features.common import Field, parse_picks, value_param, value_text
+from incad.features.common import Field, parse_picks, value_param
 
 _STORE = "InCadConstraint"
+_FLIP = "InCadFlip"
+_OVER = App.Rotation(App.Vector(1, 0, 0), 180)  # a joint frame turned over: Z the other way
+
+
+def _flipped(j):
+    return bool(getattr(j, _FLIP, False))
+
+
+def _add_flip(j):
+    j.addProperty("App::PropertyBool", _FLIP, "InCad", "InCad: the constraint's other solution (Flip)")
+    j.setPropertyStatus(_FLIP, "Hidden")
+
+
+def _store_flip(j, on):
+    """Keep the Flip that is applied (a joint from before Flip gets the property when first flipped)."""
+    if _FLIP not in j.PropertiesList:
+        if not on:
+            return
+        _add_flip(j)
+    if getattr(j, _FLIP) != bool(on):
+        setattr(j, _FLIP, bool(on))
+
+
+def _facing(spec, values):
+    """Mate's / Flush's wanted facing; Flip swaps it."""
+    if spec.facing is None or not values.get("flip"):
+        return spec.facing
+    return "aligned" if spec.facing == "opposed" else "opposed"
 
 
 def claims(j):
@@ -214,9 +247,10 @@ def _pre_align(doc, spec, values, j=None):
     if fm is None or ff is None:
         return
     (pm, nm), (pf, nf) = fm, ff
-    if spec.facing == "opposed":
+    facing = _facing(spec, values)
+    if facing == "opposed":
         want = -nf
-    elif spec.facing == "aligned":
+    elif facing == "aligned":
         want = nf
     elif spec.joint == "Revolute":  # Insert: axes in line, whichever way is nearer
         want = nf if nm.dot(nf) >= 0 else -nf
@@ -233,7 +267,10 @@ def _apply(doc, j, spec, values):
     import JointObject
     (l1, e1), (l2, e2) = _moving_refs(doc, values)
     _set_type(j, _joint_type(doc, spec, values))
-    if spec.value == "offset":
+    flip = bool(values.get("flip"))
+    if spec.flip == "tangent":
+        _bind_distance(doc, j, spec, values.get("offset") or "0 mm", _inside(doc, values) if flip else None)
+    elif spec.value == "offset":
         value_param(doc, j, "Distance", values.get("offset") or "0 mm", "length", base=spec.TITLE)
     elif spec.value == "angle":
         global _APPLYING
@@ -251,14 +288,105 @@ def _apply(doc, j, spec, values):
         o = doc.getObject(name)
         if not o.Placement.isSame(plc, 1e-12):
             o.Placement = plc
+    if spec.flip == "tangent":
+        _tangent_side(j, flip)
     doc.recompute()
     result = _solve(doc, l1)
-    if spec.facing is not None:
+    facing = _facing(spec, values)
+    if facing is not None:
         n1, n2 = _normal(l1, e1), _normal(l2, e2)
-        if n1 is not None and n2 is not None and (n1.dot(n2) < 0) != (spec.facing == "opposed"):
+        if n1 is not None and n2 is not None and (n1.dot(n2) < 0) != (facing == "opposed"):
             j.Proxy.flipOnePart(j)
             result = _solve(doc, l1)
+    if spec.flip == "turn" and flip != _flipped(j) and result == 0:
+        if _turn_over(doc, j, values):
+            result = _solve(doc, l1)
+    if spec.flip is not None:
+        _store_flip(j, flip)
     return result
+
+
+def _round(link, el):
+    """A round face's radius, None for anything else."""
+    try:
+        sh = link.Shape.getElement(el)
+        return sh.Surface.Radius if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomCylinder" else None
+    except Exception:
+        return None
+
+
+def _inside(doc, values):
+    """Tangent on two round faces, flipped: the smaller one touches the other inside. FreeCAD's Distance there is
+    the gap outside (axes r1 + r2 + d apart), so inside (axes r1 - r2 - d apart) is a Distance of -(d + 2 r2);
+    None for a round face on a flat one (flipped by its frame instead)."""
+    radii = [_round(link, el) for link, el in _moving_refs(doc, values)]
+    return 2 * min(radii) if None not in radii else None
+
+
+def _distance_param(j):
+    """The model parameter holding a Distance as the user typed it: bound plainly, or as -(it + 2 r) (Tangent
+    inside)."""
+    from incad.core import model
+    name = model.bound_parameter(j, "Distance")
+    if name is not None:
+        return name
+    m = re.match(r"^-\(%s\.([A-Za-z_]\w*) \+ [-+0-9.e]+ mm\)$" % model.MODEL_NAME, model._expression(j, "Distance"))
+    return m.group(1) if m else None
+
+
+def _bind_distance(doc, j, spec, text, inside):
+    """Bind the joint's Distance to the parameter holding `text` ('<Title>N' when there is none): plainly, or for a
+    Tangent inside as -(it + inside)."""
+    from incad.core import model
+    name = _distance_param(j)
+    if name is None:
+        name = model.new_feature_parameter(doc, text, "length", spec.TITLE)
+    elif model.parameter_text(doc, name) != text:
+        model.set_model_parameter(doc, name, text)
+    expr = "%s.%s" % (model.MODEL_NAME, name)
+    if inside is not None:
+        expr = "-(%s + %s mm)" % (expr, ("%.12g" % inside))
+    if model._expression(j, "Distance") != expr:
+        j.setExpression("Distance", expr)
+    return name
+
+
+def _tangent_side(j, flip):
+    """A round face on a flat one: Flip turns the flat face's joint frame over (FreeCAD keeps the round face on
+    the side its Z points to). FreeCAD may swap the references, so the frame is found on the flat one each time."""
+    for i in (1, 2):
+        ref = getattr(j, "Reference%d" % i, None)
+        prop = "Offset%d" % i
+        try:
+            sh = ref[0].Shape.getElement(ref[1][0])
+            flat = sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane"
+        except Exception:
+            flat = False
+        now = getattr(j, prop)
+        turned = now.Rotation.isSame(_OVER, 1e-9) and now.Base.Length < 1e-12
+        if flip and flat and not turned:
+            setattr(j, prop, App.Placement(App.Vector(), _OVER))
+        elif turned and not (flip and flat):
+            setattr(j, prop, App.Placement())
+
+
+def _turn_over(doc, j, values):
+    """Insert / Rotational / Slider / Cylindrical: turn the free part 180 deg about the X axis of its joint frame
+    (the axis the other way, the frame's origin and X kept); the solver keeps either way. False when nothing can
+    move (both parts grounded)."""
+    import UtilsAssembly
+    from incad.core import assembly
+    (l1, _), (l2, _) = _moving_refs(doc, values)
+    if assembly.is_grounded(l1) and assembly.is_grounded(l2):
+        return False
+    link = l1 if assembly.is_grounded(l2) and not assembly.is_grounded(l1) else l2
+    i = 1 if getattr(j, "Reference1")[0] is link else 2
+    jcs = UtilsAssembly.getJcsGlobalPlc(getattr(j, "Placement%d" % i), getattr(j, "Reference%d" % i))
+    axis, c = jcs.Rotation.multVec(App.Vector(1, 0, 0)), jcs.Base
+    link.Placement = App.Placement(c, App.Rotation(axis, 180)).multiply(App.Placement(-c, App.Rotation())) \
+        .multiply(link.Placement)
+    doc.recompute()
+    return True
 
 
 def _turn_around(doc, j, spec, values):
@@ -311,7 +439,8 @@ def _met(doc, j, spec, values):
         if a1 is None or a2 is None:  # an older Angle on a curved face: FreeCAD's own axis, not checked here
             return True
         return abs(abs(a1[1].dot(a2[1])) - _wanted(j)) < 1e-6
-    if spec.value != "offset" or spec.facing is None:
+    facing = _facing(spec, values)
+    if spec.value != "offset" or facing is None:
         return True
     (l1, e1), (l2, e2) = _moving_refs(doc, values)
     f1, f2 = l1.Shape.getElement(e1), l2.Shape.getElement(e2)
@@ -323,8 +452,8 @@ def _met(doc, j, spec, values):
     n2 = _normal(l2, e2)
     if n2 is None:
         return abs(gap - want) < 1e-3
-    facing = (n1.dot(n2) < 0) == (spec.facing == "opposed")
-    return abs(gap - want) < 1e-3 and abs(abs(n1.dot(n2)) - 1) < 1e-6 and facing
+    faces = (n1.dot(n2) < 0) == (facing == "opposed")
+    return abs(gap - want) < 1e-3 and abs(abs(n1.dot(n2)) - 1) < 1e-6 and faces
 
 
 def kind_of(j):
@@ -428,6 +557,8 @@ def _make(spec):
         j.addProperty("App::PropertyString", _STORE, "InCad", "InCad constraint kind")
         j.setPropertyStatus(_STORE, "Hidden")
         setattr(j, _STORE, spec.key)
+        if spec.flip is not None:
+            _add_flip(j)
         j.Label = spec.TITLE
         try:
             result = _settle(doc, j, spec, values)
@@ -451,24 +582,35 @@ def _make(spec):
             refs.append("%s:%s" % (ref[0].Name, ref[1][0]) if ref and ref[0] is not None and ref[1] else "")
         values.update(first=refs[0], second=refs[1])
         if spec.value == "offset":
-            values["offset"] = value_text(doc, j, "Distance") or "0 mm"
+            name = _distance_param(j)
+            values["offset"] = (model.parameter_text(doc, name) if name else "") or "0 mm"
         elif spec.value == "angle":
             name = _angle_param(j)
             values["angle"] = (model.parameter_text(doc, name) if name else "") or "90°"
+        if spec.flip is not None:
+            values["flip"] = _flipped(j)
         return values
 
     def update(doc, j, values):
         before = _placements(doc)
         unmet = _unmet(doc, j)
+        was = dict(read(doc, j)) if spec.flip is not None else None
         result = _settle(doc, j, spec, values)
         if result != 0 or not _met(doc, j, spec, values) or _unmet(doc, j) - unmet:
+            if was is not None and bool(values.get("flip")) != was["flip"]:  # the flip goes back with the parts
+                _store_flip(j, was["flip"])
+                if spec.flip == "tangent":
+                    _tangent_side(j, was["flip"])
+                    _bind_distance(doc, j, spec, was["offset"], _inside(doc, was) if was["flip"] else None)
             for name, plc in before.items():
                 doc.getObject(name).Placement = plc
             raise ValueError("%s conflicts with the other constraints (it can't be met)" % spec.TITLE)
         return j
 
-    def param_names(j):  # an Angle on a face and an edge is bound as 90 deg - its parameter: still its parameter
-        return {"angle": _angle_param(j)} if spec.value == "angle" else {}
+    def param_names(j):  # an Angle on a face and an edge is bound as 90 deg - its parameter, a Tangent inside as
+        if spec.value == "angle":  # -(it + 2 r): still its parameter
+            return {"angle": _angle_param(j)}
+        return {"offset": _distance_param(j)} if spec.value == "offset" else {}
 
     spec.defaults, spec.create, spec.read, spec.update = defaults, create, read, update
     spec.param_names = param_names
@@ -477,7 +619,7 @@ def _make(spec):
     return spec
 
 
-def _kind(key, title, icon, joint, pick1, pick2, value=None, facing=None):
+def _kind(key, title, icon, joint, pick1, pick2, value=None, facing=None, flip=None):
     fields = [Field("first", "First", "pick", pick=pick1), Field("second", "Second", "pick", pick=pick2)]
     props = {}
     if value == "offset":
@@ -486,23 +628,25 @@ def _kind(key, title, icon, joint, pick1, pick2, value=None, facing=None):
     elif value == "angle":
         fields.append(Field("angle", "Angle", "value_angle", default="90 °"))
         props = {"angle": "Angle"}
+    if flip is not None:
+        fields.append(Field("flip", "Flip", "bool", default=False))
     return _make(SimpleNamespace(
         __name__="incad.features." + key, key=key, TITLE=title, ICON=icon, TYPES=("App::FeaturePython",),
         NEEDS_PROFILE=False, ASSEMBLY=True, PROPS=props, FIELDS=tuple(fields), joint=joint,
-        joint_name=title.replace(" ", ""), value=value, facing=facing))
+        joint_name=title.replace(" ", ""), value=value, facing=facing, flip=flip))
 
 
-MATE = _kind("mate", "Mate", "mate", "Distance", "face", "face", "offset", "opposed")
-FLUSH = _kind("flush", "Flush", "flush", "Distance", "face", "face", "offset", "aligned")
+MATE = _kind("mate", "Mate", "mate", "Distance", "face", "face", "offset", "opposed", flip="facing")
+FLUSH = _kind("flush", "Flush", "flush", "Distance", "face", "face", "offset", "aligned", flip="facing")
 ANGLE = _kind("angle_c", "Angle", "angle_c", "Angle", "direction", "direction", "angle")
 PARALLEL = _kind("parallel", "Parallel", "parallel_c", "Parallel", "direction", "direction")
 PERPENDICULAR = _kind("perpendicular", "Perpendicular", "perpendicular_c", "Perpendicular", "direction", "direction")
-TANGENT = _kind("tangent", "Tangent", "tangent", "Distance", "face", "face", "offset")
-INSERT = _kind("insert", "Insert", "insert", "Revolute", "circular_edge", "circular_edge")
+TANGENT = _kind("tangent", "Tangent", "tangent", "Distance", "face", "face", "offset", flip="tangent")
+INSERT = _kind("insert", "Insert", "insert", "Revolute", "circular_edge", "circular_edge", flip="turn")
 RIGID = _kind("rigid", "Rigid", "rigid", "Fixed", "element", "element")
-ROTATIONAL = _kind("rotational", "Rotational", "rotational", "Revolute", "element", "element")
-SLIDER = _kind("slider", "Slider", "slider", "Slider", "element", "element")
-CYLINDRICAL = _kind("cylindrical", "Cylindrical", "cylindrical", "Cylindrical", "element", "element")
+ROTATIONAL = _kind("rotational", "Rotational", "rotational", "Revolute", "element", "element", flip="turn")
+SLIDER = _kind("slider", "Slider", "slider", "Slider", "element", "element", flip="turn")
+CYLINDRICAL = _kind("cylindrical", "Cylindrical", "cylindrical", "Cylindrical", "element", "element", flip="turn")
 BALL = _kind("ball", "Ball", "ball", "Ball", "element", "element")
 
 KINDS = [MATE, FLUSH, ANGLE, PARALLEL, PERPENDICULAR, TANGENT, INSERT, RIGID, ROTATIONAL, SLIDER, CYLINDRICAL, BALL]
