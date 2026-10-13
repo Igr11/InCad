@@ -28,10 +28,10 @@ MENU_PREFIX = "InCadMenu_"
 TOOLBAR_GROUP = "User parameter:BaseApp/MainWindow/Toolbars"
 NAV_KEYS = {"NavigationStyle": "String", "ZoomAtCursor": "Bool"}
 NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtCursor": ("Bool", True)}
-MENUS = [("File", ["file.new", "file.open", "file.save", "file.save_as", "file.close", None, "file.quit"]),
+MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", "file.close", None, "file.quit"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
-                   "view.style_wireframe", "view.parameters", None, "view.freecad"])]
+                   "view.style_wireframe", "view.assembly_context", "view.parameters", None, "view.freecad"])]
 
 _shell = None
 
@@ -57,22 +57,30 @@ def _std_new_actions():
 class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
-    def __init__(self, callback, sketch_callback=None, undo_callback=None):
+    def __init__(self, callback, sketch_callback=None, undo_callback=None, activate_callback=None,
+                 delete_callback=None, projection_callback=None):
         self.callback = callback
         self.sketch_callback = sketch_callback
+        self.projection_callback = projection_callback
         self.undo_callback = undo_callback
+        self.activate_callback = activate_callback
+        self.delete_callback = delete_callback
 
     def slotCreatedDocument(self, doc):
         self.callback()
 
     def slotDeletedDocument(self, doc):
         self.callback()
+        if self.delete_callback is not None:
+            self.delete_callback(doc)
 
     def slotRelabelDocument(self, doc):
         self.callback()
 
     def slotActivateDocument(self, doc):
         self.callback()
+        if self.activate_callback is not None:
+            self.activate_callback(doc)
 
     def slotCreatedObject(self, obj):
         self.callback()
@@ -82,6 +90,9 @@ class _DocObserver:
 
     def slotChangedObject(self, obj, prop):
         self.callback()
+        if prop == "ExternalGeometry" and self.projection_callback is not None \
+                and getattr(obj, "TypeId", "") == "Sketcher::SketchObject":
+            self.projection_callback(obj)  # FreeCAD sets it on many recomputes: only the projection follow-up
         if prop in ("Constraints", "Geometry") and getattr(obj, "TypeId", "") == "Sketcher::SketchObject" \
                 and self.sketch_callback is not None:
             self.sketch_callback(obj)
@@ -217,6 +228,9 @@ class _SelectionWatch:
             self.shell._on_model_selection_changed()
         except Exception:
             log.logger().exception("InCad selection sync")
+        handles = getattr(self.shell, "dof_handles", None)
+        if handles is not None and handles.wants_selection():
+            self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes (assemblies only)
 
     def addSelection(self, doc, obj, sub, pnt):
         self._check()
@@ -306,6 +320,7 @@ class Shell(QtCore.QObject):
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
         self._area_warned = set()  # area copies already reported as lost (until their area is back)
         self._visibility_applied = set()  # document names whose saved visibility was put in step once
+        self._projections_told = {}  # (doc, sketch) -> Refs of projected edges a used sketch was told to keep
         self._sel_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
@@ -316,6 +331,14 @@ class Shell(QtCore.QObject):
         self._box_focus_hooked = False
 
         self._wait_notice = None
+        self._dof_pending = False
+        self.asm_drag = None
+        self.dof_handles = None   # the selected part's DOF gizmo: grab an arc to turn it, an arrow to slide it
+        self._dof_glyphs = None   # DofGlyphs on the active assembly view
+        self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
+        self._dof_hover = None    # (document name, part name) under the pointer (the tip)
+        self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
+        self._hover_watch = None
         self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
@@ -397,6 +420,8 @@ class Shell(QtCore.QObject):
             a.setMenuRole(QAction.QuitRole)
 
     def _on_subwindow(self, window):
+        if self.dof_handles is not None and self.dof_handles.dragging():
+            self.dof_handles.finish()  # another tab: a handle drag going on ends (its release goes elsewhere)
         if window is not None and _is_start_page(window):  # FreeCAD's Start page came up (seen after Finish
             QtCore.QTimer.singleShot(0, self._front_last_view)  # Sketch): the part stays in front
 
@@ -461,7 +486,7 @@ class Shell(QtCore.QObject):
         obj = getattr(vp, "Object", None)
         if sketch.is_sketch(obj) and document.is_incad_part(obj.Document):
             return False
-        return vp is not None or safe.edit_open()
+        return (vp is not None or safe.edit_open()) and not safe.drag_edit()
 
     @staticmethod
     def _finish_freecad_sketch():
@@ -636,6 +661,12 @@ class Shell(QtCore.QObject):
         self.status.dofClicked.connect(lambda: self.registry.run("sketch.show_dof"))
         self.navigator.click_hook = self._click_hook
         self.navigator.dblclick_hook = self._dblclick_hook
+        from incad.ui.asm_drag import AssemblyDrag
+        self.asm_drag = AssemblyDrag(self)
+        self.navigator.drag_hook = self.asm_drag
+        from incad.ui.dof_handles import Handles
+        self.dof_handles = Handles(self)
+        self.navigator.handle_hook = self.dof_handles
         self._build_shortcuts()
 
     def _build_menus(self):
@@ -651,6 +682,9 @@ class Shell(QtCore.QObject):
                     continue
                 cmd = self.registry.get(cmd_id)
                 act = menu.addAction(themes.icon(cmd.icon, self.theme), cmd.label)
+                if cmd.checkable:
+                    act.setCheckable(True)
+                    menu.aboutToShow.connect(lambda a=act, c=cmd: a.setChecked(bool(c.is_checked and c.is_checked())))
                 if cmd.shortcut:
                     act.setShortcut(QtGui.QKeySequence(cmd.shortcut))
                 act.triggered.connect(lambda _=False, i=cmd_id: self.registry.run(i))
@@ -681,7 +715,25 @@ class Shell(QtCore.QObject):
             except Exception:
                 pass
             self._sel_watch = None
+        if self._hover_watch is not None:
+            try:
+                import FreeCADGui as Gui
+                Gui.Selection.removeObserver(self._hover_watch)
+            except Exception:
+                pass
+            self._hover_watch = None
+        if self._dof_glyphs is not None:
+            self._dof_glyphs.remove()
+            self._dof_glyphs = None
+        for ctx in self._contexts.values():
+            ctx.remove()
+        self._contexts = {}
         self._peeked = None
+        if self.asm_drag is not None and self.asm_drag.active():
+            self.asm_drag.finish(moved_ok=False)
+        if self.dof_handles is not None:
+            self.dof_handles.finish(moved_ok=False)
+            self.dof_handles.clear_drawn()
         self.stop_slot_tool()
         self._stop_measuring()
         self.close_constraints_window()
@@ -807,6 +859,9 @@ class Shell(QtCore.QObject):
         for group, values in themes.sketch_params(self.theme, prefs.dimension_display()).items():
             params.write(group, values)
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
+        for ctx in self._contexts.values():
+            ctx.set_theme(self.theme)  # the assembly around an edited part in the new grey
+        self.dof_display_changed()  # DOF glyphs in the new theme's colours
 
     def set_navigation(self, enabled):
         """Off gives FreeCAD's own navigation back exactly (the user's style and zoom setting)."""
@@ -1044,13 +1099,19 @@ class Shell(QtCore.QObject):
         if not self.active or self._syncing or self.browser is None:
             return
         doc = App.ActiveDocument
-        sels = Gui.Selection.getSelectionEx(doc.Name) if doc is not None else []
+        from incad.features import common as _common
+        sels = _common.selection_ex(doc.Name) if doc is not None else []
         names = [s.ObjectName for s in sels]
         if self._peeked is not None and self._peeked[1] not in names:
             self._unpeek()
         rows = []
         from incad.core import feature_faces
         for sel in sels:  # a face or edge of the shown solid: the feature that made it (Inventor)
+            if sel.Object.TypeId == "Assembly::AssemblyObject":  # a pick in an assembly: its component's row
+                for sub in (sel.SubElementNames or ("",)):
+                    obj = _common.resolve(sel.Object, sub)[0] if sub else sel.Object
+                    rows.append(obj.Name if obj is not None else sel.ObjectName)
+                continue
             subs = [n for n in sel.SubElementNames if n.startswith(("Face", "Edge"))]
             if subs and sel.Object.isDerivedFrom("PartDesign::Feature"):
                 for sub in subs:
@@ -1060,11 +1121,59 @@ class Shell(QtCore.QObject):
                         rows.append(sel.ObjectName)
             else:
                 rows.append(sel.ObjectName)
+        from incad.core import document
+        for i, name in enumerate(rows):  # a Split piece's base has no row of its own: its Solid's row
+            o = doc.getObject(name) if doc is not None else None
+            if o is not None and (o.TypeId == "PartDesign::FeatureBase" or getattr(o, "InCadSplitPiece", False)):
+                solid = document._solid_of(o)
+                rows[i] = solid.Name if solid is not None else name
         try:
             self.browser.select_names(list(dict.fromkeys(rows)))
         except RuntimeError:
             pass
         self.refresh_constraints_window()  # a picked line or point filters the Constraint List
+
+    def _document_activated(self, doc):
+        """Back in an assembly's tab: when parts were edited in their own tabs meanwhile, ask whether to update
+        (declined: the tree shows that it needs an update until Refresh). Deferred: FreeCAD is still switching
+        the tab."""
+        name = getattr(doc, "Name", None)
+        if name:
+            QtCore.QTimer.singleShot(0, lambda n=name: self._update_assembly(n))
+
+    def _update_assembly(self, name):
+        import FreeCAD as App
+        from incad.core import assembly, log, safe
+        doc = App.listDocuments().get(name)
+        if doc is None or getattr(doc, "Restoring", False) or not assembly.is_assembly(doc) or safe.busy():
+            return
+        seen = getattr(self, "_assembly_seen", {})
+        self._assembly_seen = seen
+        try:
+            changed = assembly.parts_changed(doc, seen.get(name))
+            seen[name] = assembly.parts_signature(doc)  # asked once per change
+            if not changed:
+                return
+            ask = UPDATE_ASK or (lambda label: QtWidgets.QMessageBox.question(
+                self.mw, "Update Assembly", "Parts of %s changed. Update the assembly now?" % label,
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes)
+            if ask(doc.Label):
+                seen[name] = assembly.bring_parts_in(doc)
+                log.report("info", "Updated %s" % doc.Label)
+            else:
+                assembly.mark_needs_update(doc)
+                log.report("info", "%s needs an update (Refresh)" % doc.Label)
+        except Exception:
+            log.logger().exception("assembly update on return")
+            return
+        self.schedule_refresh()
+
+    def assembly_refreshed(self, doc):
+        """Refresh brought the parts in: remember how they look, so returning to the tab does not ask again."""
+        from incad.core import assembly
+        seen = getattr(self, "_assembly_seen", {})
+        self._assembly_seen = seen
+        seen[doc.Name] = assembly.parts_signature(doc)
 
     def _on_browser_marking_menu(self, name, global_pos):
         import FreeCAD as App
@@ -1073,6 +1182,15 @@ class Shell(QtCore.QObject):
         self._on_browser_select(name)  # the row's object is the selection: shown in the view while the menu is up
         obj = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None else None
         kind = "origin" if obj is not None and obj.TypeId in ("App::Plane", "App::Line", "App::Point") else "browser"
+        if obj is not None and obj.TypeId == "App::Link":  # a component's row (or a row of its history)
+            kind = "asm_face"
+        elif obj is not None and obj.TypeId == "PartDesign::Body":  # a Solid's row (Solid Bodies)
+            kind = "solid"
+        from incad.core import asm_cut, assembly
+        if obj is not None and obj in assembly.joints(App.ActiveDocument):
+            kind = "joint"  # a Relationships row: Edit, Delete, Suppress, Rename
+        elif obj is not None and asm_cut.is_record(obj):
+            kind = "asm_cut"  # an assembly cut's row: no Suppress (it is no constraint)
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
@@ -1179,6 +1297,7 @@ class Shell(QtCore.QObject):
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
         QtCore.QTimer.singleShot(0, self.refresh_constraints_window)  # a delete, an undo: never stale rows
@@ -1223,6 +1342,74 @@ class Shell(QtCore.QObject):
             return "%s.%s" % (getattr(getattr(pre, "Object", None), "Name", None), getattr(pre, "SubElementName", ""))
         except Exception as e:
             return "n/a (%s)" % e
+
+    @staticmethod
+    def _adopt_waits(doc):
+        """Someone else's open undo step (a feature dialog, a Sketcher tool still placing) or a recompute running
+        (its progress bar runs these handlers mid-way): adopting waits."""
+        from incad.core import safe
+        return bool(safe.busy() or doc.HasPendingTransaction or getattr(doc, "Recomputing", False))
+
+    def _projection_changed(self, sk):
+        """An edge projected (or its projection undone / redone): it becomes normal geometry right away."""
+        if getattr(sk.Document, "Restoring", False):
+            return  # a file being loaded: the on-open migration handles its sketches
+        QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
+
+    def _adopt_projections(self, sk, tries=0):
+        """Inventor: a projected edge is normal geometry right away (FreeCAD's tool projects construction). When it
+        must wait (see _adopt_waits) it looks again a little later, then leaves it to the next change."""
+        from incad.core import document
+        from incad.core import sketch as sketches
+        if not _alive(sk):
+            return
+        try:
+            doc = sk.Document
+            if not document.is_incad_part(doc) or getattr(doc, "Restoring", False) or not sketches.projected(sk):
+                return
+            if self._adopt_waits(doc):
+                if tries < 40:
+                    QtCore.QTimer.singleShot(150, lambda: self._adopt_projections(sk, tries + 1))
+                else:
+                    log.logger().info("Projected edges of %s: still busy after 6 s, left to the next change", sk.Label)
+                return
+            notes = []
+            adopted = sketches.adopt_projections(sk, notes)
+            key = (doc.Name, sk.Name)
+            pending = sketches.pending_projections(sk)
+            new = pending - self._projections_told.get(key, set())
+            self._projections_told[key] = pending
+            if adopted or new:  # a used sketch says so once per new projection, not on every edit
+                for text in notes:
+                    log.report("info", text)
+        except Exception as e:
+            log.report("warning", "Could not make the projected edges normal geometry: %s" % e, traceback.format_exc())
+
+    def _adopt_all_projections(self, name, tries=0):
+        """Once per opened file: sketches made before follow the rule (projected edges normal, old copies gone)."""
+        import FreeCAD as App
+        from incad.core import sketch as sketches
+        if name not in App.listDocuments():
+            return
+        doc = App.getDocument(name)
+        try:
+            if getattr(doc, "Restoring", False) or self._adopt_waits(doc):
+                if tries < 200:  # a long recompute of a big part: half a minute
+                    QtCore.QTimer.singleShot(150, lambda: self._adopt_all_projections(name, tries + 1))
+                else:
+                    log.logger().info("Projected edges on open of %s: still busy after 30 s, left to the next "
+                                      "change of each sketch", name)
+                return
+            notes = []
+            for sk in [o for o in doc.Objects if sketches.is_sketch(o)]:
+                told = []
+                if sketches.adopt_projections(sk, told):  # recomputes only when it changed something
+                    notes += told  # a used sketch is left as it is, silently: it was made that way
+                self._projections_told[(name, sk.Name)] = sketches.pending_projections(sk)
+            for text in notes:
+                log.report("info", text)
+        except Exception as e:
+            log.logger().warning("Projected edges on open: %s", e)
 
     def _make_construction(self, sk):
         if not _alive(sk):
@@ -1892,14 +2079,21 @@ class Shell(QtCore.QObject):
         if self._sel_watch is None:
             self._sel_watch = _SelectionWatch(self)
             Gui.Selection.addObserver(self._sel_watch)
+        if self._hover_watch is None:
+            from incad.ui.dof_glyphs import HoverWatch
+            self._hover_watch = HoverWatch(self._on_dof_hover)
+            Gui.Selection.addObserver(self._hover_watch)
         import FreeCAD as App
         log.set_reporter(self._report)
         from incad.core import safe
         safe.set_refused_hook(self._show_open_dialog)
+        from incad.core import commands
+        commands.set_before_run_hook(self._end_drag)
         self.mw.installEventFilter(self)
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
-        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo)
+        self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo,
+                                      self._document_activated, self._document_deleted, self._projection_changed)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
@@ -1927,6 +2121,8 @@ class Shell(QtCore.QObject):
         log.set_reporter(None)
         from incad.core import safe
         safe.set_refused_hook(None)
+        from incad.core import commands
+        commands.set_before_run_hook(None)
         if self._box_focus_hooked:
             try:
                 QtWidgets.QApplication.instance().focusChanged.disconnect(self._keep_box_keyboard)
@@ -2124,6 +2320,7 @@ class Shell(QtCore.QObject):
         self.sketches.sync()
         if is_part and editing is None and fs is None and self._body_hidden(doc):
             document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank
+        self._visibility_applied &= set(App.listDocuments())  # a closed file opened again is a new document
         if is_part and editing is None and fs is None and doc.Name not in self._visibility_applied:
             self._visibility_applied.add(doc.Name)  # once per document: a file saved with a feature's sketch
             try:                                     # left visible (an older InCad, FreeCAD's Space key) opens clean
@@ -2136,12 +2333,28 @@ class Shell(QtCore.QObject):
                     model.restore_units(doc)
             except Exception as e:
                 log.logger().warning("Parameter units on open: %s", e)
+            try:  # a Split made before Keep all gave each piece its own Solid: its pieces get their Solids now
+                from incad.features import split
+                if not getattr(doc, "Restoring", False) and split.upgrade(doc):
+                    log.report("info", "Split pieces are separate Solids now (hide or show each one)")
+            except Exception as e:
+                log.logger().warning("Split pieces on open: %s", e)
+            try:  # a Solid sketched on another Solid's face held that whole Solid too (older InCad): settle them
+                if not getattr(doc, "Restoring", False):
+                    settled = document.settle_cross_solid_sketches(doc)
+                    if settled:
+                        doc.recompute()
+                        log.report("info", "%s: on another Solid's face, now holds only its own piece"
+                                   % ", ".join(s.Label for s in settled))
+            except Exception as e:
+                log.logger().warning("Sketches on another Solid's face on open: %s", e)
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):
                     doc.recompute()
             except Exception as e:
                 log.logger().warning("Orphan area copies on open: %s", e)
+            self._adopt_all_projections(doc.Name)  # after the purge: an orphan area copy uses nothing
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):
             self._close_value_box(apply_if_typed=True)
@@ -2224,6 +2437,9 @@ class Shell(QtCore.QObject):
         self._raise_overlays()
         if self._wait_notice is not None and not self._edit_open():
             self._close_wait_notice()
+        if is_asm and fs is None:
+            self._schedule_dof(doc)
+        self.dof_display_changed()  # a tab switch, an undo or a finished drag: glyphs at the parts' new places
 
     # ----- assemblies -----
     def _assembly_doc(self):
@@ -2235,11 +2451,15 @@ class Shell(QtCore.QObject):
             raise self._dialog_first()
         return doc
 
-    def _ensure_saved(self, doc):
+    def _ensure_saved(self, doc, folder=""):
         """Linking needs the assembly on disk: ask for its file the first time."""
         if doc.FileName:
             return True
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self.mw, "Save the assembly first", doc.Label + ".FCStd",
+        QtWidgets.QMessageBox.information(self.mw, "Save the assembly",
+                                          "The assembly links to part files, so it is saved first: choose a name and "
+                                          "a folder for the assembly itself.")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self.mw, "Save the assembly (not the part)",
+                                                        os.path.join(folder, doc.Label + ".FCStd"),
                                                         "FreeCAD files (*.FCStd)")
         if not path:
             return False
@@ -2261,15 +2481,24 @@ class Shell(QtCore.QObject):
                     break
 
     def assembly_place(self, path=None):
-        from incad.core import assembly, safe
+        """Place: choose the part (or assembly) file first; a new assembly not saved yet is saved next to it (the
+        user took the old 'Save the assembly first' dialog for the part chooser: its files are greyed out)."""
+        from incad.core import assembly, log, safe
         doc = self._assembly_doc()
-        if not self._ensure_saved(doc):
-            return None
         if path is None:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(self.mw, "Place a part or assembly",
-                                                            os.path.dirname(doc.FileName), "FreeCAD files (*.FCStd)")
+                                                            os.path.dirname(doc.FileName or ""),
+                                                            "FreeCAD files (*.FCStd)")
             if not path:
                 return None
+        if not doc.FileName:
+            target = os.path.join(os.path.dirname(path), doc.Label + ".FCStd")
+            if os.path.exists(target) or os.path.abspath(target) == os.path.abspath(path):
+                if not self._ensure_saved(doc, os.path.dirname(path)):
+                    return None
+            else:
+                doc.saveAs(target)
+                log.report("info", "Assembly saved as %s (next to the part)" % target)
         result = safe.run_safely("Place", lambda: assembly.place(doc, path), doc)
         self._back_to(doc)
         self.schedule_refresh()
@@ -2289,25 +2518,192 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
         return result.value if result.ok else None
 
-    def assembly_ground(self, link=None):
+    def _picked_component(self, doc, link, what):
+        """The component the command acts on: given, the row the menu was opened on, or the 3D / tree pick."""
         import FreeCADGui as Gui
-        from incad.core import assembly, context, safe
+        from incad.core import assembly, context
         from incad.features import common
-        doc = self._assembly_doc()
         if link is None:
             name = context.target()
             link = doc.getObject(name) if name else None
         if link is None:
-            for sel in Gui.Selection.getSelectionEx(doc.Name):
+            for sel in common.selection_ex(doc.Name):
                 for sub in (sel.SubElementNames or ("",)):
                     obj, _ = common.resolve(sel.Object, sub)
                     if obj is not None and obj.TypeId == "App::Link":
                         link = obj
         if link is None or link not in assembly.components(doc):
-            raise ValueError("Select a component to ground or unground")
+            raise ValueError("Select a component to %s" % what)
+        return link
+
+    def assembly_suppress(self, link=None):
+        from incad.core import assembly, log, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "suppress or unsuppress")
+        r = safe.run_safely("Suppress", lambda: assembly.toggle_suppressed(link), doc)
+        if r.ok:
+            log.report("info", "%s %s" % (link.Label, "suppressed" if r.value else "back"))
+        self.schedule_refresh()
+
+    def assembly_edit(self, link=None):
+        doc = self._assembly_doc()
+        self.open_component(self._picked_component(doc, link, "edit"))
+
+    def assembly_remove(self, link=None):
+        from incad.core import delete, log, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "remove")
+        label = link.Label
+        r = safe.run_safely("Remove from Assembly", lambda: delete.delete(link), doc)
+        if r.ok:
+            log.report("info", "%s removed from the assembly (its part file stays)" % label)
+        self.schedule_refresh()
+
+    def assembly_ground(self, link=None):
+        from incad.core import assembly, safe
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "ground or unground")
         action = assembly.unground if assembly.is_grounded(link) else assembly.ground
         safe.run_safely("Ground", lambda: action(link), doc)
         self.schedule_refresh()
+
+    def _schedule_dof(self, doc):
+        """Count the parts' degrees of freedom after the refresh (never inside it): the rows fill in when done."""
+        if self._dof_pending:
+            return
+        self._dof_pending = True
+        QtCore.QTimer.singleShot(0, lambda name=doc.Name: self._update_dof(name))
+
+    def _update_dof(self, name):
+        import FreeCAD as App
+        from incad.core import dof
+        self._dof_pending = False
+        if name not in App.listDocuments() or self.feature_session is not None or dof.loading():
+            return  # a file still loading (any tab): the refresh after it counts
+        drag = getattr(self, "asm_drag", None)
+        if drag is not None and drag.active() or self.dof_handles is not None and self.dof_handles.dragging():
+            return
+        try:
+            _, computed = dof.ensure(App.getDocument(name))
+        except Exception as e:
+            log.logger().warning("DOF count: %s", e)
+            return
+        if computed:
+            self.schedule_refresh()  # the rows read the new counts (cached now: no second count)
+        self.dof_display_changed()
+
+    def _end_drag(self):
+        """Before any command (Save, Undo, ...): a part drag still going ends first, so its open step and the
+        temporary grounds of the other parts never reach the command."""
+        if self.asm_drag is not None and self.asm_drag.active():
+            self.asm_drag.finish()
+        if self.dof_handles is not None and self.dof_handles.dragging():
+            self.dof_handles.finish()
+
+    def _document_deleted(self, doc):
+        """A document is closing: a drag of one of its parts ends now (its release will never come), and its DOF
+        state goes (a file opened later under the same name starts clean)."""
+        try:
+            if self.asm_drag is not None and self.asm_drag.active() and self.asm_drag.doc_name == doc.Name:
+                self.asm_drag.finish(moved_ok=False, closing=True)
+            if self.dof_handles is not None:
+                self.dof_handles.document_closing(doc.Name)
+        except Exception:
+            log.logger().exception("InCad drag on close")
+        try:
+            self._contexts.pop(doc.Name, None)  # the part's tab goes: its picture goes with its view
+            for name, ctx in list(self._contexts.items()):
+                if ctx.asm_name == doc.Name:  # the assembly closes: no more parts around the edited one
+                    ctx.remove()
+                    del self._contexts[name]
+        except Exception:
+            log.logger().exception("InCad assembly context on close")
+        try:
+            from incad.core import dof
+            self._dof_on.discard(doc.Name)
+            dof._CACHE.pop(doc.Name, None)
+            if self._dof_hover is not None and self._dof_hover[0] == doc.Name:
+                self._dof_hover = None
+                if self._hover_watch is not None:
+                    self._hover_watch.current = None
+            if self._dof_glyphs is not None and self._dof_glyphs.doc_name == doc.Name:
+                self._dof_glyphs.remove()
+                self._dof_glyphs = None
+        except Exception:
+            log.logger().exception("InCad DOF on close")
+
+    def dof_display_changed(self):
+        """Redraw the DOF glyphs: every free part while View > Degrees of Freedom is on, else the part under the
+        pointer or being dragged (highlighted), and the selected part's gizmo (its handles, ui/dof_handles). Only the
+        freedoms a part has; none for DOF 0, none for a part without a solid. Never raises: it runs from a
+        selection observer, timers and a drag's finally."""
+        try:
+            self._draw_dof()
+        except Exception:
+            log.logger().exception("DOF glyphs")
+
+    def _draw_dof(self):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import assembly, dof
+        from incad.ui.dof_glyphs import DofGlyphs
+        doc = App.ActiveDocument
+        view = Gui.ActiveDocument.ActiveView if assembly.is_assembly(doc) and Gui.ActiveDocument else None
+        if self._dof_glyphs is not None and (view is None or self._dof_glyphs.view is not view):
+            self._dof_glyphs.remove()
+            self._dof_glyphs = None
+        handles = self.dof_handles
+        if view is None or not hasattr(view, "getSceneGraph"):
+            if handles is not None:
+                handles.clear_drawn()
+            return
+        counts = dof.last(doc) or {}
+        hover = self._dof_hover[1] if self._dof_hover is not None and self._dof_hover[0] == doc.Name else None
+        tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else hover
+        gizmo = handles.gizmo_part(doc) if handles is not None else None  # the clicked part: its glyph has handles
+        names = list(counts) if doc.Name in self._dof_on else [n for n in dict.fromkeys((gizmo, tip)) if n]
+        items, drawn = [], False
+        for name in names:
+            f, link = counts.get(name), doc.getObject(name)
+            bb = assembly._box(link) if link is not None else None  # an empty part's link has no Shape at all
+            if f is None or not f.n or bb is None:
+                continue
+            size = max(bb.DiagonalLength * 0.35, 5.0)
+            hs = dof.handles(f, link.Placement, bb.Center, size)
+            if name == gizmo:  # normal colour, the handle under the pointer lit
+                handles.set_drawn(doc.Name, name, hs, size, view)
+                drawn = True
+                items.append((name, hs, size, False, handles.lit))
+            else:
+                items.append((name, hs, size, name == tip, None))
+        if handles is not None and not drawn:
+            handles.clear_drawn()
+        if self._dof_glyphs is None:
+            if not items:
+                return
+            self._dof_glyphs = DofGlyphs(view, self.theme, doc.Name)
+        self._dof_glyphs.theme = self.theme
+        self._dof_glyphs.set(items)
+
+    def toggle_dof(self):
+        import FreeCAD as App
+        from incad.core import assembly
+        doc = App.ActiveDocument
+        if not assembly.is_assembly(doc):
+            raise ValueError("Open an assembly first")
+        self._dof_on ^= {doc.Name}
+        self.dof_display_changed()
+        self.schedule_refresh()  # the ribbon button's checked state
+
+    def dof_shown(self):
+        import FreeCAD as App
+        return App.ActiveDocument is not None and App.ActiveDocument.Name in self._dof_on
+
+    def _on_dof_hover(self, name):
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        self._dof_hover = (doc.Name, name) if name and doc is not None else None  # (document, part)
+        self.dof_display_changed()
 
     def open_component(self, link):
         """Open the component's file in its own tab (Inventor: Open)."""
@@ -2323,6 +2719,46 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
+        self._show_context(link, part)
+
+    def _show_context(self, link, part):
+        """Edit from the assembly: the other parts drawn around this one in its tab (ui/assembly_context), from the
+        assembly's current placements; any earlier picture in that tab goes first."""
+        import FreeCADGui as Gui
+        from incad.core import assembly
+        from incad.ui.assembly_context import AssemblyContext
+        old = self._contexts.pop(part.Name, None)
+        if old is not None:
+            old.remove()
+        asm = link.Document
+        if not assembly.is_assembly(asm):
+            return
+        gui = Gui.getDocument(part.Name)
+        view = gui.ActiveView if gui is not None else None
+        if view is None or not hasattr(view, "getSceneGraph"):
+            return
+        try:
+            self._contexts[part.Name] = AssemblyContext(view, assembly.context_of(asm, link), self.theme, asm.Name)
+        except Exception:
+            log.logger().exception("Assembly context")
+            return
+        log.report("info", "Editing %s in %s: the other parts are shown for reference" % (link.Label, asm.Label))
+
+    def _active_context(self):
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        return self._contexts.get(doc.Name) if doc is not None else None
+
+    def toggle_assembly_context(self):
+        ctx = self._active_context()
+        if ctx is None:
+            raise ValueError("Edit this part from its assembly (Edit on the part) to see the parts around it")
+        ctx.set_visible(not ctx.shown)
+        self.schedule_refresh()  # the button's checked state
+
+    def assembly_context_shown(self):
+        ctx = self._active_context()
+        return ctx is not None and ctx.shown
 
     PADLOCK_SCALE = 1.2
 
@@ -2863,6 +3299,10 @@ def _finish_open_tools():
     if _shell is None or not _shell.active:
         return
     try:
+        if _shell.asm_drag is not None and _shell.asm_drag.active():
+            _shell.asm_drag.finish()  # its temporary grounds and open step must not reach the Save dialog
+        if _shell.dof_handles is not None and _shell.dof_handles.dragging():
+            _shell.dof_handles.finish()
         _shell.stop_slot_tool()
         _shell._close_feature_session(cancel=True)
         _shell._cancel_profile_pick()
@@ -2871,6 +3311,20 @@ def _finish_open_tools():
             _shell.sketches.finish()
     except Exception as e:
         log.report("warning", "Could not close the open tools: %s" % e, traceback.format_exc())
+
+
+UPDATE_ASK = None  # tests: callable(assembly label) -> True to update
+CONFIRM = None  # tests: callable(title, text) -> True for Yes
+
+
+def confirm(title, text):
+    """A Yes / No question; True for Yes."""
+    import FreeCADGui as Gui
+    if CONFIRM is not None:
+        return CONFIRM(title, text)
+    return QtWidgets.QMessageBox.question(Gui.getMainWindow(), title, text,
+                                          QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) \
+        == QtWidgets.QMessageBox.Yes
 
 
 def ask_save(docs, action="quitting"):
@@ -3089,6 +3543,36 @@ def assembly_create(name=None):
 
 def assembly_ground(link=None):
     return _active().assembly_ground(link)
+
+
+def assembly_suppress(link=None):
+    return _active().assembly_suppress(link)
+
+
+def assembly_edit(link=None):
+    return _active().assembly_edit(link)
+
+
+def assembly_remove(link=None):
+    return _active().assembly_remove(link)
+
+
+def toggle_dof():
+    return _active().toggle_dof()
+
+
+def toggle_assembly_context():
+    return _active().toggle_assembly_context()
+
+
+def assembly_context_shown():
+    sh = _shell
+    return bool(sh is not None and sh.active and sh.assembly_context_shown())
+
+
+def dof_shown():
+    sh = _shell
+    return bool(sh is not None and sh.active and sh.dof_shown())
 
 
 def current_tree_object():

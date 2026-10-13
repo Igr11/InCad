@@ -231,11 +231,13 @@ class VisibilityTest(unittest.TestCase):
         document.show_result(self.body)
         self.assertFalse(self.path.Visibility, "show_result keeps the hidden choice")
 
-    def test_toggle_refuses_nothing_and_features(self):
+    def test_toggle_refuses_nothing_and_a_feature_hides_its_solid(self):
         with self.assertRaises(ValueError):
             document.toggle_visibility([])
-        with self.assertRaises(ValueError):
-            document.toggle_visibility([self.pad])
+        self.assertFalse(document.toggle_visibility([self.pad]))  # the user: a Solid can be hidden too
+        self.assertFalse(self.body.Visibility)
+        document.toggle_visibility([self.pad])
+        self.assertTrue(self.body.Visibility)
 
     def test_showing_one_plane_turns_the_origin_group_on_and_hides_the_rest(self):
         """A new part in the GUI: the Origin group is hidden while its items say Visible — nothing shows. Showing
@@ -490,6 +492,55 @@ class DetachLumpTest(unittest.TestCase):
         self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
 
 
+    def test_a_sketch_on_a_later_steps_face_of_the_part_stays(self):
+        """The user's Thread_1: a stub sketched on a face of the step after the box, a face on the part (that
+        step's shape holds both pieces), went into the box's Solid with its thread."""
+        top = [i + 1 for i, f in enumerate(self.box.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6
+               and f.CenterOfMass.x < 40][0]  # the pad's top, named on the box step
+        on_part = self.body.newObject("Sketcher::SketchObject", "OnPart")
+        on_part.AttachmentSupport = [(self.box, "Face%d" % top)]
+        on_part.MapMode = "FlatFace"
+        on_part.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 3))
+        stub = util.add_pad(self.body, on_part, 4, name="Stub")
+        self.body.Tip = stub
+        self.doc.recompute()
+        new = document.detach_lump(self.box)
+        self.doc.recompute()
+        self.assertIs(self.box.getParentGeoFeatureGroup(), new)
+        self.assertIs(stub.getParentGeoFeatureGroup(), self.body)
+        self.assertIs(on_part.getParentGeoFeatureGroup(), self.body)
+        self.assertIs(on_part.AttachmentSupport[0][0], self.pad, "the same face, named on the step before the box")
+        self.assertNotIn("Invalid", stub.State, stub.getStatusString())
+        self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
+        self.assertEqual(len(new.Tip.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 2000, places=3)
+
+
+    def test_a_box_sketched_on_the_parts_face_leaves_the_part_behind(self):
+        """The user's Thread_1: the block's sketch sat on a face of the part, the block extruded away from it.
+        Split off, its Pad took the sketch's support as its base and kept the whole part (two pieces)."""
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        on_face = self.body.newObject("Sketcher::SketchObject", "OnFace")
+        on_face.AttachmentSupport = [(self.pad, "Face%d" % top)]
+        on_face.MapMode = "FlatFace"
+        on_face.AttachmentOffset = App.Placement(App.Vector(60, 60, 5), App.Rotation())  # above, away from it
+        on_face.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(10, 0, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(10, 0, 0), App.Vector(10, 10, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(10, 10, 0), App.Vector(0, 10, 0)))
+        on_face.addGeometry(Part.LineSegment(App.Vector(0, 10, 0), App.Vector(0, 0, 0)))
+        block = util.add_pad(self.body, on_face, 4, name="Block")
+        self.body.Tip = block
+        self.doc.recompute()
+        self.assertTrue(document.is_detached_lump(block))
+        where = block.Shape.Solids[-1].BoundBox
+        new = document.detach_lump(block)
+        self.doc.recompute()
+        self.assertEqual(len(new.Tip.Shape.Solids), 1)
+        self.assertAlmostEqual(new.Tip.Shape.Volume, 400, places=3)
+        self.assertTrue(new.Tip.Shape.BoundBox.isInside(where.Center), (new.Tip.Shape.BoundBox, where))  # in place
+        self.assertFalse(on_face.AttachmentSupport)
+
+
 class HistoryTest(unittest.TestCase):
     """One history for the part (Inventor): the features of every Solid in the order they were made, and one End
     of Part that rolls all Solids back to a point in it."""
@@ -542,3 +593,69 @@ class HistoryTest(unittest.TestCase):
         self.assertIsNone(self.body.Tip)
         self.assertIsNone(self.other.Tip)
         self.assertFalse(self.pad.Visibility)
+
+
+class HideShowSolidTest(unittest.TestCase):
+    """The user: after a Split, Hide / Show refused a piece ('Nothing to hide or show in BaseFeature / SplitPiece /
+    Split004') — it knew only sketches, planes, axes and points."""
+
+    def setUp(self):
+        from incad.features import split
+        self.doc = util.new_doc("Hs")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        sk = self.body.newObject("Sketcher::SketchObject", "Knife")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.LineSegment(App.Vector(5, -5, 0), App.Vector(5, 15, 0)))
+        self.doc.recompute()
+        self.split = split.create(self.doc, self.body, None, dict(split.defaults(self.doc, self.body, None),
+                                                                   sketch=sk.Name))
+        self.doc.recompute()
+        self.piece = split.piece_bodies(self.split)[0]
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_a_pick_on_a_piece_hides_its_solid(self):
+        base = next(o for o in self.piece.Group if o.TypeId == "PartDesign::FeatureBase")
+        self.assertFalse(document.toggle_visibility([base]))
+        self.assertFalse(self.piece.Visibility)
+        self.assertFalse(base.Visibility, "the piece's base (its Tip) draws even inside a hidden Body: hidden too")
+        self.assertTrue(self.body.Visibility, "the other piece stays")
+        document.show_result(self.piece)  # a refresh does not bring it back
+        self.assertFalse(self.piece.Visibility)
+        self.assertFalse(base.Visibility)
+        self.assertTrue(document.toggle_visibility([self.piece.BaseFeature]))  # its SplitPiece: the same Solid
+        self.assertTrue(self.piece.Visibility)
+        self.assertTrue(base.Visibility)
+
+    def test_the_piece_shape_never_draws_on_its_own(self):
+        """The user's Thread_1: the SplitPiece (outside the Solid made on it) was visible, so hiding Solid2 left
+        the piece on the screen."""
+        self.piece.BaseFeature.Visibility = True
+        document.show_result(self.piece)
+        self.assertFalse(self.piece.BaseFeature.Visibility)
+
+    def test_a_hidden_solid_is_dimmed_in_the_tree(self):
+        from incad.core import tree
+        from incad.core.nodes import flatten
+        document.toggle_visibility([self.piece])
+        rows = {n.name: n for _, n in flatten(tree.build(self.doc)) if n.kind == "body"}
+        self.assertEqual(rows[self.piece.Name].state, "hidden")
+        self.assertEqual(rows[self.body.Name].state, "")
+
+    def test_the_main_piece_hides_by_its_split(self):
+        self.assertFalse(document.toggle_visibility([self.split]))
+        self.assertFalse(self.body.Visibility)
+        self.assertTrue(self.piece.Visibility)
+
+    def test_undo_brings_a_hidden_solid_back(self):
+        self.doc.UndoMode = 1
+        document.prepare_choice([self.piece])
+        self.doc.openTransaction("Hide / Show")
+        document.toggle_visibility([self.piece])
+        self.doc.commitTransaction()
+        self.doc.undo()
+        document.apply_visibility(self.doc)
+        self.assertTrue(self.piece.Visibility)
+

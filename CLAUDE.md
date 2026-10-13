@@ -36,3 +36,7 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   Suppress acts on the owner with all its helpers, and a profile sketch or helper means its owner (`incad.core.suppress`).
 - Hole ▸ Chamfer is a `PartDesign::FeaturePython` helper (`incad.features.hole_chamfer`) right after the Hole that cuts
   cones computed from the hole on every recompute (no edge names); a kind may grey out choices with `unavailable(values)`.
+- DOF gizmo (`incad.ui.dof_handles`): the selected free assembly part's glyph is its handles, hit-tested in screen space
+  (`HANDLE_PX`), dragged by InCad itself through `Navigator.handle_hook` (never reaches FreeCAD, no setEdit): other free
+  parts temporarily grounded, solve per move, one "Move part" step; a far turn axis has its arc drawn at the part's
+  centre (`Handle.pivot` keeps the real axis).

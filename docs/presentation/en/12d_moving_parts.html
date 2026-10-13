@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=IBM+Plex+Sans:wght@400;600&display=swap"><style>
+html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden}
+*{box-sizing:border-box}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{font-weight:600}
+section{position:relative;width:1920px;height:1080px;overflow:hidden}
+table{border-collapse:collapse;width:100%}
+th,td{padding:0.35em 0.6em;border-bottom:1px solid #D2CEC4;text-align:left;vertical-align:top}
+th{font-weight:600;border-bottom:2px solid #16202C}
+aside{display:none}
+</style></head><body><section id="moving" data-transition="fade" style="background:#16202C;color:#F3F2EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;color:#F08A24;font-weight:600;letter-spacing:3px;text-transform:uppercase">Assemblies</p>
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:56px;font-weight:700;line-height:1.1;color:#F3F2EE">Moving parts</h2>
+<div style="display:flex;gap:48px;align-items:start">
+<img src="8_gizmo.jpg" alt="A part with its gizmo: arrows to slide it and arcs to turn it" style="width:1100px;height:560px;object-fit:contain;border-radius:12px;border:1px solid #3A4757">
+<div style="flex:1;display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;flex-direction:column;gap:6px"><p style="font-size:28px;line-height:1.4;color:#F3F2EE">Drag a free part, or click it to get its gizmo: arrows slide, arcs turn.</p></div>
+<div style="display:flex;flex-direction:column;gap:6px"><p style="font-size:28px;line-height:1.4;color:#F3F2EE">Only along the part's own degrees of freedom. The other parts stay put.</p></div>
+<div style="display:flex;flex-direction:column;gap:6px"><p style="font-size:24px;line-height:1.4;color:#C9D3DD">One drag is one undo step.</p></div>
+</div>
+</div>
+<aside>Деталь двигается только в тех направлениях, которые ей оставили связи. Остальные детали не сдвигаются.</aside>
+</section>
+</body></html>

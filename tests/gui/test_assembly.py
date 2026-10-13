@@ -101,6 +101,78 @@ def test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores():
     assert b.Placement.isSame(before, 1e-6), (b.Placement, before)
 
 
+def test_2b_parallel_from_3d_picks_is_one_undo_step():
+    doc = asm_doc()
+    a, b = doc.getObject(ST["a"]), doc.getObject(ST["b"])
+    b.Placement = App.Placement(App.Vector(50, 40, 25), App.Rotation(App.Vector(1, 1, 0.3), 134))
+    doc.recompute()
+    undo = len(doc.UndoNames)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("constrain.parallel")
+    harness.pump(800)
+    asm = assembly.assembly_of(doc)
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (a.Name, face(a, 10)))
+    harness.pump(600)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (b.Name, face(b, 0)))
+    harness.pump(1200)
+    v = dialog().values()
+    assert v["first"] == "%s:Face%d" % (a.Name, face(a, 10)) and v["second"] == "%s:Face%d" % (b.Name, face(b, 0)), v
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1000)
+    n1 = a.Shape.getElement("Face%d" % face(a, 10)).normalAt(0, 0)
+    n2 = b.Shape.getElement("Face%d" % face(b, 0)).normalAt(0, 0)
+    assert abs(abs(n1.dot(n2)) - 1) < 1e-6, (n1, n2)
+    assert doc.UndoNames[0] == "Parallel" and len(doc.UndoNames) == undo + 1, doc.UndoNames
+
+
+def face_normal(link, n):
+    f = link.Shape.getElement("Face%d" % n)
+    return f.normalAt(*f.Surface.parameter(f.CenterOfMass))
+
+
+def test_2c_mate_flip_previews_at_once_and_ok_is_one_undo_step():
+    """The user: 'Yes, and Flip on Mate too' — ticking Flip in the Mate dialog turns the block over at once (the
+    faces face the same way); OK keeps it as one 'Mate' step, Undo puts the block back."""
+    from incad.features import constraints as C
+    doc = asm_doc()
+    a, b = doc.getObject(ST["a"]), doc.getObject(ST["b"])
+    b.Placement = App.Placement(App.Vector(50, 40, 25), App.Rotation(10, 20, 30))
+    doc.recompute()
+    before = App.Placement(b.Placement)
+    undo = len(doc.UndoNames)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("constrain.mate")
+    harness.pump(800)
+    asm = assembly.assembly_of(doc)
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (a.Name, face(a, 10)))
+    harness.pump(600)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (b.Name, face(b, 0)))
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    assert dialog().label_text("flip").startswith("Flip"), dialog().label_text("flip")
+    assert face_normal(a, face(a, 10)).dot(face_normal(b, face(b, 0))) < -0.999999  # facing each other
+    unflipped = App.Placement(b.Placement)
+    dialog().field("flip").click()  # as a click on the box (a mouse click at the stretched row's centre misses it)
+    harness.pump(1500)
+    assert dialog().values()["flip"] is True, dialog().values()
+    assert not dialog().error_text(), dialog().error_text()
+    assert not b.Placement.isSame(unflipped, 1e-6), "the preview shows the block turned over"
+    assert face_normal(a, face(a, 10)).dot(face_normal(b, face(b, 0))) > 0.999999  # the same way
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1000)
+    assert doc.UndoNames[0] == "Mate" and len(doc.UndoNames) == undo + 1, doc.UndoNames
+    mates = [j for j in assembly.joints(doc) if C.kind_of(j) is C.MATE]
+    assert mates and C.MATE.read(doc, mates[-1])["flip"] is True and mates[-1].Label.startswith("Mate"), mates
+    assert face_normal(a, face(a, 10)).dot(face_normal(b, face(b, 0))) > 0.999999
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(1000)
+    assert b.Placement.isSame(before, 1e-6), (b.Placement, before)
+    assert not [j for j in assembly.joints(doc) if C.kind_of(j) is C.MATE]
+
+
 def test_3_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -108,4 +180,6 @@ def test_3_cleanup():
 
 
 harness.run([test_0_setup, test_1_place_two_parts_first_grounded, test_1b_padlock_is_small_and_calm,
-             test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores, test_3_cleanup])
+             test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores,
+             test_2b_parallel_from_3d_picks_is_one_undo_step,
+             test_2c_mate_flip_previews_at_once_and_ok_is_one_undo_step, test_3_cleanup])

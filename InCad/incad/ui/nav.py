@@ -11,10 +11,19 @@ KINDS = {QtCore.QEvent.MouseButtonPress: "press", QtCore.QEvent.MouseButtonRelea
          QtCore.QEvent.MouseMove: "move", QtCore.QEvent.MouseButtonDblClick: "dblclick"}
 
 
+SELECT_MODIFIERS = QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier | QtCore.Qt.MetaModifier  # add to the selection
+
+
 def to_coin(viewport, x, y):
     """Qt viewport position (logical px, top-left origin) -> Coin position (device px, bottom-left origin)."""
     dpr = viewport.devicePixelRatioF()
     return (int(round(x * dpr)), int(round((viewport.height() - y) * dpr)))
+
+
+def from_coin(viewport, x, y):
+    """Coin position (device px, bottom-left origin) -> Qt viewport position (logical px, top-left origin)."""
+    dpr = viewport.devicePixelRatioF()
+    return (x / dpr, viewport.height() - y / dpr)
 
 
 def _button(qt_button):
@@ -43,6 +52,14 @@ class Navigator(QtCore.QObject):
         self.mode = None
         self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click
         self.dblclick_hook = None   # same for left double-clicks
+        self.drag_hook = None       # begin(view, viewport, x, y) on a left drag, end() on its release
+        # InCad's own drags (DOF handles): press(view, viewport, x, y) -> True takes a plain left press (or the
+        # double-click event Qt sends for a quick second press); its moves go to move(x, y) and its release (or a
+        # lost one) to release(), all consumed — release() -> True: it was a click for FreeCAD, which gets it
+        # replayed; hover(view, viewport, x, y) on every move with no button (the event still reaches FreeCAD)
+        self.handle_hook = None
+        self._handle_viewport = None  # the viewport of a handle drag going on
+        self._handle_press = None     # (x, y, modifiers) of its press
         self._swallow_release = False
 
     def attached(self):
@@ -69,6 +86,7 @@ class Navigator(QtCore.QObject):
                 viewport.destroyed.connect(lambda _=None, v=viewport: self._attached.pop(v, None))
 
     def detach_all(self):
+        self._end_handle()
         for viewport in list(self._attached):
             try:
                 viewport.removeEventFilter(self)
@@ -96,6 +114,17 @@ class Navigator(QtCore.QObject):
             if kind == "press":
                 entry[2] = event.modifiers()
             pos = event.position()
+            if self._handle_viewport is not None and obj is self._handle_viewport:
+                return self._handle_event(kind, event, pos)
+            if self.handle_hook is not None and self.mode is None and machine.state == "idle":
+                if kind in ("press", "dblclick") and event.button() == QtCore.Qt.LeftButton \
+                        and event.buttons() == QtCore.Qt.LeftButton and not event.modifiers() & SELECT_MODIFIERS \
+                        and self._call_handle("press", view, obj, pos.x(), pos.y()):
+                    self._handle_viewport = obj
+                    self._handle_press = (pos.x(), pos.y(), event.modifiers())
+                    return True
+                if kind == "move" and event.buttons() == QtCore.Qt.NoButton:
+                    self._call_handle("hover", view, obj, pos.x(), pos.y())
             if event.button() == QtCore.Qt.LeftButton:
                 if kind == "press" and machine.state == "idle" and self.click_hook is not None \
                         and self.click_hook(view, obj, pos.x(), pos.y()):
@@ -113,11 +142,57 @@ class Navigator(QtCore.QObject):
             return gestures.PASS not in actions
         except Exception:
             log.logger().exception("InCad navigation")
+            dragging = machine.state == "passthrough"
             machine.reset()
+            if dragging and self.drag_hook is not None:  # the reset drops the drag's release: end it now
+                try:
+                    self.drag_hook.end()
+                except Exception:
+                    log.logger().exception("InCad drag")
             return False
+
+    def _call_handle(self, name, *args):
+        try:
+            return bool(getattr(self.handle_hook, name)(*args))
+        except Exception:
+            log.logger().exception("InCad DOF handle")
+            return False
+
+    def _handle_event(self, kind, event, pos):
+        """A handle drag owns the mouse: its moves and release go to the hook, never to FreeCAD."""
+        if kind == "move" and not event.buttons() & QtCore.Qt.LeftButton:
+            self._end_handle()  # its release got lost (Cmd-Tab, a dialog): the drag ends, the move is FreeCAD's
+            return False
+        if kind == "move":
+            self._call_handle("move", pos.x(), pos.y())
+        elif kind == "release" and event.button() == QtCore.Qt.LeftButton:
+            self._end_handle(replay=True)
+        return True
+
+    def _end_handle(self, replay=False):
+        """The handle drag's end; replay: a release that ended a click the hook gives back goes to FreeCAD as
+        that click (it selects or clears the selection as usual)."""
+        viewport, press = self._handle_viewport, self._handle_press
+        if viewport is not None:
+            self._handle_viewport = self._handle_press = None
+            if self.handle_hook is not None and self._call_handle("release") and replay and press is not None:
+                try:
+                    self._replay(viewport, press[0], press[1], press[2], QtCore.Qt.LeftButton, release=True)
+                except RuntimeError:
+                    pass
 
     def _do(self, viewport, view, action, press_modifiers):
         name = action[0]
+        if name in ("drag_start", "drag_end"):
+            if self.drag_hook is not None:
+                try:
+                    if name == "drag_start":
+                        self.drag_hook.begin(view, viewport, action[1], action[2])
+                    else:
+                        self.drag_hook.end()
+                except Exception:
+                    log.logger().exception("InCad drag")
+            return
         if name == "replay_press":
             self._replay(viewport, action[1], action[2], press_modifiers)
         elif name == "orbit_start":

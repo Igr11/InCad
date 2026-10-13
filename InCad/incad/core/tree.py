@@ -69,7 +69,9 @@ def _history(doc, primary):
         owner = getattr(o, "InCadHelperOf", None)
         if owner:
             helpers.setdefault(owner, []).append(o)
-    tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip]
+    from incad.features import combine
+    used = combine.used_up_names(doc)  # tools a Boolean used up: under it
+    tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip and b.Name not in used]
     latest = hist[max(tip_positions)][1] if tip_positions else None  # the marker goes right after it
     out = []
     if latest is None:
@@ -78,13 +80,14 @@ def _history(doc, primary):
     def rolled(b, o):
         return groups[b.Name].index(o) > tips[b.Name]
 
-    for b, obj in hist:
+    def row(b, obj):
+        """The row of obj with its sketch and helpers under it, and those objects; None for a row not shown."""
         if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
-            continue
+            return None, []
         if getattr(obj, "InCadHelperOf", None) or regions.is_profile(obj):
-            continue
+            return None, []
         node = _obj_node(obj, rolled(b, obj))
-        if b is not primary:
+        if b is not primary and b.Name not in used:
             node.detail = (node.detail + "  ·  " + b.Label) if node.detail else b.Label
         under = []
         prof = _profile(obj)
@@ -97,6 +100,35 @@ def _history(doc, primary):
         for h in helpers.get(obj.Name, []):
             node.children.append(_obj_node(h, rolled(b, h)))
             under.append(h)
+        return node, under
+
+    tool_rows = {}  # a used-up tool's rows, built first: they may come later in the history than its Boolean
+    for b, obj in hist:
+        if b.Name in used:
+            node, _ = row(b, obj)
+            if node is not None:
+                tool_rows.setdefault(b.Name, []).append((obj, node))
+
+    def tools_under(node, obj, seen):
+        """A Boolean's used-up tools under its row, theirs under theirs (a pin cut into a plug cut into the part)."""
+        if not combine.claims(obj):
+            return
+        for t in combine.used_up_tools(obj):
+            if t.Name in seen:
+                continue
+            child = Node("body", t.Label, t.Name)
+            for sub_obj, sub_node in tool_rows.get(t.Name, []):
+                tools_under(sub_node, sub_obj, seen | {t.Name})
+                child.children.append(sub_node)
+            node.children.append(child)
+
+    for b, obj in hist:
+        if b.Name in used:
+            continue
+        node, under = row(b, obj)
+        if node is None:
+            continue
+        tools_under(node, obj, frozenset())
         out.append(node)
         if latest is not None and (obj is latest or latest in under):
             out.append(Node("end_of_part", "End of Part"))
@@ -125,18 +157,46 @@ def _origin(body):
     return Node("origin", "Origin", origin.Name, children=items)
 
 
+def _component_rows(link):
+    """The component's part history under its row (Inventor): its sketches and features as in the part, each row
+    standing for the component itself (a click selects it, a double-click opens the part file)."""
+    target = link.LinkedObject
+    part = target.Document if target is not None else None
+    primary = document.primary_body(part) if part is not None and document.is_incad_part(part) else None
+    if primary is None:
+        return []
+
+    def recast(n):
+        if n.kind == "end_of_part":
+            return None
+        kids = [k for k in (recast(c) for c in n.children) if k is not None]
+        return Node(n.kind, n.label, link.Name, n.state, n.tooltip, n.detail, kids)
+
+    return [r for r in (recast(n) for n in _history(part, primary)) if r is not None]
+
+
 def _assembly(doc):
     from incad.core import assembly
     from incad.features import constraints
-    root = Node("assembly", doc.Label)
+    root = Node("assembly", doc.Label, detail="⚡ Needs update" if assembly.needs_update(doc) else "",
+                tooltip="Parts changed: Refresh updates the assembly" if assembly.needs_update(doc) else "")
+    from incad.core import dof
+    counts = dof.last(doc) or {}
     for c in assembly.components(doc):
+        f = counts.get(c.Name)
+        detail = "grounded" if assembly.is_grounded(c) else "" if assembly.is_suppressed(c) or f is None else \
+            "DOF ?" if f.n is None else "DOF %d" % f.n
+        tip = f.error if f is not None and f.n is None else (c.LinkedObject.Document.FileName if c.LinkedObject else "")
         root.children.append(Node("component", c.Label, c.Name,
-                                  detail="grounded" if assembly.is_grounded(c) else "",
-                                  tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else "")))
+                                  state="suppressed" if assembly.is_suppressed(c) else
+                                  ("" if document.is_shown(c) else "hidden"),
+                                  detail=detail, tooltip=tip, children=_component_rows(c)))
     from incad.core import asm_cut
     rel = [j for j in assembly.joints(doc) if constraints.claims(j)] + asm_cut.records(doc)
     root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
-                              children=[Node("joint", j.Label, j.Name) for j in rel]))
+                              children=[Node("joint", j.Label, j.Name,
+                                             state="suppressed" if getattr(j, "Suppressed", False) else "")
+                                        for j in rel]))
     return [root]
 
 
@@ -157,9 +217,14 @@ def build(doc):
     root = Node("part", doc.Label, primary.Name if primary is not None else "")  # a click on it: the solid
     if primary is not None:
         root.children.append(_origin(primary))
-    if len(all_bodies) > 1:
-        root.children.append(Node("solids", "Solid Bodies (%d)" % len(all_bodies),
-                                  children=[Node("body", b.Label, b.Name) for b in all_bodies]))
+    from incad.features import combine
+    used = combine.used_up_names(doc)
+    listed = [b for b in all_bodies if b.Name not in used]  # a used-up tool sits under its Boolean
+    if len(listed) > 1:
+        root.children.append(Node("solids", "Solid Bodies (%d)" % len(listed),
+                                  children=[Node("body", b.Label, b.Name, "" if document.is_shown(b) else "hidden",
+                                                 "" if document.is_shown(b) else "Hidden (Hide / Show brings it back)")
+                                            for b in listed]))
     if primary is not None:
         root.children.extend(_history(doc, primary))
     return [root]

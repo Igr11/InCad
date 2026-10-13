@@ -50,7 +50,8 @@ def is_open_contour(sk):
 def key_points(sk):
     """[(kind, global Vector)] the view marks on a sketch: a spline's poles ('pole') and the points it passes
     through ('end'), a line's or arc's ends and
-    a point ('end'), a circle's or ellipse's centre ('centre'). Construction geometry is skipped; points within
+    a point ('end'), a circle's or ellipse's centre ('centre'). Projected edges that are normal geometry count;
+    construction geometry is skipped; points within
     1e-6 of an earlier one are merged (the first kind wins)."""
     pl = sk.getGlobalPlacement()
     out = []
@@ -60,12 +61,16 @@ def key_points(sk):
         if not any((g - q).Length < 1e-6 for _, q in out):
             out.append((kind, g))
 
+    normal = []
     for i, geo in enumerate(sk.Geometry):
         try:
             if sk.getConstruction(i):
                 continue
         except Exception:
             pass
+        normal.append(geo)
+    normal += defining_geometry(sk)  # projected edges that are normal geometry (Inventor)
+    for geo in normal:
         tid = geo.TypeId
         if tid == "Part::GeomBSplineCurve":
             for p in geo.getPoles():
@@ -292,32 +297,278 @@ def toggle_construction(sk, geo_ids):
     """Inventor's Construction on picked edges: their whole profiles become construction, or normal again. The
     direction comes from the EDGES THE USER PICKED, not the expanded profile — so a construction line joined to
     normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction').
-    A projected (external) edge, always construction in FreeCAD, gets a normal copy tied to it instead."""
-    external = [i for i in geo_ids if i < -2]
-    geo_ids = [i for i in geo_ids if i >= 0]
-    made = []
-    for ext in external:
-        copies = _copies_of_external(sk, ext)
-        if copies:  # already normal: toggling the projected line again puts it back to construction only
-            for i in sorted(copies, reverse=True):
-                sk.delGeometry(i)
-            geo_ids = [g - sum(1 for c in copies if c < g) for g in geo_ids if g not in copies]
-        else:
-            made.append(_normal_copy_of_external(sk, ext))
-    picked = [i for i in geo_ids if i < sk.GeometryCount]
-    ids = []
-    if picked:
-        make = not all(sk.getConstruction(i) for i in picked)
-        ids = sorted(chain(sk, geo_ids))
-        for i in ids:
-            if sk.getConstruction(i) != make:
-                sk.setConstruction(i, make)
+    A projected (external) edge switches FreeCAD's own 'defining' flag; the choice of construction is remembered
+    (CHOSEN_PROP) so adopt_projections leaves it. Returns the ids changed."""
+    flags = _projected_flags(sk)
+    external = [i for i in geo_ids if i in flags]
+    geo_ids = [i for i in geo_ids if 0 <= i < sk.GeometryCount]
+    states = [sk.getConstruction(i) for i in geo_ids] + [not flags[i][0] for i in external]
+    if not states:
+        return []
+    make = not all(states)
+    ids = sorted(chain(sk, geo_ids)) if geo_ids else []
+    for i in ids:
+        if sk.getConstruction(i) != make:
+            sk.setConstruction(i, make)
+    changed = set_projected_construction(sk, external, make)
     sk.Document.recompute()
-    return ids + [m for m in made if m is not None]
+    return ids + changed
+
+
+# ----- projected (external) edges -----
+CHOSEN_PROP = "InCadProjConstruction"  # Refs of projected edges the user switched to construction
+
+
+def _external_ext(geo):
+    for x in geo.getExtensions():
+        if "External" in type(x).__name__:
+            return x
+    return None
+
+
+def _projected_flags(sk):
+    """{geo id: (defining, Ref)} for the projected edges (external geometry minus the H/V axes and points), in
+    order; sk.ExternalGeo read once."""
+    try:
+        geos = sk.ExternalGeo
+    except Exception:
+        return {}
+    out = {}
+    for i in range(2, len(geos)):
+        if geos[i].TypeId == "Part::GeomPoint":
+            continue
+        x = _external_ext(geos[i])
+        out[-i - 1] = (bool(x is not None and x.testFlag("Defining")), (x.Ref if x is not None else "") or "")
+    return out
+
+
+def projected(sk):
+    """Geo ids (-3, -4, …) of the sketch's projected edges: its external geometry minus the H/V axes and points."""
+    return list(_projected_flags(sk))
+
+
+def defining_geometry(sk):
+    """The projected edges that are normal geometry (Part geometries, sketch coordinates)."""
+    flags = _projected_flags(sk)
+    if not flags:
+        return []
+    geos = sk.ExternalGeo
+    return [geos[-g - 1] for g, (on, _ref) in flags.items() if on]
+
+
+def is_defining(sk, geo_id):
+    """Is the projected edge normal geometry (part of the profile)? FreeCAD's getConstruction says True for every
+    external edge, so it is never asked."""
+    try:
+        x = _external_ext(sk.ExternalGeo[-geo_id - 1])
+    except Exception:
+        return False
+    return bool(x is not None and x.testFlag("Defining"))
+
+
+def set_defining(sk, geo_ids, on):
+    """Projected edges become normal (on) or construction; returns the ids changed. The caller recomputes."""
+    geos = sk.ExternalGeo
+    changed = []
+    for g in geo_ids:
+        i = -g - 1
+        if g > -3 or i >= len(geos):
+            continue
+        x = _external_ext(geos[i])
+        if x is None or bool(x.testFlag("Defining")) == bool(on):
+            continue
+        x.setFlag("Defining", bool(on))
+        geos[i].setExtension(x)
+        changed.append(g)
+    if changed:
+        sk.ExternalGeo = geos
+    return changed
+
+
+def set_projected_construction(sk, geo_ids, construction):
+    """The user's choice for projected edges: construction (remembered in CHOSEN_PROP, so adopt_projections leaves
+    them) or normal again. Returns the ids changed; the caller recomputes."""
+    flags = _projected_flags(sk)
+    changed = set_defining(sk, geo_ids, not construction)
+    refs = {flags[g][1] for g in geo_ids if g in flags} - {""}
+    if refs:
+        before = _strings(sk, CHOSEN_PROP)
+        after = (before | refs) if construction else (before - refs)
+        if after != before:
+            _set_strings(sk, CHOSEN_PROP, after, "Projected edges switched to construction by the user")
+    return changed
+
+
+def _strings(sk, prop):
+    return set(getattr(sk, prop, None) or [])
+
+
+def _set_strings(sk, prop, refs, doc):
+    if prop not in sk.PropertiesList:
+        sk.addProperty("App::PropertyStringList", prop, "InCad", doc, 0, False, True)
+    setattr(sk, prop, sorted(refs))
+
+
+def users(sk):
+    """What is built on the sketch: the features that consume it (features.common.consumers: a Profile, a Sweep's
+    path or a Loft's section, a Split's knife, the features on its areas), a revolve whose axis is one of its lines,
+    and its InCad area profiles (separate sketches that name their source only in their data). An expression
+    using one of its dimensions, a sketch attached to it or projecting from it does not make it used."""
+    from incad.core import regions
+    from incad.features import common
+    out = list(common.consumers(sk))
+    for o in sk.InList:
+        axis = getattr(o, "ReferenceAxis", None) if "ReferenceAxis" in getattr(o, "PropertiesList", ()) else None
+        if axis and axis[0] is sk and o not in out:
+            out.append(o)
+    return out + [p for p in regions.profiles_of(sk) if p not in out]
+
+
+def pending_projections(sk):
+    """Refs of the projected edges that are construction without being the user's choice: in a used sketch, the
+    ones adopt_projections leaves for the user."""
+    chosen = _strings(sk, CHOSEN_PROP)
+    return {ref for on, ref in _projected_flags(sk).values() if not on and ref not in chosen}
+
+
+def adopt_projections(sk, notes=None):
+    """Inventor: projected edges are normal geometry. In a sketch NOTHING is built on yet (see users), every
+    projected edge becomes defining unless the user switched it to construction (CHOSEN_PROP), and the old
+    Construction button's tied normal copies are removed, their projected edges taking their place. A used sketch
+    is left exactly as it is, so no feature or area changes behind the user's back: its new projections stay
+    construction and `notes` (a list) gets one line saying so; once nothing uses the sketch, the next call adopts.
+    One burst of changes at most, no trial recomputes; a second call does nothing. True when it changed something
+    (then it has recomputed). Makes no undo step. Never inside an open undo step (a feature dialog's, a Sketcher
+    tool's) and never while the document restores or recomputes (the GUI's progress bar runs deferred handlers
+    mid-recompute): the next call adopts."""
+    doc = sk.Document
+    if getattr(doc, "Restoring", False) or getattr(doc, "Recomputing", False) or doc.HasPendingTransaction:
+        return False
+    flags = _projected_flags(sk)
+    if not flags:
+        return False
+    chosen = _strings(sk, CHOSEN_PROP)
+    todo = [g for g, (on, ref) in flags.items() if not on and ref not in chosen]
+    if not todo:
+        return False
+    used = users(sk)
+    if used:
+        if notes is not None:
+            notes.append("%s is used by %s: projected edges stay construction — Construction makes them normal" % (
+                sk.Label, ", ".join(o.Label for o in used[:3]) + (" …" if len(used) > 3 else "")))
+        return False
+    copies = _old_copies(sk)
+    if copies:
+        construction = {ext for copy, ext in copies.items() if sk.getConstruction(copy)}  # a copy switched back
+        refs = {flags[g][1] for g in construction} - {""}
+        lost = _remove_copies(sk, copies)
+        if refs - chosen:
+            chosen |= refs
+            _set_strings(sk, CHOSEN_PROP, chosen, "Projected edges switched to construction by the user")
+        todo = [g for g in todo if g not in construction]
+        if lost and notes is not None:
+            notes.append("%s: %s on the old copies of projected edges could not move to the projected edges" % (
+                sk.Label, ", ".join(lost)))
+    set_defining(sk, todo, True)
+    doc.recompute()
+    return True
+
+
+def _same_curve(a, b, tol=1e-6):
+    import Part
+    if a.TypeId != b.TypeId:
+        return False
+    try:
+        ea, eb = a.toShape(), b.toShape()
+        if abs(ea.Length - eb.Length) > tol:
+            return False
+        p0, p1 = ea.FirstParameter, ea.LastParameter
+        return all(eb.distToShape(Part.Vertex(ea.valueAt(p0 + (p1 - p0) * k / 4.0)))[0] < tol for k in range(5))
+    except Exception:
+        return False
+
+
+def _old_copies(sk):
+    """{copy index: projected geo id} for the normal copies the old Construction button put on projected edges:
+    the same curve, tied to its ends (centre for a circle or ellipse), or Blocked on a closed spline."""
+    out = {}
+    ids = projected(sk)
+    if not ids:
+        return out
+    geos = sk.ExternalGeo
+    for ext in ids:
+        for i in _copies_of_external(sk, ext):
+            if i not in out and _same_curve(sk.Geometry[i], geos[-ext - 1]):
+                out[i] = ext
+    blocked = {c.First for c in sk.Constraints if c.Type == "Block" and c.First >= 0}
+    for i in sorted(blocked - set(out)):
+        g = sk.Geometry[i]
+        if not getattr(g, "isPeriodic", lambda: False)():
+            continue
+        for ext in ids:
+            if _same_curve(g, geos[-ext - 1]):
+                out[i] = ext
+                break
+    return out
+
+
+def _remove_copies(sk, copies):
+    """Delete the copies; constraints joining other geometry to a copy move to its projected edge (same point
+    numbers). The ties themselves go; a constraint left on projected geometry alone goes (FreeCAD refuses it).
+    Returns the names (or kinds) of constraints that could not move."""
+    gone = sorted(copies)
+    lost = []
+
+    def moved(g):
+        if g in copies:
+            return copies[g]
+        if g >= 0:
+            return g - sum(1 for c in gone if c < g)
+        return g
+
+    keep = []
+    for c in sk.Constraints:
+        refs = [g for g in (c.First, c.Second, c.Third) if g != GEO_UNDEF]
+        if not any(g in copies for g in refs):
+            continue
+        if c.Type == "Block" or (c.Type == "Coincident" and
+                                 (copies.get(c.First) == c.Second or copies.get(c.Second) == c.First)):
+            continue  # the tie
+        if all(moved(g) < 0 for g in refs):
+            if c.Name or c.Type in DIMENSIONAL:
+                lost.append(c.Name or c.Type)  # a dimension on the copy alone: FreeCAD refuses it on projections
+            continue
+        for field in ("First", "Second", "Third"):  # c is the sketch's copy (sk.Constraints copies): ours to change
+            g = getattr(c, field)
+            if g != GEO_UNDEF:
+                setattr(c, field, moved(g))
+        expr = dict(sk.ExpressionEngine).get(".Constraints.%s" % c.Name) if c.Name else None
+        keep.append((c, c.Name, expr))
+    for i in reversed(gone):
+        sk.delGeometry(i)
+
+    def key(c):
+        ends = sorted([(c.First, c.FirstPos), (c.Second, c.SecondPos)]) if c.Type == "Coincident" else \
+            [(c.First, c.FirstPos), (c.Second, c.SecondPos)]
+        return (c.Type, tuple(ends), c.Third, c.ThirdPos)
+    there = {key(c) for c in sk.Constraints}  # FreeCAD 1.1 moves some coincidences itself when a geometry goes
+    for n, name, expr in keep:
+        if key(n) in there:
+            continue
+        try:
+            k = sk.addConstraint(n)
+            if name and sk.Constraints[k].Name != name:
+                sk.renameConstraint(k, name)
+            if expr:
+                sk.setExpression(".Constraints.%s" % name, expr)
+        except Exception:
+            lost.append(name or n.Type)
+    return lost
 
 
 def _copies_of_external(sk, geo_id):
-    """Indices of the normal copies made by _normal_copy_of_external (joined to the projected edge's ends/centre)."""
+    """Normal geometry tied by Coincident constraints to the projected edge at both ends or at the centre (what the
+    old Construction button made; _old_copies also checks it is the same curve)."""
     tied = {}
     for c in sk.Constraints:
         if c.Type != "Coincident":
@@ -327,28 +578,6 @@ def _copies_of_external(sk, geo_id):
         elif c.First == geo_id and c.Second >= 0:
             tied.setdefault(c.Second, set()).add(c.SecondPos)
     return [i for i, ends in tied.items() if ends in ({1, 2}, {3})]
-
-
-def _normal_copy_of_external(sk, geo_id):
-    """A normal line/arc/circle of the same size and place as the projected edge, joined to its ends (centre for a
-    circle). Returns the new geometry index, or None for a point or an unknown index."""
-    import Part
-    import Sketcher
-    index = -geo_id - 1
-    if index >= len(sk.ExternalGeo):
-        return None
-    src = sk.ExternalGeo[index]
-    kind = src.TypeId
-    if kind not in ("Part::GeomLineSegment", "Part::GeomArcOfCircle", "Part::GeomCircle"):
-        return None
-    new = sk.addGeometry(src.copy(), False)
-    sk.setConstruction(new, False)  # the copy keeps the projected edge's construction flag otherwise
-    if kind == "Part::GeomCircle":
-        sk.addConstraint(Sketcher.Constraint("Coincident", new, 3, geo_id, 3))
-    else:
-        sk.addConstraint(Sketcher.Constraint("Coincident", new, 1, geo_id, 1))
-        sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, geo_id, 2))
-    return new
 
 
 SNAP_TOL = 1e-6

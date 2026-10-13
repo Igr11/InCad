@@ -5,7 +5,8 @@ feed(kind, button, buttons, x, y) -> actions; kind is 'press' | 'release' | 'mov
 ('pass',) lets FreeCAD have the event, otherwise it is consumed. ('replay_press', x, y) hands FreeCAD the left
 press InCad held back. ('orbit_start', x, y) / ('orbit', dx, dy) / ('orbit_end',); ('pan_start', x, y) /
 ('pan', dx, dy) / ('pan_end',) for the navigation-strip Pan tool; ('menu', x, y) right-click;
-('flick_start', x, y) right-drag — the marking menu takes the mouse from there."""
+('flick_start', x, y) right-drag — the marking menu takes the mouse from there. ('drag_start', x, y) — the left press
+became a drag (sent before its replay) and ('drag_end',) — that drag's release (or a lost one)."""
 import math
 
 LEFT, RIGHT, MIDDLE = 1, 2, 4
@@ -30,7 +31,8 @@ class Gestures:
     def feed(self, kind, button, buttons, x, y):
         if kind == "move" and buttons == 0 and self.state != "idle":
             # a release got lost (Cmd-Tab, Mission Control, a dialog): end whatever was going on
-            ended = [("orbit_end",)] if self.state == "orbit" else [(self.mode + "_end",)] if self.state == "tool" else []
+            ended = [("orbit_end",)] if self.state == "orbit" else [(self.mode + "_end",)] if self.state == "tool" \
+                else [("drag_end",)] if self.state == "passthrough" else []
             self.reset()
             return ended + [PASS]
         actions = getattr(self, "_" + self.state)(kind, button, buttons, x, y)
@@ -58,7 +60,7 @@ class Gestures:
             return [("orbit_start",) + self.press]
         if kind == "move" and self._far(self.press, x, y):
             self.state = "passthrough"
-            return [("replay_press",) + self.press, PASS]
+            return [("drag_start",) + self.press, ("replay_press",) + self.press, PASS]
         if kind == "release" and button == LEFT:
             press = self.press
             self.reset()
@@ -68,6 +70,7 @@ class Gestures:
     def _passthrough(self, kind, button, buttons, x, y):
         if kind == "release" and buttons == 0:
             self.reset()
+            return [("drag_end",), PASS]
         return [PASS]
 
     def _right_held(self, kind, button, buttons, x, y):

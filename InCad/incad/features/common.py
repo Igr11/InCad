@@ -13,6 +13,7 @@ class Field:
     show_if: tuple = None    # (other key, (values…)) or a tuple of those (all must hold)
     pick: str = ""           # pick fields: edge | face | feature | axis | plane | vertex | sketch | circular_edge
     listed: bool = False     # picks fields: show the picks as a numbered list (remove, reorder), e.g. Loft sections
+    optional: bool = False   # pick fields: an empty one has a default: never made active by itself
 
 
 def shown(field, values):
@@ -58,6 +59,8 @@ def _linked(value):
 
 
 def _uses(feature, sk):
+    if hasattr(feature, "InCadSplit") and getattr(feature, "Sketch", None) is sk:
+        return True  # Split's knife
     if getattr(feature, "Profile", None) is not None and _profile(feature) is sk:
         return True
     for prop in ("Spine", "Sections"):
@@ -84,12 +87,13 @@ def unconsumed_closed_sketches(body):
     return [o for o in body.Group if sketch.is_sketch(o) and usable_profile(o) and not consumers(o)]
 
 
-def value_param(doc, feature, prop, text, unit_kind):
-    """Bind feature.prop to a model parameter holding `text` (create one if the property has none yet)."""
+def value_param(doc, feature, prop, text, unit_kind, base=None):
+    """Bind feature.prop to a model parameter holding `text` (create one if the property has none yet); `base`
+    names a new one '<base>N' (a constraint: Mate1), else it is the next dN."""
     from incad.core import model
     name = model.bound_parameter(feature, prop)
     if name is None:
-        name = model.new_feature_parameter(doc, text, unit_kind)
+        name = model.new_feature_parameter(doc, text, unit_kind, base)
         model.bind(feature, prop, name)
     elif model.parameter_text(doc, name) != text:
         model.set_model_parameter(doc, name, text)
@@ -107,7 +111,21 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
+           "direction": "faces or edges"}
+
+
+def selection_ex(doc_name=""):
+    """Gui.Selection.getSelectionEx for doc_name, keeping the path through an assembly: FreeCAD resolves a pick in
+    an assembly to the deepest object (a part's feature), losing the component ('Pick the first item on a
+    component'). In an assembly the pick stays on the Assembly with 'Link.Body.Feature.Face5' (see resolve)."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from incad.core import assembly
+    doc = App.getDocument(doc_name) if doc_name else App.ActiveDocument
+    if doc is not None and assembly.is_assembly(doc):
+        return Gui.Selection.getSelectionEx(doc.Name, 0)
+    return Gui.Selection.getSelectionEx(doc_name) if doc_name else Gui.Selection.getSelectionEx()
 
 
 def resolve(obj, sub):
@@ -310,8 +328,14 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
+    if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face or a straight edge
+        if sub.startswith("Face") and el is not None:
+            return el.Surface.TypeId == "Part::GeomPlane"
+        return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomLine"
     if kind == "component":
         return tid == "App::Link"
+    if kind == "piece":  # a face of one of the feature's own pieces (Split ▸ Keep picked)
+        return sub.startswith("Face") and el is not None
     if kind == "element":
         return sub.startswith(("Face", "Edge", "Vertex")) and el is not None
     if kind == "cylinder":
@@ -331,6 +355,10 @@ def accepts(kind, obj, sub):
         if sub.startswith("Edge"):
             return el is not None
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
+    if kind == "to_face":  # Extrude To: any face of the part (flat or curved), or a work plane
+        if not sub:
+            return tid in ("App::Plane", "PartDesign::Plane")
+        return sub.startswith("Face") and el is not None
     if kind == "plane":
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
@@ -363,8 +391,9 @@ def _accepts_sketch(kind, sk, sub):
     return False
 
 
-_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
-               "limit": "Click a face, edge or work plane…", "sketch_geometry": "Click the geometry to repeat…",
+_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Click a flat face or a straight edge…",
+               "plane": "Click a face or work plane…",
+               "limit": "Click a face, edge or work plane…", "to_face": "Click a face or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
                "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}
 _PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})

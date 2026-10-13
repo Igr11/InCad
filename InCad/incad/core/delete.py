@@ -15,6 +15,22 @@ def _remove_feature(f):
     doc.removeObject(f.Name)
 
 
+def _hand_over_main(body):
+    """Before the main Solid goes: the Solids split from it keep their shape (frozen, their Split goes with it),
+    and the next Solid becomes the main one."""
+    from incad.core import document
+    from incad.features import split
+    doc = body.Document
+    if body is not document.primary_body(doc):
+        return
+    nxt = main_successor(body)
+    if nxt is None:
+        raise ValueError("The only solid can't be deleted (delete its features instead)")
+    for f in [o for o in body.Group if split.claims(o)]:
+        split.freeze_pieces(doc, f)
+    document._meta_set(doc, **{document.PRIMARY_KEY: nxt.Name})
+
+
 def documents(obj):
     """Other documents a delete changes (an assembly cut lives in its part file)."""
     from incad.core import asm_cut
@@ -24,18 +40,55 @@ def documents(obj):
     return []
 
 
-def delete(obj):
+def target_for(obj):
+    """What Delete removes for a pick: a Split piece's base (the stand-in FeatureBase of the Solid made on it, or the
+    SplitPiece outside it) means that Solid — the base alone is nothing to delete."""
+    from incad.core import document
+    if obj is not None and (obj.TypeId == "PartDesign::FeatureBase" or getattr(obj, "InCadSplitPiece", False)):
+        solid = document._solid_of(obj)
+        if solid is not None:
+            return solid
+    return obj
+
+
+def users_of(body):
+    """The Booleans that use this Solid as a tool (deleting it alone would break them)."""
+    from incad.features import combine
+    return [f for f in body.Document.Objects if combine.claims(f) and body.Name in combine._load(f).get("tools", [])]
+
+
+def main_successor(body):
+    """The Solid that becomes the main one when the main `body` is deleted: the largest other Solid that is no
+    Boolean's used-up tool; None when there is none."""
+    from incad.core import document
+    from incad.features import combine
+    used = combine.used_up_names(body.Document)
+    others = [b for b in document.bodies(body.Document) if b is not body and b.Name not in used
+              and not b.Shape.isNull()]
+    return max(others, key=lambda b: b.Shape.Volume) if others else None
+
+
+def delete(obj, with_users=False, replace_main=False):
     """Delete obj with what InCad made for it, then show the part's new End of Part (FreeCAD shows only the newest
-    feature, so the one before it was hidden and the view went blank when the newest was deleted)."""
+    feature, so the one before it was hidden and the view went blank when the newest was deleted).
+    with_users: a Solid's Booleans that use it as a tool go first. replace_main: the main Solid may go, another
+    becomes the main one (main_successor)."""
     body = obj.getParentGeoFeatureGroup() if obj is not None else None
+    if obj is not None and obj.TypeId == "PartDesign::Body":
+        if with_users:
+            for f in users_of(obj):
+                _delete(f)
+        if replace_main:
+            _hand_over_main(obj)
+    doc = obj.Document
     _delete(obj)
     from incad.core import document
-    if body is not None and body.TypeId == "PartDesign::Body" and body.Document.getObject(body.Name) is not None:
-        try:
-            body.Document.recompute()
-            document.show_result(body)
-        except Exception:
-            pass
+    try:  # every Solid shows its End of Part again (a Boolean that went with a tool Solid lived in another Solid)
+        doc.recompute()
+        for b in document.bodies(doc):
+            document.show_result(b)
+    except Exception:
+        pass
 
 
 def _delete(obj):
@@ -52,6 +105,14 @@ def _delete(obj):
     if kind is combine:
         combine.delete(doc, obj)
         return
+    from incad.features import split
+    if kind is split:
+        sk = getattr(obj, "Sketch", None)  # read before the feature goes
+        split.delete(doc, obj)
+        _remove_feature(obj)
+        if sk is not None and doc.getObject(sk.Name) is not None:
+            sk.Visibility = True  # the knife is a plain sketch again
+        return
     if kind is thread:
         profile = obj.Profile[0] if isinstance(obj.Profile, (tuple, list)) and obj.Profile else None
         body = obj.getParentGeoFeatureGroup()
@@ -67,8 +128,16 @@ def _delete(obj):
     if obj.TypeId == "PartDesign::Body":
         if obj is document.primary_body(doc):
             raise ValueError("The main solid can't be deleted (delete its features instead)")
+        users = [f for f in doc.Objects if combine.claims(f) and obj.Name in combine._load(f).get("tools", [])]
+        if users:  # its Boolean would lose its tool ('No source shape linked')
+            raise ValueError("%s is used by %s (Boolean): delete or edit that first"
+                             % (obj.Label, ", ".join(f.Label for f in users)))
+        piece = obj.BaseFeature
         obj.removeObjectsFromDocument()
         doc.removeObject(obj.Name)
+        from incad.features import split
+        if piece is not None and doc.getObject(piece.Name) is not None and split.is_piece(piece):
+            doc.removeObject(piece.Name)  # a Split's piece lives outside the Solid made on it
         return
     if obj.TypeId == "App::Link" and obj in assembly.components(doc):
         for j in assembly.joints(doc):  # its grounding and the constraints that use it go with it

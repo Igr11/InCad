@@ -38,6 +38,39 @@ def estimate(spec, internal, clearance, length):
     return area * 2 * math.pi * rc * length / spec.pitch
 
 
+class ClearanceFollowsTheStandardTest(unittest.TestCase):
+    """The user: print-friendly threads get 0.3 mm print clearance (0.2 mm for the others), set when the standard is
+    chosen in the dialog; a clearance the user typed is never overwritten."""
+
+    def test_choosing_print_friendly_sets_0_3(self):
+        self.assertEqual(thread.follow({"standard": "iso", "clearance": "0.2 mm"},
+                                       {"standard": "print", "clearance": "0.2 mm"}), {"clearance": "0.3 mm"})
+
+    def test_leaving_print_friendly_puts_the_usual_default_back(self):
+        self.assertEqual(thread.follow({"standard": "print", "clearance": "0.3 mm"},
+                                       {"standard": "unc", "clearance": "0.3 mm"}), {"clearance": "0.2 mm"})
+
+    def test_a_typed_clearance_is_kept(self):
+        self.assertEqual(thread.follow({"standard": "iso", "clearance": "0.25 mm"},
+                                       {"standard": "print", "clearance": "0.25 mm"}), {})
+        self.assertEqual(thread.follow({"standard": "iso", "clearance": "d3 / 2"},
+                                       {"standard": "print", "clearance": "d3 / 2"}), {})
+
+    def test_nothing_changes_without_a_new_standard(self):
+        self.assertEqual(thread.follow({"standard": "print", "clearance": "0.3 mm"},
+                                       {"standard": "print", "clearance": "0.2 mm"}), {})
+
+    def test_a_new_print_friendly_thread_starts_at_0_3(self):
+        doc = util.new_doc("ThP")
+        try:
+            body = document.make_part(doc)
+            self.assertEqual(thread.default_clearance("print"), 0.3)
+            self.assertEqual(thread.default_clearance("iso"), 0.2)
+            self.assertEqual(thread.defaults(doc, body, None)["clearance"], "0.2 mm")  # ISO metric first
+        finally:
+            App.closeDocument(doc.Name)
+
+
 class ThreadTest(unittest.TestCase):
     def setUp(self):
         self.doc = util.new_doc("Th")

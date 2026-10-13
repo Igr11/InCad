@@ -63,23 +63,26 @@ class ValueField(QtWidgets.QLineEdit):
 
 
 class ChoiceField(QtWidgets.QWidget):
+    """Segment buttons, at most PER_ROW in a row, so a long list of choices does not make the dialog too wide."""
     changed = Signal()
+    PER_ROW = 4
 
     def __init__(self, choices, parent=None):
         super().__init__(parent)
-        row = QtWidgets.QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
+        grid = QtWidgets.QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(0)
         self._group = QtWidgets.QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons = {}
-        for value, label in choices:
+        for i, (value, label) in enumerate(choices):
             b = QtWidgets.QToolButton(self)
             b.setText(label)
             b.setCheckable(True)
             b.setObjectName("InCadSegment")
+            b.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             self._group.addButton(b)
-            row.addWidget(b)
+            grid.addWidget(b, i // self.PER_ROW, i % self.PER_ROW)
             self._buttons[value] = b
             b.clicked.connect(lambda _=False: self.changed.emit())
 
@@ -497,10 +500,17 @@ class FeatureDialog(QtWidgets.QFrame):
         return pick_label(f.pick or "item", value or "")
 
     def _pick_clicked(self, key):
-        if key == self.active_pick():
+        """A click on the active field stops picking, unless the dialog made it active by itself (at the start, or
+        when a choice showed it): then the click only confirms it, as the user expected to start picking."""
+        if key == self.active_pick() and getattr(self, "_clicked_active", False):
             self.set_active_pick(None)
             return
+        if key == self.active_pick():
+            self.set_active_pick(key)  # the button unchecked itself on the click: show it pressed again
+            self._clicked_active = True
+            return
         self.set_active_pick(key)
+        self._clicked_active = True
         self.pickRequested.emit(key)
 
     def set_active_pick(self, key):
@@ -510,6 +520,7 @@ class FeatureDialog(QtWidgets.QFrame):
                 self._widgets[k].setChecked(k == key)
         changed = key != self.active_pick()
         self._active_pick = key
+        self._clicked_active = False  # made active from code; _pick_clicked marks its own
         if changed:
             self.activePickChanged.emit(key or "")
 

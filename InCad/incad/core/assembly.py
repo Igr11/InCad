@@ -86,8 +86,9 @@ def _depends_on(doc):
     return [App.getDocument(n) for n in seen]
 
 
-def place(doc, path):
-    """Link a part (or assembly) file; the first component is grounded, later ones go beside the others."""
+def place(doc, path, beside=True):
+    """Link a part (or assembly) file; the first component is grounded, later ones go beside the others (or stay
+    where the part file has them: beside=False, Make Assembly)."""
     _require_saved(doc)
     asm = assembly_of(doc)
     if asm is None:
@@ -105,13 +106,19 @@ def place(doc, path):
     doc.recompute()
     if not existing:
         ground(link)
-    else:
-        boxes = [c.Shape.BoundBox for c in existing if not c.Shape.isNull()]
+    elif beside:
+        boxes = [b for b in (_box(c) for c in existing) if b is not None]  # a part without a solid has no shape
         right = max(bb.XMax for bb in boxes) if boxes else 0.0
-        left = link.Shape.BoundBox.XMin if not link.Shape.isNull() else 0.0
+        mine = _box(link)
+        left = mine.XMin if mine is not None else 0.0
         link.Placement = App.Placement(App.Vector(right + GAP - left, 0, 0), App.Rotation())
         doc.recompute()
     return link
+
+
+def _box(link):
+    shape = getattr(link, "Shape", None)
+    return shape.BoundBox if shape is not None and not shape.isNull() else None
 
 
 def _safe_name(stem):
@@ -156,3 +163,177 @@ def create_part(doc, name, units=None):
     part.recompute()
     part.saveAs(path)
     return place(doc, path)
+
+
+def part_documents(doc):
+    """The part files the components link to, each once, in component order."""
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        d = target.Document if target is not None else None
+        if d is not None and d is not doc and d not in out:
+            out.append(d)
+    return out
+
+
+def _threaded(doc):
+    from incad.core import suppress
+    return [d for d in part_documents(doc) if suppress.threads(d) or suppress.tapped_holes(d)]
+
+
+def threads_off(doc):
+    """True while every threaded part of the assembly has its threads off."""
+    from incad.core import suppress
+    parts = _threaded(doc)
+    return bool(parts) and all(suppress.threads_off(d) for d in parts)
+
+
+def toggle_threads(doc):
+    """Threads Off / On for the whole assembly: every threaded part's threads off, or (all off) back on, in their
+    part files (saved with them); 'off' or 'on'."""
+    from incad.core import suppress
+    parts = _threaded(doc)
+    if not parts:
+        raise ValueError("No part of this assembly has threads")
+    want = "on" if threads_off(doc) else "off"
+    for d in parts:
+        if ("off" if suppress.threads_off(d) else "on") != want:
+            suppress.toggle_threads(d)
+            d.recompute()
+    doc.recompute()
+    return want
+
+
+SUPPRESSED = "InCadSuppressed"
+
+
+def is_suppressed(link):
+    return bool(getattr(link, SUPPRESSED, False))
+
+
+KEPT_OFF = "InCadKeptOff"  # on a suppressed component: its constraints the user had suppressed (they stay off)
+
+
+def _kept_off(link):
+    return list(getattr(link, KEPT_OFF, None) or [])
+
+
+def toggle_suppressed(link):
+    """Suppress (Inventor) a component: hidden and its constraints / joints off, so it no longer counts; again to
+    bring it back. A constraint the user suppressed stays suppressed when the part comes back, and one whose other
+    part is still suppressed stays off with it. Returns True when it is suppressed now."""
+    doc = link.Document
+    on = not is_suppressed(link)
+    for name, kind, doc_text in ((SUPPRESSED, "App::PropertyBool", "Suppressed in the assembly"),
+                                 (KEPT_OFF, "App::PropertyStringList", "Constraints the user had suppressed")):
+        if name not in link.PropertiesList:
+            link.addProperty(kind, name, "InCad", doc_text)
+            link.setPropertyStatus(name, "Hidden")
+    mine = []
+    for j in joints(doc):
+        refs = [(getattr(j, p, None) or (None,))[0] for p in ("Reference1", "Reference2")]
+        if link in refs and hasattr(j, "Suppressed"):
+            others = [c for c in refs if c is not None and c is not link and is_suppressed(c)]
+            mine.append((j, others))
+    if on:
+        # the user's own: suppressed while no part of it was, or kept off by its other (suppressed) part
+        setattr(link, KEPT_OFF, [j.Name for j, others in mine if j.Suppressed and (
+            not others or any(j.Name in _kept_off(c) for c in others))])
+        for j, _ in mine:
+            j.Suppressed = True
+    else:
+        kept = _kept_off(link)
+        for j, others in mine:
+            if j.Name not in kept and not others:
+                j.Suppressed = False
+        setattr(link, KEPT_OFF, [])
+    setattr(link, SUPPRESSED, on)
+    link.Visibility = not on
+    doc.recompute()
+    return on
+
+
+
+def _frame(link):
+    """The placement that takes the linked object's own geometry into the assembly: the link's (it replaces the
+    linked object's placement), or both with LinkTransform on."""
+    linked = link.LinkedObject
+    if getattr(link, "LinkTransform", False):
+        return link.Placement.multiply(getattr(linked, "Placement", App.Placement()))
+    return App.Placement(link.Placement)
+
+
+def context_of(doc, link):
+    """Edit a part from the assembly: every OTHER visible, unsuppressed component (other instances of the same
+    part too) as [(name, shape, placement)] — the linked object's own shape and where it sits in the edited part's
+    tab (the part's frame, its body's placement included)."""
+    import Part
+    linked = link.LinkedObject
+    view = getattr(linked, "Placement", App.Placement()) if linked is not None else App.Placement()
+    to_view = view.multiply(_frame(link).inverse())
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        if c is link or target is None or not c.Visibility or is_suppressed(c):
+            continue
+        try:
+            shape = Part.getShape(target, transform=False)
+        except Exception:
+            continue
+        if shape.isNull() or not shape.Faces:
+            continue
+        out.append((c.Name, shape, to_view.multiply(_frame(c))))
+    return out
+
+
+def parts_signature(doc):
+    """What the components' parts look like now (each part's volume and box): changed when a part was edited in
+    its own tab."""
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        shape = getattr(target, "Shape", None)
+        if shape is None or shape.isNull():
+            out.append((c.Name, None))
+            continue
+        bb = shape.BoundBox
+        out.append((c.Name, round(shape.Volume, 6),
+                    tuple(round(v, 6) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax))))
+    return tuple(out)
+
+
+_NEEDS_UPDATE = set()  # assemblies whose parts changed and whose update was declined (this session)
+
+
+def parts_changed(doc, seen):
+    """True when a part already in the assembly looks different from `seen` (a parts_signature). A part placed or
+    removed meanwhile is the assembly's own change, not one to ask about."""
+    if seen is None:
+        return False
+    before = {row[0]: row for row in seen}
+    return any(row[0] in before and before[row[0]] != row for row in parts_signature(doc))
+
+
+def mark_needs_update(doc):
+    _NEEDS_UPDATE.add(doc.Name)
+
+
+def needs_update(doc):
+    return doc is not None and doc.Name in _NEEDS_UPDATE
+
+
+def bring_parts_in(doc):
+    """Update the assembly to its parts as they are now (Yes, or Refresh): recompute and solve; the 'needs update'
+    sign goes."""
+    for c in components(doc):
+        c.touch()  # a link to another file is not touched by that file's recompute
+    doc.recompute()
+    asm = assembly_of(doc)
+    if asm is not None and hasattr(asm, "solve"):
+        try:
+            asm.solve()
+        except Exception:
+            pass
+        doc.recompute()
+    _NEEDS_UPDATE.discard(doc.Name)
+    return parts_signature(doc)

@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import FreeCAD as App
@@ -216,3 +217,120 @@ class SecondSolidTest(unittest.TestCase):
         self.assertIs(document.body_of(self.pad), self.body)
         self.assertIs(document.body_of([o for o in other.Origin.OriginFeatures if o.Role == "XY_Plane"][0]), other)
         self.assertIsNone(document.body_of(None))
+
+
+class UsedUpToolTreeTest(unittest.TestCase):
+    def setUp(self):
+        from incad.features import combine
+        self.doc = util.new_doc("Ut")
+        self.part = document.make_part(self.doc)
+        box = self.part.newObject("PartDesign::AdditiveBox", "Box")
+        self.part.Tip = box
+        self.tool = document.new_solid(self.doc)
+        pin = self.tool.newObject("PartDesign::AdditiveCylinder", "Pin")
+        pin.Radius, pin.Height = 2, 30
+        self.tool.Tip = pin
+        self.doc.recompute()
+        self.f = combine.create(self.doc, self.part, None, dict(combine.defaults(self.doc, self.part),
+                                                                tools=self.tool.Name, operation="cut",
+                                                                clearance="0 mm"))
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def rows(self):
+        return tree.build(self.doc)[0].children
+
+    def test_a_used_up_tool_sits_under_its_boolean(self):
+        rows = self.rows()
+        names = [n.name for n in rows]
+        self.assertNotIn("Pin", names)  # not in the main history
+        node = next(n for n in rows if n.name == self.f.Name)
+        tool = next(c for c in node.children if c.kind == "body")
+        self.assertEqual(tool.name, self.tool.Name)
+        self.assertIn("Pin", [c.name for c in tool.children])
+        solids = next((n for n in rows if n.kind == "solids"), None)
+        self.assertIsNone(solids)  # one solid left that is not used up: no folder
+
+    def test_keep_tool_on_puts_it_back_in_the_list(self):
+        from incad.features import combine
+        combine.update(self.doc, self.f, dict(combine.read(self.doc, self.f), keep_tool=True))
+        self.doc.recompute()
+        rows = self.rows()
+        self.assertIn("Pin", [n.name for n in rows])
+        solids = next(n for n in rows if n.kind == "solids")
+        self.assertEqual(solids.label, "Solid Bodies (2)")
+
+
+class NestedUsedUpToolTreeTest(unittest.TestCase):
+    """Review: pin A cut into tool B (Keep tool off), B cut into the part: A vanished from the browser."""
+    def test_a_tool_used_up_inside_a_used_up_tool_is_under_it(self):
+        from incad.features import combine
+        doc = util.new_doc("Nu")
+        part = document.make_part(doc)
+        part.Tip = part.newObject("PartDesign::AdditiveBox", "Box")
+        b = document.new_solid(doc)
+        b.Tip = b.newObject("PartDesign::AdditiveCylinder", "Plug")
+        a = document.new_solid(doc)
+        a.Tip = a.newObject("PartDesign::AdditiveCylinder", "PinA")
+        doc.recompute()
+        cut_b = combine.create(doc, b, None, dict(combine.defaults(doc, b), tools=a.Name, operation="cut",
+                                                  clearance="0 mm"))
+        doc.recompute()
+        cut_part = combine.create(doc, part, None, dict(combine.defaults(doc, part), tools=b.Name, operation="cut",
+                                                        clearance="0 mm"))
+        doc.recompute()
+
+        def names(nodes):
+            out = []
+            for n in nodes:
+                out.append(n.name)
+                out.extend(names(n.children))
+            return out
+        self.assertIn("PinA", names(tree.build(doc)))
+        App.closeDocument(doc.Name)
+
+
+class AssemblyRowsTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from headless.test_assembly import save_part
+        from incad.core import assembly
+        self.dir = tempfile.mkdtemp(prefix="incad_tree_asm_")
+        _, plate = save_part(self.dir, "Plate", 40, 30, 10)
+        _, block = save_part(self.dir, "Block", 10, 10, 10)
+        self.doc = App.newDocument("Asm")
+        self.doc.UndoMode = 1
+        assembly.make_assembly(self.doc, "mm")
+        self.doc.saveAs(os.path.join(self.dir, "Asm.FCStd"))
+        self.a, self.b = assembly.place(self.doc, plate), assembly.place(self.doc, block)
+
+    def tearDown(self):
+        import shutil
+        for name in list(App.listDocuments()):
+            App.closeDocument(name)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_a_suppressed_constraint_row_says_so(self):
+        from incad.core import tree
+        from incad.features import constraints as C
+        top = [i + 1 for i, f in enumerate(self.a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        bot = [i + 1 for i, f in enumerate(self.b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z) < 1e-6][0]
+        j = C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None), first="%s:Face%d" % (self.a.Name, top),
+                                                     second="%s:Face%d" % (self.b.Name, bot)))
+        C.toggle_suppressed(j)
+        rel = [n for n in tree.build(self.doc)[0].children if n.kind == "relationships"][0]
+        self.assertEqual([(n.name, n.state) for n in rel.children], [(j.Name, "suppressed")])
+
+    def test_component_rows_show_the_last_count(self):
+        from incad.core import dof, tree
+        dof._CACHE.clear()
+        detail = lambda: {n.name: n.detail for n in tree.build(self.doc)[0].children if n.kind == "component"}
+        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: ""})  # not counted yet: nothing shown
+        dof.ensure(self.doc)
+        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: "DOF 6"})
+        dof._CACHE[self.doc.Name] = (dof.signature(self.doc),
+                                     {self.b.Name: dof.Freedom(None, [], [], "Could not count: the solver failed")})
+        node = [n for n in tree.build(self.doc)[0].children if n.name == self.b.Name][0]
+        self.assertEqual((node.detail, node.tooltip), ("DOF ?", "Could not count: the solver failed"))

@@ -44,4 +44,12 @@ def test_1_the_reopened_part_shows_the_units():
     assert not doc.UndoNames, doc.UndoNames  # opening it made no undo step
 
 
-harness.run([test_0_save_a_part_with_parameters, test_1_the_reopened_part_shows_the_units])
+def test_2_closed_and_opened_again_in_the_same_session():
+    """Review: the units came back only on a file's first open in a FreeCAD session (the document name is reused)."""
+    App.closeDocument(App.ActiveDocument.Name)
+    harness.pump(800)
+    test_1_the_reopened_part_shows_the_units()
+
+
+harness.run([test_0_save_a_part_with_parameters, test_1_the_reopened_part_shows_the_units,
+             test_2_closed_and_opened_again_in_the_same_session])

@@ -266,6 +266,53 @@ class RevolveProjectedAxisTest(unittest.TestCase):
         self.assertNotIn("Invalid", f.State, f.getStatusString())  # the projected axis cuts, no "perpendicular"
         self.assertLess(body.Shape.Volume, v0 - 1)
 
+    def test_a_projected_line_that_is_normal_geometry_still_revolves(self):
+        """Projected edges are normal geometry by default (Inventor): the axis line is then part of the sketch's
+        shape, an open wire beside the profile. Revolving around it still works."""
+        from incad.core import sketch
+        self.assertTrue(sketch.adopt_projections(self.sk))
+        ext = sketch.projected(self.sk)[0]
+        self.assertTrue(sketch.is_defining(self.sk, ext))
+        value = revolve.projected_lines(self.sk)[0][0]
+        values = revolve.defaults(self.doc, self.body, self.sk)
+        values.update(axis_mode="construction", axis_construction=value)
+        f = revolve.create(self.doc, self.body, self.sk, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertGreater(f.Shape.Volume, 1)
+        self.assertFalse(sketch.is_defining(self.sk, ext), "the lone axis line became construction")
+        self.assertFalse(sketch.adopt_projections(self.sk), "and stays so: it is recorded as the user's choice")
+
+    def test_a_projected_line_that_closes_the_profile_stays_normal_and_revolves(self):
+        """A profile drawn up to the projected axis line is closed BY it: that line stays normal geometry."""
+        from incad.core import sketch
+        xz = [o for o in self.body.Origin.OriginFeatures if o.Role == "XZ_Plane"][0]
+        sk = self.body.newObject("Sketcher::SketchObject", "U")
+        sk.AttachmentSupport = [(xz, "")]
+        sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        vedge = self.sk.ExternalGeometry[0][1][0]
+        sk.addExternal(self.pad.Name, vedge)
+        self.doc.recompute()
+        sketch.adopt_projections(sk)
+        ext = sketch.projected(sk)[0]
+        g = sk.ExternalGeo[-ext - 1]
+        a, b = g.StartPoint, g.EndPoint
+        side = App.Vector(8, 0, 0) if a.x > 10 else App.Vector(-8, 0, 0)  # away from the block
+        pts = [a, a + side, b + side, b]
+        for i in range(3):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[i + 1]))
+        self.doc.recompute()
+        self.assertTrue(any(w.isClosed() for w in sk.Shape.Wires))
+        value = revolve.projected_lines(sk)[0][0]
+        values = revolve.defaults(self.doc, self.body, sk)
+        values.update(axis_mode="construction", axis_construction=value)
+        f = revolve.create(self.doc, self.body, sk, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertTrue(sketch.is_defining(sk, ext))
+        self.assertGreater(f.Shape.Volume, 20 * 20 * 30 + 1)
+
     def test_a_single_projected_line_is_the_default_axis(self):
         values = revolve.defaults(self.doc, self.body, self.sk)
         self.assertEqual(values["axis_mode"], "construction")

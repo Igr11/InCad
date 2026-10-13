@@ -48,7 +48,7 @@ FIELDS = (
           show_if=("hole_type", ("tapped",))),
     Field("thread_length", "Thread depth", "value_length", default="8 mm",
           show_if=(("hole_type", ("tapped",)), ("thread_depth", ("distance",)))),
-    Field("clearance", "Print clearance", "value_length", default="0.2 mm", show_if=("hole_type", ("tapped",))),
+    Field("clearance", "Print clearance (on diameter)", "value_length", default="0.2 mm", show_if=("hole_type", ("tapped",))),
     Field("hand", "Direction", "choice", (("right", "Right hand"), ("left", "Left hand")), "right",
           show_if=("hole_type", ("tapped",))),
     Field("flip", "Flip direction", "bool", default=False),

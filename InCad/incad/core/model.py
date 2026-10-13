@@ -184,9 +184,21 @@ def _formula_units(doc, text, unit_kind):
     return with_units(text, unit)
 
 
-def new_feature_parameter(doc, text, unit_kind="length"):
+def named_parameter(doc, base):
+    """The first free '<base>N' (Mate1, Flush2…): a constraint's value is named after it."""
+    taken = set(refs(doc))
+    obj = _model_obj(doc, create=False)
+    if obj is not None:
+        taken |= set(obj.PropertiesList)
+    n = 1
+    while "%s%d" % (base, n) in taken:
+        n += 1
+    return "%s%d" % (base, n)
+
+
+def new_feature_parameter(doc, text, unit_kind="length", base=None):
     obj = _model_obj(doc, create=True)
-    name = claim_name(doc)
+    name = named_parameter(doc, base) if base else claim_name(doc)
     obj.addProperty("App::PropertyQuantity", name, _GROUP)
     try:
         obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, unit_kind), unit_kind)))
@@ -293,6 +305,8 @@ def set_model_parameter(doc, name, text):
     doc.recompute()
     if "Invalid" in obj.State or "Error" in obj.State:
         raise ValueError("%s: %s" % (name, friendly(obj.getStatusString())))
+    from incad.features import constraints  # an assembly Angle may change FreeCAD joint type with its value
+    constraints.follow_parameters(doc)
 
 
 def rename_model_parameter(doc, old, new):
@@ -345,3 +359,4 @@ def restore_units(doc):
     for obj in (document.parameters(doc, create=False), _model_obj(doc)):
         if obj is not None and list(obj.ExpressionEngine):
             obj.recompute()
+            obj.purgeTouched()  # the values are the same numbers: nothing that uses them needs a recompute

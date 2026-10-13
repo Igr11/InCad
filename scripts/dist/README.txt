@@ -3,6 +3,7 @@ InCad for FreeCAD
 
 Build: VERSION
 What changed in this build (improvements and bug fixes): CHANGES.txt
+How to use every feature: InCad-manual.pdf (the user manual). A short tour: InCad-presentation.pdf
 
 InCad is a workbench for FreeCAD that gives it an Autodesk Inventor / Alibre style
 interface: a ribbon, a model browser with one history and End of Part, feature dialogs
@@ -12,8 +13,9 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
-Assemblies have not been tested yet in this build: please test parts (Part).
-If you try an Assembly anyway, expect problems and work on copies of your files.
+This build is the first one with assemblies ready to test: placing parts, constraints
+and joints, dragging parts along their degrees of freedom, Make Assembly from a part.
+Work on copies of files that matter to you.
 
 
 Requirements
@@ -37,8 +39,9 @@ Install (with FreeCAD's Addon Manager)
    step 2. Leave "Branch" as it is. Click OK, then OK again to close Settings.
 5. Open Tools > Addon Manager. Find "InCad" in the list, select it and click Install.
 6. Restart FreeCAD and choose "InCad" in the workbench selector.
-   The first time, InCad asks Part or Assembly and the units: choose Part (Assembly
-   is not tested yet) and click OK.
+   The first time, InCad asks Part or Assembly and the units: choose and click Create.
+   To make InCad the workbench FreeCAD starts with: FreeCAD > Settings... > Workbenches >
+   Available Workbenches > Startup > Default workbench: InCad.
 
 After the install the unzipped folder is no longer needed.
 

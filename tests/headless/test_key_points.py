@@ -118,6 +118,23 @@ class KeyPointsTest(unittest.TestCase):
         self.doc.recompute()
         self.assertEqual(self._xy(sketch.key_points(s)), [("end", 0.0, 0.0, 7.0), ("end", 10.0, 0.0, 7.0)])
 
+    def test_normal_projected_edges_are_marked_construction_ones_are_not(self):
+        """Projected edges are normal geometry by default (Inventor): their ends are marked like drawn lines."""
+        src = _sketch(self.doc, "Src")
+        src.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(10, 0, 0)))
+        src.addGeometry(Part.LineSegment(App.Vector(0, 5, 0), App.Vector(10, 5, 0)))
+        self.doc.recompute()
+        s = src.getParentGeoFeatureGroup().newObject("Sketcher::SketchObject", "S")
+        s.AttachmentSupport = [(util.xy_plane(src.getParentGeoFeatureGroup()), "")]
+        s.MapMode = "FlatFace"
+        s.addExternal(src.Name, "Edge1")
+        s.addExternal(src.Name, "Edge2")
+        self.doc.recompute()
+        self.assertEqual(sketch.key_points(s), [], "FreeCAD's tool projects construction")
+        sketch.set_defining(s, [-3], True)
+        self.doc.recompute()
+        self.assertEqual(self._xy(sketch.key_points(s)), [("end", 0.0, 0.0, 0.0), ("end", 10.0, 0.0, 0.0)])
+
     def test_point_geometry_is_an_end(self):
         s = _sketch(self.doc)
         s.addGeometry(Part.Point(App.Vector(3, 4, 0)))

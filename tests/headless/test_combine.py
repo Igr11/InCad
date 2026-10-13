@@ -173,3 +173,52 @@ class CombineReviewTest(CombineTest):
         self.doc.recompute()
         self.assertEqual(model.parameter_text(self.doc, "fitgap"), "0.3 mm")
         self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.15 ** 2 * 10, places=1)
+
+
+class KeepToolTest(unittest.TestCase):
+    setUp, tearDown, make = CombineTest.setUp, CombineTest.tearDown, CombineTest.make
+
+    def test_off_by_default_the_tool_is_used_up(self):
+        f = self.make(operation="cut", clearance="0 mm")
+        self.assertFalse(combine.read(self.doc, f)["keep_tool"])
+        self.assertFalse(self.tool.Visibility)
+        self.assertEqual(combine.used_up_tools(f), [self.tool])
+        self.assertTrue(combine.is_used_up(self.tool))
+
+    def test_on_the_tool_stays_a_visible_solid_and_can_switch(self):
+        f = self.make(operation="cut", clearance="0 mm", keep_tool=True)
+        self.assertTrue(self.tool.Visibility)
+        self.assertEqual(combine.used_up_tools(f), [])
+        self.assertFalse(combine.is_used_up(self.tool))
+        combine.update(self.doc, f, dict(combine.read(self.doc, f), keep_tool=False))
+        self.doc.recompute()
+        self.assertFalse(self.tool.Visibility)
+
+    def test_the_fit_copy_stays_visible_when_the_tool_is_used_up(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")
+        fit = self.doc.getObject(combine._load(f)["helpers"][self.tool.Name]["fit"])
+        self.assertTrue(fit.Visibility)
+        self.assertFalse(self.tool.Visibility)
+
+    def test_delete_brings_the_tool_back(self):
+        from incad.core import delete
+        f = self.make(operation="cut", clearance="0 mm")
+        delete.delete(f)
+        self.assertTrue(self.tool.Visibility)
+        self.assertFalse(combine.is_used_up(self.tool))
+
+    def test_an_old_boolean_reads_as_used_up(self):
+        f = self.make(operation="cut", clearance="0 mm", keep_tool=True)
+        data = combine._load(f)
+        del data["keep_tool"]
+        combine._store(f, data)
+        self.assertFalse(combine.read(self.doc, f)["keep_tool"])
+        self.assertTrue(combine.is_used_up(self.tool))
+
+class ClearanceLabelTest(unittest.TestCase):
+    def test_each_clearance_says_how_it_is_measured(self):
+        from incad.features import hole, thread
+        label = {k.__name__.rsplit(".", 1)[-1]: next(f.label for f in k.FIELDS if f.key == "clearance")
+                 for k in (combine, hole, thread)}
+        self.assertEqual(label, {"combine": "Clearance (per side)", "hole": "Print clearance (on diameter)",
+                                 "thread": "Print clearance (on diameter)"})

@@ -99,6 +99,117 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual([(n.label, n.detail) for n in comps], [("Plate", "grounded"), ("Block", "")])
         rel = [n for n in root.children if n.kind == "relationships"][0]
         self.assertEqual([n.label for n in rel.children], ["Mate"])
+        # the user: no part's history in the assembly (Inventor shows each component's features under it)
+        from incad.core.nodes import flatten
+        rows = [n for _, n in flatten(comps[0].children)]
+        self.assertTrue(any(n.kind == "feature" for n in rows), [(n.kind, n.label) for n in rows])
+        self.assertEqual({n.name for n in rows}, {a.Name}, "every row stands for the component (double-click opens it)")
+        self.assertFalse([n for n in rows if n.kind == "end_of_part"])
+
+    def test_suppress_hide_and_remove_a_component(self):
+        """The user: an assembly needs Hide / Show, Suppress, Edit and Remove on a part."""
+        from incad.core import delete, tree
+        from incad.features import constraints as C
+        a = assembly.place(self.doc, self.plate)
+        b = assembly.place(self.doc, self.block)
+        self.doc.recompute()
+        top = [i + 1 for i, f in enumerate(a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        bot = [i + 1 for i, f in enumerate(b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z) < 1e-6][0]
+        mate = C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None),
+                                                        first="%s:Face%d" % (a.Name, top),
+                                                        second="%s:Face%d" % (b.Name, bot)))
+        self.assertTrue(assembly.toggle_suppressed(b))
+        self.assertFalse(b.Visibility)
+        self.assertTrue(mate.Suppressed)
+        comps = {n.name: n for n in tree.build(self.doc)[0].children if n.kind == "component"}
+        self.assertEqual(comps[b.Name].state, "suppressed")
+        self.assertFalse(assembly.toggle_suppressed(b))
+        self.assertTrue(b.Visibility)
+        self.assertFalse(mate.Suppressed)
+        self.assertFalse(document.toggle_visibility([b]))  # Hide / Show on a component
+        self.assertFalse(b.Visibility)
+        name = b.Name
+        delete.delete(b)  # Remove from Assembly: its constraint goes too, the part file stays
+        self.assertIsNone(self.doc.getObject(name))
+        self.assertEqual(len(assembly.components(self.doc)), 1)
+        self.assertTrue(os.path.exists(self.block))
+
+    def test_parts_changed_elsewhere_are_noticed_and_brought_in_on_request(self):
+        """The user: after editing a part in its own tab the assembly should ask to update, never update by itself;
+        declined, it shows that it needs an update until Refresh."""
+        from incad.core import tree
+        b = assembly.place(self.doc, self.block)
+        self.doc.recompute()
+        seen = assembly.parts_signature(self.doc)
+        self.assertFalse(assembly.parts_changed(self.doc, seen))
+        assembly.place(self.doc, self.plate)  # a part placed meanwhile: the assembly's own change, no question
+        self.assertFalse(assembly.parts_changed(self.doc, seen))
+        pad = self.block_doc.getObject("Pad")
+        pad.Length = 25
+        self.block_doc.recompute()
+        self.assertTrue(assembly.parts_changed(self.doc, seen))
+        assembly.mark_needs_update(self.doc)  # declined
+        root = tree.build(self.doc)[0]
+        self.assertIn("needs update", root.detail.lower())
+        assembly.bring_parts_in(self.doc)  # Refresh (or Yes)
+        self.assertAlmostEqual(b.Shape.BoundBox.ZLength, 25, places=6)
+        self.assertFalse(assembly.needs_update(self.doc))
+        self.assertNotIn("needs update", tree.build(self.doc)[0].detail.lower())
+
+    def test_mate_from_a_far_turned_start_moves_only_the_free_part(self):
+        """The user's Thread_1-Assembly: a Mate between faces at a large angle said 'can't be met' (FreeCAD's solver
+        diverged from that start), and the pre-solve moved the grounded part."""
+        from incad.features import constraints as C
+        a = assembly.place(self.doc, self.plate)
+        b = assembly.place(self.doc, self.block)
+        b.Placement = App.Placement(App.Vector(60, 20, 7), App.Rotation(App.Vector(1, 1, 0.3), 134))
+        self.doc.recompute()
+        grounded_at = App.Placement(a.Placement)
+        top = [i + 1 for i, f in enumerate(a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        side = [i + 1 for i, f in enumerate(b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.x) < 1e-6][0]
+        C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None),
+                                                 first="%s:Face%d" % (b.Name, side), second="%s:Face%d" % (a.Name, top)))
+        self.assertTrue(a.Placement.isSame(grounded_at, 1e-7), "the grounded part stays put")
+        f1, f2 = b.Shape.getElement("Face%d" % side), a.Shape.getElement("Face%d" % top)
+        n1 = f1.normalAt(*f1.Surface.parameter(f1.CenterOfMass))
+        n2 = f2.normalAt(*f2.Surface.parameter(f2.CenterOfMass))
+        self.assertAlmostEqual(n1.dot(n2), -1, places=6)  # facing each other
+        self.assertAlmostEqual((f1.CenterOfMass - f2.CenterOfMass).dot(n2), 0, places=4)  # touching
+
+    def test_insert_and_flush_from_a_far_turned_start(self):
+        """After the user's Mate: Flush and Insert from a start far off solve too, the grounded part stays."""
+        from incad.features import constraints as C
+        d = util.new_doc("Pin")
+        body = document.make_part(d)
+        cyl = body.newObject("PartDesign::AdditiveCylinder", "Pin")
+        cyl.Radius, cyl.Height = 3, 20
+        body.Tip = cyl
+        d.recompute()
+        pin_path = os.path.join(self.dir, "Pin.FCStd")
+        d.saveAs(pin_path)
+        hd = self.plate_doc
+        hb = document.primary_body(hd)
+        hole = hb.newObject("PartDesign::SubtractiveCylinder", "HoleCyl")
+        hole.Radius, hole.Height = 3, 10
+        hole.Placement = App.Placement(App.Vector(20, 15, 0), App.Rotation())
+        hb.Tip = hole
+        hd.recompute()
+        hd.save()
+        a = assembly.place(self.doc, self.plate)
+        p = assembly.place(self.doc, pin_path)
+        p.Placement = App.Placement(App.Vector(70, -30, 15), App.Rotation(App.Vector(1, 0.4, 0.2), 140))
+        self.doc.recompute()
+        grounded_at = App.Placement(a.Placement)
+        mouth = [i + 1 for i, e in enumerate(a.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                 and abs(e.Curve.Radius - 3) < 1e-6 and abs(e.Curve.Center.z - 10) < 1e-6][0]
+        end = [i + 1 for i, e in enumerate(p.LinkedObject.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+               and abs(e.Curve.Center.z) < 1e-6][0]
+        C.INSERT.create(self.doc, None, None, dict(C.INSERT.defaults(self.doc, None),
+                                                   first="%s:Edge%d" % (p.Name, end), second="%s:Edge%d" % (a.Name, mouth)))
+        self.assertTrue(a.Placement.isSame(grounded_at, 1e-7))
+        e1, e2 = p.Shape.getElement("Edge%d" % end), a.Shape.getElement("Edge%d" % mouth)
+        self.assertLess((e1.Curve.Center - e2.Curve.Center).Length, 1e-4)  # circle on circle
+        self.assertAlmostEqual(abs(e1.Curve.Axis.dot(e2.Curve.Axis)), 1, places=6)  # axes in line
 
     def test_placing_the_assembly_into_itself_is_refused(self):
         with self.assertRaises(ValueError) as ctx:
@@ -114,3 +225,64 @@ class AssemblyTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             assembly.place(self.doc, outer.FileName)
         self.assertIn("contains", str(ctx.exception))
+
+
+class AssemblyThreadsTest(unittest.TestCase):
+    """The user: a part placed in an assembly with its threads off could not get them back from the assembly."""
+
+    def setUp(self):
+        import Part
+        from incad.core import suppress
+        from incad.features import thread
+        from headless.test_thread import cyl_face, shaft
+        self.dir = tempfile.mkdtemp(prefix="incad_asmt_")
+        d = util.new_doc("Nut")
+        body = document.make_part(d)
+        shaft(d, body, radius=8.0, length=20.0, name="Block")
+        sk = body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 1.5))
+        bore = body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        body.Tip = bore
+        d.recompute()
+        thread.create(d, body, None, dict(thread.defaults(d, body, None), face=cyl_face(bore, 1.5), size="M3"))
+        d.recompute()
+        suppress.toggle_threads(d)  # made into an assembly with its threads off
+        d.recompute()
+        self.nut = os.path.join(self.dir, "Nut.FCStd")
+        d.saveAs(self.nut)
+        self.nut_doc = d
+        _, self.block = save_part(self.dir, "Block", 10, 10, 10)
+        self.doc = App.newDocument("AsmT")
+        assembly.make_assembly(self.doc, "mm")
+        self.doc.saveAs(os.path.join(self.dir, "AsmT.FCStd"))
+        assembly.place(self.doc, self.nut)
+        assembly.place(self.doc, self.block)
+
+    def tearDown(self):
+        for name in list(App.listDocuments()):
+            App.closeDocument(name)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_threads_come_back_from_the_assembly_and_go_off_again(self):
+        from incad.core import suppress
+        self.assertTrue(assembly.threads_off(self.doc))
+        self.assertEqual(assembly.toggle_threads(self.doc), "on")
+        self.assertFalse(suppress.threads_off(self.nut_doc))
+        self.assertFalse(assembly.threads_off(self.doc))
+        self.assertEqual(assembly.toggle_threads(self.doc), "off")
+        self.assertTrue(suppress.threads_off(self.nut_doc))
+
+    def test_an_assembly_without_threads_says_so(self):
+        d = App.newDocument("AsmN")
+        assembly.make_assembly(d, "mm")
+        d.saveAs(os.path.join(self.dir, "AsmN.FCStd"))
+        assembly.place(d, self.block)
+        with self.assertRaises(ValueError) as ctx:
+            assembly.toggle_threads(d)
+        self.assertIn("has threads", str(ctx.exception))
+

@@ -131,6 +131,8 @@ def sync(doc, hole, mode, size_text):
     if g is None:
         g = doc.addObject("PartDesign::FeaturePython", "HoleChamfer")
         HoleChamferFeature(g)
+        from incad.core import document
+        document.show_like(g, hole)  # drawn when it is the Tip (a chamfered Hole made last)
         g.addProperty("App::PropertyString", HELPER, "InCad", "The hole this chamfer belongs to")
         g.setPropertyStatus(HELPER, "Hidden")
         setattr(g, HELPER, hole.Name)

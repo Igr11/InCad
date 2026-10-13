@@ -77,6 +77,111 @@ def new_solid(doc):
     return body
 
 
+FACE_REF_PROP = "InCadFaceRefOf"
+
+
+def _foreign_support(sketch, body):
+    """The object of another Solid the sketch stands on (a face of the part), or None."""
+    sup = getattr(sketch, "AttachmentSupport", None) or []
+    obj = sup[0][0] if sup else None
+    if obj is None or getattr(obj, FACE_REF_PROP, None):
+        return None
+    owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+    if obj.TypeId == "PartDesign::Body":
+        owner = obj
+    return obj if owner is not None and owner is not body and owner.TypeId == "PartDesign::Body" else None
+
+
+def _projects_from(sketch, solid):
+    for obj, _subs in getattr(sketch, "ExternalGeometry", None) or []:
+        owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+        if obj is solid or owner is solid:
+            return True
+    return False
+
+
+def settle_support(sketch, body):
+    """A sketch in `body` standing on a face of another Solid. A Pad first in a Solid takes its sketch's support as
+    its base, so the new Solid would hold that whole other Solid too. With nothing projected from the other Solid
+    the face was only a plane: the sketch is left where it is, unattached (an independent Solid). With projections
+    it depends on that Solid: it is attached through a copy of the face inside `body` (a SubShapeBinder), so it
+    follows the face and the Solid still holds only its own piece. Returns True when it changed the sketch."""
+    obj = _foreign_support(sketch, body)
+    if obj is None:
+        return False
+    other = obj if obj.TypeId == "PartDesign::Body" else obj.getParentGeoFeatureGroup()
+    doc = sketch.Document
+    if _projects_from(sketch, other):
+        sub = sketch.AttachmentSupport[0][1]
+        sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+        ref = doc.addObject("PartDesign::SubShapeBinder", "FaceRef")
+        body.insertObject(ref, sketch, False)  # before the sketch it carries
+        ref.Support = [(obj, (sub,) if sub else ())]
+        ref.addProperty("App::PropertyString", FACE_REF_PROP, "InCad", "The sketch this face copy carries")
+        ref.setPropertyStatus(FACE_REF_PROP, "Hidden")
+        setattr(ref, FACE_REF_PROP, sketch.Name)
+        ref.Visibility = False
+        doc.recompute()
+        sketch.AttachmentSupport = [(ref, "Face1")]
+    else:
+        glob = sketch.getGlobalPlacement()
+        sketch.MapMode = "Deactivated"
+        sketch.AttachmentSupport = None
+        sketch.Placement = body.getGlobalPlacement().inverse().multiply(glob)
+    return True
+
+
+def settle_cross_solid_sketches(doc):
+    """Files from before: a sketch in one Solid still standing on a face of another (the new Solid then held that
+    other Solid too). Each is settled as settle_support does. Returns the sketches changed."""
+    changed = []
+    for b in bodies(doc):
+        old = {f.Name: f.Shape.copy() for f in b.Group
+               if f.isDerivedFrom("PartDesign::Feature") and not f.Shape.isNull()}
+        places = {o.Name: App.Placement(o.Placement) for o in b.Group if o.TypeId == "Sketcher::SketchObject"}
+        settled = [o for o in list(b.Group) if o.TypeId == "Sketcher::SketchObject" and settle_support(o, b)]
+        if not settled:
+            continue
+        changed += settled
+        for o in settled:
+            o.touch()  # untying moves nothing: the steps on it would keep the shape that held the other Solid
+        doc.recompute()
+        _refind_faces(b, old, places)
+    if changed:  # the old Pad took the other Solid's last step as its base, and FreeCAD hid that step
+        for b in bodies(doc):
+            show_result(b)
+    return changed
+
+
+def _refind_faces(body, old, places):
+    """The Solid's steps lost the other Solid's faces, so theirs are numbered anew: a sketch standing on one (a cut
+    sketched on the piece) and a fillet's or chamfer's edges are found again on the new shape. A sketch keeps the
+    place it had (`places`): the same face found again may lie the other way round in FreeCAD's eyes."""
+    doc = body.Document
+    for o in body.Group:
+        if o.TypeId == "Sketcher::SketchObject":
+            sup = o.AttachmentSupport
+            if not sup or sup[0][0] is None or sup[0][0].Name not in old:
+                continue
+            sub = sup[0][1]
+            sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+            fresh = remap_sub(old[sup[0][0].Name], sup[0][0].Shape, sub) if sub else None
+            if fresh and fresh != sub:
+                o.AttachmentSupport = [(sup[0][0], fresh)]
+                doc.recompute()
+                was = places.get(o.Name)
+                if was is not None and not o.Placement.isSame(was, 1e-9):
+                    o.AttachmentOffset = o.AttachmentOffset.multiply(o.Placement.inverse()).multiply(was)
+        elif o.isDerivedFrom("PartDesign::DressUp") and o.Base:
+            src, subs = o.Base[0], list(o.Base[1] or [])
+            if src is None or src.Name not in old:
+                continue
+            fresh = [remap_sub(old[src.Name], src.Shape, s) or s for s in subs]
+            if fresh != subs:
+                o.Base = (src, fresh)
+        doc.recompute()
+
+
 def _solid_count(obj):
     try:
         shape = obj.Shape
@@ -103,6 +208,67 @@ def _profile_of(feature):
     return prof[0] if isinstance(prof, (tuple, list)) and prof else prof
 
 
+def show_like(feature, base):
+    """A Python feature made from code (Split, Hole ▸ Chamfer) gets a view provider with no display mode, so it
+    draws nothing when it is the Tip: give it the display mode and look of the step before it."""
+    import FreeCAD as App
+    if not App.GuiUp or getattr(feature, "ViewObject", None) is None:
+        return
+    vo = feature.ViewObject
+    if getattr(vo, "Proxy", None) is None:
+        from incad.features.view_python import ViewProviderFeature
+        ViewProviderFeature(vo)
+    bvo = getattr(base, "ViewObject", None) if base is not None else None
+    for mode in (getattr(bvo, "DisplayMode", None), "Flat Lines"):  # modes may not be listed yet on a new one
+        if mode:
+            try:
+                vo.DisplayMode = mode
+                break
+            except Exception:
+                continue
+    for prop in ("ShapeAppearance", "LineColor", "PointColor", "LineWidth"):
+        if bvo is not None and hasattr(bvo, prop) and hasattr(vo, prop):
+            try:
+                setattr(vo, prop, getattr(bvo, prop))
+            except Exception:
+                pass
+
+
+def lump_at(body, point):
+    """The feature that added the separate piece of `body` holding `point` (a box drawn away from the part, left in
+    the part by an older file), or None when the body is one piece. The latest such feature wins."""
+    import Part
+    solids = body.Shape.Solids if body is not None and not body.Shape.isNull() else []
+    if len(solids) < 2:
+        return None
+    probe = Part.Vertex(point)
+    piece = min(solids, key=lambda s: s.distToShape(probe)[0])
+    found = None
+    for f in body.Group:
+        if not is_detached_lump(f):
+            continue
+        base = f.BaseFeature.Shape
+        added = [s for s in f.Shape.Solids if s.distToShape(base)[0] > 1e-7]
+        if any(s.distToShape(piece)[0] < 1e-7 for s in added):
+            found = f
+    return found
+
+
+def _on_piece(obj, subs, piece):
+    """Is the attachment (obj, subs) on the separate piece? A feature's shape holds the whole part, so its face may
+    lie on the rest of it; an element that can't be found counts as on the piece (as before)."""
+    if not piece or not subs or not hasattr(obj, "Shape"):
+        return True
+    for sub in subs:
+        try:
+            el = obj.Shape.getElement(sub)
+        except Exception:
+            return True
+        if any(el.distToShape(p)[0] < 1e-6 for p in piece):
+            return True
+    return False
+
+
 def detach_lump(feature):
     """Move a detached feature into a new Solid with its profile sketch and every later feature built on it;
     the features left behind are rebuilt on the one before it. Returns the new Solid."""
@@ -111,6 +277,9 @@ def detach_lump(feature):
     if not is_detached_lump(feature):
         raise ValueError("%s is not a separate piece of the part" % feature.Label)
     group = list(body.Group)
+    before = feature.BaseFeature  # what the part was before the piece: faces of the part named on the piece's
+    base = before.Shape           # steps are found again on it
+    piece = [p for p in feature.Shape.Solids if p.distToShape(base)[0] > 1e-7]
     related = [feature]  # the piece, its sketch, anything attached to it or built on those, in body order
     grown = True
     while grown:
@@ -118,8 +287,11 @@ def detach_lump(feature):
         for o in group:
             if o in related:
                 continue
-            links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)]
-            support = [sup for sup, _ in (getattr(o, "AttachmentSupport", None) or [])]
+            attached = getattr(o, "AttachmentSupport", None) or []
+            links = [x for x in o.OutList if x is not body and x is not getattr(o, "BaseFeature", None)
+                     and x not in [sup for sup, _ in attached]]
+            support = [sup for sup, subs in attached
+                       if _on_piece(sup, subs, piece)]  # a face of a later step may be on the rest of the part
             profiles = [_profile_of(r) for r in related]
             if (o in profiles or any(r in links or r in support for r in related)) and (
                     o.TypeId == "Sketcher::SketchObject" or o.isDerivedFrom("PartDesign::Feature")):
@@ -142,6 +314,10 @@ def detach_lump(feature):
             if same:
                 p.AttachmentSupport = [(same[0], support[0][1])]
         new.addObject(p)
+        # on a face of the part that stays behind (the box was sketched on the part, extruded away): a Pad takes
+        # its sketch's support as its base, so the new Solid would keep the whole part — independent unless it
+        # projects from the part (then it follows the face through a copy of it)
+        settle_support(p, new)
     for i, m in enumerate(movers):
         new.addObject(m)
         if i == 0:
@@ -153,6 +329,21 @@ def detach_lump(feature):
     if was_tip:
         solids = [o for o in body.Group if _is_solid_feature(o)]
         body.Tip = solids[-1] if solids else None
+    doc.recompute()
+    for p in group:  # left behind, attached to a face of the part named on a moved step: the same face before it
+        support = getattr(p, "AttachmentSupport", None) if p not in related else None
+        if not support or support[0][0] is None or support[0][0].Name not in old_shapes:
+            continue
+        sub = support[0][1]
+        sub = sub[0] if isinstance(sub, (tuple, list)) and sub else sub
+        fresh = remap_sub(old_shapes[support[0][0].Name], before.Shape, sub) if sub else None
+        if fresh:
+            p.AttachmentSupport = [(before, fresh)]
+        else:  # not on the part before the piece: keep its place, unattached
+            glob = p.Placement
+            p.MapMode = "Deactivated"
+            p.AttachmentSupport = None
+            p.Placement = glob
     doc.recompute()
     for p in sketches:  # a sketch on a face of a moved piece: that face has a new number now
         support = p.AttachmentSupport
@@ -173,7 +364,9 @@ def detach_lump(feature):
 
 def remap_sub(old_shape, new_shape, sub):
     """The element of `new_shape` that is the same face/edge/vertex as `sub` of `old_shape` (a feature moved to
-    its own Solid renumbers its elements): nearest centre of the same kind, or None."""
+    its own Solid renumbers its elements): nearest centre of the same kind, or None. FreeCAD marks an element it lost
+    '?Face12'."""
+    sub = sub.lstrip("?")
     try:
         old = old_shape.getElement(sub)
     except Exception:
@@ -294,13 +487,19 @@ def show_result(body):
             if not _broken_shape(o):
                 shown = o
                 break
+    chosen = bool(getattr(body, SHOWN_PROP, True))
+    base = getattr(body, "BaseFeature", None)
+    if base is not None and getattr(base, "InCadSplitPiece", False) and base.Visibility:
+        base.Visibility = False  # a Split's piece is drawn by the Solid made on it, never on its own
     try:
-        body.Visibility = True  # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides
-    except Exception:           # it in sketch edit mode): shown features inside a hidden Body show nothing
+        # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides it in sketch edit mode):
+        # shown features inside a hidden Body show nothing. A Solid hidden by Hide / Show stays hidden.
+        body.Visibility = chosen
+    except Exception:
         pass
     for o in feats:
         try:
-            o.Visibility = (o is shown)
+            o.Visibility = (o is shown) and chosen  # a Split piece's base draws even inside a hidden Body
         except Exception:
             pass
     for o in body.Group:  # profile sketches shouldn't linger in the model view after a tip move; an unused
@@ -368,9 +567,10 @@ def prepare_choice(objects):
     """Before the Hide / Show step: give every target its InCadShown holding the state it has now. Done outside
     the transaction, so the step changes a value FreeCAD can restore (a property added inside the step would be
     removed by undo, taking the previous state with it)."""
-    for o in objects:
+    for o in list(objects) + [s for s in (_solid_of(x) for x in objects) if s is not None]:
         if SHOWN_PROP not in o.PropertiesList and (o.TypeId in ORIGIN_TYPES + DATUM_TYPES
-                                                    or o.TypeId == "Sketcher::SketchObject"):
+                                                    or o.TypeId in ("Sketcher::SketchObject", "PartDesign::Body",
+                                                                    "App::Link")):
             _record_choice(o, is_shown(o))
 
 
@@ -388,6 +588,7 @@ def set_visibility(objects, flag, record=True):
                     other.Visibility = other in objects
                 origin.Visibility = True
         o.Visibility = bool(flag)
+        _tip_follows(o)
 
 
 def apply_visibility(doc):
@@ -413,6 +614,9 @@ def apply_visibility(doc):
             if not chosen and is_unused_sketch(o):
                 continue
             want = sketch_shown(o)
+        elif o.TypeId in ("PartDesign::Body", "App::Link") and chosen:  # a Solid / component hidden by choice
+            want = bool(getattr(o, SHOWN_PROP))
+            _tip_follows(o, want)
         else:
             continue
         if bool(o.Visibility) != want:
@@ -430,14 +634,39 @@ def apply_visibility(doc):
             origin.Visibility = False
 
 
+def _tip_follows(o, flag=None):
+    """A Solid hidden or shown: its Tip too (a Split piece's base keeps drawing inside a hidden Body)."""
+    tip = getattr(o, "Tip", None) if o.TypeId == "PartDesign::Body" else None
+    if tip is not None:
+        try:
+            tip.Visibility = bool(o.Visibility if flag is None else flag)
+        except Exception:
+            pass
+
+
+def _solid_of(o):
+    """The Solid (or assembly component) a pick stands for: a Body itself, a feature or the stand-in base inside
+    it, a Split's piece (outside the Solid made on it), a component link; None for anything else."""
+    if o.TypeId in ("PartDesign::Body", "App::Link"):
+        return o
+    if getattr(o, "InCadSplitPiece", False):
+        return next((b for b in o.InList if b.TypeId == "PartDesign::Body" and b.BaseFeature is o), None)
+    parent = o.getParentGeoFeatureGroup() if hasattr(o, "getParentGeoFeatureGroup") else None
+    if parent is not None and parent.TypeId == "PartDesign::Body" and o.isDerivedFrom("PartDesign::Feature"):
+        return parent
+    return None
+
+
 def toggle_visibility(objects):
-    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state."""
+    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state. Sketches, planes,
+    axes and points as they are; anything of a Solid (a face, a feature) hides or shows that whole Solid."""
     targets = [o for o in objects if o.TypeId == "Sketcher::SketchObject" or o.TypeId in ORIGIN_TYPES
                or o.TypeId in DATUM_TYPES]
+    targets += [s for s in dict.fromkeys(_solid_of(o) for o in objects if o not in targets) if s is not None]
     if not targets:
         seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
-        raise ValueError("Nothing to hide or show in %s: select a plane, an axis, a point or a sketch"
-                         % seen if seen else "Select a plane, an axis, a point or a sketch first")
+        raise ValueError("Nothing to hide or show in %s: select a solid, a plane, an axis, a point or a sketch"
+                         % seen if seen else "Select a solid, a plane, an axis, a point or a sketch first")
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag

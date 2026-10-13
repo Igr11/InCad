@@ -96,7 +96,7 @@ def test_2_ok_writes_the_pocket_and_it_follows_the_tool():
     harness.pump(1200)
     assert abs(plate_volume() - (PLATE - 10.4 * 10.4 * 5.2)) < 0.1, plate_volume()
     # one step in each document; FreeCAD marks a step shared by several documents with "-> "
-    assert plate_doc().UndoNames[0].endswith("Combine") and asm().UndoNames[0].endswith("Combine"), \
+    assert plate_doc().UndoNames[0].endswith("Boolean") and asm().UndoNames[0].endswith("Boolean"), \
         (plate_doc().UndoNames, asm().UndoNames)
     body = document.primary_body(plate_doc())
     assert not body.Shape.isInside(App.Vector(20, 15, 9), 1e-6, True)

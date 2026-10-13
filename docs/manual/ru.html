@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InCad: руководство</title>
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+:root { --ink: #16202C; --blue: #2F6FA8; --orange: #F08A24; --muted: #5B6675; --line: #D3D9E0; --soft: #F2F5F8; --warm: #FFF4E8; }
+html, body { background: #fff; }
+body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45;
+       color: var(--ink); margin: 0; max-width: 178mm; }
+p { margin: 0 0 0.55em; orphans: 3; widows: 3; }
+a { color: var(--blue); text-decoration: none; }
+h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; break-inside: avoid; }
+h1.chapter { break-before: page; page-break-before: always; font-size: 21pt; font-weight: 650; margin: 0 0 0.25em;
+             padding-bottom: 0.25em; border-bottom: 3px solid var(--blue); }
+h1.chapter .num { color: var(--orange); margin-right: 0.35em; }
+.lead { color: var(--muted); font-size: 11pt; margin-bottom: 1em; }
+h2 { font-size: 13.5pt; color: var(--blue); margin: 1.25em 0 0.4em; font-weight: 650; }
+h3 { font-size: 11pt; margin: 1em 0 0.3em; font-weight: 650; }
+.keep { break-inside: avoid; page-break-inside: avoid; }
+ul, ol { margin: 0.2em 0 0.7em; padding-left: 1.4em; }
+li { margin: 0.12em 0; }
+figure { break-inside: avoid; page-break-inside: avoid; margin: 0.9em 0 1em; }
+figure img { display: block; width: 100%; max-width: 100%; border: 1px solid var(--line); border-radius: 3px; }
+figcaption { font-size: 9pt; color: var(--muted); margin-top: 0.35em; }
+table { border-collapse: collapse; width: 100%; margin: 0.4em 0 0.9em; font-size: 9.5pt; break-inside: avoid;
+        page-break-inside: avoid; }
+table.long { break-inside: auto; page-break-inside: auto; }
+table.long tr { break-inside: avoid; page-break-inside: avoid; }
+th, td { text-align: left; vertical-align: top; padding: 0.3em 0.5em; border-bottom: 1px solid var(--line); }
+th { font-weight: 650; border-bottom: 2px solid var(--ink); background: var(--soft); }
+td:first-child { white-space: nowrap; }
+td.wrap, th.wrap { white-space: normal; }
+kbd { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 8.8pt; padding: 0 0.35em;
+      border: 1px solid #AEB7C2; border-bottom-width: 2px; border-radius: 3px; background: #fff; white-space: nowrap; }
+.ui { font-weight: 600; }
+.path { font-weight: 600; white-space: nowrap; }
+.note { border-left: 3px solid var(--orange); background: var(--warm); padding: 0.45em 0.7em; margin: 0.6em 0 0.9em;
+        break-inside: avoid; page-break-inside: avoid; }
+.tip { border-left: 3px solid var(--blue); background: var(--soft); padding: 0.45em 0.7em; margin: 0.6em 0 0.9em;
+       break-inside: avoid; page-break-inside: avoid; }
+.note b:first-child, .tip b:first-child { margin-right: 0.3em; }
+code { font-family: "SF Mono", Menlo, monospace; font-size: 9pt; background: var(--soft); padding: 0 0.25em; border-radius: 2px; }
+.cols2 { display: flex; gap: 7mm; align-items: flex-start; break-inside: avoid; page-break-inside: avoid; }
+.cols2 > table { flex: 1; }
+table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
+
+/* cover */
+.cover { height: 255mm; display: flex; flex-direction: column; justify-content: space-between; padding: 30mm 0 6mm; }
+.cover .brand { font-size: 44pt; font-weight: 700; letter-spacing: -0.5pt; }
+.cover .brand span { color: var(--blue); }
+.cover .sub { font-size: 18pt; color: var(--muted); margin-top: 0.2em; }
+.cover .bar { height: 6px; width: 60mm; background: var(--orange); margin: 10mm 0 8mm; }
+.cover .meta { font-size: 11pt; line-height: 1.6; }
+.cover .foot { font-size: 9pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 3mm; }
+
+/* table of contents */
+.toc { break-before: page; page-break-before: always; }
+.toc h1 { font-size: 21pt; margin: 0 0 0.6em; padding-bottom: 0.25em; border-bottom: 3px solid var(--blue); }
+.toc ol { list-style: none; padding: 0; margin: 0; }
+.toc li { display: flex; gap: 0.8em; padding: 0.45em 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+.toc .n { color: var(--orange); font-weight: 700; min-width: 1.6em; }
+.toc .t { font-weight: 650; }
+.toc .d { color: var(--muted); font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div>
+    <div class="brand">In<span>Cad</span></div>
+    <div class="sub">Руководство пользователя</div>
+    <div class="bar"></div>
+    <div class="meta">
+      Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
+      Версия 0.2.0 — тестовая сборка<br>
+      FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon
+    </div>
+  </div>
+  <div class="foot">
+    Руководство описывает InCad в сборке 0.2.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
+    но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
+    README_ru.txt. Октябрь 2026.
+  </div>
+</section>
+
+<section class="toc">
+  <h1>Содержание</h1>
+  <ol>
+    <li><span class="n">1</span><span><a class="t" href="#about">Что такое InCad</a><br><span class="d">Как InCad устроен поверх FreeCAD и что значит «тестовая сборка» для ваших файлов.</span></span></li>
+    <li><span class="n">2</span><span><a class="t" href="#install">Установка</a><br><span class="d">Требования, установка через Addon Manager или вручную, первый запуск, обновление, удаление.</span></span></li>
+    <li><span class="n">3</span><span><a class="t" href="#window">Окно InCad</a><br><span class="d">Лента, дерево модели, параметры, строка состояния, темы, настройки, отмена.</span></span></li>
+    <li><span class="n">4</span><span><a class="t" href="#mouse">Мышь, виды и меню-жесты</a><br><span class="d">Вращение, сдвиг и масштаб вида, меню по правой кнопке, вкладка View.</span></span></li>
+    <li><span class="n">5</span><span><a class="t" href="#sketch">Эскизы</a><br><span class="d">Создание эскиза, инструменты рисования, размеры и формулы, зависимости и Constraint List, проецирование, массивы в эскизе.</span></span></li>
+    <li><span class="n">6</span><span><a class="t" href="#features">Операции детали</a><br><span class="d">Как устроены диалоги, затем каждая операция: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Thread, Sweep, Loft, Coil, Boolean, Split, массивы, рабочие элементы.</span></span></li>
+    <li><span class="n">7</span><span><a class="t" href="#solids">Несколько тел в одной детали</a><br><span class="d">Отдельные тела, эскиз на грани другого тела, скрытие, удаление, превращение в сборку.</span></span></li>
+    <li><span class="n">8</span><span><a class="t" href="#inspect">Анализ и инструменты</a><br><span class="d">Измерения, масса, материал, сечения, настройки.</span></span></li>
+    <li><span class="n">9</span><span><a class="t" href="#assembly">Сборки</a><br><span class="d">Вставка деталей, связи и соединения, степени свободы, перемещение деталей, правка детали в контексте сборки, Make Assembly, Boolean между деталями.</span></span></li>
+    <li><span class="n">10</span><span><a class="t" href="#printing">Советы для 3D-печати</a><br><span class="d">Зазоры для печати, сохранение инструмента, печать детали частями.</span></span></li>
+    <li><span class="n">11</span><span><a class="t" href="#trouble">Если что-то не так и как сообщить о проблеме</a><br><span class="d">Что попробовать сначала, файл журнала, что прислать, известные ограничения.</span></span></li>
+    <li><span class="n">A</span><span><a class="t" href="#keys">Горячие клавиши</a><br><span class="d">Все клавиши, на которые отвечает InCad.</span></span></li>
+    <li><span class="n">B</span><span><a class="t" href="#ribbon">Карта ленты</a><br><span class="d">Все вкладки, группы и команды ленты в каждом режиме.</span></span></li>
+  </ol>
+</section>
+
+<!-- ============================================================ 1 -->
+<h1 class="chapter" id="about"><span class="num">1</span>Что такое InCad</h1>
+<p class="lead">InCad придаёт FreeCAD вид и привычки работы Autodesk Inventor и Alibre Design.</p>
+
+<p>InCad — это <b>верстак</b> (workbench) для FreeCAD: модуль, который FreeCAD загружает так же, как свои верстаки Part
+Design или Sketcher. Когда InCad включён, он заменяет панели инструментов FreeCAD интерфейсом в стиле Inventor:</p>
+<ul>
+  <li><b>лента</b> команд, вкладки которой меняются вместе с тем, что вы делаете (деталь, эскиз, сборка);</li>
+  <li><b>дерево модели</b> (Model Browser) с единой историей всей детали, эскизами под операциями, которые их
+      используют, и маркером <b>End of Part</b>, который можно перетаскивать;</li>
+  <li>панель <b>Parameters</b>, где у каждого размера и каждого значения операции есть имя, которое можно использовать в
+      формулах;</li>
+  <li><b>диалоги операций</b> с живым предпросмотром и кнопками <b>OK</b>, <b>Apply +</b> и <b>Cancel</b>;</li>
+  <li><b>меню-жесты</b> на правой кнопке мыши и навигация мышью как в Inventor;</li>
+  <li><b>эскизы</b> как в Inventor и <b>сборки</b> со связями, соединениями и степенями свободы.</li>
+</ul>
+
+<div class="keep"><h2>Внутри — FreeCAD</h2>
+<p>Всё, что создаёт InCad, — обычная геометрия FreeCAD: деталь — это тело Part Design, эскиз — эскиз Sketcher, сборка
+использует собственные соединения (joints) верстака Assembly. Ваши файлы остаются обычными файлами <b>.FCStd</b>,
+которые FreeCAD открывает и с InCad, и без него.</p></div>
+<p>Кнопка <span class="ui">FreeCAD</span> в правом верхнем углу окна (<span class="ui">Return to FreeCAD</span>) в любой
+момент возвращает обычный интерфейс FreeCAD; чтобы вернуться в InCad, выберите <span class="ui">InCad</span> в списке
+верстаков.</p>
+<p>Файл, сделанный не в InCad, тоже откроется. Тогда в дереве модели будет написано <span class="ui">Not an InCad
+part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
+FreeCAD</span>.</p>
+
+<div class="keep"><h2>Эта сборка: 0.2.0, тестовая</h2>
+<p>0.2.0 — ранняя тестовая сборка. Детали проверялись уже в прошлых сборках; в этой впервые можно тестировать
+<b>сборки</b>: вставку деталей, связи и соединения, перетаскивание деталей по их степеням свободы и Make Assembly из
+детали.</p></div>
+<div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
+выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
+
+<!-- ============================================================ 2 -->
+<h1 class="chapter" id="install"><span class="num">2</span>Установка</h1>
+<p class="lead">InCad ставится один раз через Addon Manager в FreeCAD; обновление — те же несколько шагов.</p>
+
+<div class="keep"><h2>Требования</h2>
+<ul>
+  <li>Mac на Apple Silicon (M1, M2, M3, M4 …).</li>
+  <li>FreeCAD 1.1 для macOS Apple Silicon (InCad проверен на FreeCAD 1.1.3), с сайта
+      <b>www.freecad.org/downloads.php</b>.</li>
+</ul></div>
+<p>Mac на Intel, Windows и Linux эта сборка не поддерживает.</p>
+
+<div class="keep"><h2>Установка через Addon Manager (рекомендуется)</h2>
+<ol>
+  <li>Распакуйте архив InCad. Получится папка с README, CHANGES и этим руководством, а внутри неё — папка <b>InCad</b>.
+      Положите распакованную папку туда, где она пока полежит, например в «Загрузки».</li>
+  <li>Скопируйте путь к папке <b>InCad</b> — той, что <i>внутри</i> распакованной папки: выделите её в Finder и нажмите
+      <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd> («Скопировать путь»). Путь должен заканчиваться на <code>…/InCad</code>, а
+      не на <code>.zip</code> и не на <code>…-macOS-arm64</code>.</li>
+  <li>Запустите FreeCAD и откройте <span class="path">FreeCAD ▸ Settings…</span> (Preferences…). Слева в списке выберите
+      <span class="ui">Addon Manager</span>.</li>
+  <li>В разделе <span class="ui">Custom repositories</span> нажмите <span class="ui">+</span>. В поле
+      <span class="ui">Repository URL</span> вставьте путь из шага 2. Поле <span class="ui">Branch</span> не трогайте.
+      Нажмите <span class="ui">OK</span>, затем ещё раз <span class="ui">OK</span>, чтобы закрыть настройки.</li>
+  <li>Откройте <span class="path">Tools ▸ Addon Manager</span>. Найдите в списке <b>InCad</b>, выделите и нажмите
+      <span class="ui">Install</span>.</li>
+  <li>Перезапустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+</ol></div>
+<p>После установки распакованная папка больше не нужна.</p>
+
+<div class="keep"><h2>Установка вручную (если через Addon Manager не получилось)</h2>
+<ol>
+  <li>Закройте FreeCAD.</li>
+  <li>В Finder выберите <span class="path">Переход ▸ Переход к папке…</span> (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>G</kbd>) и
+      вставьте <code>~/Library/Application Support/FreeCAD/v1-1/Mod</code>. Если папки <b>Mod</b> нет, перейдите в
+      <code>…/FreeCAD/v1-1</code> и создайте там папку с именем <b>Mod</b>.</li>
+  <li>Скопируйте папку <b>InCad</b> из распакованного архива в эту папку <b>Mod</b>. Должно получиться
+      <code>…/FreeCAD/v1-1/Mod/InCad/InitGui.py</code>, а не <code>…/Mod/InCad/InCad/InitGui.py</code>.</li>
+  <li>Запустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+</ol></div>
+
+<div class="keep"><h2>Первый запуск</h2>
+<p>При первом запуске InCad спросит, что создать и в каких единицах: <span class="ui">Part</span> (один файл детали) или
+<span class="ui">Assembly</span> (вставка и связывание файлов деталей), <span class="ui">Millimeters</span> (мм, первыми в
+списках идут резьбы ISO) или <span class="ui">Inches</span> (дюймы, первыми идут UNC/UNF). Если отметить
+<span class="ui">Remember my choice</span>, команда <span class="ui">New</span> в следующий раз сразу создаст файл того же
+вида, ничего не спрашивая. Нажмите <span class="ui">Create</span>.</p></div>
+<p>Чтобы вопрос снова появлялся, включите на ленте <span class="path">Tools ▸ Options ▸ Ask on New</span> или выберите
+<span class="path">⚙ ▸ Units for New Files ▸ Ask every time</span>.</p>
+
+<div class="keep"><h2>Чтобы FreeCAD запускался сразу в InCad</h2>
+<p><span class="path">FreeCAD ▸ Settings… ▸ Workbenches ▸ Available Workbenches ▸ Startup ▸ Default workbench: InCad</span>.
+(В FreeCAD 1.1 эта настройка находится в разделе Workbenches, а не General.)</p></div>
+
+<div class="keep"><h2>Обновление до новой сборки</h2>
+<ol>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>InCad</b> ▸ <span class="ui">Uninstall</span>. Закройте FreeCAD.</li>
+  <li>Распакуйте новую сборку и скопируйте путь к её папке <b>InCad</b> (<kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd>).</li>
+  <li><span class="path">FreeCAD ▸ Settings… ▸ Addon Manager ▸ Custom repositories</span>: выделите старый путь, удалите его
+      кнопкой <span class="ui">−</span> и добавьте новый кнопкой <span class="ui">+</span>.</li>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ <b>InCad</b> ▸ <span class="ui">Install</span>, затем перезапустите FreeCAD.</li>
+</ol></div>
+<p>Если ставили вручную: закройте FreeCAD, замените папку <code>Mod/InCad</code>, запустите FreeCAD.</p>
+
+<div class="keep"><h2>Удаление</h2>
+<p><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>InCad</b> ▸ <span class="ui">Uninstall</span>, затем
+перезапустите FreeCAD. Если ставили вручную: закройте FreeCAD и удалите папку <code>Mod/InCad</code>. Можно удалить и
+файл журнала <code>~/Library/Logs/InCad.log</code>. Ваши файлы .FCStd продолжат открываться в обычном FreeCAD.</p></div>
+
+<!-- ============================================================ 3 -->
+<h1 class="chapter" id="window"><span class="num">3</span>Окно InCad</h1>
+<p class="lead">Короткая экскурсия: для чего какая часть окна.</p>
+
+<figure>
+  <img src="img/1_overview.jpg" alt="Окно InCad с деталью">
+  <figcaption>Рис. 1. Окно InCad: сверху полоса заголовка и лента, слева дерево модели и панель Parameters, в центре
+  модель, справа ViewCube и панель навигации, внизу строка состояния.</figcaption>
+</figure>
+
+<div class="keep"><h2>3.1 Полоса заголовка</h2>
+<p>В самой верхней полосе — быстрые кнопки <span class="ui">New</span>, <span class="ui">Open</span>,
+<span class="ui">Save</span>, <span class="ui">Undo</span>, <span class="ui">Redo</span> и <span class="ui">Update</span>,
+имя файла, а справа <span class="ui">Light / Dark</span>, <span class="ui">FreeCAD</span> (Return to FreeCAD) и
+<span class="ui">⚙</span> (настройки InCad).</p></div>
+<p><span class="ui">Update</span> пересчитывает модель и перерисовывает дерево и вид. Нажмите её, если вид или дерево
+вдруг разошлись с моделью; в сборке она ещё и подтягивает изменившиеся детали (см. <a href="#asm-update">9.10</a>).</p>
+
+<div class="keep"><h2>3.2 Меню</h2>
+<p>Меню у InCad короткое: <span class="ui">File</span> (New, New Assembly, Open, Save, Save As, Close, Quit),
+<span class="ui">Edit</span> (Undo, Redo) и <span class="ui">View</span> (Light / Dark, Zoom All, Home View, Shaded,
+Wireframe, Assembly Context, Parameters, Return to FreeCAD, Ribbon Size). Всё остальное — на ленте и в меню-жестах.</p></div>
+
+<div class="keep"><h2>3.3 Лента</h2>
+<p>Вкладки ленты зависят от того, что открыто:</p></div>
+<table>
+  <tr><th>Режим</th><th>Вкладки</th></tr>
+  <tr><td>Нет файла или файл не из InCad</td><td class="wrap"><b>Get Started</b> (New, New Assembly, Open), View</td></tr>
+  <tr><td>Деталь</td><td class="wrap"><b>3D Model</b>, <b>Inspect</b>, <b>Tools</b>, <b>View</b></td></tr>
+  <tr><td>Правка эскиза</td><td class="wrap"><b>Sketch</b>, <b>View</b></td></tr>
+  <tr><td>Сборка</td><td class="wrap"><b>Assemble</b>, <b>View</b></td></tr>
+</table>
+<p>Кнопка с маленькой стрелкой — это <b>кнопка с вариантами</b>: она выполняет показанную команду, а стрелка открывает
+список вариантов (например, Rectangle ▸ Center Rectangle, 3-Point Rectangle …). Наведите указатель на кнопку, чтобы
+увидеть полное название и подсказку. <span class="path">View ▸ Ribbon Size</span> (или <span class="path">⚙ ▸ Ribbon
+Size</span>) переключает размер ленты: <span class="ui">Small</span> или <span class="ui">Large</span>. Все команды всех
+вкладок перечислены в приложении B.</p>
+
+<div class="keep"><h2>3.4 Дерево модели</h2>
+<p>Панель <b>MODEL</b> слева — это история детали, как в Inventor:</p></div>
+<ul>
+  <li>Верхняя строка — сама деталь. Под ней: <b>Origin</b> (плоскости XY, XZ и YZ, оси X, Y и Z, Center Point), затем
+      <b>Solid Bodies (n)</b>, если в детали больше одного тела (глава 7), затем операции в порядке создания — одна
+      история для всех тел детали.</li>
+  <li>Эскиз стоит под операцией, которая его использует. У строки эскиза написано <b>✓</b>, если он полностью
+      определён, или сколько степеней свободы осталось (<b>2 DOF</b>).</li>
+  <li><b>End of Part</b> отмечает, где заканчивается модель. Перетащите маркер вверх, чтобы увидеть деталь такой, какой
+      она была в этой точке истории, и работать там; операции ниже маркера становятся серыми и не вычисляются. То же
+      самое делает правый клик по операции ▸ <span class="ui">Move End of Part Here</span>. Закончив, верните маркер в
+      конец.</li>
+  <li>Цвета строк: операция с ошибкой — <b>красная</b> (наведите указатель, чтобы узнать причину); подавленная — серая и
+      <s>зачёркнутая</s>; скрытый элемент — бледный.</li>
+</ul>
+<figure>
+  <img src="img/2_highlight.jpg" alt="Выбранная в дереве операция подсвечивает свои грани">
+  <figcaption>Рис. 2. Щёлкните операцию в дереве — её грани подсветятся на модели.</figcaption>
+</figure>
+<p><b>Щелчок</b> по строке выделяет её: грани, созданные операцией, подсвечиваются в виде (рис. 2). Скрытая плоскость,
+ось, точка или эскиз показываются, пока их строка выделена, и снова прячутся, когда вы выделите другое.
+<b>Двойной щелчок</b> открывает правку: операция открывает свой диалог, эскиз открывается для редактирования, на
+плоскости начинается новый эскиз. С <kbd>⇧</kbd> или <kbd>⌘</kbd> можно выделить несколько строк.</p>
+<p><b>Правый клик</b> по строке открывает её меню-жест (глава 4):</p>
+<table>
+  <tr><th>Строка</th><th class="wrap">Команды</th></tr>
+  <tr><td>Операция или эскиз</td><td class="wrap">Edit, Move End of Part Here, Suppress / Unsuppress, Rename, Show in
+      Window, Start 2D Sketch, Delete, Hide / Show</td></tr>
+  <tr><td>Тело (Solid Bodies)</td><td class="wrap">Hide / Show, Rename, Show in Window, Delete</td></tr>
+  <tr><td>Плоскость или ось Origin</td><td class="wrap">Start 2D Sketch, Hide / Show</td></tr>
+</table>
+<ul>
+  <li><span class="ui">Show in Window</span> подсвечивает грани операции и приближает к ним вид. Обратная команда,
+      <span class="ui">Show in Browser</span> (правый клик по грани в виде), раскрывает дерево на операции, создавшей эту
+      грань.</li>
+  <li><span class="ui">Suppress / Unsuppress</span> выключает операцию, не удаляя её. Резьба подавляется вместе со
+      вспомогательными шагами, которые InCad для неё сделал; эскиз профиля операции означает саму операцию.</li>
+  <li><span class="ui">Delete</span> удаляет операцию вместе со всем, что InCad для неё создал (профили резьбы,
+      вспомогательные элементы Boolean, вырезы в сборке), одним шагом отмены. <kbd>⌫</kbd> или <kbd>Del</kbd> удаляют
+      выделенное. Если удаление затрагивает больше, чем одну строку, — тело, которое использует Boolean, главное тело,
+      Split с частями, — InCad сначала спросит и скажет, что исчезнет.</li>
+  <li><span class="ui">Hide / Show</span> работает с телами, деталями сборки, плоскостями и осями Origin, Center Point и
+      эскизами.</li>
+</ul>
+
+<div class="keep"><h2 id="params">3.5 Панель Parameters</h2>
+<figure>
+  <img src="img/14_parameters.jpg" alt="Панель Parameters">
+  <figcaption>Рис. 3. Панель Parameters: у каждого размера и значения операции есть имя; в столбец Value можно
+  вписать число с единицами или формулу, в Result — результат.</figcaption>
+</figure></div>
+<p>Под деревом модели панель <b>PARAMETERS</b> показывает значения детали в трёх столбцах: <span class="ui">Name</span>,
+<span class="ui">Value</span> (то, что вы ввели, — число или формула) и <span class="ui">Result</span>.</p>
+<ul>
+  <li><b>Параметры модели</b> (выделены акцентным цветом) создаются сами: каждый размер эскиза и каждое значение
+      операции получает следующее свободное имя <b>d0, d1, d2 …</b>; значения сборочных связей называются по связи
+      (<b>Mate1</b>, <b>Angle1</b> …). Чтобы переименовать параметр модели, впишите новое имя поверх старого — формулы,
+      которые его используют, переименуются вместе с ним.</li>
+  <li><b>Свои параметры</b>: нажмите <span class="ui">+</span>, впишите имя, нажмите <kbd>Tab</kbd> и впишите значение
+      (<code>Width</code>, <code>40 mm</code>). Это имя можно использовать в любом поле ввода.</li>
+  <li>Измените значение в столбце Value — модель обновится.</li>
+  <li><span class="ui">−</span> удаляет выделенный параметр. Значение, которое ещё где-то используется (операцией или
+      формулой), не удаляется: строка состояния скажет, кто его использует. Так удобно убирать значения, оставшиеся от
+      удалённых операций.</li>
+  <li>Пока открыто поле ввода размера или поле диалога, щелчок по имени параметра вставляет это имя в формулу.</li>
+</ul>
+<p><span class="ui">View ▸ Windows ▸ Parameters</span> (или меню-жест) переводит фокус клавиатуры на эту панель.</p>
+
+<div class="keep"><h2>3.6 Значения, единицы и формулы</h2>
+<p>Везде, где InCad просит длину или угол, можно ввести:</p></div>
+<ul>
+  <li>число в единицах файла (<code>12</code>) или с единицами (<code>12 mm</code>, <code>0.5 in</code>,
+      <code>30°</code>);</li>
+  <li>имя параметра (<code>d3</code>, <code>Width</code>);</li>
+  <li>формулу (<code>d0/2</code>, <code>Width - 2*d3</code>, <code>d3*2</code>).</li>
+</ul>
+<p>Значение-формула пересчитывается каждый раз, когда меняются значения, на которые оно ссылается.</p>
+
+<div class="keep"><h2>3.7 Строка состояния</h2>
+<p>Внизу окна слева — подсказка, что делать дальше (например, «Pick a plane or a flat face for the new sketch»), и
+сообщения: оранжевые или красные, если что-то не получилось. Когда «ничего не происходит», смотрите сначала сюда.
+Справа: единицы файла (<b>mm · deg</b>), при работе с эскизом — сколько у него осталось свободы (<b>DOF: 3</b> или
+<b>Fully constrained ✓</b>; щёлкните, чтобы увидеть свободную геометрию), и размер детали (<b>2 solids · 14
+features</b>).</p></div>
+
+<div class="keep"><h2>3.8 Светлая и тёмная тема, меню настроек</h2>
+<p><span class="ui">Light / Dark</span> на полосе заголовка (а также <span class="path">View ▸ Appearance</span> и
+меню-жест) переключает тему одним щелчком. В меню <span class="ui">⚙</span> собраны настройки InCad:</p></div>
+<table>
+  <tr><th>Меню ⚙</th><th class="wrap">Варианты</th></tr>
+  <tr><td>Theme</td><td class="wrap">Match macOS (как в системе), Light, Dark</td></tr>
+  <tr><td>Ribbon Size</td><td class="wrap">Small, Large</td></tr>
+  <tr><td>Units for New Files</td><td class="wrap">Ask every time (спрашивать), Always millimeters, Always inches</td></tr>
+  <tr><td>Dimension Display</td><td class="wrap">Как подписаны размеры эскиза: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
+  <tr><td>Mouse Navigation</td><td class="wrap">Включено: мышь InCad (вращение левой+правой кнопкой, меню по правой).
+      Выключено: действует собственный стиль навигации FreeCAD.</td></tr>
+</table>
+
+<div class="keep"><h2>3.9 Отмена и повтор</h2>
+<p><kbd>⌘</kbd> <kbd>Z</kbd> отменяет, <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Z</kbd> повторяет (а также кнопки на полосе
+заголовка и направления NW / NE меню-жеста). Каждая операция — это <b>один</b> шаг отмены: операция, созданная в
+диалоге, удаление вместе со вспомогательными элементами, скрытие, перетаскивание детали в сборке. Внутри диалога
+операции Undo шагает назад по изменениям самого диалога. Отмена работает и в эскизе.</p></div>
+<p>Пока открыт диалог операции, команды, которые ему помешали бы (Save, Undo вне диалога, правка эскиза), отклоняются
+с сообщением «Finish the … dialog first». Сначала нажмите <span class="ui">OK</span> или <span class="ui">Cancel</span>.</p>
+
+<div class="keep"><h2>3.10 Файлы</h2>
+<p><span class="ui">New</span> (<kbd>⌘</kbd> <kbd>N</kbd>) создаёт деталь или сборку (как выбрано при первом запуске),
+<span class="path">File ▸ New Assembly</span> — всегда сборку. <span class="ui">Open</span> (<kbd>⌘</kbd> <kbd>O</kbd>),
+<span class="ui">Save</span> (<kbd>⌘</kbd> <kbd>S</kbd>) и <span class="ui">Save As</span> (<kbd>⇧</kbd> <kbd>⌘</kbd>
+<kbd>S</kbd>) работают с файлом на переднем плане. <span class="ui">Close</span> (<kbd>⌘</kbd> <kbd>W</kbd>) спрашивает,
+сохранить ли изменения (<span class="ui">Save</span>, <span class="ui">Don't Save</span>, <span class="ui">Cancel</span>);
+<span class="ui">Quit</span> (<kbd>⌘</kbd> <kbd>Q</kbd>) спрашивает про каждый изменённый файл. У каждого открытого файла
+своя вкладка над видом.</p></div>
+
+<!-- ============================================================ 4 -->
+<h1 class="chapter" id="mouse"><span class="num">4</span>Мышь, виды и меню-жесты</h1>
+<p class="lead">В InCad мышь работает как в Inventor: левая кнопка выделяет, две кнопки вместе вращают вид, правая
+открывает меню-жесты.</p>
+
+<div class="keep"><h2>4.1 Мышь</h2>
+<table>
+  <tr><th>Действие</th><th class="wrap">Что происходит</th></tr>
+  <tr><td>Щелчок левой</td><td class="wrap">Выделение. Щелчок с <kbd>⇧</kbd> или <kbd>⌘</kbd> добавляет к выделенному.</td></tr>
+  <tr><td>Левая + правая, тянуть</td><td class="wrap">Вращение вокруг точки под курсором.</td></tr>
+  <tr><td>Средняя, тянуть</td><td class="wrap">Сдвиг вида.</td></tr>
+  <tr><td>Колесо</td><td class="wrap">Масштаб относительно курсора.</td></tr>
+  <tr><td>Щелчок правой</td><td class="wrap">Меню-жест (в виде и в дереве модели).</td></tr>
+  <tr><td>Правая, тянуть</td><td class="wrap">Жест: выполняет команду меню в этом направлении, не дожидаясь появления меню.</td></tr>
+  <tr><td>Двойной щелчок</td><td class="wrap">В дереве: правка строки (операция, эскиз, деталь сборки). В эскизе: правка
+      размера или массива, к которому относится копия.</td></tr>
+</table></div>
+<p>Нет средней кнопки? <span class="ui">Orbit</span> и <span class="ui">Pan</span> на панели навигации (у правого края
+вида) или на вкладке View превращают левую кнопку во вращение или сдвиг; чтобы выйти, щёлкните кнопку ещё раз.</p>
+<p><span class="path">⚙ ▸ Mouse Navigation</span> выключает обработку мыши InCad; тогда действует собственный стиль
+навигации FreeCAD.</p>
+<div class="tip"><b>Инструменты эскиза:</b> пока инструмент линии (ломаной) или сплайна FreeCAD рисует, щелчок правой
+кнопкой заканчивает цепочку, как в FreeCAD, а не открывает меню.</div>
+
+<div class="keep"><h2>4.2 Меню-жесты</h2>
+<figure>
+  <img src="img/4_menu.jpg" alt="Меню-жест по правой кнопке">
+  <figcaption>Рис. 4. Меню-жест: восемь команд вокруг курсора и короткий список под ними.</figcaption>
+</figure></div>
+<p>Щелчок правой кнопкой открывает кольцо из восьми команд вокруг курсора (север, северо-восток … северо-запад) и
+короткий список под ним. Набор команд зависит от того, что под курсором: пустое место, грань, ребро, эскиз, деталь
+сборки, строка дерева. Когда вы запомнили, где стоит команда, делайте <b>жест</b>: нажмите правую кнопку, потяните в
+сторону команды и отпустите — ждать появления меню не нужно.</p>
+<table class="long mm">
+  <tr><th>Под курсором</th><th class="wrap">Кольцо (сначала N, S, E, W)</th><th class="wrap">Список</th></tr>
+  <tr><td>Пустое место (деталь)</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Redo,
+      SE Parameters, SW Light / Dark</td><td class="wrap">Zoom All, Home View, Return to FreeCAD, Hide / Show, Show All
+      Origin, Hide All Origin, Make Assembly</td></tr>
+  <tr><td>Грань</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Look At, SE Home
+      View, SW Zoom All</td><td class="wrap">Show in Browser, Zoom Selection, Hole, Fillet, Thread, Hide / Show</td></tr>
+  <tr><td>Ребро</td><td class="wrap">N Look At, S Zoom Selection, E Fillet, W Chamfer, NW Undo, NE Redo, SE Home View,
+      SW Zoom All</td><td class="wrap">Show in Browser, Shaded, Wireframe, Hide / Show</td></tr>
+  <tr><td>В эскизе</td><td class="wrap">N Finish Sketch, S Dimension, E Circle, W Undo, NE Line, SE Rectangle,
+      SW 3-Point Arc, NW Trim</td><td class="wrap">Stop Tool, Delete, Show / Hide Constraints, Constraint List, Look At,
+      Construction, Project Geometry, Edit Pattern, Delete Pattern, а на линии или точке — Delete для каждой её
+      зависимости (раздел 5.6)</td></tr>
+  <tr><td>Пустое место (сборка)</td><td class="wrap">N Place, S Mate, E Rigid, W Create, NW Undo, NE Zoom All, SE Home
+      View, SW Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Flush, Insert, Return to
+      FreeCAD</td></tr>
+  <tr><td>Грань детали (сборка)</td><td class="wrap">N Mate, S Flush, E Angle, W Tangent, NE Look At, SW
+      Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Rigid, Parallel, Perpendicular, Zoom
+      Selection</td></tr>
+  <tr><td>Ребро детали (сборка)</td><td class="wrap">N Insert, S Rotational, E Cylindrical, W Slider, SW
+      Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Rigid, Parallel, Perpendicular, Angle,
+      Zoom Selection</td></tr>
+  <tr><td>Нет открытого файла</td><td class="wrap">N New, S Open, E Light / Dark, W Return to FreeCAD</td><td class="wrap">—</td></tr>
+</table>
+<p>У строк дерева модели свои меню (глава 3; строки сборки — в главе 9).</p>
+
+<div class="keep"><h2>4.3 Команды вида</h2>
+<p>На вкладке <b>View</b> (часть из них — также на панели навигации и в меню View):</p></div>
+<table class="long">
+  <tr><th>Команда</th><th class="wrap">Что делает</th></tr>
+  <tr><td>Light / Dark</td><td class="wrap">Переключает тему.</td></tr>
+  <tr><td>Zoom All</td><td class="wrap">Вся модель в окне.</td></tr>
+  <tr><td>Home View</td><td class="wrap">Стандартный изометрический вид.</td></tr>
+  <tr><td>Look At</td><td class="wrap">Взгляд прямо на выделенную грань или плоскость; в эскизе без выделения — прямо на
+      эскиз.</td></tr>
+  <tr><td>Zoom Selection</td><td class="wrap">Выделенное во весь вид.</td></tr>
+  <tr><td>Orbit, Pan</td><td class="wrap">Левая кнопка вращает или сдвигает вид, пока не щёлкнете кнопку ещё раз.</td></tr>
+  <tr><td>Shaded, Wireframe</td><td class="wrap">Стиль отображения. Линии Wireframe светлые в тёмной теме и тёмные в
+      светлой.</td></tr>
+  <tr><td>Section</td><td class="wrap">Разрезает вид (раздел 8.4). Повторный щелчок закрывает разрез.</td></tr>
+  <tr><td>Section by 3 Points</td><td class="wrap">Плоскость разреза по трём отмеченным точкам.</td></tr>
+  <tr><td>Hide / Show</td><td class="wrap">Скрывает или показывает выделенные тела, детали сборки, элементы Origin или эскизы.</td></tr>
+  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: все плоскости и оси Origin и центральная точка.</td></tr>
+  <tr><td>Assembly Context</td><td class="wrap">В детали, открытой из сборки: показать или скрыть остальные детали вокруг неё (9.9).</td></tr>
+  <tr><td>Degrees of Freedom</td><td class="wrap">В сборке: значки степеней свободы на каждой свободной детали (9.7).</td></tr>
+  <tr><td>Parameters</td><td class="wrap">Переводит фокус клавиатуры на панель Parameters.</td></tr>
+</table>
+
+<!-- ============================================================ 5 -->
+<h1 class="chapter" id="sketch"><span class="num">5</span>Эскизы</h1>
+<p class="lead">Эскизы работают как в Inventor: рисуете примерно, затем задаёте размеры и зависимости. У каждого размера
+есть имя, которое можно использовать в формулах.</p>
+
+<div class="keep"><h2>5.1 Новый эскиз</h2>
+<ol>
+  <li>Выделите плоскую грань детали или плоскость (в виде или в дереве) — или ничего не выделяйте.</li>
+  <li>Нажмите <kbd>S</kbd>, или <span class="path">3D Model ▸ Sketch ▸ Start 2D Sketch</span>, или правый клик ▸
+      <span class="ui">Start 2D Sketch</span> (N в меню-жесте).</li>
+  <li>Если ничего не выделено, InCad покажет плоскости Origin и маленькую панель <span class="ui">New sketch on</span> с
+      кнопками <span class="ui">XY · Top</span>, <span class="ui">XZ · Front</span> и <span class="ui">YZ · Right</span>:
+      нажмите кнопку или щёлкните плоскость или плоскую грань в виде. <kbd>Esc</kbd> или <span class="ui">Cancel</span> —
+      отказаться.</li>
+</ol></div>
+<p>Двойной щелчок по плоскости в дереве тоже начинает на ней эскиз. Чтобы изменить существующий эскиз, щёлкните его
+дважды в дереве (или правый клик ▸ Edit).</p>
+<figure>
+  <img src="img/5_sketch.jpg" alt="Режим эскиза">
+  <figcaption>Рис. 5. Режим эскиза: на ленте вкладка Sketch, в строке состояния — сколько степеней свободы осталось.</figcaption>
+</figure>
+<p>Выйти из эскиза: <span class="path">Sketch ▸ Exit ▸ Finish Sketch</span>, N в меню-жесте или <kbd>Esc</kbd>
+(первое нажатие <kbd>Esc</kbd> останавливает работающий инструмент).</p>
+
+<div class="keep"><h2>5.2 Инструменты рисования</h2>
+<p>Все — в <span class="path">Sketch ▸ Create</span>. Это инструменты Sketcher из FreeCAD; варианты собраны в кнопках со
+стрелкой.</p></div>
+<table class="long">
+  <tr><th>Кнопка</th><th class="wrap">Варианты</th><th>Клавиша</th></tr>
+  <tr><td>Line</td><td class="wrap">Line (цепочка линий; <kbd>M</kbd> во время рисования переключает линию и дугу),
+      Single Line</td><td><kbd>L</kbd></td></tr>
+  <tr><td>Circle</td><td class="wrap">Circle (центр и радиус), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
+  <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
+  <tr><td>Rectangle</td><td class="wrap">Rectangle (угол, ширина, высота), Center Rectangle, 3-Point Rectangle, 3-Point
+      Center Rect., Rounded Rectangle</td><td><kbd>R</kbd></td></tr>
+  <tr><td>Slot</td><td class="wrap">Center-to-Center Slot, Overall Slot (два крайних конца, затем ширина), Center Point
+      Slot (центр, центр одного конца, затем ширина), Arc Slot, Flat-End Arc Slot</td><td></td></tr>
+  <tr><td>Polygon</td><td class="wrap">Hexagon, Triangle, Square, Pentagon, Octagon, Polygon (N sides)</td><td></td></tr>
+  <tr><td>Spline</td><td class="wrap">Spline (через точки), Control-Vertex Spline</td><td></td></tr>
+  <tr><td>Point</td><td class="wrap">Точка эскиза (например, центр отверстия)</td><td></td></tr>
+</table>
+<p><span class="path">Sketch ▸ Modify</span>: <span class="ui">Fillet</span> и <span class="ui">Chamfer</span> (скругление и
+фаска углов эскиза), <span class="ui">Trim</span> (<kbd>X</kbd>), <span class="ui">Extend</span>, <span class="ui">Offset</span>.
+В <span class="path">Sketch ▸ Pattern</span> — массивы в эскизе (5.9) и <span class="ui">Mirror</span>.</p>
+<p><b>Ввод значений при рисовании.</b> Пока инструмент рисует, вводите длину, радиус или угол прямо с клавиатуры;
+<kbd>Tab</kbd> переходит к следующему полю. <kbd>Esc</kbd> или <span class="ui">Stop Tool</span> (меню-жест) завершает
+инструмент.</p>
+<p><b>Удаление</b> геометрии или размеров: выделите их и нажмите <kbd>⌫</kbd> или <kbd>Del</kbd>.</p>
+
+<div class="keep"><h2>5.3 Размеры</h2>
+<ol>
+  <li>Нажмите <kbd>D</kbd> (или <span class="path">Sketch ▸ Dimension</span>, S в меню-жесте).</li>
+  <li>Щёлкните линию, окружность, две точки или две линии и поставьте размер.</li>
+  <li>Откроется поле ввода: <span class="ui">d3 = 40 mm</span>. Введите значение (или формулу) и нажмите <kbd>Enter</kbd>
+      или <span class="ui">✓</span>; <kbd>Esc</kbd> или <span class="ui">✕</span> — отмена. Если значение нельзя
+      применить, поле становится красным и объясняет почему.</li>
+</ol></div>
+<p>Чтобы потом изменить размер, щёлкните его дважды. Каждый размер получает имя (<b>d0, d1 …</b>) и появляется в панели
+Parameters, где его можно переименовать (<code>Width</code>) — см. 3.5.</p>
+<p><b>Формулы.</b> В поле ввода щёлкните другой размер эскиза или параметр в панели Parameters — его имя вставится в
+формулу: <code>d0/2</code>, <code>Width - 2*d3</code>. В формуле можно использовать другие размеры и параметры, но не
+справочный (ведомый) размер того же эскиза.</p>
+<p><span class="path">⚙ ▸ Dimension Display</span> выбирает, как подписаны размеры: значение (40), имя (d3) или оба
+(d3 = 40).</p>
+
+<div class="keep"><h2>5.4 Зависимости</h2>
+<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Horizontal</span>,
+<span class="ui">Vertical</span>, <span class="ui">Parallel</span>, <span class="ui">Perpendicular</span>,
+<span class="ui">Tangent</span>, <span class="ui">Equal</span>, <span class="ui">Symmetric</span>,
+<span class="ui">Fix</span> и <span class="ui">List</span> (Constraint List, 5.5). Выделите геометрию и нажмите зависимость
+(или сначала зависимость, потом геометрию).</p></div>
+<p>В строке состояния видно, сколько у эскиза степеней свободы: <b>DOF: 3</b> или <b>Fully constrained ✓</b>. Щелчок по
+этой надписи или <span class="path">Sketch ▸ Format ▸ Show Free Geometry</span> выделяет геометрию, которая ещё может
+двигаться.</p>
+<p><span class="path">Sketch ▸ Format ▸ Show / Hide Constraints</span> скрывает или показывает значки зависимостей
+(размеры остаются); <kbd>F8</kbd> показывает, <kbd>F9</kbd> скрывает.</p>
+
+<div class="keep"><h2 id="constraint-list">5.5 Constraint List — список зависимостей</h2>
+<figure>
+  <img src="img/6_constraint_list.jpg" alt="Окно Constraint List">
+  <figcaption>Рис. 6. Constraint List: все зависимости эскиза, с фильтром по выбранной линии или точке.</figcaption>
+</figure></div>
+<p>Откройте его через <span class="path">Sketch ▸ Constrain ▸ List</span> или правый клик в эскизе ▸
+<span class="ui">Constraint List</span>. В списке — все зависимости эскиза, что они связывают и их значения, включая
+те, у которых нет значка для щелчка: совпадение точек, точка на линии.</p>
+<ul>
+  <li>Выберите в эскизе линию или точку — в списке останутся только её зависимости. Ничего не выбрано — видны все.</li>
+  <li>Выделите строку — зависимость будет показана в эскизе.</li>
+  <li>Отметьте строки (или <span class="ui">Select all</span>) и нажмите <span class="ui">Delete selected</span>. Это один шаг отмены.</li>
+  <li>Зависимости, которые держат массив в эскизе, и размеры, используемые в формулах, не удаляются; окно объясняет почему.</li>
+</ul>
+
+<div class="keep"><h2>5.6 Удаление зависимостей правой кнопкой</h2>
+<p>Щёлкните правой кнопкой линию или точку эскиза: в списке меню-жеста появятся пункты <span class="ui">Delete …</span>
+для каждой её зависимости (например, <span class="ui">Delete Horizontal</span> или <span class="ui">Delete Distance
+(Line 2) d4 = 20 mm</span>), <span class="ui">Delete all constraints (n)</span> и <span class="ui">Constraints…</span> —
+этот пункт открывает Constraint List для выбранного элемента.</p></div>
+
+<div class="keep"><h2>5.7 Project Geometry и вспомогательная геометрия</h2>
+<p><span class="path">Sketch ▸ Insert ▸ Project Geometry</span> переносит в эскиз рёбра и точки детали. Как в Inventor,
+спроецированные рёбра — <b>обычные линии</b>: они сразу могут входить в профиль и следуют за деталью, когда она
+меняется.</p></div>
+<p><span class="path">Sketch ▸ Format ▸ Construction</span> работает двумя способами:</p>
+<ul>
+  <li>если геометрия выделена (в том числе спроецированные рёбра), переключает её между обычной и вспомогательной;</li>
+  <li>если ничего не выделено, включает режим: всё, что вы рисуете, будет вспомогательным, пока не щёлкнете кнопку ещё раз.</li>
+</ul>
+<p>Вспомогательная геометрия не входит в профили; используйте её для осей и построений.</p>
+
+<div class="keep"><h2>5.8 Как увидеть эскиз</h2>
+<ul>
+  <li><span class="ui">Slice Graphics</span> (<kbd>F7</kbd>, <span class="path">Sketch ▸ Format</span>) срезает часть
+      детали перед плоскостью эскиза, чтобы был виден эскиз внутри детали.</li>
+  <li><span class="ui">Look At</span> (меню-жест) поворачивает вид прямо на эскиз.</li>
+  <li>После <span class="ui">Finish Sketch</span> эскиз, который не используется ни одной операцией и представляет собой
+      <b>незамкнутый контур</b> (например, путь для Sweep), остаётся видимым в модели; замкнутый эскиз и любой эскиз,
+      используемый операцией, скрываются. <span class="ui">Hide / Show</span> меняет это для любого эскиза.</li>
+</ul></div>
+
+<div class="keep"><h2 id="sketch-patterns">5.9 Массивы в эскизе</h2>
+<p><span class="path">Sketch ▸ Pattern</span> размножает геометрию эскиза. Копии — настоящая геометрия эскиза, связанная
+с оригиналом: измените оригинал, и копии последуют за ним.</p></div>
+<p><b>Edit Pattern</b>: дважды щёлкните копию или выделите копию и выберите правый клик ▸ <span class="ui">Edit Pattern</span>.
+<b>Delete Pattern</b> (правый клик по копии) удаляет копии, оригинал остаётся. Если удалить отдельные копии, массив
+перестроится при следующей правке.</p>
+<div class="keep"><h3>Rectangular</h3>
+<table>
+  <tr><th>Поле</th><th class="wrap">Смысл</th></tr>
+  <tr><td>Geometry</td><td class="wrap">Линии, дуги, окружности и точки, которые надо размножить.</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>By spacing</b> (направление, количество и шаг) или <b>Equal spacing</b>
+      (количество копий, равномерно распределённых между двумя границами).</td></tr>
+  <tr><td>Direction 1, Flip direction</td><td class="wrap">Линия эскиза или ось X или Y.</td></tr>
+  <tr><td>Count, Spacing</td><td class="wrap">Сколько (2) и с каким шагом (10 мм).</td></tr>
+  <tr><td>From, To</td><td class="wrap">Для Equal spacing: границы — линия или точка.</td></tr>
+  <tr><td>Two directions</td><td class="wrap">Для By spacing: второе направление с Direction 2, Count 2 и Spacing 2.</td></tr>
+</table></div>
+<div class="keep"><h3>Circular</h3>
+<table>
+  <tr><th>Поле</th><th class="wrap">Смысл</th></tr>
+  <tr><td>Geometry</td><td class="wrap">Что размножить.</td></tr>
+  <tr><td>Axis</td><td class="wrap">Центр — любая точка эскиза, спроецированная точка или начало координат.</td></tr>
+  <tr><td>Count, Angle</td><td class="wrap">Сколько (4) и на какой угол (360°).</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>Fitted</b> (копии заполняют угол) или <b>Between copies</b> (угол — это
+      шаг между соседними копиями).</td></tr>
+  <tr><td>Flip</td><td class="wrap">В другую сторону.</td></tr>
+</table></div>
+<div class="keep"><h3>Along Path</h3>
+<table>
+  <tr><th>Поле</th><th class="wrap">Смысл</th></tr>
+  <tr><td>Geometry</td><td class="wrap">Что размножить.</td></tr>
+  <tr><td>Path</td><td class="wrap">Линии, дуги и сплайны пути, по порядку.</td></tr>
+  <tr><td>Count</td><td class="wrap">Сколько (3).</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>By spacing</b> (шаг Spacing вдоль пути) или <b>Fit to path</b>.</td></tr>
+  <tr><td>Orientation</td><td class="wrap"><b>Identical</b> (все копии как оригинал) или <b>Follow path</b> (поворачиваются вместе с путём).</td></tr>
+  <tr><td>Flip</td><td class="wrap">Идти по пути в обратную сторону.</td></tr>
+</table></div>
+
+<!-- ============================================================ 6 -->
+<h1 class="chapter" id="features"><span class="num">6</span>Операции детали</h1>
+<p class="lead">Каждая операция открывает диалог с живым предпросмотром. Сначала — как устроены диалоги, затем каждая
+операция: что выбрать и что значит каждый параметр.</p>
+
+<div class="keep"><h2 id="dialogs">6.1 Как работают диалоги операций</h2>
+<figure>
+  <img src="img/3_dialog.jpg" alt="Правка Extrude">
+  <figcaption>Рис. 7. Правка Extrude: слева диалог, на модели предпросмотр. Подпись «Distance (d19)» значит, что значение
+  — параметр модели d19.</figcaption>
+</figure></div>
+<ul>
+  <li><b>Выделить сначала или выбрать потом.</b> Выделите грани, рёбра или эскиз и нажмите команду — или нажмите команду
+      и выбирайте в виде или в дереве, пока открыт диалог. Выбор попадает в подсвеченное поле. Щёлкните другое поле выбора
+      (<span class="ui">Select…</span>), чтобы следующий выбор шёл в него. Пока вы выбираете, деталь показана такой, какой
+      была до этой операции, — так можно добраться до любой грани.</li>
+  <li><b>Профиль.</b> Extrude и Revolve сами берут единственный законченный эскиз, который ещё не использует ни одна
+      операция; если таких несколько, выделите нужный. Если в эскизе пересекаются линии, InCad покажет его области:
+      щёлкните нужную.</li>
+  <li><b>Предпросмотр.</b> Любое изменение сразу видно на модели.</li>
+  <li><b>Значения.</b> Числа с единицами или без, имена и формулы (3.6). Стрелки <span class="ui">▲</span>
+      <span class="ui">▼</span> рядом со значением — и клавиши <kbd>↑</kbd> <kbd>↓</kbd> — меняют его на одну единицу
+      (1 мм, 1°, 1/16 дюйма), с <kbd>⇧</kbd> — на десять. Формулу шагать нельзя. После названия поля стоит имя параметра,
+      например <span class="ui">Distance (d19)</span>; щелчок по параметру в панели Parameters вставляет его имя.</li>
+  <li><b>Варианты.</b> Варианты — это кнопки; длинные списки переносятся по четыре в ряд. Вариант, недоступный при текущем
+      выборе, серый. Если выбранный вариант требует указать что-то в модели, выбор начинается сразу.</li>
+  <li><b>Кнопки.</b> <span class="ui">OK</span> создаёт операцию и закрывает диалог. <span class="ui">Apply +</span>
+      создаёт её и оставляет диалог открытым для следующей такой же. <span class="ui">Cancel</span> или <kbd>Esc</kbd>
+      оставляют всё как было.</li>
+  <li><b>Ошибки</b> выводятся красным внизу диалога простыми словами («Pick the cylindrical face to thread»). Иногда
+      диалог предлагает кнопку с обходным путём.</li>
+  <li><b>Правка.</b> Дважды щёлкните операцию в дереве (или правый клик ▸ <span class="ui">Edit</span>) — диалог откроется
+      снова с её значениями.</li>
+</ul>
+
+<div class="keep"><h2>6.2 Extrude <kbd>E</kbd> — выдавливание</h2>
+<p><span class="path">3D Model ▸ Create ▸ Extrude</span>. Выдавливает замкнутый профиль эскиза в тело или вырезает им.</p></div>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b> (добавить материал), <b>Cut</b> (вырезать), <b>Intersect</b>
+      (оставить только общее у выдавливания и детали), <b>New Solid</b> (отдельное тело, глава 7). Если эскиз лежит на
+      материале или внутри него, сразу выбран Cut, иначе Join.</td></tr>
+  <tr><td>Extents</td><td class="wrap"><b>Distance</b> (на расстояние); <b>To Next</b> (до следующей грани детали; если в
+      выбранную сторону ничего нет — в сторону детали); <b>Through All</b> (насквозь); <b>To</b> (до выбранной грани
+      <b>Face</b>, плоской или кривой, или рабочей плоскости).</td></tr>
+  <tr><td>Distance</td><td class="wrap">Длина (10 мм).</td></tr>
+  <tr><td>Direction</td><td class="wrap"><b>→</b> в сторону по умолчанию, <b>←</b> в другую сторону, <b>⇆</b> симметрично
+      (по половине в каждую), <b>⇄ 2</b> в обе стороны на разную длину (<b>Distance 2</b>, 5 мм).</td></tr>
+  <tr><td>Taper</td><td class="wrap">Уклон боковых стенок (0°).</td></tr>
+</table>
+<p>Join, который не касается детали, становится отдельным телом; строка состояния об этом скажет. Join и Cut можно
+поменять потом в диалоге, если на этом Extrude не построены другие операции.</p>
+
+<div class="keep"><h2>6.3 Revolve <kbd>R</kbd> — вращение</h2>
+<p><span class="path">3D Model ▸ Create ▸ Revolve</span>. Вращает профиль эскиза вокруг оси.</p></div>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b> или <b>Cut</b>.</td></tr>
+  <tr><td>Axis</td><td class="wrap">
+      <b>Sketch vertical</b> или <b>Sketch horizontal</b> — собственные оси эскиза.<br>
+      <b>Construction / projected line</b> — вспомогательная линия эскиза или спроецированное прямое ребро, выбирается в
+      списке <b>Line</b>. Если такая линия в эскизе одна, она выбрана сразу. Чтобы вращать вокруг ребра детали,
+      спроецируйте это ребро в эскиз (ребро, перпендикулярное эскизу, проецируется в точку и в списке не появится).<br>
+      <b>Line, axis or edge</b> — в поле <b>Pick</b> укажите в виде линию эскиза, ось Origin или рабочую ось, или прямое
+      ребро.<br>
+      <b>Two points</b> — щёлкните две точки (<b>Points</b>) на детали: углы, середины рёбер, центры окружностей. Они
+      проецируются на плоскость профиля, поэтому ось всегда лежит в этой плоскости.</td></tr>
+  <tr><td>Extents</td><td class="wrap"><b>Full</b> (360°), <b>Angle</b> (с <b>Flip</b> — в другую сторону), <b>Two
+      angles</b> (<b>Angle</b> и <b>Angle 2</b>, по углу в каждую сторону). Углы по умолчанию 90°.</td></tr>
+</table>
+<p>Для спроецированной линии или двух точек InCad хранит под операцией скрытую ось <b>Revolve axis</b>; она удаляется
+вместе с операцией.</p>
+
+<div class="keep"><h2>6.4 Hole <kbd>H</kbd> — отверстие</h2>
+<p><span class="path">3D Model ▸ Create ▸ Hole</span>. Простые, с цековкой, с зенковкой и резьбовые отверстия.</p></div>
+<figure>
+  <img src="img/12_hole_dialog.jpg" alt="Диалог Hole">
+  <figcaption>Рис. 8. Диалог Hole.</figcaption>
+</figure>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Placement</td><td class="wrap"><b>From Sketch</b>: отверстие в каждой точке и в центре каждой окружности
+      выбранного эскиза (<b>Sketch</b>). <b>Concentric</b>: укажите плоскую грань (<b>Face</b>) и круглое ребро
+      (<b>Circular edge</b>); отверстие встанет соосно ребру.</td></tr>
+  <tr><td>Hole</td><td class="wrap"><b>Simple</b> (диаметр <b>Diameter</b>, 5 мм), <b>Clearance</b> (под винт: Standard,
+      Size и посадка <b>Fit</b> — Close, Normal, Loose), <b>Tapped</b> (с моделированной резьбой).</td></tr>
+  <tr><td>Standard</td><td class="wrap">Для Clearance и Tapped: ISO metric, ISO metric fine, UNC, UNF, UNEF, NPT, G / BSP,
+      BSW, BSF.</td></tr>
+  <tr><td>Size</td><td class="wrap">Размер резьбы или <b>Auto (from Diameter)</b>.</td></tr>
+  <tr><td>Seat</td><td class="wrap"><b>None (drilled)</b>, <b>Counterbore</b> — цековка (C'bore Ø 10 мм, C'bore depth 3 мм),
+      <b>Countersink</b> — зенковка (C'sink Ø 10 мм, C'sink angle 90°), <b>Spotface</b> — подрезка (Spotface Ø 10 мм,
+      Spotface depth 0,5 мм).</td></tr>
+  <tr><td>Termination</td><td class="wrap"><b>Distance</b> (глубина <b>Depth</b>, 10 мм), <b>Through All</b> (по умолчанию),
+      <b>To</b> (до <b>To face</b> — грани или рабочей плоскости).</td></tr>
+  <tr><td>Drill point</td><td class="wrap">Для Distance и To: <b>Flat</b> (плоское дно) или <b>Angle</b> (<b>Point angle</b> 118°).</td></tr>
+  <tr><td>Thread</td><td class="wrap">Для Tapped: <b>Whole hole</b> (на всю глубину) или <b>Depth</b> (<b>Thread depth</b>, 8 мм).</td></tr>
+  <tr><td>Print clearance<br>(on diameter)</td><td class="wrap">Для Tapped: насколько резьба делается больше, чтобы
+      напечатанные детали подошли друг к другу (0,2 мм по диаметру).</td></tr>
+  <tr><td>Direction</td><td class="wrap">Для Tapped: <b>Right hand</b> (правая) или <b>Left hand</b> (левая).</td></tr>
+  <tr><td>Flip direction</td><td class="wrap">Сверлить в другую сторону.</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>None</b>, <b>Start</b>, <b>Both ends</b>, размер <b>Chamfer size</b> (0,5 мм):
+      заходная фаска 45° на входе и, у сквозного отверстия, на выходе. У резьбового отверстия фаска считается от диаметра
+      резьбы, чтобы винт легко заходил. С цековкой, зенковкой или подрезкой фаска возможна только на выходе (Start серый).</td></tr>
+</table>
+<div class="tip"><b>Другие резьбы в отверстии:</b> для Trapezoidal, ACME, print-friendly или своей (Custom) резьбы сначала
+сделайте простое отверстие (Simple), затем примените к его грани <b>Thread</b> (6.9).</div>
+
+<div class="keep"><h2>6.5 Fillet <kbd>F</kbd> и Chamfer — скругление и фаска</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Fillet</span> / <span class="ui">Chamfer</span> (одна кнопка с вариантами).
+Выделите рёбра и нажмите команду — или выберите рёбра в диалоге. Есть и в меню-жесте на ребре (E Fillet, W Chamfer).</p></div>
+<table>
+  <tr><th>Операция</th><th class="wrap">Поля</th></tr>
+  <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 мм).</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>Edges</b>; <b>Type</b>: <b>Distance</b>, <b>Two distances</b> (Distance,
+      Distance 2) или <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> меняет стороны для двух последних типов.
+      Расстояния по умолчанию 1 мм.</td></tr>
+</table>
+<p>Рёбра должны принадлежать текущей форме детали.</p>
+
+<div class="keep"><h2>6.6 Shell — оболочка</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Shell</span> делает деталь пустотелой.</p></div>
+<table>
+  <tr><th>Поле</th><th class="wrap">Смысл</th></tr>
+  <tr><td>Remove faces</td><td class="wrap">Грани, которые будут открыты (выберите их).</td></tr>
+  <tr><td>Thickness</td><td class="wrap">Толщина стенки (1 мм).</td></tr>
+  <tr><td>Direction</td><td class="wrap"><b>Inside</b> (внешний размер сохраняется) или <b>Outside</b> (стенка наращивается наружу).</td></tr>
+</table>
+<p>FreeCAD не умеет делать оболочку детали, в которой уже есть моделированная резьба. Тогда диалог предложит сделать
+Shell <b>до</b> резьбы; можно и самому перетащить End of Part выше резьбы, сделать там Shell и вернуть End of Part
+обратно.</p>
+
+<div class="keep"><h2>6.7 Draft — уклон</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Draft</span> (в одной кнопке с Shell) наклоняет грани для литья: выберите грани
+(<b>Faces</b>), нейтральную плоскость (<b>Neutral plane</b> — там грани сохраняют размер), угол <b>Angle</b> (1°);
+<b>Reverse</b> наклоняет в другую сторону.</p></div>
+
+<div class="keep"><h2>6.8 Sweep, Loft и Coil</h2>
+<p>В кнопке с вариантами в <span class="path">3D Model ▸ Create</span> после Hole. У каждой есть <b>Operation</b>: Join или Cut.</p></div>
+<table class="long">
+  <tr><th>Операция</th><th class="wrap">Поля</th></tr>
+  <tr><td>Sweep</td><td class="wrap">Профиль <b>Profile</b> (замкнутый эскиз) вдоль пути <b>Path</b> (другой эскиз: линии,
+      дуги, сплайны). <b>Wall</b> (только для Join) делает трубу: толщина <b>Thickness</b> (1 мм) и концы <b>Ends</b> — Both
+      open, Start closed или End closed.</td></tr>
+  <tr><td>Loft</td><td class="wrap"><b>Sections</b>: два эскиза-сечения или больше, по порядку. Список показывает их с
+      номерами; <span class="ui">▲</span> <span class="ui">▼</span> сдвигают сечение раньше или позже,
+      <span class="ui">✕</span> убирает. <b>Ruled</b> — прямые грани между сечениями; <b>Closed</b> — последнее сечение
+      соединяется с первым.</td></tr>
+  <tr><td>Coil</td><td class="wrap">Пружина: профиль <b>Profile</b> (эскиз), ось <b>Axis</b> (ось, линия эскиза или прямое
+      ребро), шаг <b>Pitch</b> (5 мм), высота <b>Height</b> (20 мм), направление <b>Direction</b> — Right hand или Left hand.</td></tr>
+</table>
+<p>Путь для Sweep обычно незамкнутый эскиз; такие эскизы остаются видимыми после Finish Sketch, их легко выбрать.</p>
+
+<div class="keep"><h2 id="thread">6.9 Thread — резьба</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Thread</span>. Настоящая винтовая резьба — геометрия, которую можно напечатать.
+Выделите наружную поверхность вала или внутреннюю поверхность отверстия (полную цилиндрическую грань) и нажмите Thread.
+Есть и в меню-жесте на грани.</p></div>
+<figure>
+  <img src="img/13_thread_dialog.jpg" alt="Диалог Thread">
+  <figcaption>Рис. 9. Диалог Thread.</figcaption>
+</figure>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Face</td><td class="wrap">Цилиндрическая грань под резьбу.</td></tr>
+  <tr><td>Start face</td><td class="wrap">Необязательно: плоская грань на том конце, откуда начинается резьба. Без неё
+      резьба начинается со свободного конца (торец вала, вход отверстия); у сквозного отверстия или свободного стержня — с
+      конца, где есть фаска или скругление.</td></tr>
+  <tr><td>Offset</td><td class="wrap">Отступ от начала (0 мм).</td></tr>
+  <tr><td>Length</td><td class="wrap"><b>Full length</b> (на всю длину) или <b>Distance</b> (10 мм).</td></tr>
+  <tr><td>Flip direction</td><td class="wrap">Начать с другого конца.</td></tr>
+  <tr><td>Standard</td><td class="wrap">ISO metric, ISO metric fine, UNC, UNF, G / BSP, NPT (коническая), Trapezoidal,
+      ACME, Print-friendly (с плоскими вершинами, размеры от M3) или Custom (шаг <b>Pitch</b> 1,5 мм, угол профиля
+      <b>Flank angle</b> 60°, глубина <b>Depth</b> 0,9 мм).</td></tr>
+  <tr><td>Size</td><td class="wrap">Размер по стандарту или <b>Auto (from the face)</b>: размер, подходящий к грани
+      (отверстие Ø3 — M3, Ø4 — M4; отверстие под метчик получает свою резьбу: Ø5,2 → M6, Ø8,5 → M10).</td></tr>
+  <tr><td>Hand</td><td class="wrap"><b>Right hand</b> (правая) или <b>Left hand</b> (левая).</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>None</b>, <b>Start</b> или <b>Both ends</b>, размер <b>Chamfer size</b> (1 мм).</td></tr>
+  <tr><td>Print clearance<br>(on diameter)</td><td class="wrap">Сколько места оставляет резьба, чтобы напечатанные детали
+      свинчивались (0,2 мм по диаметру; 0,3 мм для Print-friendly — ставится при выборе этого стандарта). 0 — номинальная резьба.</td></tr>
+</table>
+<p><b>Размер не совпадает с отверстием.</b> В отверстии работает любой разумный размер: в отверстии Ø3 резьба M3
+сначала заполняет отверстие до диаметра под метчик M3, а M4 сначала рассверливает его до диаметра под метчик M4. Эти
+вспомогательные шаги стоят в истории прямо перед резьбой; заполнение идёт только там, где у отверстия стенка по всему
+кругу. Размер, сильно отличающийся от отверстия, отклоняется с сообщением.</p>
+<p><b>На стержне</b> сначала стержень обтачивается до вершин резьбы (шаг <b>ThreadTrim</b> под Thread), чтобы на
+вершинах не оставалось тонкого гребня.</p>
+<p>Suppress, Delete и Edit для резьбы действуют на неё вместе с её вспомогательными шагами.</p>
+
+<div class="keep"><h2>6.10 Threads Off / On — резьбы выкл./вкл.</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Threads</span>. Моделированные резьбы замедляют перерисовку. Нажмите
+<span class="ui">Threads</span>, чтобы на время работы подавить все резьбы, и ещё раз, чтобы вернуть их. Резьба, которую
+вы подавили сами, остаётся выключенной. Команда выключает и моделированную резьбу резьбовых отверстий (сами отверстия
+остаются).</p></div>
+
+<div class="keep"><h2 id="boolean">6.11 Boolean — булевы операции</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (в Inventor — Combine) объединяет, вычитает или пересекает тела
+детали. Выделите базовое тело, затем тело-инструмент (одно или несколько) и нажмите Boolean — или выберите их в диалоге:
+щелчок в любом месте тела выбирает всё тело.</p></div>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Base</td><td class="wrap">Тело, которое меняется.</td></tr>
+  <tr><td>Tools</td><td class="wrap">Одно или несколько других тел. Щелчок по базовому телу при выборе инструментов
+      не учитывается.</td></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b>, <b>Cut</b> (по умолчанию) или <b>Intersect</b>.</td></tr>
+  <tr><td>Clearance (per side)</td><td class="wrap">Только для Cut: зазор с каждой стороны (0,2 мм), чтобы напечатанные
+      детали входили друг в друга.</td></tr>
+  <tr><td>Clearance on</td><td class="wrap">Только для Cut: <b>Cavity</b> (увеличивается полость), <b>Tool</b> (полость
+      точная, а для печати делается уменьшенная копия «&lt;Tool&gt; fit»), <b>Split</b> (пополам).</td></tr>
+  <tr><td>Keep tool</td><td class="wrap">Выключено (так диалог открывается): инструмент расходуется и виден в дереве под
+      Boolean. Включено: инструмент остаётся отдельным видимым телом — напечатайте и штифт, и коробку.</td></tr>
+</table>
+<p>Инструменты остаются редактируемыми: измените инструмент — изменится и результат. Резьба и другие сложные формы могут
+не принять зазор; диалог об этом скажет.</p>
+
+<div class="keep"><h2>6.12 Split — разделение</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Split</span>. Линии эскиза (отрезки, дуги, сплайны) становятся тонкими
+режущими поверхностями через всю деталь.</p></div>
+<table>
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Sketch</td><td class="wrap">Эскиз, линии которого режут деталь (выделите его до команды или выберите в диалоге).</td></tr>
+  <tr><td>Mode</td><td class="wrap"><b>Keep all</b>: остаются все части; это тело сохраняет самую большую часть, а каждая
+      другая часть становится отдельным телом — его можно скрыть, дорабатывать, сделать деталью (Make Assembly). Части
+      продолжают следовать за эскизом. <b>Keep picked</b>: остаются только части, по которым вы щёлкнули (<b>Keep</b>).</td></tr>
+</table>
+<p>Удаление Split снова соединяет части; InCad сначала спросит и назовёт тела, которые исчезнут.</p>
+
+<div class="keep"><h2>6.13 Массивы и зеркало</h2>
+<p><span class="path">3D Model ▸ Pattern</span>: <span class="ui">Rectangular</span>, <span class="ui">Circular</span> и
+<span class="ui">Mirror</span> (одна кнопка с вариантами). Они повторяют операции: выберите их в дереве или щёлкните одну
+из их граней. Выбор скругления, фаски или резьбы означает операцию, которую они изменяют.</p></div>
+<table class="long">
+  <tr><th>Операция</th><th class="wrap">Поля</th></tr>
+  <tr><td>Rectangular</td><td class="wrap"><b>Features</b>; <b>Include dependent features</b> (повторить и то, что на них
+      построено, — например, отверстие в бобышке); <b>Distribution</b>: <b>By spacing</b> (<b>Direction 1</b> — прямое
+      ребро или ось, <b>Count</b> 2, <b>Spacing</b> 10 мм) или <b>Equal spacing</b> (Count копий между <b>From</b> и
+      <b>To</b>: плоская грань, ребро или рабочая плоскость); <b>Flip direction</b>; <b>Two directions</b> (Direction 2,
+      Count 2, Spacing 2).</td></tr>
+  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>, <b>Count</b> (4),
+      <b>Angle</b> (360°).</td></tr>
+  <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (плоская грань или плоскость).</td></tr>
+</table>
+
+<div class="keep"><h2>6.14 Рабочие элементы</h2>
+<p><span class="path">3D Model ▸ Work Features</span>: <span class="ui">Plane</span>, <span class="ui">Axis</span>,
+<span class="ui">Point</span> (одна кнопка с вариантами). Выберите способ (<b>Method</b>) и укажите то, что он просит.
+Рабочие элементы следуют за геометрией, по которой построены.</p></div>
+<table class="long">
+  <tr><th>Элемент</th><th class="wrap">Способы</th></tr>
+  <tr><td>Work Plane</td><td class="wrap">Offset from plane (Offset 10 мм), Parallel through point, Midplane (между двумя
+      плоскостями), Angle around edge (Angle 90°), Three points, Normal to edge at point, Tangent to surface at point.</td></tr>
+  <tr><td>Work Axis</td><td class="wrap">On edge, Two points, Intersection of two planes, Normal to plane through point,
+      Axis of a cylinder, Parallel to edge through point.</td></tr>
+  <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
+</table>
+<p>Где просят плоскость, подойдёт плоская грань, рабочая плоскость или плоскость Origin. Двойной щелчок по рабочей
+плоскости начинает на ней эскиз.</p>
+
+<!-- ============================================================ 7 -->
+<h1 class="chapter" id="solids"><span class="num">7</span>Несколько тел в одной детали</h1>
+<p class="lead">В детали может быть несколько отдельных тел — например, инструмент и деталь, которую он режет, или
+деталь, которую вы будете печатать частями.</p>
+
+<div class="keep"><h2>Откуда берутся отдельные тела</h2>
+<ul>
+  <li>Extrude с <b>Operation ▸ New Solid</b>.</li>
+  <li>Extrude ▸ Join, который не касается детали (коробка, нарисованная в стороне): он сам становится отдельным телом.</li>
+  <li>Split ▸ <b>Keep all</b>: каждая часть, кроме самой большой, становится телом.</li>
+  <li>Boolean с <b>Keep tool</b> или копия «&lt;Tool&gt; fit» (Clearance on Tool).</li>
+</ul></div>
+<p>Тогда в дереве появляется <b>Solid Bodies (n)</b> со строкой для каждого тела. История остаётся одним списком:
+у операций других тел указано, к какому телу они относятся.</p>
+
+<div class="keep"><h2>Эскиз на грани другого тела</h2>
+<p>Новое тело, нарисованное на грани другого тела, содержит только свою часть; тело под ним остаётся как было. Эскиз
+следует за этой гранью, только если он <b>проецирует рёбра</b> другого тела; иначе грань лишь задала ему плоскость.</p></div>
+
+<div class="keep"><h2>Скрыть, показать, переименовать, удалить</h2>
+<p>Правый клик по строке тела: <span class="ui">Hide / Show</span>, <span class="ui">Rename</span>,
+<span class="ui">Show in Window</span>, <span class="ui">Delete</span>. Скрытое тело в дереве бледное. Delete спрашивает,
+если тело использует Boolean (удаляются вместе) или если это главное тело (главным станет следующее). Если выделить часть
+в виде и нажать <kbd>⌫</kbd>, удалится это тело.</p></div>
+
+<div class="keep"><h2>Make Assembly</h2>
+<p>Когда части готовы, <span class="path">3D Model ▸ Assemble ▸ Make Assembly</span> делает из каждой отдельной части свой
+файл детали и связывает их в новой сборке там, где они были. См. <a href="#make-assembly">9.12</a>.</p></div>
+
+<!-- ============================================================ 8 -->
+<h1 class="chapter" id="inspect"><span class="num">8</span>Анализ и инструменты</h1>
+<p class="lead">Измерения, масса, материал, сечения и настройки.</p>
+
+<div class="keep"><h2>8.1 Measure — измерения</h2>
+<p><span class="path">Inspect ▸ Measure</span> (кнопка с вариантами). Измерение остаётся включённым: каждое изменение
+выделения измеряется заново, результаты показываются в маленькой панели. <kbd>Esc</kbd> — завершить.</p></div>
+<table>
+  <tr><th>Команда</th><th class="wrap">Выделите</th><th class="wrap">Показывает</th></tr>
+  <tr><td>Measure</td><td class="wrap">Грань, ребро, тело или два элемента</td><td class="wrap">Площадь; длину или радиус и
+      диаметр круглого ребра; объём, площадь поверхности и габарит тела; для двух элементов — расстояние (и угол, если у
+      обоих есть направление)</td></tr>
+  <tr><td>Distance</td><td class="wrap">Две грани, ребра или точки</td><td class="wrap">Расстояние; между двумя точками ещё ΔX, ΔY, ΔZ</td></tr>
+  <tr><td>Angle</td><td class="wrap">Две плоские грани или прямых ребра</td><td class="wrap">Угол</td></tr>
+  <tr><td>Length</td><td class="wrap">Рёбра (контур)</td><td class="wrap">Общую длину и число рёбер</td></tr>
+  <tr><td>Area</td><td class="wrap">Грани</td><td class="wrap">Общую площадь и число граней</td></tr>
+</table>
+
+<div class="keep"><h2>8.2 Mass Properties — масса</h2>
+<p><span class="path">Inspect ▸ Measure ▸ Mass Properties</span> показывает объём (Volume), площадь поверхности (Surface
+area), массу (Mass) и габарит (Size) детали. Масса считается по плотности материала детали (8.3).</p></div>
+
+<div class="keep"><h2>8.3 Material — материал</h2>
+<p><span class="path">Tools ▸ Material ▸ Material</span> задаёт материал детали: его плотность для Mass Properties и цвет.
+По умолчанию PLA.</p></div>
+<table>
+  <tr><th>Материал</th><th>Плотность, г/см³</th><th>Материал</th><th>Плотность, г/см³</th></tr>
+  <tr><td>PLA</td><td>1,24</td><td>Nylon</td><td>1,14</td></tr>
+  <tr><td>PETG</td><td>1,27</td><td>Resin</td><td>1,18</td></tr>
+  <tr><td>ABS</td><td>1,04</td><td>Aluminium</td><td>2,70</td></tr>
+  <tr><td>ASA</td><td>1,07</td><td>Steel</td><td>7,85</td></tr>
+  <tr><td>TPU</td><td>1,21</td><td></td><td></td></tr>
+</table>
+
+<div class="keep"><h2 id="section">8.4 Сечения</h2>
+<p><span class="path">View ▸ Visual Style ▸ Section</span> разрезает вид — сама модель не меняется.</p></div>
+<ul>
+  <li>Сначала выделите плоскую грань, плоскость или три точки; если ничего не выделено, разрез идёт по плоскости XZ.</li>
+  <li>Маленькая панель <span class="ui">Section</span> двигает разрез: <b>Offset</b> вдоль нормали плоскости, <b>Flip</b> —
+      смотреть с другой стороны, <span class="ui">Done</span> — оставить разрез, <span class="ui">Off</span> — закрыть его.
+      Повторный щелчок по Section тоже закрывает разрез.</li>
+  <li><span class="ui">Section by 3 Points</span> (в той же кнопке): щёлкните три отмеченные точки — углы, середины рёбер,
+      центры окружностей — для плоскости разреза.</li>
+</ul>
+<p>Сечения работают и в деталях, и в сборках.</p>
+
+<div class="keep"><h2>8.5 Настройки</h2>
+<ul>
+  <li><span class="path">Tools ▸ Options ▸ Ask on New</span>: включено — <span class="ui">New</span> спрашивает Part или
+      Assembly и единицы; выключено — создаёт то, что вы выбрали в прошлый раз.</li>
+  <li><span class="path">Tools ▸ Options ▸ Return to FreeCAD</span>: обычный интерфейс FreeCAD (то же, что кнопка
+      <span class="ui">FreeCAD</span> на полосе заголовка).</li>
+  <li>Остальные настройки — в меню <span class="ui">⚙</span> (3.8).</li>
+</ul></div>
+
+<!-- ============================================================ 9 -->
+<h1 class="chapter" id="assembly"><span class="num">9</span>Сборки</h1>
+<p class="lead">Сборка ссылается на файлы деталей и удерживает их связями и соединениями, как в Inventor. Детали
+остаются отдельными файлами .FCStd.</p>
+
+<div class="keep"><h2>9.1 Новая сборка</h2>
+<ul>
+  <li><span class="path">File ▸ New Assembly</span> или, когда нет открытых файлов, <span class="ui">Get Started ▸ New Assembly</span>.</li>
+  <li><span class="ui">New</span> (<kbd>⌘</kbd> <kbd>N</kbd>) тоже создаёт сборку, если вы выбрали Assembly с отметкой
+      <span class="ui">Remember my choice</span>. <span class="path">Tools ▸ Options ▸ Ask on New</span> возвращает вопрос.</li>
+</ul></div>
+<p>Сборка ссылается на файлы деталей, поэтому её нужно сохранить до вставки первой детали. InCad делает это сам: при
+вставке первой детали новая сборка сохраняется рядом с этой деталью под своим именем; если файл с таким именем там уже
+есть, InCad спросит имя и папку. <span class="ui">Create</span> сначала попросит сохранить сборку.</p>
+
+<div class="keep"><h2>9.2 Вставка и создание деталей</h2>
+<ol>
+  <li><span class="path">Assemble ▸ Component ▸ Place</span> (<kbd>P</kbd>) — или N в меню-жесте.</li>
+  <li>Выберите сохранённый файл детали (или сборки).</li>
+  <li>Первая вставленная деталь <b>закреплена</b> (grounded — неподвижна); следующие ставятся рядом с ней.</li>
+</ol></div>
+<p><span class="ui">Create</span> спрашивает имя нового файла детали (<b>New part file name</b>) и создаёт пустую деталь
+рядом со сборкой, сразу вставленную в неё. <span class="ui">Ground</span> закрепляет выделенную деталь или освобождает её.</p>
+
+<div class="keep"><h2>9.3 Дерево сборки</h2>
+<p>В сборке дерево показывает саму сборку, по строке на каждую деталь и раздел <b>Relationships (n)</b> со связями и
+соединениями.</p></div>
+<ul>
+  <li>У каждой детали в строке написана её <b>свобода</b>: <b>grounded</b> (закреплена), <b>DOF 0</b> … <b>DOF 6</b> или
+      <b>DOF ?</b>, если посчитать не удалось (причина — во всплывающей подсказке). У подавленной детали ничего не написано.</li>
+  <li>Под строкой детали — её собственная история (эскизы и операции). Щелчок по такой строке выделяет деталь, двойной
+      щелчок открывает файл детали.</li>
+  <li>Скрытая деталь бледная, подавленная — зачёркнута.</li>
+  <li>Правый клик по детали (в дереве или в виде): <span class="ui">Edit</span>, <span class="ui">Hide / Show</span>,
+      <span class="ui">Suppress</span>, <span class="ui">Remove from Assembly</span>, <span class="ui">Ground</span> и
+      связи (4.2).</li>
+</ul>
+
+<div class="keep"><h2>9.4 Как добавить связь или соединение</h2>
+<figure>
+  <img src="img/7_mate_flip.jpg" alt="Диалог Mate с Flip">
+  <figcaption>Рис. 10. Создание Mate: диалог с Offset и Flip, предпросмотр в виде.</figcaption>
+</figure></div>
+<ol>
+  <li>Нажмите связь в <span class="path">Assemble ▸ Constrain</span> или соединение в
+      <span class="path">Assemble ▸ Joint</span> (<kbd>C</kbd> — Mate, <kbd>J</kbd> — Rigid) или воспользуйтесь
+      меню-жестом на грани или ребре детали.</li>
+  <li>Укажите в 3D-виде первый элемент (<b>First</b>) на одной детали и второй (<b>Second</b>) на другой. Предпросмотр
+      сразу передвигает деталь.</li>
+  <li>Задайте <b>Offset</b> или <b>Angle</b>, если они есть у этой связи, и <b>Flip</b>, если деталь повернулась не той
+      стороной.</li>
+  <li><span class="ui">OK</span> (или <span class="ui">Apply +</span> для следующей).</li>
+</ol>
+<p>Двигается свободная деталь; закреплённая не двигается никогда. Связь, которую нельзя выполнить вместе с остальными,
+отклоняется: «Mate conflicts with the other constraints (it can't be met)». Смещения и углы — это параметры, названные
+по связи (<b>Mate1</b>, <b>Flush1</b>, <b>Angle1</b> …); они видны в панели Parameters.</p>
+
+<div class="keep"><h2>9.5 Связи и соединения по порядку</h2>
+<table class="long">
+  <tr><th>Связь</th><th class="wrap">Что указать (First, Second)</th><th class="wrap">Что делает</th><th class="wrap">Значение, Flip</th></tr>
+  <tr><td>Mate <kbd>C</kbd></td><td class="wrap">Две грани</td><td class="wrap">Грани прижаты друг к другу, смотрят навстречу.</td>
+      <td class="wrap">Offset (0 мм). Flip: грани смотрят в одну сторону.</td></tr>
+  <tr><td>Flush</td><td class="wrap">Две грани</td><td class="wrap">Грани вровень, смотрят в одну сторону.</td>
+      <td class="wrap">Offset. Flip: куда смотрят грани.</td></tr>
+  <tr><td>Angle</td><td class="wrap">Плоские грани или прямые рёбра</td><td class="wrap">Под заданным углом.</td>
+      <td class="wrap">Angle (90°).</td></tr>
+  <tr><td>Parallel</td><td class="wrap">Плоские грани или прямые рёбра</td><td class="wrap">Остаются параллельными; расстояние свободно.</td>
+      <td class="wrap">—</td></tr>
+  <tr><td>Perpendicular</td><td class="wrap">Плоские грани или прямые рёбра</td><td class="wrap">Остаются под 90°.</td>
+      <td class="wrap">—</td></tr>
+  <tr><td>Tangent</td><td class="wrap">Круглая грань и плоская или круглая</td><td class="wrap">Грани касаются. По умолчанию
+      круглая грань снаружи детали с плоской гранью.</td><td class="wrap">Offset. Flip: снаружи или внутри.</td></tr>
+  <tr><td>Insert</td><td class="wrap">Два круглых ребра</td><td class="wrap">Оси совпадают, грани рёбер прижаты (винт в
+      отверстии); деталь ещё может вращаться.</td><td class="wrap">Flip: направление.</td></tr>
+  <tr><td>Rigid <kbd>J</kbd></td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Детали
+      жёстко соединены.</td><td class="wrap">—</td></tr>
+  <tr><td>Rotational</td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Шарнир: вращение
+      только вокруг одной оси.</td><td class="wrap">Flip: направление.</td></tr>
+  <tr><td>Slider</td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Скольжение только вдоль
+      одного направления.</td><td class="wrap">Flip: направление.</td></tr>
+  <tr><td>Cylindrical</td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Вращение вокруг
+      оси и скольжение вдоль неё.</td><td class="wrap">Flip: направление.</td></tr>
+  <tr><td>Ball</td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Свободное вращение вокруг точки.</td>
+      <td class="wrap">—</td></tr>
+</table>
+<p>Для соединений круглое ребро задаёт свой центр и ось — для шарниров и валов указывайте круглые рёбра.</p>
+
+<h2>9.6 Строки Relationships</h2>
+<p>У каждой связи и соединения есть строка в разделе <b>Relationships</b>. <b>Двойной щелчок</b> открывает правку.
+Правый клик: <span class="ui">Edit</span>, <span class="ui">Delete</span>, <span class="ui">Suppress / Unsuppress</span>
+и <span class="ui">Rename</span>. Подавленная связь зачёркнута; решатель её не учитывает, а детали остаются на своих
+местах. Вернуть связь, которую уже нельзя выполнить, не получится — команда будет отклонена.</p></div>
+
+<div class="keep"><h2>9.7 Степени свободы</h2>
+<p>Степени свободы детали — это то, как она ещё может двигаться: до трёх сдвигов и трёх поворотов. InCad считает их
+относительно того, что держит деталь (остальные свободные детали на время подсчёта удерживаются на месте):</p></div>
+<ul>
+  <li>в строке детали написано <b>grounded</b>, <b>DOF n</b> или <b>DOF ?</b> (9.3);</li>
+  <li><span class="path">View ▸ Visual Style ▸ Degrees of Freedom</span> (вкладка View в сборке) рисует на каждой
+      свободной детали значки степеней свободы, как в Inventor: двойную стрелку для каждого направления сдвига и дугу для
+      каждой оси поворота (рис. 11);</li>
+  <li>когда эта кнопка выключена, значок появляется подсказкой у детали под указателем.</li>
+</ul>
+<p>У полностью определённой (DOF 0) и у закреплённой детали значка нет.</p>
+<figure>
+  <img src="img/9_dof.jpg" alt="Степени свободы в дереве и на деталях">
+  <figcaption>Рис. 11. Включён View ▸ Degrees of Freedom: в строке каждой детали написано grounded или DOF n, на каждой
+  свободной детали — её значок степеней свободы.</figcaption>
+</figure>
+
+<div class="keep"><h2>9.8 Перемещение деталей</h2>
+<p><b>Перетащите</b> свободную деталь левой кнопкой: она двигается только так, как ей ещё позволяют связи, — блок с Mate
+скользит и поворачивается по своей грани, вставленный штифт вращается в отверстии. Остальные детали стоят на месте, даже
+свободные. Полностью определённая деталь не двигается (строка состояния скажет «… is fully constrained»); при попытке
+сдвинуть закреплённую будет сказано, что она закреплена.</p></div>
+<figure>
+  <img src="img/8_gizmo.jpg" alt="Гизмо степеней свободы">
+  <figcaption>Рис. 12. Щёлкните свободную деталь — появится гизмо: стрелки сдвигают деталь, дуги поворачивают.</figcaption>
+</figure>
+<p><b>Гизмо.</b> Щёлкните свободную деталь: её значок степеней свободы превратится в гизмо — <b>стрелка</b> для каждого
+направления, в котором она может скользить, и <b>дуга</b> для каждой оси, вокруг которой может поворачиваться.</p>
+<ul>
+  <li>Тяните стрелку, чтобы сдвинуть деталь, дугу — чтобы повернуть. Ручки легко поймать: та, что под указателем,
+      подсвечивается.</li>
+  <li>Первая стрелка — вверх-вниз: прямо вверх или вверх по наклонной грани, если деталь может так двигаться.</li>
+  <li>Щелчок по пустому месту убирает гизмо.</li>
+</ul>
+<p>Каждое перетаскивание, которое сдвинуло деталь, — <b>один шаг отмены</b> («Move part»); <kbd>⌘</kbd> <kbd>Z</kbd>
+возвращает деталь на место. Пока открыт диалог связи, перетаскивание отключено.</p>
+
+<div class="keep"><h2 id="asm-context">9.9 Правка детали в контексте сборки</h2>
+<p>Правый клик по детали ▸ <span class="ui">Edit</span> (или двойной щелчок по её строке): деталь откроется в своей
+вкладке, а вокруг неё будут нарисованы остальные детали сборки — серые, полупрозрачные, на своих настоящих местах. Они
+только для ориентира: их нельзя выбрать, и они не сохраняются в детали. Меняйте деталь как обычно и сохраните её.</p></div>
+<figure>
+  <img src="img/10_context.jpg" alt="Деталь в контексте сборки">
+  <figcaption>Рис. 13. Деталь, открытая командой Edit из сборки: вокруг неё полупрозрачные остальные детали.</figcaption>
+</figure>
+<p><span class="path">View ▸ Assembly Context</span> (меню View или вкладка View детали) выключает и включает остальные
+детали.</p>
+
+<div class="keep"><h2 id="asm-update">9.10 Обновление сборки после изменения детали</h2>
+<p>Когда вы возвращаетесь во вкладку сборки после изменения детали, InCad спрашивает: <span class="ui">Parts of … changed.
+Update the assembly now?</span></p></div>
+<ul>
+  <li><span class="ui">Yes</span> — изменения подтягиваются в сборку.</li>
+  <li><span class="ui">No</span> — сборка остаётся как была; в верхней строке дерева появляется <b>⚡ Needs update</b>,
+      пока вы не нажмёте <span class="ui">Update</span> на полосе заголовка.</li>
+</ul>
+
+<div class="keep"><h2>9.11 Скрыть, подавить, убрать</h2>
+<table>
+  <tr><th>Команда</th><th class="wrap">Что делает</th></tr>
+  <tr><td>Hide / Show</td><td class="wrap">Скрывает или показывает выделенную деталь; скрытая строка бледная.</td></tr>
+  <tr><td>Suppress</td><td class="wrap">Деталь скрыта, её связи выключены; повторно — вернуть.</td></tr>
+  <tr><td>Remove from Assembly</td><td class="wrap">Убирает деталь из сборки; файл детали остаётся.</td></tr>
+  <tr><td>Ground</td><td class="wrap">Закрепляет деталь на месте или освобождает её.</td></tr>
+</table></div>
+
+<div class="keep"><h2 id="make-assembly">9.12 Make Assembly — сборка из детали</h2>
+<p>Смоделируйте изделие как одну деталь из нескольких тел (глава 7), затем одним шагом превратите её в сборку.</p></div>
+<ol>
+  <li>Сохраните деталь — новые файлы появятся в её папке.</li>
+  <li><span class="path">3D Model ▸ Assemble ▸ Make Assembly</span> или правый клик по пустому месту ▸
+      <span class="ui">Make Assembly</span>.</li>
+  <li>Диалог показывает новые файлы: имя сборки (<b>Assembly</b>) и по имени на каждую часть (<b>Piece 1 (grounded)</b>,
+      Piece 2 …) с её объёмом. Наведите указатель на строку — часть будет отмечена в виде. При желании поменяйте имена.</li>
+  <li>Нажмите <span class="ui">OK</span>. Новая сборка откроется.</li>
+</ol>
+<figure>
+  <img src="img/11_make_assembly.jpg" alt="Диалог Make Assembly">
+  <figcaption>Рис. 14. Make Assembly: имена новой сборки и файлов деталей.</figcaption>
+</figure>
+<ul>
+  <li>Каждая отдельная часть становится файлом детали <b>со своей историей</b>; сборка ставит их туда, где они были,
+      самая большая часть закреплена.</li>
+  <li>Исходная деталь не меняется.</li>
+  <li>Если запустить Make Assembly для той же детали ещё раз, появится <span class="ui">Replace existing files</span> (с
+      именами уже существующих файлов): файлы прошлого запуска перезаписываются, и новые имена придумывать не нужно. Саму
+      деталь InCad не заменяет никогда. Если какой-то из этих файлов открыт с несохранёнными изменениями, InCad сначала
+      спросит.</li>
+  <li>Деталь из одного куска превратить в сборку нельзя: сначала разделите её (Split ▸ Keep all) или сделайте части как
+      New Solid.</li>
+</ul>
+
+<div class="keep"><h2>9.13 Boolean между деталями</h2>
+<p><span class="path">Assemble ▸ Component ▸ Boolean</span> вырезает одну деталь другими, например гнездо под подшипник:</p></div>
+<table>
+  <tr><th>Поле</th><th class="wrap">Смысл</th></tr>
+  <tr><td>Cut this</td><td class="wrap">Деталь, которую вырезаем.</td></tr>
+  <tr><td>With</td><td class="wrap">Деталь (детали), которыми вырезаем.</td></tr>
+  <tr><td>Clearance</td><td class="wrap">Зазор для печатных деталей (0,2 мм).</td></tr>
+  <tr><td>Clearance on</td><td class="wrap"><b>Cavity</b>, <b>Tool</b> или <b>Split</b> — как у Boolean в детали (6.11).</td></tr>
+</table>
+<p>Вырез записывается в собственный файл вырезаемой детали и следует за инструментами, когда они двигаются или
+меняются. Сохраните и этот файл детали. У выреза есть строка в Relationships (Edit, Delete, Rename).</p>
+
+<div class="keep"><h2>9.14 Threads Off / On в сборке</h2>
+<p><span class="path">Assemble ▸ Component ▸ Threads</span> выключает все резьбы всех деталей (быстрее перерисовка) и
+включает их обратно. Команда меняет файлы деталей: сохраните их вместе со сборкой.</p></div>
+
+<div class="keep"><h2>9.15 Сохранение</h2>
+<p><span class="ui">Save</span> сохраняет файл в активной вкладке. Деталь, изменённая из сборки, вырезанная командой
+Boolean или изменённая Threads Off / On, — это отдельный файл: сохраните и его (переключитесь на его вкладку или дайте
+<span class="ui">Quit</span> спросить про все изменённые файлы).</p></div>
+
+<!-- ============================================================ 10 -->
+<h1 class="chapter" id="printing"><span class="num">10</span>Советы для 3D-печати</h1>
+<p class="lead">InCad делался с расчётом на печатные детали. Несколько привычек избавят от лишних перепечаток.</p>
+<ul>
+  <li><b>Резьба, которая свинчивается.</b> У Thread и Hole ▸ Tapped есть <b>Print clearance (on diameter)</b>, по
+      умолчанию 0,2 мм (0,3 мм для резьбы Print-friendly). Проверьте на маленьком пробнике на своём принтере: если напечатанный винт идёт туго — увеличьте,
+      если болтается — уменьшите. Стандарт <b>Print-friendly</b> даёт резьбу с плоскими вершинами, она печатается
+      чисто.</li>
+  <li><b>Заходные фаски.</b> Hole ▸ <b>Chamfer</b> (Start или Both ends) и Thread ▸ <b>Chamfer</b> — винты и гайки
+      заходят легко.</li>
+  <li><b>Детали, входящие одна в другую.</b> Boolean ▸ Cut с <b>Clearance (per side)</b>: на <b>Cavity</b> — если печатаете
+      деталь с отверстием, на <b>Tool</b> — чтобы получить для печати чуть уменьшенную копию инструмента «fit»,
+      <b>Split</b> — пополам.</li>
+  <li><b>Напечатать и инструмент.</b> Включите <b>Keep tool</b>: инструмент останется отдельным видимым телом — штифт и
+      коробка с отверстием под него.</li>
+  <li><b>Не помещается на стол?</b> Нарисуйте линии разреза в эскизе, <b>Split ▸ Keep all</b>, затем <b>Make
+      Assembly</b>: каждая часть станет файлом детали, который можно экспортировать и напечатать, а сборка покажет их
+      вместе.</li>
+  <li><b>Вес и расход пластика.</b> Tools ▸ Material, затем Inspect ▸ Mass Properties.</li>
+  <li><b>Быстрая работа.</b> Выключайте резьбы (Threads) во время моделирования и включайте перед экспортом.</li>
+</ul>
+
+<!-- ============================================================ 11 -->
+<h1 class="chapter" id="trouble"><span class="num">11</span>Если что-то не так и как сообщить о проблеме</h1>
+
+<div class="keep"><h2>Когда что-то не работает</h2>
+<ol>
+  <li><b>Прочитайте строку состояния</b> и красный текст в диалоге: InCad объясняет, почему команда отклонена и что надо
+      выбрать.</li>
+  <li>Открыт диалог? Команды вроде Save и Undo ждут <span class="ui">OK</span> или <span class="ui">Cancel</span>.</li>
+  <li>Операция в дереве <b>красная</b>: наведите указатель, чтобы увидеть причину, и исправьте её (двойной щелчок).</li>
+  <li>Вид или дерево разошлись с моделью: нажмите <span class="ui">Update</span> на полосе заголовка.</li>
+  <li>Отмените (<kbd>⌘</kbd> <kbd>Z</kbd>) последний шаг.</li>
+  <li>Не помогает: сохраните файл под новым именем, закройте и снова запустите FreeCAD.</li>
+  <li><span class="ui">Return to FreeCAD</span> всегда вернёт обычный интерфейс FreeCAD с тем же файлом.</li>
+</ol></div>
+
+<div class="keep"><h2>Как сообщить о проблеме</h2>
+<p>Пожалуйста, пришлите:</p></div>
+<ul>
+  <li>что вы делали, по шагам, и что ожидали получить;</li>
+  <li>название сборки (имя zip-файла);</li>
+  <li>версию macOS и версию FreeCAD (<span class="path">FreeCAD ▸ About FreeCAD</span>);</li>
+  <li>файл журнала <code>~/Library/Logs/InCad.log</code> (Finder ▸ Переход ▸ Переход к папке… ▸ <code>~/Library/Logs</code>);</li>
+  <li>по возможности файл .FCStd, с которым вы работали;</li>
+  <li>снимок экрана, если что-то выглядит неправильно.</li>
+</ul>
+<p>Если FreeCAD упал, macOS покажет отчёт о сбое: пожалуйста, скопируйте и его текст.</p>
+
+<div class="keep"><h2>Известные ограничения этой сборки</h2>
+<ul>
+  <li>Только macOS на Apple Silicon; FreeCAD 1.1 (проверено на 1.1.3).</li>
+  <li>Ранняя тестовая сборка: сборки (Assembly) впервые появились в 0.2.0. Сохраняйтесь почаще и работайте с копиями.</li>
+  <li>Интерфейс InCad только на английском.</li>
+  <li>FreeCAD не делает оболочку (Shell) детали, в которой уже есть моделированная резьба (InCad предлагает сделать Shell
+      до резьбы).</li>
+  <li>Некоторые смещения (зазоры) не строятся на резьбе и других сложных формах; диалог об этом скажет.</li>
+</ul></div>
+
+<!-- ============================================================ A -->
+<h1 class="chapter" id="keys"><span class="num">A</span>Горячие клавиши</h1>
+<p class="lead">Одиночные клавиши работают в указанном режиме. На Mac сочетания с Ctrl у InCad — это сочетания с ⌘.</p>
+<div class="cols2">
+<table>
+  <tr><th>Клавиша</th><th class="wrap">Команда</th></tr>
+  <tr><td colspan="2"><b>Деталь</b></td></tr>
+  <tr><td><kbd>S</kbd></td><td class="wrap">Start 2D Sketch</td></tr>
+  <tr><td><kbd>E</kbd></td><td class="wrap">Extrude</td></tr>
+  <tr><td><kbd>R</kbd></td><td class="wrap">Revolve</td></tr>
+  <tr><td><kbd>H</kbd></td><td class="wrap">Hole</td></tr>
+  <tr><td><kbd>F</kbd></td><td class="wrap">Fillet</td></tr>
+  <tr><td colspan="2"><b>Эскиз</b></td></tr>
+  <tr><td><kbd>L</kbd></td><td class="wrap">Line (<kbd>M</kbd>: линия / дуга при рисовании)</td></tr>
+  <tr><td><kbd>C</kbd></td><td class="wrap">Circle</td></tr>
+  <tr><td><kbd>A</kbd></td><td class="wrap">3-Point Arc</td></tr>
+  <tr><td><kbd>R</kbd></td><td class="wrap">Rectangle</td></tr>
+  <tr><td><kbd>X</kbd></td><td class="wrap">Trim</td></tr>
+  <tr><td><kbd>D</kbd></td><td class="wrap">Dimension</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td class="wrap">Следующее поле значения при рисовании</td></tr>
+  <tr><td><kbd>F7</kbd></td><td class="wrap">Slice Graphics</td></tr>
+  <tr><td><kbd>F8</kbd> / <kbd>F9</kbd></td><td class="wrap">Show / Hide Constraints</td></tr>
+  <tr><td colspan="2"><b>Сборка</b></td></tr>
+  <tr><td><kbd>P</kbd></td><td class="wrap">Place</td></tr>
+  <tr><td><kbd>C</kbd></td><td class="wrap">Mate</td></tr>
+  <tr><td><kbd>J</kbd></td><td class="wrap">Rigid</td></tr>
+</table>
+<table>
+  <tr><th>Клавиша</th><th class="wrap">Команда</th></tr>
+  <tr><td colspan="2"><b>Везде</b></td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>N</kbd></td><td class="wrap">New</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>O</kbd></td><td class="wrap">Open</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>S</kbd></td><td class="wrap">Save</td></tr>
+  <tr><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>S</kbd></td><td class="wrap">Save As</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>W</kbd></td><td class="wrap">Close (спросит о сохранении)</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>Q</kbd></td><td class="wrap">Quit (спросит о сохранении)</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>Z</kbd></td><td class="wrap">Undo</td></tr>
+  <tr><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Z</kbd></td><td class="wrap">Redo</td></tr>
+  <tr><td><kbd>⌫</kbd> / <kbd>Del</kbd></td><td class="wrap">Удалить выделенное</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td class="wrap">Отменить диалог, остановить инструмент, закончить эскиз</td></tr>
+  <tr><td colspan="2"><b>В диалогах и полях ввода</b></td></tr>
+  <tr><td><kbd>Enter</kbd></td><td class="wrap">Применить значение (поле ввода размера)</td></tr>
+  <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td class="wrap">Значение в диалоге на шаг больше / меньше</td></tr>
+  <tr><td><kbd>⇧</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></td><td class="wrap">На десять шагов</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ B -->
+<h1 class="chapter" id="ribbon"><span class="num">B</span>Карта ленты</h1>
+<p class="lead">Все вкладки, группы и команды. «A | B | C» — одна кнопка с вариантами: показана A, B и C — в её списке.</p>
+
+<div class="keep"><h2>Деталь</h2>
+<table class="long">
+  <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
+  <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
+  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split</td></tr>
+  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
+  <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
+  <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
+  <tr><td>Inspect</td><td>Measure</td><td class="wrap">Measure | Distance | Angle | Length | Area · Mass Properties</td></tr>
+  <tr><td>Tools</td><td>Material</td><td class="wrap">Material</td></tr>
+  <tr><td></td><td>Options</td><td class="wrap">Return to FreeCAD · Ask on New</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin · Assembly Context</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>Эскиз</h2>
+<table class="long">
+  <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
+  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Circle | 3-Point Circle | Ellipse | 3-Point
+      Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
+      Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
+      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) · Spline | Control-Vertex Spline ·
+      Point</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
+  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
+  <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
+  <tr><td></td><td>Insert</td><td class="wrap">Project (Project Geometry)</td></tr>
+  <tr><td></td><td>Format</td><td class="wrap">Construction · Constraints (Show / Hide Constraints) · Free DOF (Show Free Geometry) · Slice (Slice Graphics)</td></tr>
+  <tr><td></td><td>Exit</td><td class="wrap">Finish Sketch</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>Сборка</h2>
+<table class="long">
+  <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
+  <tr><td>Assemble</td><td>Component</td><td class="wrap">Place · Create · Ground · Boolean · Threads (Threads Off / On)</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Mate · Flush · Angle · Parallel · Perpendicular · Tangent · Insert</td></tr>
+  <tr><td></td><td>Joint</td><td class="wrap">Rigid · Rotational · Slider · Cylindrical · Ball</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show · Degrees of Freedom</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>Нет открытого файла</h2>
+<table>
+  <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
+  <tr><td>Get Started</td><td>New</td><td class="wrap">New · New Assembly · Open</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+</table></div>
+<p>Команды только в меню-жестах: Show in Browser, Show in Window, Move End of Part Here, Suppress / Unsuppress, Rename,
+Delete, Edit, Stop Tool, Edit Pattern, Delete Pattern, Suppress (деталь сборки), Remove from Assembly.</p>
+
+</body>
+</html>

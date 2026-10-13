@@ -14,15 +14,16 @@ EXPECTED = {"file.new", "file.open", "file.save", "file.save_as", "file.close", 
             "sketch.start", "sketch.finish", "feature.extrude", "feature.revolve", "feature.hole", "feature.fillet",
             "feature.chamfer", "feature.shell", "feature.rect_pattern", "feature.circ_pattern", "feature.mirror",
             "work.plane", "work.axis", "work.point", "inspect.measure", "inspect.mass", "feature.thread", "feature.threads_toggle",
-            "feature.combine", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
-            "constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent", "constrain.insert",
+            "feature.combine", "feature.split", "file.make_assembly", "assembly.threads_toggle", "assembly.suppress", "assembly.edit", "assembly.remove", "tools.ask_on_new", "file.new_assembly", "assembly.place", "assembly.create", "assembly.ground",
+            "constrain.mate", "constrain.flush", "constrain.angle", "constrain.parallel", "constrain.perpendicular",
+            "constrain.tangent", "constrain.insert",
             "joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical", "joint.ball", "assembly.combine", "feature.sweep", "feature.loft", "feature.coil", "feature.draft",
             "tools.material", "view.section", "browser.delete", "edit.delete", "edit.delete_key",
             "inspect.distance", "inspect.angle", "inspect.length", "inspect.area", "view.section_points", "sketch.constraints_toggle", "sketch.constraints_window",
             "sketch.constraints_show", "sketch.constraints_hide", "sketch.slot_overall",
             "sketch.slot_center", "sketch.construction", "file.quit", "sketch.rect_pattern", "sketch.circ_pattern",
             "sketch.path_pattern",
-            "sketch.edit_pattern", "sketch.delete_pattern"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
+            "sketch.edit_pattern", "sketch.delete_pattern", "view.dof", "view.assembly_context", "constraint.suppress"} | set(actions.SKETCHER) | set(actions.SKETCH_VARIANTS)
 
 
 class ActionsTest(unittest.TestCase):
@@ -68,6 +69,16 @@ class ActionsTest(unittest.TestCase):
         self.assertEqual((r.get("assembly.place").shortcut, r.get("constrain.mate").shortcut,
                           r.get("joint.rigid").shortcut), ("P", "C", "J"))
         self.assertEqual(r.get("constrain.mate").contexts, frozenset({"assembly"}))
+
+    def test_parallel_and_perpendicular(self):
+        r = Registry()
+        actions.register_all(r)
+        for cid, label, icon, tip in (
+                ("constrain.parallel", "Parallel", "parallel_c", "Two faces or edges stay parallel; the distance stays free"),
+                ("constrain.perpendicular", "Perpendicular", "perpendicular_c", "Two faces or edges stay at 90°")):
+            c = r.get(cid)
+            self.assertEqual((c.label, c.icon, c.tooltip, c.contexts), (label, icon, tip, frozenset({"assembly"})))
+        self.assertNotEqual(r.get("constrain.parallel").icon, r.get("sketch.parallel").icon)  # not the sketch's
 
     def test_quit_shortcut(self):
         r = Registry()

@@ -103,6 +103,13 @@ def ask_new():
     return dlg.choice() if dlg.exec() else None
 
 
+def _toggle_ask_on_new():
+    from incad.core import log
+    prefs.set_remember_new_choice(not prefs.remember_new_choice())
+    log.report("info", "New asks Part or Assembly" if not prefs.remember_new_choice()
+               else "New makes a %s without asking" % prefs.new_kind())
+
+
 def new_part(ask=None):
     """Create an InCad Part in a new document. ask() -> (kind, units, remember) | None (default: the New
     dialog). With 'Remember my choice' on, nothing is asked and the saved units are used."""
@@ -111,12 +118,14 @@ def new_part(ask=None):
     kind = "part"
     if prefs.remember_new_choice():
         units = prefs.default_units()
+        kind = prefs.new_kind()  # Part or Assembly, as chosen with 'Remember my choice'
     else:
         answer = (ask or ask_new)()
         if answer is None:
             return None
         kind, units, remember = answer
         prefs.set_default_units(units)
+        prefs.set_new_kind(kind)
         prefs.set_remember_new_choice(remember)
     if kind == "assembly":
         return new_assembly(units)
@@ -167,10 +176,36 @@ def toggle_suppress():
     suppress.toggle(_target_object())
 
 
+def toggle_constraint_suppressed():
+    """A constraint row's Suppress / Unsuppress (Inventor): the solver ignores it, the parts stay."""
+    from incad.core import log
+    from incad.features import constraints
+    j = _target_object()
+    on = constraints.toggle_suppressed(j)
+    log.report("info", "%s %s" % (j.Label, "suppressed" if on else "back on"))
+
+
 def _threads_off():
     import FreeCAD as App
     from incad.core import suppress
     return App.ActiveDocument is not None and suppress.threads_off(App.ActiveDocument)
+
+
+def toggle_assembly_threads():
+    """Threads Off / On from an assembly: in every part file it links to (a part made into an assembly with its
+    threads off gets them back here)."""
+    import FreeCAD as App
+    from incad.core import assembly, log
+    _refuse_while_busy()
+    state = assembly.toggle_threads(App.ActiveDocument)
+    log.report("info", ("Threads off" if state == "off" else "Threads on") + " in the parts (save them with the assembly)")
+
+
+def _assembly_threads_off():
+    import FreeCAD as App
+    from incad.core import assembly
+    return App.ActiveDocument is not None and assembly.is_assembly(App.ActiveDocument) and \
+        assembly.threads_off(App.ActiveDocument)
 
 
 def toggle_threads():
@@ -193,7 +228,13 @@ def _visibility_targets():
     doc = App.ActiveDocument
     if doc is None:
         raise ValueError("Open a part first")
-    objs = list(dict.fromkeys(s.Object for s in Gui.Selection.getSelectionEx(doc.Name)))
+    from incad.features import common
+    objs = []
+    for s in common.selection_ex(doc.Name):  # in an assembly a pick is 'Link.Body.Face5' on the assembly
+        for sub in (s.SubElementNames or ("",)):
+            obj = common.resolve(s.Object, sub)[0] if sub else s.Object
+            if obj is not None and obj not in objs:
+                objs.append(obj)
     if not objs:
         inst = shell.instance()
         names = [context.target()] if context.target() else []
@@ -219,6 +260,26 @@ def _visibility_step(label, objects, change):
     if inst is not None:
         inst.schedule_refresh()
     return r.value
+
+
+def toggle_dof():
+    from incad.ui import shell
+    shell.toggle_dof()
+
+
+def dof_shown():
+    from incad.ui import shell
+    return shell.dof_shown()
+
+
+def toggle_assembly_context():
+    from incad.ui import shell
+    shell.toggle_assembly_context()
+
+
+def assembly_context_shown():
+    from incad.ui import shell
+    return shell.assembly_context_shown()
 
 
 def toggle_visibility():
@@ -339,6 +400,59 @@ def start_feature(kind_name):
     shell.start_feature(kind)
 
 
+def make_assembly():
+    """The part's pieces become part files and an assembly (names asked first); the assembly opens."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    import Part
+    from incad.qt import QtWidgets
+    from incad.core import make_assembly as ma
+    from incad.ui.make_assembly_dialog import MakeAssemblyDialog
+    from incad.ui.piece_marker import PieceMarker
+    _refuse_while_busy()  # an open dialog's preview would be written into every copy
+    doc = App.ActiveDocument
+    found = ma.pieces_or_refuse(doc)
+    asm, names = ma.default_names(doc, len(found))
+    rows = [(n, "%.0f mm³" % p.volume) for n, p in zip(names, found)]
+    dlg = MakeAssemblyDialog(asm, rows, lambda a, ns, replace=False: ma.check_names(doc, a, ns, replace),
+                             Gui.getMainWindow(), existing=lambda a, ns: ma.existing(doc, a, ns))
+    view = Gui.getDocument(doc.Name).ActiveView
+    marker = PieceMarker(view)
+    solids = []
+    for p in found:
+        body = doc.getObject(p.body_name)
+        probe = Part.Vertex(p.point)
+        solids.append(min(body.Shape.Solids, key=lambda s: s.distToShape(probe)[0]))
+    dlg.hovered.connect(lambda i: marker.show(solids[i] if i >= 0 else None))
+    try:
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return None
+    finally:
+        marker.remove()
+    asm_name, part_names = dlg.names()
+    replace = dlg.replace()
+    if replace:  # a file about to be replaced may be open with changes: ask before it is closed unsaved
+        import os
+        from incad.ui import shell
+        paths = {os.path.abspath(os.path.join(os.path.dirname(doc.FileName), n + ".FCStd"))
+                 for n in ma.existing(doc, asm_name, part_names)}
+        changed = [d.Label for d in App.listDocuments().values() if d.FileName and os.path.abspath(d.FileName) in paths
+                   and Gui.getDocument(d.Name) is not None and Gui.getDocument(d.Name).Modified]
+        if changed and not shell.confirm("Make Assembly", "%s %s open with unsaved changes. Close without saving and "
+                                         "replace?" % (", ".join(changed), "is" if len(changed) == 1 else "are")):
+            return None
+    gdoc = Gui.getDocument(doc.Name)
+    was_modified = gdoc.Modified
+    try:
+        path = ma.make(doc, asm_name, part_names, replace)
+    finally:
+        Gui.ActiveDocument = gdoc  # the hidden copies took the active document while they were open
+    if not was_modified:
+        gdoc.Modified = False  # writing the copies (saveCopy) marks the part changed; it is not
+    App.openDocument(path)
+    return path
+
+
 def _edit_sketch_pattern():
     from incad.ui import shell
     sk, name = shell.instance().selected_sketch_pattern()
@@ -427,11 +541,32 @@ def quit_freecad():
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
-    obj = _target_object()
+    obj = delete.target_for(_target_object())  # a Split piece's base means its Solid
     doc = obj.Document
     from incad.ui import shell
     if shell.sketch_session().editing() is obj:
         shell.sketch_session().finish()  # the edit would be left half-reset on a deleted object
+    kw = {}
+    from incad.features import split
+    if split.claims(obj) and split.piece_bodies(obj):
+        names = ", ".join(b.Label for b in split.piece_bodies(obj))
+        if not shell.confirm("Delete", "Deleting %s joins its pieces again: %s go (a Solid with work on it, or one a "
+                                       "Boolean uses, stays with its piece). Delete?" % (obj.Label, names)):
+            return
+    if obj.TypeId == "PartDesign::Body":  # Inventor asks instead of refusing
+        from incad.core import document
+        users = delete.users_of(obj)
+        if users:
+            names = ", ".join(f.Label for f in users)
+            if not shell.confirm("Delete", "%s is used by %s (Boolean). Delete %s too?" % (obj.Label, names, names)):
+                return
+            kw["with_users"] = True
+        nxt = delete.main_successor(obj) if obj is document.primary_body(doc) else None
+        if nxt is not None:
+            if not shell.confirm("Delete", "%s is the main solid. Delete it? %s becomes the main solid; solids split "
+                                           "from it keep their shape." % (obj.Label, nxt.Label)):
+                return
+            kw["replace_main"] = True
     extras = delete.documents(obj)
     for d in extras:
         if not d.UndoMode:
@@ -439,7 +574,7 @@ def delete_target():
         if d.HasPendingTransaction:
             d.abortTransaction()
         d.openTransaction("Delete")
-    res = safe.run_safely("Delete", lambda: delete.delete(obj), doc)
+    res = safe.run_safely("Delete", lambda: delete.delete(obj, **kw), doc)
     for d in extras:
         if res.ok:
             d.commitTransaction()
@@ -499,7 +634,7 @@ def delete_selection():
         return
     from incad.features import common
     names = []
-    for sel in _gui().Selection.getSelectionEx():
+    for sel in common.selection_ex():
         for sub in (sel.SubElementNames or ("",)):
             obj, _ = common.resolve(sel.Object, sub)  # a face of the body names its feature ("Body.Thread.Face5")
             if obj is not None and obj.Name not in names:
@@ -649,7 +784,11 @@ def update_model():
     _refuse_while_busy()
     doc = App.ActiveDocument
     if doc is not None:
-        from incad.core import document
+        from incad.core import assembly, document
+        if assembly.is_assembly(doc):  # parts edited in their tabs come in; the 'needs update' sign goes
+            assembly.bring_parts_in(doc)
+            if shell.instance() is not None:
+                shell.instance().assembly_refreshed(doc)
         doc.recompute()
         for b in document.bodies(doc):  # the display follows the tip again (a view that drifted is put right)
             document.show_result(b)
@@ -733,8 +872,15 @@ def commands():
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
         Command(id="view.toggle_visibility", label="Hide / Show", icon="visibility", handler=toggle_visibility,
-                contexts=frozenset({"part", "origin", "browser"}),
-                tooltip="Hide or show the selected origin planes, axes, centre point and unused sketches"),
+                contexts=frozenset({"part", "origin", "browser", "assembly"}),
+                tooltip="Hide or show the selected solids (or assembly parts), origin planes, axes, centre point "
+                        "and sketches"),
+        Command(id="view.dof", label="Degrees of Freedom", icon="rotational", handler=toggle_dof,
+                checkable=True, is_checked=dof_shown, contexts=frozenset({"assembly"}),
+                tooltip="Show how each part can still move: arrows for slides, arcs for turns"),
+        Command(id="view.assembly_context", label="Assembly Context", icon="assembly", handler=toggle_assembly_context,
+                checkable=True, is_checked=assembly_context_shown, contexts=frozenset({"part"}),
+                tooltip="A part opened with Edit from its assembly: show or hide the other parts around it"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
                 handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
                 tooltip="Show every origin plane, axis and the centre point"),
@@ -750,6 +896,9 @@ def commands():
                 handler=move_end_of_part_here, transactional=True, contexts=frozenset({"browser"})),
         Command(id="browser.suppress", label="Suppress / Unsuppress", icon="suppress", handler=toggle_suppress,
                 transactional=True, contexts=frozenset({"browser"})),
+        Command(id="constraint.suppress", label="Suppress / Unsuppress", icon="suppress",
+                handler=toggle_constraint_suppressed, transactional=True, contexts=frozenset({"browser"}),
+                tooltip="Turn the constraint off (the parts stay where they are) or back on"),
         Command(id="browser.rename", label="Rename", icon="rename", handler=rename, transactional=True,
                 contexts=frozenset({"browser"})),
         Command(id="nav.orbit", label="Orbit", icon="orbit", handler=lambda: toggle_nav_mode("orbit"),
@@ -772,13 +921,24 @@ def commands():
                 contexts=frozenset({"part"})),
         Command(id="file.new_assembly", label="New Assembly", icon="assembly", handler=lambda: new_assembly(),
                 tooltip="New assembly of part files"),
+        Command(id="tools.ask_on_new", label="Ask on New", icon="new", handler=lambda: _toggle_ask_on_new(),
+                checkable=True, is_checked=lambda: not prefs.remember_new_choice(),
+                tooltip="On: New asks Part or Assembly (and the units); off: it makes what you chose last time"),
         Command(id="assembly.place", label="Place", icon="place", handler=lambda: _assembly("place"), shortcut="P",
                 contexts=frozenset({"assembly"}), tooltip="Place a part or assembly file"),
         Command(id="assembly.create", label="Create", icon="create_component", handler=lambda: _assembly("create"),
                 contexts=frozenset({"assembly"}), tooltip="Create a new part file in this assembly"),
         Command(id="assembly.ground", label="Ground", icon="ground", handler=lambda: _assembly("ground"),
                 contexts=frozenset({"assembly"}), tooltip="Ground or unground the selected component"),
-        Command(id="assembly.combine", label="Combine", icon="combine", handler=lambda: start_feature("asm_combine"),
+        Command(id="assembly.suppress", label="Suppress", icon="suppress", handler=lambda: _assembly("suppress"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Suppress the selected component (hidden, its constraints off) or bring it back"),
+        Command(id="assembly.edit", label="Edit", icon="part", handler=lambda: _assembly("edit"),
+                contexts=frozenset({"assembly"}), tooltip="Open the selected component's part to edit it"),
+        Command(id="assembly.remove", label="Remove from Assembly", icon="delete", handler=lambda: _assembly("remove"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Take the selected component out of the assembly (its part file stays)"),
+        Command(id="assembly.combine", label="Boolean", icon="combine", handler=lambda: start_feature("asm_combine"),
                 contexts=frozenset({"assembly"}), tooltip="Cut a component by others (written into its part file)"),
         Command(id="constrain.mate", label="Mate", icon="mate", handler=lambda: start_feature("mate"), shortcut="C",
                 contexts=frozenset({"assembly"}), tooltip="Faces against each other (with an offset)"),
@@ -786,6 +946,12 @@ def commands():
                 contexts=frozenset({"assembly"}), tooltip="Faces side by side, same direction"),
         Command(id="constrain.angle", label="Angle", icon="angle_c", handler=lambda: start_feature("angle_c"),
                 contexts=frozenset({"assembly"})),
+        Command(id="constrain.parallel", label="Parallel", icon="parallel_c",
+                handler=lambda: start_feature("parallel"),
+                contexts=frozenset({"assembly"}), tooltip="Two faces or edges stay parallel; the distance stays free"),
+        Command(id="constrain.perpendicular", label="Perpendicular", icon="perpendicular_c",
+                handler=lambda: start_feature("perpendicular"), contexts=frozenset({"assembly"}),
+                tooltip="Two faces or edges stay at 90°"),
         Command(id="constrain.tangent", label="Tangent", icon="tangent", handler=lambda: start_feature("tangent"),
                 contexts=frozenset({"assembly"})),
         Command(id="constrain.insert", label="Insert", icon="insert", handler=lambda: start_feature("insert"),
@@ -802,6 +968,12 @@ def commands():
                 contexts=frozenset({"assembly"})),
         Command(id="feature.combine", label="Boolean", icon="combine", handler=lambda: start_feature("combine"),
                 contexts=frozenset({"part"}), tooltip="Join, cut or intersect solids; tools are kept; print clearance"),
+        Command(id="file.make_assembly", label="Make Assembly", icon="make_assembly", handler=make_assembly,
+                contexts=frozenset({"part"}),
+                tooltip="Each separate piece of this part becomes a part file (with its history), linked by a new assembly"),
+        Command(id="feature.split", label="Split", icon="split", handler=lambda: start_feature("split"),
+                contexts=frozenset({"part"}),
+                tooltip="Cut the part along a sketch's lines (made into thin surfaces): keep every piece, or the ones you click"),
         Command(id="sketch.construction", label="Construction", icon="construction",
                 handler=lambda: _construction(), contexts=frozenset({"sketch"}), checkable=True,
                 is_checked=lambda: _construction_on(),
@@ -845,6 +1017,10 @@ def commands():
                 tooltip="Delete the selection (sketch geometry and dimensions, or features)"),
         Command(id="edit.delete_key", label="Delete", icon="delete", handler=delete_selection, shortcut="Del",
                 tooltip="Delete the selection"),
+        Command(id="assembly.threads_toggle", label="Threads Off / On", icon="suppress",
+                handler=toggle_assembly_threads, contexts=frozenset({"assembly"}), checkable=True,
+                is_checked=_assembly_threads_off,
+                tooltip="Every thread of the parts off (faster redraws), or back on; changes the part files"),
         Command(id="feature.threads_toggle", label="Threads Off / On", icon="suppress", handler=toggle_threads,
                 transactional=True, checkable=True, is_checked=_threads_off,
                 tooltip="Suppress every thread while you work (faster redraws); click again to bring them back"),
@@ -896,7 +1072,7 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
+SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
          "view.origin_hide_all": "Hide All", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",

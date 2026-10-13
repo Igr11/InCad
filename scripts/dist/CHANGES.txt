@@ -5,38 +5,107 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
-0.1.2
+0.2.0
 -----
-Improvements
+Assemblies are ready to test in this build (they were untested in 0.1.x).
+
+New features
+- Assembly: drag a free part with the mouse. It moves only the way its constraints still let it
+  (its own degrees of freedom); the other parts stay where they are, and a fully held part does not
+  move. One drag is one undo step ("Move part").
+- Assembly: click a free part to get its gizmo: an arrow for each direction it can slide, an arc for
+  each axis it can turn about. Grab an arrow to slide the part, an arc to turn it. Handles are easy
+  to catch (a wide grab zone on screen), the one under the pointer lights up, and the first arrow is
+  up and down where the part can move that way. A click on empty space hides the gizmo.
+- Assembly: each part's row in the browser shows "Grounded", "DOF n" (how many ways it can still
+  move, counted against what holds it) or "DOF ?". View > Degrees of Freedom draws Inventor's DOF
+  symbols on every free part; with it off, the part under the pointer shows its symbol as a tip.
+- Assembly: new Parallel and Perpendicular constraints (faces or straight edges); Angle takes
+  straight edges too.
+- Assembly: Flip in the constraint dialogs: Mate and Flush (which way the faces face), Tangent
+  (which side: outside or inside), Insert (direction), and the Rotational, Slider and Cylindrical
+  joints. The preview turns the part over at once.
+- Assembly: Tangent puts a round face outside the flat face's part by default.
+- Assembly: the constraints in the browser (Relationships) have their own menu: Edit, Delete,
+  Suppress / Unsuppress, Rename. Double-click a row to edit it. A suppressed constraint is struck
+  through and its parts stay where they are. Constraint values are named after them (Mate1,
+  Flush1 ...).
+- Assembly: Edit on a part opens it in its own tab with the other parts of the assembly around it,
+  grey and semi-transparent, at their real places (for reference only: they cannot be picked and
+  are not saved). View > Assembly Context turns them off and on.
+- Assembly: back in the assembly tab after editing a part, InCad asks before updating it; if you
+  say no, the browser shows "Needs update" until you choose Update.
+- Assembly: the browser shows each part's own history; double-click a part to open it. The part
+  menu has Edit, Hide / Show, Suppress and Remove. Threads Off / On works on all parts at once.
+- New Make Assembly (3D Model > Assemble, or right-click in the part): every separate piece of the
+  part becomes a part file with its history, and a new assembly links them where they were (the
+  largest grounded). Names are asked first; files go next to the part; the part itself stays as it
+  was. Running it again offers "Replace existing files", so you don't get Train_2, Train_3 ...
+- New Split (3D Model > Modify): the lines of a sketch become thin surfaces that cut the part. Keep
+  all: every piece stays, each other piece as a Solid of its own (hide it, work on it, make it a
+  part), still following the sketch; Keep picked: only the pieces you click stay.
+- File > New Assembly in the menu. New remembers Part or Assembly; Tools > Ask on New brings the
+  question back.
+- Hide / Show works on Solids and assembly parts (also from their right-click menu in the browser);
+  a hidden one is dimmed in the browser.
 - Sketch: new Constraint List (ribbon Sketch > Constrain > List, or right-click in a sketch >
   Constraint List). It lists the sketch's constraints, including the ones with no icon to click
   (coincident points, point on a line). Pick a line or point to see only its own; select a row to
   see it in the sketch; check rows and press Delete selected (one undo step). Constraints that hold
   a sketch pattern, and dimensions used in a formula, are kept, and the window says why.
 - Sketch: right-click a line or point to delete one of its constraints, or all of them.
-- Hole: new Chamfer option for every hole (None / Start / Both ends, with a size): a 45° lead-in at the
-  mouth of each hole of the Hole and, for a through hole, at its exit. A tapped hole is chamfered from
-  the thread's diameter, so a screw starts easily. With a seat (counterbore, countersink, spotface)
+- Sketch: projected edges are normal lines by default (as in Inventor), so they can be part of a
+  profile right away. Construction switches them to construction and back. Old files follow the
+  new rule in sketches nothing is built on yet.
+- Hole: new Chamfer option for every hole (None / Start / Both ends, with a size): a 45° lead-in at
+  the mouth of each hole and, for a through hole, at its exit. A tapped hole is chamfered from the
+  thread's diameter, so a screw starts easily. With a seat (counterbore, countersink, spotface)
   only the exit can be chamfered.
-- Boolean: click anywhere on a solid to pick it as the base or a tool (the field names the solid, not
-  the face clicked); a click on the base while picking tools is ignored.
+- Boolean: new "Keep tool" option. Off (as it opens): the tool is used up and shows under the
+  Boolean in the model tree. On: the tool stays a separate visible solid (print the pin and the box).
+- Boolean: click anywhere on a solid to pick it as the base or a tool (the field names the solid,
+  not the face clicked); a click on the base while picking tools is ignored. In an assembly the
+  Combine button is now called Boolean too.
+- Extrude: To Next goes toward the part when the default direction finds nothing; To accepts curved
+  faces.
+- Clearance fields say how they are measured: Boolean "Clearance (per side)", Thread and Hole
+  "Print clearance (on diameter)".
+- Dialogs: long choice lists wrap four buttons per row; choosing an option that needs a pick starts
+  that pick, and a click on the field the dialog already made active keeps picking.
 
 Bug fixes
+- A new Solid sketched on another Solid's face took that whole Solid along with it (and Make
+  Assembly then said the pieces could not be separated). It now holds only its own piece, and the
+  Solid below stays shown. Older files are repaired when they are opened.
+- Assembly: Mate and the other constraints picked in the 3D view sometimes lost which part a face
+  belonged to, or said "can't be met" on parts placed far apart. Insert could move the grounded
+  part.
+- Assembly: Place asks for the part first (the save dialog for a new assembly looked like a part
+  chooser).
+- Delete on a Solid used by a Boolean broke the Boolean ("No source shape linked"); deleting the
+  main Solid or a Split could make the other Solid vanish. Delete now asks and removes them
+  together, and a pick on a piece deletes that Solid.
+- A box drawn away from the part and split off into its own Solid no longer takes along what was
+  built on the part after it, and sketches left on the part stay attached.
 - Threads (Threads Off, Suppress) did nothing on a part with two threads when the second one was
-  made after the first: it hung on the first thread. Threads now attach to the hole itself, and
-  older files are repaired the first time threads are turned off.
-- Threads Off / On left the modeled thread of a tapped Hole on (the button looked dead after making
-  one). It now turns those threads off too; the holes themselves stay.
+  made after the first. Threads now attach to the hole itself; older files are repaired the first
+  time threads are turned off.
+- Threads Off / On left the modeled thread of a tapped Hole on (the button looked dead). It now turns
+  those threads off too; the holes themselves stay.
 - Threads Off / On (and Suppress on a thread) did nothing when something was made on a face of a
-  later feature while the threads were off: the threads renumber that feature's faces and the sketch
-  lost its face. InCad now finds the same face again by its geometry.
-- Wireframe was nearly invisible in the dark theme. Its lines are now light (dark in the light theme)
-  and thicker; Shaded puts the normal lines back.
-- Thread on a rod came out sloppy: with the print clearance a hair-thin fin (about 0.04 mm) stayed on
-  every crest, worse when the rod was a little larger than the size (M2.5 on Ø2.594). The rod is now
-  turned down to the thread's crests first (a ThreadTrim step under the Thread), so the crests are clean.
-- Parameters lost their units in a file opened again (an angle showed 90 instead of 90°, a length 12
-  instead of 12 mm) in the Parameters list and in the dialogs. They keep them now.
+  later feature while the threads were off. InCad now finds the same face again by its geometry.
+- Thread: choosing the Print-friendly standard sets the print clearance to 0.3 mm (0.2 mm for the
+  others); a clearance you typed yourself is kept.
+- Thread on a rod came out sloppy: a hair-thin fin (about 0.04 mm) stayed on every crest, worse
+  when the rod was a little larger than the size (M2.5 on Ø2.594), and next to a shoulder. The rod
+  is now turned down to the thread's crests first (a ThreadTrim step under the Thread); the end
+  chamfers start from the part's own radius.
+- Editing a thread: picks landed on the thread's own fill / bore / trim step instead of the part.
+- Dialogs: a choice that becomes unavailable (after a new pick) moves to the next available one.
+- Wireframe was nearly invisible in the dark theme. Its lines are now light (dark in the light
+  theme) and thicker; Shaded puts the normal lines back. Switching no longer marks the file modified.
+- Parameters lost their units in a file opened again (90 instead of 90°, 12 instead of 12 mm) in the
+  Parameters list and in the dialogs; opening a file no longer marks its features for a recompute.
 
 
 0.1.1

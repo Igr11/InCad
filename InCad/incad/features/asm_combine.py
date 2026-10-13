@@ -3,7 +3,7 @@
 from incad.core import asm_cut
 from incad.features.common import Field, parse_picks
 
-TITLE = "Combine"
+TITLE = "Boolean"
 ICON = "combine"
 TYPES = ("App::FeaturePython",)
 NEEDS_PROFILE = False

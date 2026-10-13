@@ -232,3 +232,8 @@ class UnitsAfterReopenTest(unittest.TestCase):
         self.assertEqual((users["width"], users["tilt"]), ("40 mm", "15°"))
         values = {n: v for n, _, v in model.feature_parameters(self.doc)}
         self.assertEqual((values[a], values[f]), ("90°", "20 mm"))
+
+    def test_restoring_units_leaves_nothing_to_recompute(self):
+        model.new_feature_parameter(self.doc, "12 mm", "length")
+        self.reopen()
+        self.assertFalse([o.Name for o in self.doc.Objects if "Touched" in o.State])

@@ -136,15 +136,19 @@ def test_5_hide_show_on_the_selected_axis_after_a_refresh_sticks():
     assert not document.is_shown(y)
 
 
-def test_6_hide_show_with_a_face_selected_says_what_was_selected():
-    Gui.Selection.clearSelection()
+def test_6_hide_show_with_a_face_selected_hides_and_shows_the_whole_solid():
+    from incad.core import context, document
+    body = document.primary_body(App.ActiveDocument)
     shell.instance().browser.tree.clearSelection()
-    from incad.core import context
     context.set_target(None)
-    Gui.Selection.addSelection(App.ActiveDocument.Name, "Pad", "Face1")
-    harness.pump(300)
-    r = commands.REGISTRY.run("view.toggle_visibility")
-    assert not r.ok and "Pad" in r.error, (r.ok, r.error)
+    for shown in (False, True):
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(App.ActiveDocument.Name, "Pad", "Face1")
+        harness.pump(300)
+        r = commands.REGISTRY.run("view.toggle_visibility")
+        assert r.ok, r.error
+        harness.pump(500)
+        assert document.is_shown(body) == shown, (shown, body.Visibility)
     Gui.Selection.clearSelection()
     harness.pump(200)
 
@@ -185,5 +189,5 @@ harness.run([test_0_part, test_1_tree_click_selects_in_the_model_and_shows_a_hid
              test_2_a_3d_pick_highlights_the_tree_row, test_3_a_3d_pick_of_a_shown_plane_expands_origin_and_highlights_its_row,
              test_4_refresh_keeps_the_selection_and_the_expanded_origin,
              test_5_hide_show_on_the_selected_axis_after_a_refresh_sticks,
-             test_6_hide_show_with_a_face_selected_says_what_was_selected,
+             test_6_hide_show_with_a_face_selected_hides_and_shows_the_whole_solid,
              test_7_undo_and_cmd_z_take_back_a_hide_show])

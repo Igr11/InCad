@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InCad User Manual</title>
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+:root { --ink: #16202C; --blue: #2F6FA8; --orange: #F08A24; --muted: #5B6675; --line: #D3D9E0; --soft: #F2F5F8; --warm: #FFF4E8; }
+html, body { background: #fff; }
+body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45;
+       color: var(--ink); margin: 0; max-width: 178mm; }
+p { margin: 0 0 0.55em; orphans: 3; widows: 3; }
+a { color: var(--blue); text-decoration: none; }
+h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; break-inside: avoid; }
+h1.chapter { break-before: page; page-break-before: always; font-size: 21pt; font-weight: 650; margin: 0 0 0.25em;
+             padding-bottom: 0.25em; border-bottom: 3px solid var(--blue); }
+h1.chapter .num { color: var(--orange); margin-right: 0.35em; }
+.lead { color: var(--muted); font-size: 11pt; margin-bottom: 1em; }
+h2 { font-size: 13.5pt; color: var(--blue); margin: 1.25em 0 0.4em; font-weight: 650; }
+h3 { font-size: 11pt; margin: 1em 0 0.3em; font-weight: 650; }
+.keep { break-inside: avoid; page-break-inside: avoid; }
+ul, ol { margin: 0.2em 0 0.7em; padding-left: 1.4em; }
+li { margin: 0.12em 0; }
+figure { break-inside: avoid; page-break-inside: avoid; margin: 0.9em 0 1em; }
+figure img { display: block; width: 100%; max-width: 100%; border: 1px solid var(--line); border-radius: 3px; }
+figcaption { font-size: 9pt; color: var(--muted); margin-top: 0.35em; }
+table { border-collapse: collapse; width: 100%; margin: 0.4em 0 0.9em; font-size: 9.5pt; break-inside: avoid;
+        page-break-inside: avoid; }
+table.long { break-inside: auto; page-break-inside: auto; }
+table.long tr { break-inside: avoid; page-break-inside: avoid; }
+th, td { text-align: left; vertical-align: top; padding: 0.3em 0.5em; border-bottom: 1px solid var(--line); }
+th { font-weight: 650; border-bottom: 2px solid var(--ink); background: var(--soft); }
+td:first-child { white-space: nowrap; }
+td.wrap, th.wrap { white-space: normal; }
+kbd { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 8.8pt; padding: 0 0.35em;
+      border: 1px solid #AEB7C2; border-bottom-width: 2px; border-radius: 3px; background: #fff; white-space: nowrap; }
+.ui { font-weight: 600; }
+.path { font-weight: 600; white-space: nowrap; }
+.note { border-left: 3px solid var(--orange); background: var(--warm); padding: 0.45em 0.7em; margin: 0.6em 0 0.9em;
+        break-inside: avoid; page-break-inside: avoid; }
+.tip { border-left: 3px solid var(--blue); background: var(--soft); padding: 0.45em 0.7em; margin: 0.6em 0 0.9em;
+       break-inside: avoid; page-break-inside: avoid; }
+.note b:first-child, .tip b:first-child { margin-right: 0.3em; }
+code { font-family: "SF Mono", Menlo, monospace; font-size: 9pt; background: var(--soft); padding: 0 0.25em; border-radius: 2px; }
+.cols2 { display: flex; gap: 7mm; align-items: flex-start; break-inside: avoid; page-break-inside: avoid; }
+.cols2 > table { flex: 1; }
+table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
+
+/* cover */
+.cover { height: 255mm; display: flex; flex-direction: column; justify-content: space-between; padding: 30mm 0 6mm; }
+.cover .brand { font-size: 44pt; font-weight: 700; letter-spacing: -0.5pt; }
+.cover .brand span { color: var(--blue); }
+.cover .sub { font-size: 18pt; color: var(--muted); margin-top: 0.2em; }
+.cover .bar { height: 6px; width: 60mm; background: var(--orange); margin: 10mm 0 8mm; }
+.cover .meta { font-size: 11pt; line-height: 1.6; }
+.cover .foot { font-size: 9pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 3mm; }
+
+/* table of contents */
+.toc { break-before: page; page-break-before: always; }
+.toc h1 { font-size: 21pt; margin: 0 0 0.6em; padding-bottom: 0.25em; border-bottom: 3px solid var(--blue); }
+.toc ol { list-style: none; padding: 0; margin: 0; }
+.toc li { display: flex; gap: 0.8em; padding: 0.45em 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+.toc .n { color: var(--orange); font-weight: 700; min-width: 1.6em; }
+.toc .t { font-weight: 650; }
+.toc .d { color: var(--muted); font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div>
+    <div class="brand">In<span>Cad</span></div>
+    <div class="sub">User Manual</div>
+    <div class="bar"></div>
+    <div class="meta">
+      An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
+      Version 0.2.0 — test build<br>
+      FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon
+    </div>
+  </div>
+  <div class="foot">
+    This manual describes InCad as it is in build 0.2.0. Screen names (ribbon tabs, buttons, dialog fields) are written
+    exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
+    README.txt. October 2026.
+  </div>
+</section>
+
+<section class="toc">
+  <h1>Contents</h1>
+  <ol>
+    <li><span class="n">1</span><span><a class="t" href="#about">About InCad</a><br><span class="d">What InCad is, how it sits on top of FreeCAD, what a test build means for your files.</span></span></li>
+    <li><span class="n">2</span><span><a class="t" href="#install">Installation</a><br><span class="d">Requirements, installing with the Addon Manager or by hand, the first start, updating, uninstalling.</span></span></li>
+    <li><span class="n">3</span><span><a class="t" href="#window">The InCad window</a><br><span class="d">Ribbon, Model Browser, Parameters, status line, themes, settings, Undo.</span></span></li>
+    <li><span class="n">4</span><span><a class="t" href="#mouse">Mouse, views and marking menus</a><br><span class="d">Orbit, pan and zoom, the right-click marking menus, the View tab.</span></span></li>
+    <li><span class="n">5</span><span><a class="t" href="#sketch">Sketching</a><br><span class="d">Starting a sketch, drawing tools, dimensions and formulas, constraints and the Constraint List, projected geometry, sketch patterns.</span></span></li>
+    <li><span class="n">6</span><span><a class="t" href="#features">Part features</a><br><span class="d">How feature dialogs work, then every feature: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Thread, Sweep, Loft, Coil, Boolean, Split, patterns, work features.</span></span></li>
+    <li><span class="n">7</span><span><a class="t" href="#solids">Several solids in one part</a><br><span class="d">Separate solids, sketching on another solid, hiding, deleting, turning them into an assembly.</span></span></li>
+    <li><span class="n">8</span><span><a class="t" href="#inspect">Inspect and tools</a><br><span class="d">Measuring, mass properties, materials, section views, options.</span></span></li>
+    <li><span class="n">9</span><span><a class="t" href="#assembly">Assemblies</a><br><span class="d">Placing parts, constraints and joints, degrees of freedom, moving parts, editing a part in place, Make Assembly, Boolean between parts.</span></span></li>
+    <li><span class="n">10</span><span><a class="t" href="#printing">Tips for 3D printing</a><br><span class="d">Print clearances, keeping tools, printing a part in pieces.</span></span></li>
+    <li><span class="n">11</span><span><a class="t" href="#trouble">Troubleshooting and reporting a problem</a><br><span class="d">What to try first, the log file, what to send, known limits.</span></span></li>
+    <li><span class="n">A</span><span><a class="t" href="#keys">Keyboard shortcuts</a><br><span class="d">Every key InCad answers to.</span></span></li>
+    <li><span class="n">B</span><span><a class="t" href="#ribbon">Ribbon map</a><br><span class="d">Every tab, group and command of the ribbon in each mode.</span></span></li>
+  </ol>
+</section>
+
+<!-- ============================================================ 1 -->
+<h1 class="chapter" id="about"><span class="num">1</span>About InCad</h1>
+<p class="lead">InCad gives FreeCAD the look and the working habits of Autodesk Inventor and Alibre Design.</p>
+
+<p>InCad is a <b>workbench</b> for FreeCAD: a module that FreeCAD loads like its own Part Design or Sketcher
+workbenches. When InCad is active it replaces FreeCAD's toolbars and panels with an Inventor-style interface:</p>
+<ul>
+  <li>a <b>ribbon</b> with tabs that change with what you are doing (part, sketch, assembly);</li>
+  <li>a <b>Model Browser</b> with one history for the whole part, sketches under the features that use them and an
+      <b>End of Part</b> marker you can drag;</li>
+  <li>a <b>Parameters</b> panel where every dimension and feature value has a name and can be used in formulas;</li>
+  <li><b>feature dialogs</b> with a live preview, <b>OK</b>, <b>Apply +</b> and <b>Cancel</b>;</li>
+  <li><b>marking menus</b> on the right mouse button, and Inventor's mouse navigation;</li>
+  <li>Inventor-like <b>sketching</b>, <b>assemblies</b> with constraints, joints and degrees of freedom.</li>
+</ul>
+
+<div class="keep"><h2>FreeCAD underneath</h2>
+<p>Everything InCad makes is ordinary FreeCAD geometry: a part is a FreeCAD Part Design body, a sketch is a Sketcher
+sketch, an assembly uses FreeCAD's own Assembly joints. Your files stay normal <b>.FCStd</b> files that FreeCAD opens
+with or without InCad.</p></div>
+<p>The <span class="ui">FreeCAD</span> button at the top right of the window (<span class="ui">Return to FreeCAD</span>)
+brings FreeCAD's own interface back at any time; choose <span class="ui">InCad</span> in FreeCAD's workbench selector
+to come back.</p>
+<p>A file that was not made in InCad opens as well. The Model Browser then says <span class="ui">Not an InCad part</span>
+and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
+FreeCAD</span>.</p>
+
+<div class="keep"><h2>This build: 0.2.0, a test build</h2>
+<p>0.2.0 is an early test build. Parts have been tested in the earlier builds; this is the first build in which
+<b>assemblies</b> are ready to test: placing parts, constraints and joints, dragging parts along their degrees of
+freedom, and Make Assembly from a part.</p></div>
+<div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
+something looks wrong, tell us — chapter 11 says what to send.</div>
+
+<!-- ============================================================ 2 -->
+<h1 class="chapter" id="install"><span class="num">2</span>Installation</h1>
+<p class="lead">Install InCad once with FreeCAD's Addon Manager; updating is the same few steps.</p>
+
+<div class="keep"><h2>Requirements</h2>
+<ul>
+  <li>A Mac with Apple Silicon (M1, M2, M3, M4 …).</li>
+  <li>FreeCAD 1.1 for macOS Apple Silicon (InCad is tested with FreeCAD 1.1.3), from
+      <b>www.freecad.org/downloads.php</b>.</li>
+</ul></div>
+<p>Intel Macs, Windows and Linux are not supported in this build.</p>
+
+<div class="keep"><h2>Install with FreeCAD's Addon Manager (recommended)</h2>
+<ol>
+  <li>Unzip the InCad archive. You get a folder with README, CHANGES and this manual, and a folder named
+      <b>InCad</b>. Put the unzipped folder somewhere it can stay for now, for example in Downloads.</li>
+  <li>Copy the path of the <b>InCad</b> folder — the one <i>inside</i> the unzipped folder: select it in Finder and press
+      <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd> (Copy as Pathname). The path ends in <code>…/InCad</code>, not in
+      <code>.zip</code> and not in <code>…-macOS-arm64</code>.</li>
+  <li>Start FreeCAD and open <span class="path">FreeCAD ▸ Settings…</span> (Preferences…). Choose
+      <span class="ui">Addon Manager</span> in the list on the left.</li>
+  <li>Under <span class="ui">Custom repositories</span> click <span class="ui">+</span>. Paste the path from step 2 into
+      <span class="ui">Repository URL</span>. Leave <span class="ui">Branch</span> as it is. Click <span class="ui">OK</span>,
+      then <span class="ui">OK</span> again to close Settings.</li>
+  <li>Open <span class="path">Tools ▸ Addon Manager</span>. Find <b>InCad</b> in the list, select it and click
+      <span class="ui">Install</span>.</li>
+  <li>Restart FreeCAD and choose <b>InCad</b> in the workbench selector.</li>
+</ol></div>
+<p>After the install the unzipped folder is no longer needed.</p>
+
+<div class="keep"><h2>Install by hand (if the Addon Manager way does not work)</h2>
+<ol>
+  <li>Quit FreeCAD.</li>
+  <li>In Finder choose <span class="path">Go ▸ Go to Folder…</span> (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>G</kbd>) and paste
+      <code>~/Library/Application Support/FreeCAD/v1-1/Mod</code>. If there is no <b>Mod</b> folder, go to
+      <code>…/FreeCAD/v1-1</code> and create a folder named <b>Mod</b> there.</li>
+  <li>Copy the <b>InCad</b> folder from the unzipped archive into that <b>Mod</b> folder. The result must be
+      <code>…/FreeCAD/v1-1/Mod/InCad/InitGui.py</code> — not <code>…/Mod/InCad/InCad/InitGui.py</code>.</li>
+  <li>Start FreeCAD and choose <b>InCad</b> in the workbench selector.</li>
+</ol></div>
+
+<div class="keep"><h2>The first start</h2>
+<p>The first time, InCad asks what to make and in which units: <span class="ui">Part</span> (one part file) or
+<span class="ui">Assembly</span> (place and constrain part files), and <span class="ui">Millimeters</span> (mm, ISO
+threads listed first) or <span class="ui">Inches</span> (in, UNC/UNF threads listed first). With
+<span class="ui">Remember my choice</span> checked, <span class="ui">New</span> makes the same kind of file without
+asking next time. Click <span class="ui">Create</span>.</p></div>
+<p>To bring the question back, turn on <span class="path">Tools ▸ Options ▸ Ask on New</span> on the ribbon, or choose
+<span class="path">⚙ ▸ Units for New Files ▸ Ask every time</span>.</p>
+
+<div class="keep"><h2>Start FreeCAD in InCad</h2>
+<p>To make InCad the workbench FreeCAD starts with: <span class="path">FreeCAD ▸ Settings… ▸ Workbenches ▸ Available
+Workbenches ▸ Startup ▸ Default workbench: InCad</span>. (In FreeCAD 1.1 this setting is under Workbenches, not under
+General.)</p></div>
+
+<div class="keep"><h2>Update to a new build</h2>
+<ol>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ select <b>InCad</b> ▸ <span class="ui">Uninstall</span>. Quit FreeCAD.</li>
+  <li>Unzip the new build and copy the path of its <b>InCad</b> folder (<kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd>).</li>
+  <li><span class="path">FreeCAD ▸ Settings… ▸ Addon Manager ▸ Custom repositories</span>: select the old path, remove it
+      with <span class="ui">−</span>, and add the new path with <span class="ui">+</span>.</li>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ <b>InCad</b> ▸ <span class="ui">Install</span>, then restart FreeCAD.</li>
+</ol></div>
+<p>Installed by hand: quit FreeCAD, replace the <code>Mod/InCad</code> folder, start FreeCAD.</p>
+
+<div class="keep"><h2>Uninstall</h2>
+<p><span class="path">Tools ▸ Addon Manager</span> ▸ select <b>InCad</b> ▸ <span class="ui">Uninstall</span>, then restart
+FreeCAD. Installed by hand: quit FreeCAD and delete the <code>Mod/InCad</code> folder. You may also delete the log file
+<code>~/Library/Logs/InCad.log</code>. Your .FCStd files keep working in plain FreeCAD.</p></div>
+
+<!-- ============================================================ 3 -->
+<h1 class="chapter" id="window"><span class="num">3</span>The InCad window</h1>
+<p class="lead">A short tour: what each area of the window is for.</p>
+
+<figure>
+  <img src="img/1_overview.jpg" alt="The InCad window with a part">
+  <figcaption>Figure 1. The InCad window: the title strip and ribbon at the top, the Model Browser with the Parameters
+  panel on the left, the model in the middle, the ViewCube and navigation strip on the right, the status line at the
+  bottom.</figcaption>
+</figure>
+
+<div class="keep"><h2>3.1 Title strip</h2>
+<p>The strip at the very top holds quick buttons — <span class="ui">New</span>, <span class="ui">Open</span>,
+<span class="ui">Save</span>, <span class="ui">Undo</span>, <span class="ui">Redo</span> and <span class="ui">Update</span>
+— the name of the file, and on the right <span class="ui">Light / Dark</span>, <span class="ui">FreeCAD</span> (Return to
+FreeCAD) and <span class="ui">⚙</span> (InCad settings).</p></div>
+<p><span class="ui">Update</span> recomputes the model and redraws the browser and the view. Use it if the view and the
+browser ever seem out of step with the model; in an assembly it also brings in parts that changed (see
+<a href="#asm-update">9.10</a>).</p>
+
+<div class="keep"><h2>3.2 Menus</h2>
+<p>InCad keeps a short menu bar: <span class="ui">File</span> (New, New Assembly, Open, Save, Save As, Close, Quit),
+<span class="ui">Edit</span> (Undo, Redo) and <span class="ui">View</span> (Light / Dark, Zoom All, Home View, Shaded,
+Wireframe, Assembly Context, Parameters, Return to FreeCAD, Ribbon Size). Everything else is on the ribbon and in the
+marking menus.</p></div>
+
+<div class="keep"><h2>3.3 The ribbon</h2>
+<p>The ribbon's tabs depend on what is open:</p></div>
+<table>
+  <tr><th>Mode</th><th>Tabs</th></tr>
+  <tr><td>No file, or a file not made in InCad</td><td class="wrap"><b>Get Started</b> (New, New Assembly, Open), View</td></tr>
+  <tr><td>A part</td><td class="wrap"><b>3D Model</b>, <b>Inspect</b>, <b>Tools</b>, <b>View</b></td></tr>
+  <tr><td>Editing a sketch</td><td class="wrap"><b>Sketch</b>, <b>View</b></td></tr>
+  <tr><td>An assembly</td><td class="wrap"><b>Assemble</b>, <b>View</b></td></tr>
+</table>
+<p>A button with a small arrow is a <b>split button</b>: it runs the command shown, and its arrow lists the variants
+(for example Rectangle ▸ Center Rectangle, 3-Point Rectangle …). Hover over a button for its full name and a tip.
+<span class="path">View ▸ Ribbon Size</span> (or <span class="path">⚙ ▸ Ribbon Size</span>) switches between
+<span class="ui">Small</span> and <span class="ui">Large</span>. Appendix B lists every command of every tab.</p>
+
+<div class="keep"><h2>3.4 The Model Browser</h2>
+<p>The <b>MODEL</b> panel on the left is the history of the part, as in Inventor:</p></div>
+<ul>
+  <li>The top row is the part. Under it: <b>Origin</b> (XY, XZ and YZ Plane, X, Y and Z Axis, Center Point), then
+      <b>Solid Bodies (n)</b> when the part has more than one solid (chapter 7), then the features in the order they were
+      made — one history for every solid of the part.</li>
+  <li>A sketch sits under the feature that uses it. A sketch row shows <b>✓</b> when it is fully constrained, or how
+      many degrees of freedom are left (<b>2 DOF</b>).</li>
+  <li><b>End of Part</b> marks where the model ends. Drag it up to see (and work on) the part as it was at that point;
+      features below it are greyed and not computed. Right-click a feature ▸ <span class="ui">Move End of Part Here</span>
+      does the same. Drag it back down to the end when you are done.</li>
+  <li>Row colours: a feature that failed is <b>red</b> (hover over it for the reason); a suppressed feature is greyed
+      and <s>struck through</s>; a hidden item is dimmed.</li>
+</ul>
+<figure>
+  <img src="img/2_highlight.jpg" alt="A feature selected in the browser lights up its faces">
+  <figcaption>Figure 2. Click a feature in the browser and its faces light up on the model.</figcaption>
+</figure>
+<p><b>Click</b> a row to select it: the faces the feature made light up in the view (figure 2). A hidden plane, axis,
+point or sketch is shown while its row is selected and hidden again when you select something else.
+<b>Double-click</b> a row to edit it: a feature opens its dialog, a sketch opens for editing, a plane starts a new
+sketch on it. With <kbd>⇧</kbd> or <kbd>⌘</kbd> you can select several rows.</p>
+<p><b>Right-click</b> a row for its marking menu (chapter 4):</p>
+<table>
+  <tr><th>Row</th><th class="wrap">Commands</th></tr>
+  <tr><td>A feature or sketch</td><td class="wrap">Edit, Move End of Part Here, Suppress / Unsuppress, Rename, Show in
+      Window, Start 2D Sketch, Delete, Hide / Show</td></tr>
+  <tr><td>A solid (Solid Bodies)</td><td class="wrap">Hide / Show, Rename, Show in Window, Delete</td></tr>
+  <tr><td>An origin plane or axis</td><td class="wrap">Start 2D Sketch, Hide / Show</td></tr>
+</table>
+<ul>
+  <li><span class="ui">Show in Window</span> lights up the feature's faces and zooms the view to them. Its opposite,
+      <span class="ui">Show in Browser</span> (right-click a face in the view), opens the browser at the feature that made
+      that face.</li>
+  <li><span class="ui">Suppress / Unsuppress</span> turns a feature off without deleting it. A thread is suppressed together
+      with the helper steps InCad made for it; picking a feature's profile sketch means the feature.</li>
+  <li><span class="ui">Delete</span> removes a feature together with everything InCad made for it (thread profiles,
+      Boolean helpers, assembly cuts), as one undo step. <kbd>⌫</kbd> or <kbd>Del</kbd> deletes the selection. When the
+      delete affects more than the row — a solid used by a Boolean, the main solid, a Split with pieces — InCad asks
+      first and says what will go.</li>
+  <li><span class="ui">Hide / Show</span> works on solids, assembly parts, origin planes and axes, the Center Point and
+      sketches.</li>
+</ul>
+
+<div class="keep"><h2 id="params">3.5 The Parameters panel</h2>
+<figure>
+  <img src="img/14_parameters.jpg" alt="The Parameters panel">
+  <figcaption>Figure 3. The Parameters panel: every dimension and feature value has a name; the Value column takes
+  numbers with units or formulas, Result shows what they come to.</figcaption>
+</figure></div>
+<p>Below the browser, <b>PARAMETERS</b> lists the part's values in three columns: <span class="ui">Name</span>,
+<span class="ui">Value</span> (what you typed — a number or a formula) and <span class="ui">Result</span>.</p>
+<ul>
+  <li><b>Model parameters</b> (shown in the accent colour) are made automatically: every sketch dimension and every
+      feature value gets the next free name <b>d0, d1, d2 …</b>; assembly constraint values are named after the
+      constraint (<b>Mate1</b>, <b>Angle1</b> …). Type a new name over a model parameter to rename it — formulas that use
+      it follow.</li>
+  <li><b>Your own parameters</b>: click <span class="ui">+</span>, type a name, press <kbd>Tab</kbd> and type the value
+      (<code>Width</code>, <code>40 mm</code>). Use the name in any value box or dialog field.</li>
+  <li>Change a value in the Value column and the model updates.</li>
+  <li><span class="ui">−</span> removes the selected parameter. A value that is still used (by a feature or a formula) is
+      not removed: the status line says what uses it. This is how you clean up values left behind by deleted features.</li>
+  <li>While a value box or a dialog field is open, click a parameter's name to insert it into the formula.</li>
+</ul>
+<p><span class="ui">View ▸ Windows ▸ Parameters</span> (or the marking menu) moves the keyboard focus to the panel.</p>
+
+<div class="keep"><h2>3.6 Values, units and formulas</h2>
+<p>Wherever InCad asks for a length or an angle you can type:</p></div>
+<ul>
+  <li>a number, in the file's units (<code>12</code>), or with units (<code>12 mm</code>, <code>0.5 in</code>,
+      <code>30°</code>);</li>
+  <li>a parameter name (<code>d3</code>, <code>Width</code>);</li>
+  <li>a formula (<code>d0/2</code>, <code>Width - 2*d3</code>, <code>d3*2</code>).</li>
+</ul>
+<p>A value that is a formula updates whenever the values it uses change.</p>
+
+<div class="keep"><h2>3.7 The status line</h2>
+<p>At the bottom of the window: on the left, what to do next (for example "Pick a plane or a flat face for the new
+sketch") and messages — in orange or red when something did not work, so look here first when "nothing happens". On
+the right: the units of the file (<b>mm · deg</b>), while sketching the sketch's freedom (<b>DOF: 3</b> or
+<b>Fully constrained ✓</b> — click it to see the free geometry), and the size of the part (<b>2 solids · 14
+features</b>).</p></div>
+
+<div class="keep"><h2>3.8 Light, dark and the settings menu</h2>
+<p><span class="ui">Light / Dark</span> on the title strip (also <span class="path">View ▸ Appearance</span> and the
+marking menu) switches the theme in one click. The <span class="ui">⚙</span> menu holds InCad's settings:</p></div>
+<table>
+  <tr><th>⚙ menu</th><th class="wrap">Choices</th></tr>
+  <tr><td>Theme</td><td class="wrap">Match macOS, Light, Dark</td></tr>
+  <tr><td>Ribbon Size</td><td class="wrap">Small, Large</td></tr>
+  <tr><td>Units for New Files</td><td class="wrap">Ask every time, Always millimeters, Always inches</td></tr>
+  <tr><td>Dimension Display</td><td class="wrap">How sketch dimensions are labelled: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
+  <tr><td>Mouse Navigation</td><td class="wrap">On: InCad's mouse (LMB+RMB orbit, right-click menu). Off: FreeCAD's own
+      navigation style applies.</td></tr>
+</table>
+
+<div class="keep"><h2>3.9 Undo and Redo</h2>
+<p><kbd>⌘</kbd> <kbd>Z</kbd> undoes, <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Z</kbd> redoes (also the title strip buttons and the
+NW / NE slots of the marking menu). Every operation is <b>one</b> undo step: a feature made in a dialog, a delete with
+its helpers, a hide, a drag of an assembly part. Inside a feature dialog, Undo steps back through the dialog's own
+changes. Undo also works in a sketch.</p></div>
+<p>While a feature dialog is open, commands that would interfere with it (Save, Undo outside the dialog, editing a
+sketch) are refused with "Finish the … dialog first". Click <span class="ui">OK</span> or <span class="ui">Cancel</span>
+first.</p>
+
+<div class="keep"><h2>3.10 Files</h2>
+<p><span class="ui">New</span> (<kbd>⌘</kbd> <kbd>N</kbd>) makes a part or an assembly (as chosen at the first start),
+<span class="path">File ▸ New Assembly</span> always an assembly. <span class="ui">Open</span> (<kbd>⌘</kbd>
+<kbd>O</kbd>), <span class="ui">Save</span> (<kbd>⌘</kbd> <kbd>S</kbd>), <span class="ui">Save As</span>
+(<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>S</kbd>) work on the file in front. <span class="ui">Close</span> (<kbd>⌘</kbd>
+<kbd>W</kbd>) asks whether to save changes (<span class="ui">Save</span>, <span class="ui">Don't Save</span>,
+<span class="ui">Cancel</span>); <span class="ui">Quit</span> (<kbd>⌘</kbd> <kbd>Q</kbd>) asks about every changed file.
+Each open file has its own tab above the view.</p></div>
+
+<!-- ============================================================ 4 -->
+<h1 class="chapter" id="mouse"><span class="num">4</span>Mouse, views and marking menus</h1>
+<p class="lead">InCad uses Inventor's mouse: the left button selects, both buttons orbit, the right button opens
+marking menus.</p>
+
+<div class="keep"><h2>4.1 Mouse</h2>
+<table>
+  <tr><th>Action</th><th class="wrap">What it does</th></tr>
+  <tr><td>Left click</td><td class="wrap">Select. <kbd>⇧</kbd>-click or <kbd>⌘</kbd>-click adds to the selection.</td></tr>
+  <tr><td>Left + right button drag</td><td class="wrap">Orbit around the point under the cursor.</td></tr>
+  <tr><td>Middle button drag</td><td class="wrap">Pan.</td></tr>
+  <tr><td>Wheel</td><td class="wrap">Zoom at the cursor.</td></tr>
+  <tr><td>Right click</td><td class="wrap">Marking menu (in the view and in the Model Browser).</td></tr>
+  <tr><td>Right button drag</td><td class="wrap">Flick: runs the marking-menu command in that direction without waiting for the menu.</td></tr>
+  <tr><td>Double click</td><td class="wrap">In the browser: edit the row (a feature, a sketch, an assembly part). In a sketch: edit a dimension, or the pattern of a copy.</td></tr>
+</table></div>
+<p>No middle button? <span class="ui">Orbit</span> and <span class="ui">Pan</span> on the navigation strip (right edge of
+the view) or on the View tab turn the left button into orbit or pan; click the button again to stop.</p>
+<p><span class="path">⚙ ▸ Mouse Navigation</span> switches InCad's mouse handling off; FreeCAD's own navigation style
+then applies.</p>
+<div class="tip"><b>Sketch tools:</b> while FreeCAD's line (polyline) or spline tool is drawing, a right click finishes the
+chain, as in FreeCAD, instead of opening the menu.</div>
+
+<div class="keep"><h2>4.2 Marking menus</h2>
+<figure>
+  <img src="img/4_menu.jpg" alt="The right-click marking menu">
+  <figcaption>Figure 4. The marking menu: eight commands around the cursor, a short list below.</figcaption>
+</figure></div>
+<p>A right click opens a ring of eight commands around the cursor (north, north-east … north-west) and a short list
+below it. What it offers depends on what is under the cursor — empty space, a face, an edge, a sketch, an assembly part,
+a browser row. Once you know where a command sits, <b>flick</b>: press the right button, drag towards the command and
+release — no need to wait for the menu.</p>
+<table class="long mm">
+  <tr><th>Under the cursor</th><th class="wrap">Ring (N, S, E, W first)</th><th class="wrap">List</th></tr>
+  <tr><td>Empty space (part)</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Redo,
+      SE Parameters, SW Light / Dark</td><td class="wrap">Zoom All, Home View, Return to FreeCAD, Hide / Show, Show All
+      Origin, Hide All Origin, Make Assembly</td></tr>
+  <tr><td>A face</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Look At, SE Home
+      View, SW Zoom All</td><td class="wrap">Show in Browser, Zoom Selection, Hole, Fillet, Thread, Hide / Show</td></tr>
+  <tr><td>An edge</td><td class="wrap">N Look At, S Zoom Selection, E Fillet, W Chamfer, NW Undo, NE Redo, SE Home View,
+      SW Zoom All</td><td class="wrap">Show in Browser, Shaded, Wireframe, Hide / Show</td></tr>
+  <tr><td>In a sketch</td><td class="wrap">N Finish Sketch, S Dimension, E Circle, W Undo, NE Line, SE Rectangle,
+      SW 3-Point Arc, NW Trim</td><td class="wrap">Stop Tool, Delete, Show / Hide Constraints, Constraint List, Look At,
+      Construction, Project Geometry, Edit Pattern, Delete Pattern — and, on a line or point, Delete for each of its
+      constraints (section 5.6)</td></tr>
+  <tr><td>Empty space (assembly)</td><td class="wrap">N Place, S Mate, E Rigid, W Create, NW Undo, NE Zoom All, SE Home
+      View, SW Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Flush, Insert, Return to
+      FreeCAD</td></tr>
+  <tr><td>A face of a part (assembly)</td><td class="wrap">N Mate, S Flush, E Angle, W Tangent, NE Look At, SW
+      Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Rigid, Parallel, Perpendicular, Zoom
+      Selection</td></tr>
+  <tr><td>An edge of a part (assembly)</td><td class="wrap">N Insert, S Rotational, E Cylindrical, W Slider, SW
+      Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Rigid, Parallel, Perpendicular, Angle,
+      Zoom Selection</td></tr>
+  <tr><td>No file open</td><td class="wrap">N New, S Open, E Light / Dark, W Return to FreeCAD</td><td class="wrap">—</td></tr>
+</table>
+<p>The browser rows have their own menus (chapter 3; assembly rows in chapter 9).</p>
+
+<div class="keep"><h2>4.3 View commands</h2>
+<p>On the <b>View</b> tab (and partly on the navigation strip and the View menu):</p></div>
+<table class="long">
+  <tr><th>Command</th><th class="wrap">What it does</th></tr>
+  <tr><td>Light / Dark</td><td class="wrap">Switch the theme.</td></tr>
+  <tr><td>Zoom All</td><td class="wrap">Fit the whole model in the view.</td></tr>
+  <tr><td>Home View</td><td class="wrap">The standard isometric view.</td></tr>
+  <tr><td>Look At</td><td class="wrap">Look straight at the selected face or plane; while sketching with nothing selected,
+      straight at the sketch.</td></tr>
+  <tr><td>Zoom Selection</td><td class="wrap">Fit the selection in the view.</td></tr>
+  <tr><td>Orbit, Pan</td><td class="wrap">The left button orbits or pans until you click the button again.</td></tr>
+  <tr><td>Shaded, Wireframe</td><td class="wrap">Visual style. Wireframe lines are drawn light in the dark theme and dark in
+      the light theme.</td></tr>
+  <tr><td>Section</td><td class="wrap">Cut the view open (section 8.4). Click again to close.</td></tr>
+  <tr><td>Section by 3 Points</td><td class="wrap">Click three marked points for the section plane.</td></tr>
+  <tr><td>Hide / Show</td><td class="wrap">Hide or show the selected solids, assembly parts, origin items or sketches.</td></tr>
+  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: every origin plane, axis and the centre point.</td></tr>
+  <tr><td>Assembly Context</td><td class="wrap">In a part opened from an assembly: show or hide the other parts around it (9.9).</td></tr>
+  <tr><td>Degrees of Freedom</td><td class="wrap">In an assembly: draw the DOF symbols on every free part (9.7).</td></tr>
+  <tr><td>Parameters</td><td class="wrap">Move the keyboard focus to the Parameters panel.</td></tr>
+</table>
+
+<!-- ============================================================ 5 -->
+<h1 class="chapter" id="sketch"><span class="num">5</span>Sketching</h1>
+<p class="lead">Sketches work as in Inventor: draw roughly, then dimension and constrain. Every dimension has a name
+you can use in formulas.</p>
+
+<div class="keep"><h2>5.1 Starting a sketch</h2>
+<ol>
+  <li>Select a flat face of the part or a plane (in the view or the browser) — or select nothing.</li>
+  <li>Press <kbd>S</kbd>, or click <span class="path">3D Model ▸ Sketch ▸ Start 2D Sketch</span>, or right-click ▸
+      <span class="ui">Start 2D Sketch</span> (N in the marking menu).</li>
+  <li>With nothing selected, InCad shows the origin planes and a small panel <span class="ui">New sketch on</span> with
+      <span class="ui">XY · Top</span>, <span class="ui">XZ · Front</span> and <span class="ui">YZ · Right</span>: click a
+      button, or click a plane or a flat face in the view. <kbd>Esc</kbd> or <span class="ui">Cancel</span> gives up.</li>
+</ol></div>
+<p>Double-clicking a plane in the browser also starts a sketch on it. To edit an existing sketch, double-click it in the
+browser (or right-click ▸ Edit).</p>
+<figure>
+  <img src="img/5_sketch.jpg" alt="Sketch mode">
+  <figcaption>Figure 5. Sketch mode: the ribbon shows the Sketch tab; the status line shows how many degrees of freedom
+  are left.</figcaption>
+</figure>
+<p>To leave the sketch: <span class="path">Sketch ▸ Exit ▸ Finish Sketch</span>, N in the marking menu, or
+<kbd>Esc</kbd> (the first <kbd>Esc</kbd> stops a running tool).</p>
+
+<div class="keep"><h2>5.2 Drawing tools</h2>
+<p>All on <span class="path">Sketch ▸ Create</span>. The tools are FreeCAD's Sketcher tools; split buttons hold the
+variants.</p></div>
+<table class="long">
+  <tr><th>Button</th><th class="wrap">Variants</th><th>Key</th></tr>
+  <tr><td>Line</td><td class="wrap">Line (a chain of lines; <kbd>M</kbd> while drawing switches between line and arc),
+      Single Line</td><td><kbd>L</kbd></td></tr>
+  <tr><td>Circle</td><td class="wrap">Circle (centre, radius), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
+  <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
+  <tr><td>Rectangle</td><td class="wrap">Rectangle (corner, width, height), Center Rectangle, 3-Point Rectangle, 3-Point
+      Center Rect., Rounded Rectangle</td><td><kbd>R</kbd></td></tr>
+  <tr><td>Slot</td><td class="wrap">Center-to-Center Slot, Overall Slot (the two outer ends, then the width), Center Point
+      Slot (the centre, one end's centre, then the width), Arc Slot, Flat-End Arc Slot</td><td></td></tr>
+  <tr><td>Polygon</td><td class="wrap">Hexagon, Triangle, Square, Pentagon, Octagon, Polygon (N sides)</td><td></td></tr>
+  <tr><td>Spline</td><td class="wrap">Spline (through points), Control-Vertex Spline</td><td></td></tr>
+  <tr><td>Point</td><td class="wrap">A sketch point (hole centres, for example)</td><td></td></tr>
+</table>
+<p><span class="path">Sketch ▸ Modify</span>: <span class="ui">Fillet</span> and <span class="ui">Chamfer</span> (sketch
+corners), <span class="ui">Trim</span> (<kbd>X</kbd>), <span class="ui">Extend</span>, <span class="ui">Offset</span>.
+<span class="path">Sketch ▸ Pattern</span> has the sketch patterns (5.9) and <span class="ui">Mirror</span>.</p>
+<p><b>Typing values while drawing.</b> While a tool draws, type the length, radius or angle directly; <kbd>Tab</kbd>
+moves to the next field. <kbd>Esc</kbd> or <span class="ui">Stop Tool</span> (marking menu) ends the tool.</p>
+<p><b>Delete</b> geometry or dimensions: select them and press <kbd>⌫</kbd> or <kbd>Del</kbd>.</p>
+
+<div class="keep"><h2>5.3 Dimensions</h2>
+<ol>
+  <li>Press <kbd>D</kbd> (or <span class="path">Sketch ▸ Dimension</span>, S in the marking menu).</li>
+  <li>Click a line, a circle, two points or two lines, and place the dimension.</li>
+  <li>A value box opens: <span class="ui">d3 = 40 mm</span>. Type the value (or a formula) and press <kbd>Enter</kbd> or
+      <span class="ui">✓</span>; <kbd>Esc</kbd> or <span class="ui">✕</span> cancels. A value that cannot be used turns the
+      box red and says why.</li>
+</ol></div>
+<p>Double-click a dimension to change it later. Every dimension gets a name (<b>d0, d1 …</b>) and appears in the
+Parameters panel, where you can rename it (<code>Width</code>) — see 3.5.</p>
+<p><b>Formulas.</b> In the value box, click another dimension in the sketch or a parameter in the Parameters panel to
+insert its name: <code>d0/2</code>, <code>Width - 2*d3</code>. A formula may use other dimensions and parameters, but
+not a reference (driven) dimension of the same sketch.</p>
+<p><span class="path">⚙ ▸ Dimension Display</span> chooses how dimensions are labelled: the value (40), the name (d3)
+or both (d3 = 40).</p>
+
+<div class="keep"><h2>5.4 Constraints</h2>
+<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Horizontal</span>,
+<span class="ui">Vertical</span>, <span class="ui">Parallel</span>, <span class="ui">Perpendicular</span>,
+<span class="ui">Tangent</span>, <span class="ui">Equal</span>, <span class="ui">Symmetric</span>,
+<span class="ui">Fix</span> and <span class="ui">List</span> (the Constraint List, 5.5). Select the geometry, then click
+the constraint (or click the constraint, then the geometry).</p></div>
+<p>The status line shows the sketch's degrees of freedom — <b>DOF: 3</b>, or <b>Fully constrained ✓</b>. Click it, or
+<span class="path">Sketch ▸ Format ▸ Show Free Geometry</span>, to select the geometry that can still move.</p>
+<p><span class="path">Sketch ▸ Format ▸ Show / Hide Constraints</span> hides or shows the constraint symbols (dimensions
+stay); <kbd>F8</kbd> shows them, <kbd>F9</kbd> hides them.</p>
+
+<div class="keep"><h2 id="constraint-list">5.5 The Constraint List</h2>
+<figure>
+  <img src="img/6_constraint_list.jpg" alt="The Constraint List">
+  <figcaption>Figure 6. The Constraint List: every constraint of the sketch, filtered by the picked line or point.</figcaption>
+</figure></div>
+<p>Open it with <span class="path">Sketch ▸ Constrain ▸ List</span>, or right-click in the sketch ▸
+<span class="ui">Constraint List</span>. It lists every constraint of the sketch with what it ties and its value —
+including the ones that have no symbol to click, such as coincident points and a point on a line.</p>
+<ul>
+  <li>Pick a line or a point in the sketch: the list shows only that element's constraints. Pick nothing to see them all.</li>
+  <li>Select a row to see its constraint in the sketch.</li>
+  <li>Check rows (or <span class="ui">Select all</span>) and press <span class="ui">Delete selected</span>. This is one undo step.</li>
+  <li>Constraints that hold a sketch pattern together, and dimensions used in a formula, are kept; the window says why.</li>
+</ul>
+
+<div class="keep"><h2>5.6 Deleting constraints with the right button</h2>
+<p>Right-click a line or a point in the sketch: the marking menu's list then has a <span class="ui">Delete …</span> entry
+for each of its constraints (for example <span class="ui">Delete Horizontal</span>, or <span class="ui">Delete Distance
+(Line 2) d4 = 20 mm</span>), <span class="ui">Delete all constraints (n)</span>, and <span class="ui">Constraints…</span>,
+which opens the Constraint List for that element.</p></div>
+
+<div class="keep"><h2>5.7 Project Geometry and construction</h2>
+<p><span class="path">Sketch ▸ Insert ▸ Project Geometry</span> brings edges and points of the part into the sketch.
+As in Inventor, projected edges are <b>normal lines</b>, ready to be part of a profile. They follow the part when it
+changes.</p></div>
+<p><span class="path">Sketch ▸ Format ▸ Construction</span> works two ways:</p>
+<ul>
+  <li>with geometry selected (also projected edges), it switches that geometry between normal and construction;</li>
+  <li>with nothing selected it is a mode: everything you draw is construction until you click it again.</li>
+</ul>
+<p>Construction geometry does not take part in profiles; use it for axes and helper lines.</p>
+
+<div class="keep"><h2>5.8 Seeing the sketch</h2>
+<ul>
+  <li><span class="ui">Slice Graphics</span> (<kbd>F7</kbd>, <span class="path">Sketch ▸ Format</span>) cuts away the part
+      in front of the sketch plane, so you can see a sketch inside the part.</li>
+  <li><span class="ui">Look At</span> (marking menu) turns the view straight onto the sketch.</li>
+  <li>After <span class="ui">Finish Sketch</span>, a sketch that no feature uses and that is an <b>open contour</b> (a path
+      for a Sweep, say) stays visible in the model; a closed sketch, and any sketch a feature uses, is hidden.
+      <span class="ui">Hide / Show</span> overrides this for any sketch.</li>
+</ul></div>
+
+<div class="keep"><h2 id="sketch-patterns">5.9 Sketch patterns</h2>
+<p><span class="path">Sketch ▸ Pattern</span> repeats sketch geometry. The copies are real sketch geometry, tied to the
+original: change the original and the copies follow.</p></div>
+<p><b>Edit Pattern</b>: double-click a copy, or select a copy and right-click ▸ <span class="ui">Edit Pattern</span>.
+<b>Delete Pattern</b> (right-click on a copy) removes the copies; the original stays. If you delete single copies, the
+pattern is rebuilt the next time you edit it.</p>
+<div class="keep"><h3>Rectangular</h3>
+<table>
+  <tr><th>Field</th><th class="wrap">Meaning</th></tr>
+  <tr><td>Geometry</td><td class="wrap">The lines, arcs, circles and points to repeat.</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>By spacing</b> (a direction, a count and a spacing) or <b>Equal spacing</b>
+      (a count spread evenly between two limits).</td></tr>
+  <tr><td>Direction 1, Flip direction</td><td class="wrap">A line of the sketch, or the X or Y axis.</td></tr>
+  <tr><td>Count, Spacing</td><td class="wrap">How many (2), how far apart (10 mm).</td></tr>
+  <tr><td>From, To</td><td class="wrap">Equal spacing: the limits — a line or a point.</td></tr>
+  <tr><td>Two directions</td><td class="wrap">By spacing: a second direction with Direction 2, Count 2 and Spacing 2.</td></tr>
+</table></div>
+<div class="keep"><h3>Circular</h3>
+<table>
+  <tr><th>Field</th><th class="wrap">Meaning</th></tr>
+  <tr><td>Geometry</td><td class="wrap">What to repeat.</td></tr>
+  <tr><td>Axis</td><td class="wrap">The centre point (any point of the sketch, a projected point or the origin).</td></tr>
+  <tr><td>Count, Angle</td><td class="wrap">How many (4) over which angle (360°).</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>Fitted</b> (the copies fill the angle) or <b>Between copies</b> (the angle is
+      the step from one copy to the next).</td></tr>
+  <tr><td>Flip</td><td class="wrap">The other way round.</td></tr>
+</table></div>
+<div class="keep"><h3>Along Path</h3>
+<table>
+  <tr><th>Field</th><th class="wrap">Meaning</th></tr>
+  <tr><td>Geometry</td><td class="wrap">What to repeat.</td></tr>
+  <tr><td>Path</td><td class="wrap">The path's lines, arcs and splines, in order.</td></tr>
+  <tr><td>Count</td><td class="wrap">How many (3).</td></tr>
+  <tr><td>Distribution</td><td class="wrap"><b>By spacing</b> (with Spacing, measured along the path) or <b>Fit to path</b>.</td></tr>
+  <tr><td>Orientation</td><td class="wrap"><b>Identical</b> (every copy as the original) or <b>Follow path</b> (turned with the path).</td></tr>
+  <tr><td>Flip</td><td class="wrap">Go along the path the other way.</td></tr>
+</table></div>
+
+<!-- ============================================================ 6 -->
+<h1 class="chapter" id="features"><span class="num">6</span>Part features</h1>
+<p class="lead">Every feature opens a dialog with a live preview. This chapter first explains how the dialogs work,
+then each feature with what to pick and what each option means.</p>
+
+<div class="keep"><h2 id="dialogs">6.1 How feature dialogs work</h2>
+<figure>
+  <img src="img/3_dialog.jpg" alt="An Extrude being edited">
+  <figcaption>Figure 7. An Extrude being edited: the dialog on the left, the preview on the model. The label
+  "Distance (d19)" says the value is the model parameter d19.</figcaption>
+</figure></div>
+<ul>
+  <li><b>Select first or pick later.</b> Select the faces, edges or sketch first and then click the command — or click
+      the command and pick in the view or the browser while the dialog is open. The highlighted field takes the picks.
+      Click another pick field (<span class="ui">Select…</span>) to make it take the next picks. While you pick, the
+      shape as it was before the feature is shown, so you can reach every face.</li>
+  <li><b>The profile.</b> Extrude and Revolve take the only finished sketch no feature uses yet automatically; if there
+      are several, select one. If a sketch has crossing lines, InCad shows its areas: click the one to use.</li>
+  <li><b>Preview.</b> Every change shows on the model at once.</li>
+  <li><b>Values.</b> Type numbers with or without units, names or formulas (3.6). The <span class="ui">▲</span>
+      <span class="ui">▼</span> arrows next to a value — and the <kbd>↑</kbd> <kbd>↓</kbd> keys — change it by one unit
+      (1 mm, 1°, 1/16 in); with <kbd>⇧</kbd> by ten. A formula cannot be stepped. The parameter's name is shown after
+      the field's label, for example <span class="ui">Distance (d19)</span>; click a parameter in the Parameters panel to
+      insert its name.</li>
+  <li><b>Choices.</b> Options are buttons; long lists wrap four to a row. A choice that cannot be used with the current
+      picks is greyed out. Choosing an option that needs a pick starts that pick.</li>
+  <li><b>Buttons.</b> <span class="ui">OK</span> makes the feature and closes the dialog. <span class="ui">Apply +</span>
+      makes it and keeps the dialog open for one more of the same kind. <span class="ui">Cancel</span> or <kbd>Esc</kbd>
+      leaves everything as it was.</li>
+  <li><b>Errors</b> appear in red at the bottom of the dialog, in plain words ("Pick the cylindrical face to thread").
+      Sometimes the dialog offers a button with a way around the problem.</li>
+  <li><b>Editing.</b> Double-click a feature in the browser (or right-click ▸ <span class="ui">Edit</span>) to open its
+      dialog again with its values.</li>
+</ul>
+
+<div class="keep"><h2>6.2 Extrude <kbd>E</kbd></h2>
+<p><span class="path">3D Model ▸ Create ▸ Extrude</span>. Pulls a closed sketch profile into a solid, or cuts with it.</p></div>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b> (add material), <b>Cut</b> (remove), <b>Intersect</b> (keep only
+      what the extrusion and the part share), <b>New Solid</b> (a separate solid, chapter 7). Cut is chosen for you
+      when the sketch lies on or inside the material, Join otherwise.</td></tr>
+  <tr><td>Extents</td><td class="wrap"><b>Distance</b>; <b>To Next</b> (up to the next face of the part — if nothing is
+      in the chosen direction, it goes toward the part); <b>Through All</b>; <b>To</b> (up to a <b>Face</b> you pick, flat
+      or curved, or a work plane).</td></tr>
+  <tr><td>Distance</td><td class="wrap">The length (10 mm).</td></tr>
+  <tr><td>Direction</td><td class="wrap"><b>→</b> the default side, <b>←</b> the other side, <b>⇆</b> symmetric (half
+      each way), <b>⇄ 2</b> two sides with their own lengths (<b>Distance 2</b>, 5 mm).</td></tr>
+  <tr><td>Taper</td><td class="wrap">Draft angle of the sides (0°).</td></tr>
+</table>
+<p>A Join that does not touch the part becomes a solid of its own; the status line says so. Join and Cut can be
+switched later in the dialog, unless other features are built on this Extrude.</p>
+
+<div class="keep"><h2>6.3 Revolve <kbd>R</kbd></h2>
+<p><span class="path">3D Model ▸ Create ▸ Revolve</span>. Turns a sketch profile around an axis.</p></div>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b> or <b>Cut</b>.</td></tr>
+  <tr><td>Axis</td><td class="wrap">
+      <b>Sketch vertical</b> or <b>Sketch horizontal</b> — the sketch's own axes.<br>
+      <b>Construction / projected line</b> — a construction line of the sketch or a projected straight edge, chosen in the
+      <b>Line</b> list. If the sketch has exactly one such line, it is chosen for you. To revolve around an edge of the part,
+      project that edge into the sketch (an edge perpendicular to the sketch projects to a point and is not offered).<br>
+      <b>Line, axis or edge</b> — <b>Pick</b> a sketch line, an origin or work axis, or a straight edge in the view.<br>
+      <b>Two points</b> — click two <b>Points</b> on the part: corners, edge middles, circle centres. They are projected onto
+      the profile's plane, so the axis always lies in that plane.</td></tr>
+  <tr><td>Extents</td><td class="wrap"><b>Full</b> (360°), <b>Angle</b> (with <b>Flip</b> for the other way), <b>Two
+      angles</b> (<b>Angle</b> and <b>Angle 2</b>, one each way). Angles start at 90°.</td></tr>
+</table>
+<p>For a projected line or two points, InCad keeps a hidden <b>Revolve axis</b> under the feature; it is deleted with
+the feature.</p>
+
+<div class="keep"><h2>6.4 Hole <kbd>H</kbd></h2>
+<p><span class="path">3D Model ▸ Create ▸ Hole</span>. Drilled, counterbored, countersunk and threaded holes.</p></div>
+<figure>
+  <img src="img/12_hole_dialog.jpg" alt="The Hole dialog">
+  <figcaption>Figure 8. The Hole dialog.</figcaption>
+</figure>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Placement</td><td class="wrap"><b>From Sketch</b>: a hole at every point and circle centre of the picked
+      <b>Sketch</b>. <b>Concentric</b>: pick the flat <b>Face</b> and a round edge (<b>Circular edge</b>); the hole is
+      centred on that edge.</td></tr>
+  <tr><td>Hole</td><td class="wrap"><b>Simple</b> (a <b>Diameter</b>, 5 mm), <b>Clearance</b> (for a screw: Standard,
+      Size and <b>Fit</b> — Close, Normal, Loose), <b>Tapped</b> (a modeled thread).</td></tr>
+  <tr><td>Standard</td><td class="wrap">Clearance and Tapped: ISO metric, ISO metric fine, UNC, UNF, UNEF, NPT, G / BSP,
+      BSW, BSF.</td></tr>
+  <tr><td>Size</td><td class="wrap">The thread size, or <b>Auto (from Diameter)</b>.</td></tr>
+  <tr><td>Seat</td><td class="wrap"><b>None (drilled)</b>, <b>Counterbore</b> (C'bore Ø 10 mm, C'bore depth 3 mm),
+      <b>Countersink</b> (C'sink Ø 10 mm, C'sink angle 90°), <b>Spotface</b> (Spotface Ø 10 mm, Spotface depth 0.5 mm).</td></tr>
+  <tr><td>Termination</td><td class="wrap"><b>Distance</b> (a <b>Depth</b>, 10 mm), <b>Through All</b> (the default),
+      <b>To</b> (up to <b>To face</b>, a face or work plane).</td></tr>
+  <tr><td>Drill point</td><td class="wrap">For Distance and To: <b>Flat</b> or <b>Angle</b> (<b>Point angle</b> 118°).</td></tr>
+  <tr><td>Thread</td><td class="wrap">Tapped: <b>Whole hole</b> or <b>Depth</b> (<b>Thread depth</b>, 8 mm).</td></tr>
+  <tr><td>Print clearance<br>(on diameter)</td><td class="wrap">Tapped: how much larger the thread is made so that
+      a printed part fits (0.2 mm, measured on the diameter).</td></tr>
+  <tr><td>Direction</td><td class="wrap">Tapped: <b>Right hand</b> or <b>Left hand</b>.</td></tr>
+  <tr><td>Flip direction</td><td class="wrap">Drill the other way.</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>None</b>, <b>Start</b>, <b>Both ends</b>, with a <b>Chamfer size</b> (0.5 mm): a
+      45° lead-in at the mouth and, for a through hole, at the exit. A tapped hole is chamfered from the thread's
+      diameter, so a screw starts easily. With a seat only the exit can be chamfered (Start is greyed out).</td></tr>
+</table>
+<div class="tip"><b>Other threads in a hole:</b> for Trapezoidal, ACME, print-friendly or custom threads, drill a Simple
+hole first, then use <b>Thread</b> (6.9) on its face.</div>
+
+<div class="keep"><h2>6.5 Fillet <kbd>F</kbd> and Chamfer</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Fillet</span> / <span class="ui">Chamfer</span> (a split button). Select the
+edges, then the command — or pick the edges in the dialog. Also on the marking menu of an edge (E Fillet, W
+Chamfer).</p></div>
+<table>
+  <tr><th>Feature</th><th class="wrap">Fields</th></tr>
+  <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 mm).</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>Edges</b>; <b>Type</b>: <b>Distance</b>, <b>Two distances</b> (Distance,
+      Distance 2) or <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> swaps the sides for the last two types.
+      Distances start at 1 mm.</td></tr>
+</table>
+<p>The edges must be on the current shape of the part.</p>
+
+<div class="keep"><h2>6.6 Shell</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Shell</span> hollows the part.</p></div>
+<table>
+  <tr><th>Field</th><th class="wrap">Meaning</th></tr>
+  <tr><td>Remove faces</td><td class="wrap">The faces to open (pick them).</td></tr>
+  <tr><td>Thickness</td><td class="wrap">The wall (1 mm).</td></tr>
+  <tr><td>Direction</td><td class="wrap"><b>Inside</b> (the outer size stays) or <b>Outside</b> (the wall grows outward).</td></tr>
+</table>
+<p>FreeCAD cannot shell a part that already has a modeled thread. The dialog then offers to make the Shell <b>before</b>
+the thread; you can also drag End of Part above the thread, make the Shell there and move End of Part back.</p>
+
+<div class="keep"><h2>6.7 Draft</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Draft</span> (with Shell) tilts faces for moulding: pick the <b>Faces</b>, the
+<b>Neutral plane</b> (the faces keep their size there), the <b>Angle</b> (1°); <b>Reverse</b> tilts the other way.</p></div>
+
+<div class="keep"><h2>6.8 Sweep, Loft and Coil</h2>
+<p>On the <span class="path">3D Model ▸ Create</span> split button after Hole. Each has an <b>Operation</b>: Join or Cut.</p></div>
+<table class="long">
+  <tr><th>Feature</th><th class="wrap">Fields</th></tr>
+  <tr><td>Sweep</td><td class="wrap"><b>Profile</b> (a closed sketch) along <b>Path</b> (another sketch: lines, arcs,
+      splines). <b>Wall</b> (Join only) makes a tube: <b>Thickness</b> (1 mm) and <b>Ends</b> — Both open, Start closed or
+      End closed.</td></tr>
+  <tr><td>Loft</td><td class="wrap"><b>Sections</b>: two or more sketches, in order. The list shows them numbered;
+      <span class="ui">▲</span> <span class="ui">▼</span> move a section earlier or later, <span class="ui">✕</span> removes it.
+      <b>Ruled</b> makes straight faces between sections; <b>Closed</b> joins the last section back to the first.</td></tr>
+  <tr><td>Coil</td><td class="wrap">A spring: <b>Profile</b> (a sketch), <b>Axis</b> (an axis, a sketch line or a
+      straight edge), <b>Pitch</b> (5 mm), <b>Height</b> (20 mm), <b>Direction</b> Right hand or Left hand.</td></tr>
+</table>
+<p>The path of a Sweep is usually an open sketch; open sketches stay visible after Finish Sketch, so you can pick
+them.</p>
+
+<div class="keep"><h2 id="thread">6.9 Thread</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Thread</span>. A real, helical thread — geometry you can print. Select the
+outside of a shaft or the inside of a hole (a full round face), then click Thread. Also on the marking menu of a face.</p></div>
+<figure>
+  <img src="img/13_thread_dialog.jpg" alt="The Thread dialog">
+  <figcaption>Figure 9. The Thread dialog.</figcaption>
+</figure>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Face</td><td class="wrap">The round face to thread.</td></tr>
+  <tr><td>Start face</td><td class="wrap">Optional: a flat face at the end where the thread starts. Without it the thread
+      starts at the free end (the tip of a shaft, the mouth of a hole); on a through hole or a loose rod, at the chamfered
+      or rounded end.</td></tr>
+  <tr><td>Offset</td><td class="wrap">Distance from the start (0 mm).</td></tr>
+  <tr><td>Length</td><td class="wrap"><b>Full length</b> or <b>Distance</b> (10 mm).</td></tr>
+  <tr><td>Flip direction</td><td class="wrap">Start from the other end.</td></tr>
+  <tr><td>Standard</td><td class="wrap">ISO metric, ISO metric fine, UNC, UNF, G / BSP, NPT (tapered), Trapezoidal, ACME,
+      Print-friendly (flat crests, sizes from M3 up) or Custom (<b>Pitch</b> 1.5 mm, <b>Flank angle</b> 60°,
+      <b>Depth</b> 0.9 mm).</td></tr>
+  <tr><td>Size</td><td class="wrap">A size of the standard, or <b>Auto (from the face)</b>: the size that matches the face
+      (a Ø3 hole gets M3, a Ø4 hole M4; a tap-drill hole gets its thread: Ø5.2 → M6, Ø8.5 → M10).</td></tr>
+  <tr><td>Hand</td><td class="wrap"><b>Right hand</b> or <b>Left hand</b>.</td></tr>
+  <tr><td>Chamfer</td><td class="wrap"><b>None</b>, <b>Start</b> or <b>Both ends</b>, with <b>Chamfer size</b> (1 mm).</td></tr>
+  <tr><td>Print clearance<br>(on diameter)</td><td class="wrap">How much room the thread leaves so printed parts
+      fit (0.2 mm on the diameter; 0.3 mm for Print-friendly, set when you choose it). 0 gives the nominal thread.</td></tr>
+</table>
+<p><b>Sizes that do not match the hole.</b> Any sensible size works in a hole: in a Ø3 hole, M3 fills the hole back to the
+M3 tap size first, M4 bores it out to the M4 tap size first. These helper steps sit right before the thread in the
+history; the fill goes only where the hole has a wall all round. A size far off the hole is refused with a message.</p>
+<p><b>On a rod</b> the rod is first turned down to the thread's crests (a <b>ThreadTrim</b> step under the Thread), so no
+thin fin is left on the crests.</p>
+<p>Suppress, Delete and Edit on a thread act on the thread together with its helper steps.</p>
+
+<div class="keep"><h2>6.10 Threads Off / On</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Threads</span>. Modeled threads make redraws slow. Click
+<span class="ui">Threads</span> to suppress every thread while you work, and again to bring them back. A thread you
+suppressed yourself stays off. It also turns off the modeled thread of tapped holes (the holes stay).</p></div>
+
+<div class="keep"><h2 id="boolean">6.11 Boolean</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (Inventor's Combine) joins, cuts or intersects solids of the
+part. Select the base solid, then the tool solid(s), then click Boolean — or pick them in the dialog: click anywhere on
+a solid to pick it.</p></div>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Base</td><td class="wrap">The solid that is changed.</td></tr>
+  <tr><td>Tools</td><td class="wrap">One or more other solids. A click on the base while picking tools is ignored.</td></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Join</b>, <b>Cut</b> (the default) or <b>Intersect</b>.</td></tr>
+  <tr><td>Clearance (per side)</td><td class="wrap">Cut only: a gap left on each side (0.2 mm), for printed parts that must fit.</td></tr>
+  <tr><td>Clearance on</td><td class="wrap">Cut only: <b>Cavity</b> (the hole is made larger), <b>Tool</b> (the hole is
+      exact; a shrunk copy "&lt;Tool&gt; fit" is made for printing), <b>Split</b> (half on each).</td></tr>
+  <tr><td>Keep tool</td><td class="wrap">Off (as it opens): the tool is used up and shows under the Boolean in the
+      browser. On: the tool stays a separate, visible solid — print the pin and the box.</td></tr>
+</table>
+<p>The tools stay editable: change a tool and the result follows. Threads and other complex shapes may refuse a
+clearance; the dialog then says so.</p>
+
+<div class="keep"><h2>6.12 Split</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Split</span>. The lines of a sketch (lines, arcs, splines) become thin cutting
+surfaces through the whole part.</p></div>
+<table>
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Sketch</td><td class="wrap">The sketch whose lines cut the part (select it before the command, or pick it).</td></tr>
+  <tr><td>Mode</td><td class="wrap"><b>Keep all</b>: every piece stays; this solid keeps the largest piece and every other
+      piece becomes a solid of its own — hide it, work on it, make it a part (Make Assembly). The pieces keep following
+      the sketch. <b>Keep picked</b>: only the pieces you click (<b>Keep</b>) stay.</td></tr>
+</table>
+<p>Deleting a Split joins its pieces again; InCad asks first and names the solids that go.</p>
+
+<div class="keep"><h2>6.13 Patterns and Mirror</h2>
+<p><span class="path">3D Model ▸ Pattern</span>: <span class="ui">Rectangular</span>, <span class="ui">Circular</span> and
+<span class="ui">Mirror</span> (one split button). They repeat features: pick them in the browser or click one of
+their faces. Picking a fillet, a chamfer or a thread stands for the feature it modifies.</p></div>
+<table class="long">
+  <tr><th>Feature</th><th class="wrap">Fields</th></tr>
+  <tr><td>Rectangular</td><td class="wrap"><b>Features</b>; <b>Include dependent features</b> (also repeat what is built
+      on them — the hole in a boss); <b>Distribution</b>: <b>By spacing</b> (<b>Direction 1</b> — a straight edge or an
+      axis —, <b>Count</b> 2, <b>Spacing</b> 10 mm) or <b>Equal spacing</b> (Count copies spread between <b>From</b> and
+      <b>To</b>: a flat face, an edge or a work plane); <b>Flip direction</b>; <b>Two directions</b> (Direction 2,
+      Count 2, Spacing 2).</td></tr>
+  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>, <b>Count</b> (4),
+      <b>Angle</b> (360°).</td></tr>
+  <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (a flat face or a plane).</td></tr>
+</table>
+
+<div class="keep"><h2>6.14 Work features</h2>
+<p><span class="path">3D Model ▸ Work Features</span>: <span class="ui">Plane</span>, <span class="ui">Axis</span>,
+<span class="ui">Point</span> (one split button). Choose the <b>Method</b>, then pick what it asks for. Work features
+follow the geometry they were made from.</p></div>
+<table class="long">
+  <tr><th>Work feature</th><th class="wrap">Methods</th></tr>
+  <tr><td>Work Plane</td><td class="wrap">Offset from plane (Offset 10 mm), Parallel through point, Midplane (between two
+      planes), Angle around edge (Angle 90°), Three points, Normal to edge at point, Tangent to surface at point.</td></tr>
+  <tr><td>Work Axis</td><td class="wrap">On edge, Two points, Intersection of two planes, Normal to plane through point,
+      Axis of a cylinder, Parallel to edge through point.</td></tr>
+  <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
+</table>
+<p>A "plane" pick takes a flat face or a work or origin plane. Double-click a work plane to start a sketch on it.</p>
+
+<!-- ============================================================ 7 -->
+<h1 class="chapter" id="solids"><span class="num">7</span>Several solids in one part</h1>
+<p class="lead">A part can hold several separate solids — for a tool and the part it cuts, or a part you will print in
+pieces.</p>
+
+<div class="keep"><h2>How separate solids are made</h2>
+<ul>
+  <li>Extrude with <b>Operation ▸ New Solid</b>.</li>
+  <li>An Extrude ▸ Join that does not touch the part (a box drawn away from it): it becomes its own solid automatically.</li>
+  <li>Split ▸ <b>Keep all</b>: every piece except the largest becomes a solid.</li>
+  <li>Boolean with <b>Keep tool</b>, or a "&lt;Tool&gt; fit" copy (Clearance on Tool).</li>
+</ul></div>
+<p>The browser then shows <b>Solid Bodies (n)</b> with a row for each solid. The history stays one list: features of
+other solids name their solid.</p>
+
+<div class="keep"><h2>Sketching on another solid</h2>
+<p>A new solid sketched on a face of another solid holds only its own piece; the solid below stays as it is. The sketch
+follows that face only when it <b>projects edges</b> of the other solid; otherwise the face only gave it its plane.</p></div>
+
+<div class="keep"><h2>Hide, show, rename, delete</h2>
+<p>Right-click a solid's row: <span class="ui">Hide / Show</span>, <span class="ui">Rename</span>,
+<span class="ui">Show in Window</span>, <span class="ui">Delete</span>. A hidden solid is dimmed in the browser.
+Delete asks when the solid is used by a Boolean (both go together) or when it is the main solid (the next one becomes
+the main solid). Selecting a piece in the view and pressing <kbd>⌫</kbd> deletes that solid.</p></div>
+
+<div class="keep"><h2>Make Assembly</h2>
+<p>When the pieces are ready, <span class="path">3D Model ▸ Assemble ▸ Make Assembly</span> turns every separate piece
+into a part file of its own and links them in a new assembly where they were. See <a href="#make-assembly">9.12</a>.</p></div>
+
+<!-- ============================================================ 8 -->
+<h1 class="chapter" id="inspect"><span class="num">8</span>Inspect and tools</h1>
+<p class="lead">Measuring, mass, material, section views and options.</p>
+
+<div class="keep"><h2>8.1 Measure</h2>
+<p><span class="path">Inspect ▸ Measure</span> (a split button). Measuring stays live: every change of the selection
+measures again, and the results show in a small panel. <kbd>Esc</kbd> finishes.</p></div>
+<table>
+  <tr><th>Command</th><th class="wrap">Select</th><th class="wrap">Shows</th></tr>
+  <tr><td>Measure</td><td class="wrap">A face, an edge, a solid, or two items</td><td class="wrap">Area; Length, or Radius
+      and Diameter of a round edge; Volume, Surface and Size of a solid; for two items Distance (and Angle when both have
+      a direction)</td></tr>
+  <tr><td>Distance</td><td class="wrap">Two faces, edges or points</td><td class="wrap">Distance; between two points also ΔX, ΔY, ΔZ</td></tr>
+  <tr><td>Angle</td><td class="wrap">Two flat faces or straight edges</td><td class="wrap">Angle</td></tr>
+  <tr><td>Length</td><td class="wrap">Edges (a loop)</td><td class="wrap">Total length and the number of edges</td></tr>
+  <tr><td>Area</td><td class="wrap">Faces</td><td class="wrap">Total area and the number of faces</td></tr>
+</table>
+
+<div class="keep"><h2>8.2 Mass Properties</h2>
+<p><span class="path">Inspect ▸ Measure ▸ Mass Properties</span> shows the part's Volume, Surface area, Mass and Size. The mass uses
+the density of the part's material (8.3).</p></div>
+
+<div class="keep"><h2>8.3 Material</h2>
+<p><span class="path">Tools ▸ Material ▸ Material</span> sets the part's material: its density for Mass Properties and its
+colour. The default is PLA.</p></div>
+<table>
+  <tr><th>Material</th><th>Density, g/cm³</th><th>Material</th><th>Density, g/cm³</th></tr>
+  <tr><td>PLA</td><td>1.24</td><td>Nylon</td><td>1.14</td></tr>
+  <tr><td>PETG</td><td>1.27</td><td>Resin</td><td>1.18</td></tr>
+  <tr><td>ABS</td><td>1.04</td><td>Aluminium</td><td>2.70</td></tr>
+  <tr><td>ASA</td><td>1.07</td><td>Steel</td><td>7.85</td></tr>
+  <tr><td>TPU</td><td>1.21</td><td></td><td></td></tr>
+</table>
+
+<div class="keep"><h2 id="section">8.4 Section views</h2>
+<p><span class="path">View ▸ Visual Style ▸ Section</span> cuts the view open — the model itself is not changed.</p></div>
+<ul>
+  <li>Select a flat face, a plane, or three points first; with nothing selected the section is on the XZ plane.</li>
+  <li>A small <span class="ui">Section</span> panel moves the cut: <b>Offset</b> along the plane's normal,
+      <b>Flip</b> to look from the other side, <span class="ui">Done</span> to keep the cut view,
+      <span class="ui">Off</span> to close it. Clicking Section again also closes it.</li>
+  <li><span class="ui">Section by 3 Points</span> (the same split button): click three of the marked points — corners,
+      edge middles, circle centres — for the plane.</li>
+</ul>
+<p>Section works in parts and assemblies.</p>
+
+<div class="keep"><h2>8.5 Options</h2>
+<ul>
+  <li><span class="path">Tools ▸ Options ▸ Ask on New</span>: on, <span class="ui">New</span> asks Part or Assembly and the
+      units; off, it makes what you chose last time.</li>
+  <li><span class="path">Tools ▸ Options ▸ Return to FreeCAD</span>: FreeCAD's own interface (also the
+      <span class="ui">FreeCAD</span> button on the title strip).</li>
+  <li>The other settings are in the <span class="ui">⚙</span> menu (3.8).</li>
+</ul></div>
+
+<!-- ============================================================ 9 -->
+<h1 class="chapter" id="assembly"><span class="num">9</span>Assemblies</h1>
+<p class="lead">An assembly links part files and holds them together with constraints and joints, as in Inventor.
+The parts stay separate .FCStd files.</p>
+
+<div class="keep"><h2>9.1 Starting an assembly</h2>
+<ul>
+  <li><span class="path">File ▸ New Assembly</span>, or <span class="ui">Get Started ▸ New Assembly</span> with no file open.</li>
+  <li><span class="ui">New</span> (<kbd>⌘</kbd> <kbd>N</kbd>) makes an assembly too if you chose Assembly with
+      <span class="ui">Remember my choice</span>. <span class="path">Tools ▸ Options ▸ Ask on New</span> brings the
+      question back.</li>
+</ul></div>
+<p>An assembly links to part files, so it must be saved before the first part is placed. InCad does this for you:
+when you place the first part, a new assembly is saved next to that part under its own name; if a file of that name is
+already there, InCad asks for a name and a folder. <span class="ui">Create</span> asks you to save the assembly first.</p>
+
+<div class="keep"><h2>9.2 Placing and creating parts</h2>
+<ol>
+  <li><span class="path">Assemble ▸ Component ▸ Place</span> (<kbd>P</kbd>) — or N in the marking menu.</li>
+  <li>Choose a saved part (or assembly) file.</li>
+  <li>The first part placed is <b>grounded</b> (fixed in place); the next ones are put beside it.</li>
+</ol></div>
+<p><span class="ui">Create</span> asks for a <b>New part file name</b> and makes a new, empty part file next to the
+assembly, placed in it. <span class="ui">Ground</span> grounds or ungrounds the selected part.</p>
+
+<div class="keep"><h2>9.3 The assembly browser</h2>
+<p>In an assembly the browser shows the assembly, one row per part, and <b>Relationships (n)</b> with the constraints
+and joints.</p></div>
+<ul>
+  <li>Each part row shows its <b>freedom</b>: <b>grounded</b>, <b>DOF 0</b> … <b>DOF 6</b>, or <b>DOF ?</b> when it could
+      not be counted (hover for the reason). A suppressed part shows nothing.</li>
+  <li>Under each part row is the part's own history (its sketches and features). A click on one of those rows selects the
+      part; a double-click opens the part file.</li>
+  <li>A hidden part is dimmed, a suppressed one struck through.</li>
+  <li>Right-click a part (row or in the view) for <span class="ui">Edit</span>, <span class="ui">Hide / Show</span>,
+      <span class="ui">Suppress</span>, <span class="ui">Remove from Assembly</span>, <span class="ui">Ground</span> and the
+      constraints (4.2).</li>
+</ul>
+
+<div class="keep"><h2>9.4 Adding a constraint or a joint</h2>
+<figure>
+  <img src="img/7_mate_flip.jpg" alt="The Mate dialog with Flip">
+  <figcaption>Figure 10. A Mate being made: the dialog with Offset and Flip, the preview in the view.</figcaption>
+</figure></div>
+<ol>
+  <li>Click the constraint on <span class="path">Assemble ▸ Constrain</span> or <span class="path">Assemble ▸ Joint</span>
+      — <kbd>C</kbd> is Mate, <kbd>J</kbd> is Rigid — or use the marking menu on a face or edge of a part.</li>
+  <li>Pick the <b>First</b> item on one part and the <b>Second</b> item on another, in the 3D view. The preview moves the
+      part at once.</li>
+  <li>Set the <b>Offset</b> or <b>Angle</b> if the constraint has one, and <b>Flip</b> if the part faces the wrong way.</li>
+  <li><span class="ui">OK</span> (or <span class="ui">Apply +</span> for the next one).</li>
+</ol>
+<p>The part that moves is the free one; a grounded part never moves. A constraint that cannot be met together with the
+others is refused: "Mate conflicts with the other constraints (it can't be met)". Offsets and angles are parameters
+named after the constraint — <b>Mate1</b>, <b>Flush1</b>, <b>Angle1</b> … — and appear in the Parameters panel.</p>
+
+<div class="keep"><h2>9.5 Constraints and joints, one by one</h2>
+<table class="long">
+  <tr><th>Constraint</th><th class="wrap">Pick (First, Second)</th><th class="wrap">What it does</th><th class="wrap">Value, Flip</th></tr>
+  <tr><td>Mate <kbd>C</kbd></td><td class="wrap">Two faces</td><td class="wrap">Faces against each other, facing each other.</td>
+      <td class="wrap">Offset (0 mm). Flip: the faces face the same way instead.</td></tr>
+  <tr><td>Flush</td><td class="wrap">Two faces</td><td class="wrap">Faces side by side, facing the same direction.</td>
+      <td class="wrap">Offset. Flip: which way the faces face.</td></tr>
+  <tr><td>Angle</td><td class="wrap">Flat faces or straight edges</td><td class="wrap">The two at an angle.</td>
+      <td class="wrap">Angle (90°).</td></tr>
+  <tr><td>Parallel</td><td class="wrap">Flat faces or straight edges</td><td class="wrap">The two stay parallel; the distance stays free.</td>
+      <td class="wrap">—</td></tr>
+  <tr><td>Perpendicular</td><td class="wrap">Flat faces or straight edges</td><td class="wrap">The two stay at 90°.</td>
+      <td class="wrap">—</td></tr>
+  <tr><td>Tangent</td><td class="wrap">A round face and a flat or round face</td><td class="wrap">The faces touch. A round
+      face sits outside the flat face's part by default.</td><td class="wrap">Offset. Flip: outside or inside.</td></tr>
+  <tr><td>Insert</td><td class="wrap">Two round edges</td><td class="wrap">Axes aligned, the faces of the edges together
+      (a screw in a hole); the part can still turn.</td><td class="wrap">Flip: direction.</td></tr>
+  <tr><td>Rigid <kbd>J</kbd></td><td class="wrap">A face, edge or point on each part</td><td class="wrap">The two parts
+      are fixed together.</td><td class="wrap">—</td></tr>
+  <tr><td>Rotational</td><td class="wrap">A face, edge or point on each part</td><td class="wrap">A hinge: turns about one axis only.</td>
+      <td class="wrap">Flip: direction.</td></tr>
+  <tr><td>Slider</td><td class="wrap">A face, edge or point on each part</td><td class="wrap">Slides along one direction only.</td>
+      <td class="wrap">Flip: direction.</td></tr>
+  <tr><td>Cylindrical</td><td class="wrap">A face, edge or point on each part</td><td class="wrap">Turns about and slides
+      along one axis.</td><td class="wrap">Flip: direction.</td></tr>
+  <tr><td>Ball</td><td class="wrap">A face, edge or point on each part</td><td class="wrap">Turns freely about a point.</td>
+      <td class="wrap">—</td></tr>
+</table>
+<p>For joints, a round edge gives its centre and its axis — pick round edges for hinges and shafts.</p>
+
+<h2>9.6 The Relationships rows</h2>
+<p>Every constraint and joint has a row under <b>Relationships</b>. <b>Double-click</b> a row to edit it. Right-click it
+for <span class="ui">Edit</span>, <span class="ui">Delete</span>, <span class="ui">Suppress / Unsuppress</span> and
+<span class="ui">Rename</span>. A suppressed constraint is struck through; the solver ignores it and its parts stay
+where they are. Bringing back a constraint that can no longer be met is refused.</p></div>
+
+<div class="keep"><h2>9.7 Degrees of freedom</h2>
+<p>A part's degrees of freedom are the ways it can still move: up to three slides and three turns. InCad counts them
+against what holds the part (the other free parts are held still while it counts):</p></div>
+<ul>
+  <li>the part row says <b>grounded</b>, <b>DOF n</b> or <b>DOF ?</b> (9.3);</li>
+  <li><span class="path">View ▸ Visual Style ▸ Degrees of Freedom</span> (View tab of the assembly) draws Inventor's DOF
+      symbols on every free part — a double arrow for each direction it can slide, an arc for each axis it can turn about
+      (figure 11);</li>
+  <li>with that button off, the part under the pointer shows its symbol as a tip.</li>
+</ul>
+<p>A fully constrained part (DOF 0) and a grounded part show no symbol.</p>
+<figure>
+  <img src="img/9_dof.jpg" alt="Degrees of freedom in the browser and on the parts">
+  <figcaption>Figure 11. View ▸ Degrees of Freedom on: each part row says grounded or DOF n, and every free part shows its
+  DOF symbol.</figcaption>
+</figure>
+
+<div class="keep"><h2>9.8 Moving parts</h2>
+<p><b>Drag</b> a free part with the left button: it moves only the ways its constraints still let it — a Mated block slides
+and turns on its face, an inserted pin turns in its hole. The other parts stay where they are, even free ones. A fully
+constrained part does not move (the status line says "… is fully constrained"); a drag on a grounded part says it is
+grounded.</p></div>
+<figure>
+  <img src="img/8_gizmo.jpg" alt="The DOF gizmo of a free part">
+  <figcaption>Figure 12. Click a free part for its gizmo: arrows slide the part, arcs turn it.</figcaption>
+</figure>
+<p><b>The gizmo.</b> Click a free part: its DOF symbol becomes a gizmo with an <b>arrow</b> for each direction it can
+slide and an <b>arc</b> for each axis it can turn about.</p>
+<ul>
+  <li>Grab an arrow to slide the part, an arc to turn it. Handles are easy to catch: the one under the pointer lights up.</li>
+  <li>The first arrow is up and down — straight up, or up the slope of a tilted face — where the part can move that way.</li>
+  <li>A click on empty space hides the gizmo.</li>
+</ul>
+<p>Every drag that moved the part is <b>one undo step</b> ("Move part"); <kbd>⌘</kbd> <kbd>Z</kbd> puts the part back.
+While a constraint dialog is open, dragging is off.</p>
+
+<div class="keep"><h2 id="asm-context">9.9 Editing a part in the assembly</h2>
+<p>Right-click a part ▸ <span class="ui">Edit</span> (or double-click its row): the part opens in its own tab, with the
+other parts of the assembly drawn around it — grey, semi-transparent, at their real places. They are for reference
+only: they cannot be picked and are not saved in the part. Change the part as usual and save it.</p></div>
+<figure>
+  <img src="img/10_context.jpg" alt="A part edited in the assembly context">
+  <figcaption>Figure 13. A part opened with Edit from its assembly: the other parts around it, semi-transparent.</figcaption>
+</figure>
+<p><span class="path">View ▸ Assembly Context</span> (View menu, or the View tab of the part) turns the other parts off
+and on.</p>
+
+<div class="keep"><h2 id="asm-update">9.10 Updating the assembly after a part changed</h2>
+<p>Back in the assembly's tab after a part changed, InCad asks: <span class="ui">Parts of … changed. Update the assembly
+now?</span></p></div>
+<ul>
+  <li><span class="ui">Yes</span> brings the changes in.</li>
+  <li><span class="ui">No</span> leaves the assembly as it was; the top row of the browser then says <b>⚡ Needs update</b>
+      until you click <span class="ui">Update</span> on the title strip.</li>
+</ul>
+
+<div class="keep"><h2>9.11 Hide, Suppress, Remove</h2>
+<table>
+  <tr><th>Command</th><th class="wrap">What it does</th></tr>
+  <tr><td>Hide / Show</td><td class="wrap">Hides or shows the selected part; the row is dimmed while hidden.</td></tr>
+  <tr><td>Suppress</td><td class="wrap">The part is hidden and its constraints are off; again to bring it back.</td></tr>
+  <tr><td>Remove from Assembly</td><td class="wrap">Takes the part out of the assembly; its part file stays.</td></tr>
+  <tr><td>Ground</td><td class="wrap">Fixes the part in place, or frees it again.</td></tr>
+</table></div>
+
+<div class="keep"><h2 id="make-assembly">9.12 Make Assembly from a part</h2>
+<p>Model a product as one part with several solids (chapter 7), then turn it into an assembly in one step.</p></div>
+<ol>
+  <li>Save the part — the new files go into its folder.</li>
+  <li><span class="path">3D Model ▸ Assemble ▸ Make Assembly</span>, or right-click in empty space ▸
+      <span class="ui">Make Assembly</span>.</li>
+  <li>The dialog lists the new files: the <b>Assembly</b> name and one name per piece (<b>Piece 1 (grounded)</b>,
+      Piece 2 …) with its volume. Hover over a row to see the piece marked in the view. Change the names if you like.</li>
+  <li>Click <span class="ui">OK</span>. The new assembly opens.</li>
+</ol>
+<figure>
+  <img src="img/11_make_assembly.jpg" alt="The Make Assembly dialog">
+  <figcaption>Figure 14. Make Assembly: the names of the new assembly and part files.</figcaption>
+</figure>
+<ul>
+  <li>Every separate piece becomes a part file <b>with its history</b>; the assembly links them where they were, the
+      largest piece grounded.</li>
+  <li>The original part is not changed.</li>
+  <li>Running Make Assembly again on the same part offers <span class="ui">Replace existing files</span> (with the names of
+      the files already there), so the files of the earlier run are overwritten instead of asking for new names. The part
+      itself is never replaced. If one of those files is open with unsaved changes, InCad asks first.</li>
+  <li>A part that is one piece cannot be made into an assembly; split it first (Split ▸ Keep all) or make pieces as
+      New Solid.</li>
+</ul>
+
+<div class="keep"><h2>9.13 Boolean between parts</h2>
+<p><span class="path">Assemble ▸ Component ▸ Boolean</span> cuts one part by others, for example a pocket for a
+bearing:</p></div>
+<table>
+  <tr><th>Field</th><th class="wrap">Meaning</th></tr>
+  <tr><td>Cut this</td><td class="wrap">The part to cut.</td></tr>
+  <tr><td>With</td><td class="wrap">The part(s) that cut it.</td></tr>
+  <tr><td>Clearance</td><td class="wrap">A gap for printed parts (0.2 mm).</td></tr>
+  <tr><td>Clearance on</td><td class="wrap"><b>Cavity</b>, <b>Tool</b> or <b>Split</b>, as for the part Boolean (6.11).</td></tr>
+</table>
+<p>The pocket is written into the cut part's own file and follows the tools when they move or change. Save that part
+file too. The cut gets a row under Relationships (Edit, Delete, Rename).</p>
+
+<div class="keep"><h2>9.14 Threads Off / On in an assembly</h2>
+<p><span class="path">Assemble ▸ Component ▸ Threads</span> turns every thread of every part off (faster redraws) and
+back on. It changes the part files: save them with the assembly.</p></div>
+
+<div class="keep"><h2>9.15 Saving</h2>
+<p><span class="ui">Save</span> saves the file in the active tab. A part edited from the assembly, cut by a Boolean or
+changed by Threads Off / On is a file of its own: save it as well (switch to its tab, or let
+<span class="ui">Quit</span> ask about every changed file).</p></div>
+
+<!-- ============================================================ 10 -->
+<h1 class="chapter" id="printing"><span class="num">10</span>Tips for 3D printing</h1>
+<p class="lead">InCad was made with printed parts in mind. A few habits save reprints.</p>
+<ul>
+  <li><b>Threads that fit.</b> Thread and Hole ▸ Tapped have a <b>Print clearance (on diameter)</b>, 0.2 mm by default (0.3 mm for a Print-friendly thread).
+      Try it on a small test piece with your printer; raise it if a printed bolt is tight, lower it if it is loose. The
+      <b>Print-friendly</b> thread standard has flat crests that print cleanly.</li>
+  <li><b>Lead-ins.</b> Use Hole ▸ <b>Chamfer</b> (Start or Both ends) and Thread ▸ <b>Chamfer</b> so screws and nuts start
+      easily.</li>
+  <li><b>Parts that fit into each other.</b> Boolean ▸ Cut with <b>Clearance (per side)</b>: on the <b>Cavity</b> to print
+      the part with the hole, on the <b>Tool</b> to get a slightly smaller "fit" copy of the tool to print, <b>Split</b> for
+      half on each.</li>
+  <li><b>Print the tool as well.</b> Turn on <b>Keep tool</b>: the tool stays a visible solid of its own — the pin and the
+      box with its hole.</li>
+  <li><b>Too big for the bed?</b> Draw the cut lines in a sketch, <b>Split ▸ Keep all</b>, then <b>Make Assembly</b>: each
+      piece becomes a part file you can export and print, and the assembly shows them together.</li>
+  <li><b>Weight and filament.</b> Tools ▸ Material, then Inspect ▸ Mass Properties for the mass.</li>
+  <li><b>Fast work.</b> Turn threads off (Threads) while modeling; turn them on before exporting.</li>
+</ul>
+
+<!-- ============================================================ 11 -->
+<h1 class="chapter" id="trouble"><span class="num">11</span>Troubleshooting and reporting a problem</h1>
+
+<div class="keep"><h2>When something does not work</h2>
+<ol>
+  <li><b>Read the status line</b> and the red text in the dialog: InCad says why a command was refused and what to pick.</li>
+  <li>A dialog is open? Commands like Save and Undo wait for <span class="ui">OK</span> or <span class="ui">Cancel</span>.</li>
+  <li>A feature in <b>red</b> in the browser: hover over it for the reason, then edit it (double-click).</li>
+  <li>The view or the browser looks out of step with the model: click <span class="ui">Update</span> on the title strip.</li>
+  <li>Undo (<kbd>⌘</kbd> <kbd>Z</kbd>) the last step.</li>
+  <li>Still stuck: save under a new name, quit and restart FreeCAD.</li>
+  <li><span class="ui">Return to FreeCAD</span> always gives you FreeCAD's own interface on the same file.</li>
+</ol></div>
+
+<div class="keep"><h2>Reporting a problem</h2>
+<p>Please send:</p></div>
+<ul>
+  <li>what you did, step by step, and what you expected instead;</li>
+  <li>the build name (the name of the zip file);</li>
+  <li>your macOS version and FreeCAD version (<span class="path">FreeCAD ▸ About FreeCAD</span>);</li>
+  <li>the log file <code>~/Library/Logs/InCad.log</code> (Finder ▸ Go ▸ Go to Folder… ▸ <code>~/Library/Logs</code>);</li>
+  <li>if you can, the .FCStd file you were working on;</li>
+  <li>a screenshot if something looks wrong.</li>
+</ul>
+<p>If FreeCAD crashed, macOS shows a crash report: please copy its text as well.</p>
+
+<div class="keep"><h2>Known limits of this build</h2>
+<ul>
+  <li>macOS on Apple Silicon only; FreeCAD 1.1 (tested with 1.1.3).</li>
+  <li>An early test build: assemblies are new in 0.2.0. Save often and work on copies.</li>
+  <li>The interface is in English.</li>
+  <li>FreeCAD cannot shell a part that already has a modeled thread (InCad offers to shell before the thread).</li>
+  <li>Some offsets (clearances) fail on threads and other complex shapes; the dialog says so.</li>
+</ul></div>
+
+<!-- ============================================================ A -->
+<h1 class="chapter" id="keys"><span class="num">A</span>Keyboard shortcuts</h1>
+<p class="lead">Single keys work in the mode named. On the Mac, InCad's Ctrl shortcuts are the ⌘ keys.</p>
+<div class="cols2">
+<table>
+  <tr><th>Key</th><th class="wrap">Command</th></tr>
+  <tr><td colspan="2"><b>Part</b></td></tr>
+  <tr><td><kbd>S</kbd></td><td class="wrap">Start 2D Sketch</td></tr>
+  <tr><td><kbd>E</kbd></td><td class="wrap">Extrude</td></tr>
+  <tr><td><kbd>R</kbd></td><td class="wrap">Revolve</td></tr>
+  <tr><td><kbd>H</kbd></td><td class="wrap">Hole</td></tr>
+  <tr><td><kbd>F</kbd></td><td class="wrap">Fillet</td></tr>
+  <tr><td colspan="2"><b>Sketch</b></td></tr>
+  <tr><td><kbd>L</kbd></td><td class="wrap">Line (<kbd>M</kbd>: line / arc while drawing)</td></tr>
+  <tr><td><kbd>C</kbd></td><td class="wrap">Circle</td></tr>
+  <tr><td><kbd>A</kbd></td><td class="wrap">3-Point Arc</td></tr>
+  <tr><td><kbd>R</kbd></td><td class="wrap">Rectangle</td></tr>
+  <tr><td><kbd>X</kbd></td><td class="wrap">Trim</td></tr>
+  <tr><td><kbd>D</kbd></td><td class="wrap">Dimension</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td class="wrap">Next value field while drawing</td></tr>
+  <tr><td><kbd>F7</kbd></td><td class="wrap">Slice Graphics</td></tr>
+  <tr><td><kbd>F8</kbd> / <kbd>F9</kbd></td><td class="wrap">Show / Hide Constraints</td></tr>
+  <tr><td colspan="2"><b>Assembly</b></td></tr>
+  <tr><td><kbd>P</kbd></td><td class="wrap">Place</td></tr>
+  <tr><td><kbd>C</kbd></td><td class="wrap">Mate</td></tr>
+  <tr><td><kbd>J</kbd></td><td class="wrap">Rigid</td></tr>
+</table>
+<table>
+  <tr><th>Key</th><th class="wrap">Command</th></tr>
+  <tr><td colspan="2"><b>Everywhere</b></td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>N</kbd></td><td class="wrap">New</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>O</kbd></td><td class="wrap">Open</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>S</kbd></td><td class="wrap">Save</td></tr>
+  <tr><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>S</kbd></td><td class="wrap">Save As</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>W</kbd></td><td class="wrap">Close (asks to save)</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>Q</kbd></td><td class="wrap">Quit (asks to save)</td></tr>
+  <tr><td><kbd>⌘</kbd> <kbd>Z</kbd></td><td class="wrap">Undo</td></tr>
+  <tr><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Z</kbd></td><td class="wrap">Redo</td></tr>
+  <tr><td><kbd>⌫</kbd> / <kbd>Del</kbd></td><td class="wrap">Delete the selection</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td class="wrap">Cancel the dialog, stop the tool, finish the sketch</td></tr>
+  <tr><td colspan="2"><b>In dialogs and value boxes</b></td></tr>
+  <tr><td><kbd>Enter</kbd></td><td class="wrap">Apply the value (value box)</td></tr>
+  <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td class="wrap">Dialog value one step up / down</td></tr>
+  <tr><td><kbd>⇧</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></td><td class="wrap">Ten steps</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ B -->
+<h1 class="chapter" id="ribbon"><span class="num">B</span>Ribbon map</h1>
+<p class="lead">Every tab, group and command. "A | B | C" is one split button: A is shown, B and C are on its arrow.</p>
+
+<div class="keep"><h2>Part</h2>
+<table class="long">
+  <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
+  <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
+  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split</td></tr>
+  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
+  <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
+  <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
+  <tr><td>Inspect</td><td>Measure</td><td class="wrap">Measure | Distance | Angle | Length | Area · Mass Properties</td></tr>
+  <tr><td>Tools</td><td>Material</td><td class="wrap">Material</td></tr>
+  <tr><td></td><td>Options</td><td class="wrap">Return to FreeCAD · Ask on New</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin · Assembly Context</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>Sketch</h2>
+<table class="long">
+  <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
+  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Circle | 3-Point Circle | Ellipse | 3-Point
+      Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
+      Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
+      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) · Spline | Control-Vertex Spline ·
+      Point</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
+  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
+  <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
+  <tr><td></td><td>Insert</td><td class="wrap">Project (Project Geometry)</td></tr>
+  <tr><td></td><td>Format</td><td class="wrap">Construction · Constraints (Show / Hide Constraints) · Free DOF (Show Free Geometry) · Slice (Slice Graphics)</td></tr>
+  <tr><td></td><td>Exit</td><td class="wrap">Finish Sketch</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>Assembly</h2>
+<table class="long">
+  <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
+  <tr><td>Assemble</td><td>Component</td><td class="wrap">Place · Create · Ground · Boolean · Threads (Threads Off / On)</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Mate · Flush · Angle · Parallel · Perpendicular · Tangent · Insert</td></tr>
+  <tr><td></td><td>Joint</td><td class="wrap">Rigid · Rotational · Slider · Cylindrical · Ball</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+  <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show · Degrees of Freedom</td></tr>
+  <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
+</table>
+
+<h2>No file open</h2>
+<table>
+  <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
+  <tr><td>Get Started</td><td>New</td><td class="wrap">New · New Assembly · Open</td></tr>
+  <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
+</table></div>
+<p>Commands only in the marking menus: Show in Browser, Show in Window, Move End of Part Here, Suppress / Unsuppress,
+Rename, Delete, Edit, Stop Tool, Edit Pattern, Delete Pattern, Suppress (part), Remove from Assembly.</p>
+
+</body>
+</html>

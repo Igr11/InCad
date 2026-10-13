@@ -145,6 +145,110 @@ class ExtrudeTest(unittest.TestCase):
         self.doc.recompute()
         self.assertIs(g.getParentGeoFeatureGroup(), self.body, "a join that touches stays in the part")
 
+    def _on_top_away(self, name="Away", project=False):
+        """A sketch on the part's top face whose 4 x 4 square lies off the part (the user's D-shape on the hex)."""
+        base = self.body.Tip
+        top = [i + 1 for i, f in enumerate(base.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = self.body.newObject("Sketcher::SketchObject", name)
+        sk.AttachmentSupport = [(base, "Face%d" % top)]
+        sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        c = sk.getGlobalPlacement().inverse().multVec(App.Vector(40, 3, 10))  # the face's own frame
+        pts = [c + App.Vector(dx, dy, 0) for dx, dy in ((0, 0), (4, 0), (4, 4), (0, 4))]
+        for i in range(4):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        if project:
+            edge = [i + 1 for i, e in enumerate(base.Shape.Edges)
+                    if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes)][0]
+            sk.addExternal(base.Name, "Edge%d" % edge)
+        self.doc.recompute()
+        return sk
+
+    def test_a_sketch_on_the_parts_face_extruded_off_it_is_an_independent_solid(self):
+        """The user: a D-shape sketched on the hex's face, off the hex, extruded: the new Solid held the hex too
+        (a Pad first in a Solid takes its sketch's support as its base), Make Assembly then failed. Nothing
+        projected from the part: the face was only a plane, the new Solid is independent."""
+        base = self.make()
+        sk = self._on_top_away()
+        at = App.Placement(sk.getGlobalPlacement())
+        f = extrude.create(self.doc, self.body, sk, dict(extrude.defaults(self.doc, self.body, sk), distance="5 mm"))
+        self.doc.recompute()
+        other = f.getParentGeoFeatureGroup()
+        self.assertIsNot(other, self.body)
+        self.assertEqual(len(f.Shape.Solids), 1)
+        self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
+        self.assertTrue(sk.getGlobalPlacement().isSame(at, 1e-7), "the sketch stays where it was drawn")
+        self.assertFalse(sk.AttachmentSupport, "no link to the other Solid")
+        self.assertTrue(base.Visibility, "the part stays shown")
+        model.set_model_parameter(self.doc, model.bound_parameter(base, "Length"), "30 mm")
+        self.doc.recompute()
+        self.assertTrue(sk.getGlobalPlacement().isSame(at, 1e-7), "independent: the part's change doesn't move it")
+        self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
+
+    def test_with_a_projection_from_the_part_it_follows_the_face(self):
+        base = self.make()
+        sk = self._on_top_away(project=True)
+        f = extrude.create(self.doc, self.body, sk, dict(extrude.defaults(self.doc, self.body, sk), distance="5 mm"))
+        self.doc.recompute()
+        other = f.getParentGeoFeatureGroup()
+        self.assertIsNot(other, self.body)
+        self.assertEqual(len(f.Shape.Solids), 1)
+        self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
+        z0 = sk.getGlobalPlacement().Base.z
+        model.set_model_parameter(self.doc, model.bound_parameter(base, "Length"), "30 mm")
+        self.doc.recompute()
+        self.assertAlmostEqual(sk.getGlobalPlacement().Base.z, z0 + 20, places=6)  # follows the face
+        self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
+        self.assertEqual(len(f.Shape.Solids), 1)
+
+    def test_new_solid_on_the_parts_face_holds_only_its_own_piece(self):
+        self.make()
+        sk = self._on_top_away()
+        f = extrude.create(self.doc, self.body, sk, dict(extrude.defaults(self.doc, self.body, sk),
+                                                         operation="new_solid", distance="5 mm"))
+        self.doc.recompute()
+        self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
+
+    def test_an_old_file_with_a_solid_on_another_solids_face_is_repaired(self):
+        """What older InCad made: the sketch moved into the new Solid still attached to the part's face, so the
+        new Solid held the whole part as well."""
+        base = self.make()
+        sk = self._on_top_away()
+        other = document.new_solid(self.doc)
+        self.body.removeObject(sk)
+        other.addObject(sk)
+        pad = util.add_pad(other, sk, 5, name="OldPad")
+        other.Tip = pad
+        self.doc.recompute()
+        self.assertGreater(pad.Shape.Volume, 4 * 4 * 5 + 1, "the bug: the part is in the new Solid too")
+        # the user's file: a cut sketched on a face of that piece — its face number changes once the part goes
+        far_side = [i + 1 for i, f in enumerate(pad.Shape.Faces)
+                    if f.Surface.TypeId == "Part::GeomPlane" and abs(f.CenterOfMass.x - 44) < 1e-6][0]
+        cut_sk = other.newObject("Sketcher::SketchObject", "CutSk")
+        cut_sk.AttachmentSupport = [(pad, "Face%d" % far_side)]
+        cut_sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        c = cut_sk.getGlobalPlacement().inverse().multVec(App.Vector(44, 5, 12))
+        pts = [c + App.Vector(dx, dy, 0) for dx, dy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        for i in range(4):
+            cut_sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        cut = other.newObject("PartDesign::Pocket", "Cut")
+        cut.Profile = cut_sk
+        cut.Length = 1
+        other.Tip = cut
+        self.doc.recompute()
+        self.assertEqual([o.Label for o in self.doc.Objects if "Invalid" in o.State], [])
+        base.Visibility = False  # FreeCAD hid the part's step: the old Pad took it as its base
+        self.assertTrue(document.settle_cross_solid_sketches(self.doc))
+        self.doc.recompute()
+        self.assertAlmostEqual(pad.Shape.Volume, 4 * 4 * 5, places=3)
+        self.assertEqual([o.Label for o in self.doc.Objects if "Invalid" in o.State], [], "the cut's face found again")
+        self.assertAlmostEqual(other.Shape.Volume, 4 * 4 * 5 - 2 * 2 * 1, places=3)
+        self.assertAlmostEqual(base.Shape.Volume, 20 * 10 * 10, places=3)
+        self.assertTrue(base.Visibility, "the part is shown again (the user saw only the new Solid)")
+        self.assertTrue(cut.Visibility)
+        self.assertFalse(document.settle_cross_solid_sketches(self.doc), "once")
+
     def test_new_solid_moves_the_sketch(self):
         f = self.make(operation="new_solid")
         self.assertEqual(len(document.bodies(self.doc)), 2)
@@ -170,6 +274,54 @@ class ExtrudeTest(unittest.TestCase):
         mid.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 2))
         self.doc.recompute()
         self.assertEqual(extrude.defaults(self.doc, self.body, mid)["operation"], "cut")
+
+
+class ToNextAndToFaceTest(unittest.TestCase):
+    """The user: a new sketch would not extrude To / To Next. To Next searched away from the part (FreeCAD: 'No
+    faces found in this direction'); To took only flat faces."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Tn")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)  # 20 x 10 x 10
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def sketch_at(self, z):
+        sk = util.add_rect_sketch(self.body, w=4, h=4, name="S")
+        sk.AttachmentOffset = App.Placement(App.Vector(2, 2, z), App.Rotation())
+        self.doc.recompute()
+        return sk
+
+    def make(self, sk, **changes):
+        values = extrude.defaults(self.doc, self.body, sk)
+        values.update(changes)
+        f = extrude.create(self.doc, self.body, sk, values)
+        self.doc.recompute()
+        return f
+
+    def test_to_next_goes_toward_the_part(self):
+        f = self.make(self.sketch_at(20), extent="to_next")
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertAlmostEqual(self.body.Shape.Volume, 2000 + 4 * 4 * 10, places=6)
+
+    def test_to_next_keeps_a_chosen_direction(self):
+        f = self.make(self.sketch_at(20), extent="to_next", direction="flip")
+        self.assertTrue(f.Reversed)
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+
+    def test_to_takes_a_curved_face(self):
+        from incad.features import common
+        cyl = self.body.newObject("PartDesign::AdditiveCylinder", "Post")
+        cyl.Radius, cyl.Height = 30, 5
+        cyl.Placement = App.Placement(App.Vector(10, 5, -30), App.Rotation(App.Vector(1, 0, 0), 90))
+        self.body.Tip = cyl
+        self.doc.recompute()
+        face = next(i + 1 for i, fc in enumerate(cyl.Shape.Faces) if fc.Surface.TypeId == "Part::GeomCylinder")
+        self.assertTrue(common.accepts("to_face", cyl, "Face%d" % face))
+        self.assertTrue(common.accepts("to_face", [o for o in self.body.Origin.OriginFeatures
+                                                   if o.Role == "XY_Plane"][0], ""))
 
 
 class SketchOnAnotherSolidTest(unittest.TestCase):

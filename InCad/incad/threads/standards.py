@@ -152,8 +152,9 @@ def spec(std, size, custom=None):
     raise ValueError("Unknown thread standard %r" % std)
 
 
-def default_clearance(std):
-    return 0.3 if std == "print" else 0.2
+def default_clearance(std, other=0.2):
+    """Print clearance on the diameter (mm): print-friendly threads get more; `other` for every other standard."""
+    return 0.3 if std == "print" else other
 
 
 def bore_diameter(s, clearance=0.0):

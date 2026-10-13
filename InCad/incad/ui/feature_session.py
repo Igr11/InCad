@@ -90,14 +90,14 @@ class FeatureSession(QtCore.QObject):
         if self.feature is not None:
             self.dialog.set_values({f.key: values.get(f.key) for f in self.kind.FIELDS if f.kind == "combo"})
         self._applied = self.dialog.values()
+        self._seen = self.dialog.values()  # what kind.follow compares a change with
         self._label_params()
         self.dialog.move(16, 16)
         self.dialog.show()
         self.dialog.raise_()
         if self.feature is None:
             self._apply_preselection()
-            first_empty = next((f.key for f in self.kind.FIELDS if f.kind in ("pick", "picks")
-                                and self._shown(f) and not self.dialog.values().get(f.key)), None)
+            first_empty = next(iter(self._waiting_picks()), None)
             self._pending = self.dialog.values()
             self._preview()  # first try: defaults (+ preselection) may already be enough
             if self._closed:  # Esc or OK while that first preview computed (seconds for a thread)
@@ -108,6 +108,7 @@ class FeatureSession(QtCore.QObject):
             self._check()
         if self.dialog is not None:
             self.dialog.reset_history()  # seeding is not the user's change: Undo stops (and drops the dialog) here
+        self._seen_waiting = self._waiting_picks() if self.dialog is not None else []
         self._observe(True)
         self._sync_sketch_markers()  # an edited Sweep/Loft shows its sketches' points from the start
         return True
@@ -115,6 +116,12 @@ class FeatureSession(QtCore.QObject):
     def _shown(self, field):
         from incad.features.common import shown
         return shown(field, self.dialog.values())
+
+    def _waiting_picks(self):
+        """The pick fields still to fill, in dialog order: shown, empty and without a default (not optional)."""
+        values = self.dialog.values()
+        return [f.key for f in self.kind.FIELDS if f.kind in ("pick", "picks") and not f.optional
+                and self._shown(f) and not values.get(f.key)]
 
     def _refresh_options(self):
         """Combos whose items depend on other values (e.g. thread sizes of the chosen standard)."""
@@ -137,7 +144,8 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit")
+    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face", "direction")
+    _PICK_WORDS = {"direction": "a flat face or a straight edge"}  # 'Select … for First'; else the pick's own name
     _ON_BASE = _GEOMETRY + ("two_points",)  # picks made on the shape: the base is shown while they are active
 
     def _observe(self, on):
@@ -207,10 +215,11 @@ class FeatureSession(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.features import common
         pairs = []
-        for sel in Gui.Selection.getSelectionEx(self.doc_name):
+        for sel in common.selection_ex(self.doc_name):  # in an assembly: the path through the component
             for sub in (sel.SubElementNames or ("",)):
                 obj, el = common.resolve(sel.Object, sub)
-                if obj is not None and (obj is not self.feature or getattr(self.kind, "IN_SKETCH", False)):
+                own = self.dialog is not None and self.dialog.active_pick() in getattr(self.kind, "PICKS_ON_SELF", ())
+                if obj is not None and (obj is not self.feature or own or getattr(self.kind, "IN_SKETCH", False)):
                     # the feature being made can't be its own input (a sketch pattern's picks ARE on the sketch)
                     pairs.append((obj, el))
         return pairs
@@ -329,7 +338,7 @@ class FeatureSession(QtCore.QObject):
         if pairs and not ok:
             if f.pick in self._GEOMETRY and not any(el for _, el in pairs):
                 return  # a whole object (a tree row) while a face/edge is wanted: just looking, not an error
-            self.dialog.set_error("Select %s for %s" % (f.pick.replace("_", " "), f.label))
+            self.dialog.set_error("Select %s for %s" % (self._PICK_WORDS.get(f.pick, f.pick.replace("_", " ")), f.label))
             self._pick_error = True
             return
         if not pairs and getattr(self, "_pick_error", False):
@@ -344,8 +353,7 @@ class FeatureSession(QtCore.QObject):
                 g.key == "children" for g in self.kind.FIELDS) and not self.dialog.values().get("children"):
             self.dialog.set_values({"children": True})
         if f.kind == "pick":  # a single pick is done: go on to the next empty one, or stop picking
-            nxt = next((g.key for g in self.kind.FIELDS if g.kind in ("pick", "picks") and g.key != key
-                        and self._shown(g) and not self.dialog.values().get(g.key)), None)
+            nxt = next((k for k in self._waiting_picks() if k != key), None)
             self.dialog.set_active_pick(nxt)
 
     def _sync_pick_view(self, seed=False):
@@ -371,6 +379,12 @@ class FeatureSession(QtCore.QObject):
         if seed and key:
             self._seed_selection(key)
         self._sync_point_pick(key)
+        hook = getattr(self.kind, "picking", None)  # Split ▸ Keep picked: every piece shows while they are picked
+        if hook is not None and self.feature is not None and _feature_alive(self.feature):
+            active = bool(key) and key in getattr(self.kind, "PICKS_ON_SELF", ())
+            if bool(getattr(self.feature, "ShowAll", False)) != active:
+                hook(self.feature, active)
+                self.doc.recompute()
 
     def _sync_point_pick(self, key):
         """A 'two points' field that becomes active shows the part's markers (corners, edge middles, circle
@@ -534,7 +548,7 @@ class FeatureSession(QtCore.QObject):
         for f in self.kind.FIELDS:
             if f.kind.startswith("value"):
                 prop = getattr(self.kind, "PROPS", {}).get(f.key)
-                if prop and self.feature is not None:
+                if prop and self.feature is not None and f.key not in extra:  # the kind's own answer stands
                     target = self.kind._pad_of(self.feature) if hasattr(self.kind, "_pad_of") else self.feature
                     self.dialog.set_param_name(f.key, model.bound_parameter(target, prop) if target else None)
 
@@ -559,13 +573,42 @@ class FeatureSession(QtCore.QObject):
                 if ok:
                     self.dialog.set_values({key: ok[0]})
 
+    def _follow(self, values):
+        """Values that follow a change the user made (kind.follow: Thread's clearance follows its standard)."""
+        hook = getattr(self.kind, "follow", None)
+        before = getattr(self, "_seen", None)
+        self._seen = dict(values)  # first: setting the followers below may report a change again
+        if hook is not None and before is not None and self.dialog is not None:
+            try:
+                more = hook(before, values)
+            except Exception as e:
+                log.logger().warning("%s follow: %s", getattr(self.kind, "NAME", "dialog"), e)
+                more = {}
+            if more:
+                self.dialog.set_values(more)
+                values = self.dialog.values()
+        self._seen = dict(values)
+        return values
+
     def _changed(self, values):
+        values = self._follow(values)
         self._sync_choices(values)
+        self._activate_revealed_pick()
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
         self._timer.start()
         self._sync_sketch_markers()
+
+    def _activate_revealed_pick(self):
+        """A choice that brings pick fields into view (Extrude's To face) makes the first of them the
+        active pick, so the next click fills it and not whatever was active before."""
+        waiting = self._waiting_picks()
+        revealed = [k for k in waiting if k not in getattr(self, "_seen_waiting", waiting)
+                    and self.dialog.field_def(k).pick != "two_points"]  # those show markers and refit the view
+        self._seen_waiting = waiting
+        if revealed and self.dialog.active_pick() not in waiting:
+            self.dialog.set_active_pick(revealed[0])
 
     def _picked_sketches(self):
         """The sketches named in the dialog's `sketch` fields (Sweep's profile and path, Loft's sections)."""
@@ -664,8 +707,7 @@ class FeatureSession(QtCore.QObject):
                 self._drop_partial()
             # nothing made yet while the user is still picking: the reason is a hint, not an error
             values = self.dialog.values()
-            empty = any(f.kind in ("pick", "picks") and self._shown(f) and not values.get(f.key)
-                        for f in self.kind.FIELDS)
+            empty = bool(self._waiting_picks())
             waiting = self.creating and self.feature is None and (self.dialog.active_pick() is not None or empty)
             self.dialog.set_error(str(e), waiting=waiting)
             return
@@ -788,7 +830,9 @@ class FeatureSession(QtCore.QObject):
                 plan = None
             if plan is not None:
                 rescue = (plan[0], lambda fn=plan[1], label=plan[0]: self._rescue(label, fn))
-        self.dialog.set_error(text, rescue)
+        hint = getattr(self.kind, "pending", None)
+        hint = hint(self.dialog.values()) if hint is not None and not text else ""
+        self.dialog.set_error(text or hint, rescue, waiting=bool(hint))
         self._show_base_while_broken(bool(found))
 
     def _rescue(self, label, fn):
@@ -850,6 +894,8 @@ class FeatureSession(QtCore.QObject):
             self._after_preview = "ok"  # taken when the preview (seconds for a thread) is done
             return
         self._timer.stop()
+        if self.dialog is not None and self.dialog.active_pick() is not None:
+            self.dialog.set_active_pick(None)  # picking ends (Split's Keep shows only the kept pieces again)
         if self.dialog is not None:
             current = self.dialog.values()
             if self._pending is not None or current != self._applied:

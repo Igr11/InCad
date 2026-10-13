@@ -291,3 +291,70 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
 - Ruling (2026-10-07, night, user: a projected line/edge used as a revolve axis gives "axis must not be perpendicular to the sketch plane" — "it's a logical mistake, a projection lies in the sketch plane"): correct. The bug was that a projected choice resolved to the 3D SOURCE edge (which can be perpendicular), not the in-plane projection. projected_lines now reads the PROJECTED geometry (sk.ExternalGeo, in the sketch's local frame, skipping the two sketch axes), lists only non-degenerate line segments (a perpendicular edge projects to a point and is dropped), and resolves each to a helper PartDesign::Line through the projection's global endpoints — the same helper mechanism as the two-point axis, so it is guaranteed in-plane and revolves. read() maps such a helper back to the two-point axis (same line). Headless tests: in-plane projection revolves (XZ sketch), a perpendicular source edge on a top-face sketch is not offered and the in-plane edge cuts cleanly.
 - Ruling (2026-10-07, night, user screenshot: Cut revolve "Solid1 produced invalid geometry; Revolve produced invalid geometry", profile Sketch5 on ThreadChamfer Face3 in the z=0 plane, two-point axis): not an InCad bug — a genuine geometry mismatch. The profile lies in the z=0 plane; the bolt it's meant to cut around has its axis along Y at z=5, parallel to the plane but 5 mm off it, so no axis in the profile's plane revolves usefully (every try was perpendicular, crossing, or on the profile edge → "command not done"/invalid). A revolve needs the profile drawn on a plane that PASSES THROUGH the axis. Made the messages actionable: model.friendly maps OCC "command not done"/"NullObject" to "the axis must lie IN the profile's plane and not cross or touch the profile; draw the profile on a plane through the axis", and safe._broken gives a Groove/Revolution the same guidance instead of the bare "produced invalid geometry".
 - Ruling (2026-10-07, night, user "why do we need the bolt?" — the bolt was a wrong assumption): the real point is that a revolve axis must lie IN the profile's plane, and the two points the user clicks are on the solid, usually off that plane, making the axis out-of-plane and the cut invalid. Fix: revolve.project_to_plane projects the two picked points onto the profile's plane before building the axis (points already in the plane are left exact to avoid float noise), so a two-point axis is always in-plane; an axis that lands beside the profile cuts, one that lands on/through it gives the plain "crosses/touches the profile" message, and two points one-above-the-other (projecting to one point) say so. Headless test: points at y=7 off an XZ profile project to y=0 and revolve.
+- Status (2026-10-13, assembly drag + DOF spike; scripts in spikes/2026-10-13-assembly-drag, run with tests/run_gui.sh
+  / freecadcmd): FreeCAD's native assembly drag works under InCad's navigation filter with no change to the gesture
+  rules — InCad holds the left press back and replays it once the mouse moves 4 px, FreeCAD then drags. Only in edit
+  mode (`Gui.getDocument(d).setEdit(asm.Name)`; an assembly that is merely active does not drag). Free part moves in
+  the screen plane, a grounded part stays, a Mated block slides with its face kept on the plate (z = 10 exactly), every
+  drag is ONE undo step 'Move part' and InCad's Undo restores it; the drag clears the selection. Option A also works:
+  the assembly goes into edit only for the drag — setEdit right before the replayed press (no event pump needed),
+  resetEdit on the release (QTimer 0) — so InCad's commands (run_safely refuses while an edit is open) work between
+  drags: Mate right after a drag solved fine, LMB+RMB orbit still orbits, a plain click still selects. To do in the real
+  code: enter edit only for a drag (the gesture machine's 'move far' replay, not the click's), only on a free component.
+  Odd: getInEdit() during the assembly edit has no .Object. DOF by probing (6 small moves of 0.5 mm / 1° about the part
+  centre, asm.solve(), share of each move kept, numpy rank, placements restored): free 6, Mate 3, Mate + Flush 1,
+  Mate + 2 Flush 0, Insert (pin in a hole) 1 — all right; ~60 ms per part. Grounded parts must not be probed (the
+  solver keeps a moved grounded part where it is). Open: a part held only by another free part counts that part's
+  freedom too (fine for Inventor-style display?), probes must not leave undo steps.
+- Status (2026-10-13, spikes 3–4, scripts spike_drag3/4.py): FreeCAD's native drag PULLS a free neighbour along (Top
+  Mated on a free Mid: both moved). The user: drag only along the part's own DOF. Fix proven: setEdit FIRST, then
+  InCad's own openTransaction("Move part"), temporary grounds on every other free part, drag (MoveInCommand False),
+  ungrounds, commit, resetEdit → Mid stays, Top slides on its face, ONE undo step, undo/redo leave no ground. Grounds
+  added before setEdit split the step (resetEdit closes the transaction that was open at setEdit). Same reason: no
+  drag inside a constraint dialog (resetEdit committed the dialog's 'Mate' step, Cancel could not put the part back).
+  A DOF 0 part does not move but FreeCAD's drag leaves an empty step: InCad does not start a drag on it.
+- Status (2026-10-13, assembly drag + DOF + constraint rows done, Tasks 1–8, commits 51a35a1..e2f9c5e): checked on copies of
+  the user's Thread_1-Assembly: Solid1 grounded, Solid2 DOF 1 (one slide), its glyph is 1 line + 2 heads, a drag moved it
+  7.18 mm along that slide, one "Move part" step, Solid1 unmoved, InCad.log clean. Suites: widgets OK (after adding
+  view.dof / constraint.suppress to test_actions' expected ids), headless 654 OK, GUI 44 of 48 files pass, quit 6/6.
+  test_dimbox, test_features 9–12 and test_selection_sync 7 failed on keyboard focus while the user was using the Mac:
+  the pre-plan commit 1a3888e fails them the same way at that moment and they passed on an idle Mac earlier the same
+  day; test_pattern_real_part timed out once and passed 6/6 on rerun.
+- Status (2026-10-13, after the final branch review): review fixes bba3ad5 (DOF view with an empty part, no drag
+  while any document is in edit or a FreeCAD task is open, every command ends a running drag first so Save never
+  writes the temporary grounds, a part's suppress/unsuppress keeps the constraints the user suppressed, unpickable
+  glyphs, cleanup on close). On an idle Mac: test_dimbox 12/12, test_features 20/20, test_selection_sync 8/8,
+  test_assembly_drag 21/21 — the earlier keyboard-focus failures were the Mac being in use.
+- Ruling (2026-10-13, user away; d677c54..1696a25): projected sketch edges are FreeCAD "defining" external geometry
+  (addExternal(..., True); the flag is toggled by writing a copy of sk.ExternalGeo back — survives a source change and
+  save/reload; getConstruction() still says True for them, never use it on external ids). Normal by default and
+  Construction switches them both ways (the user's choice is kept by Ref in InCadProjConstruction) — but only in a
+  sketch nothing is built on (common.consumers + revolve axis + InCad area profiles): in a used sketch new
+  projections stay construction with a note ("<Sketch> is used by <Feature>: … Construction makes them normal"), so an
+  existing Extrude never changes silently (review probe: a face loop projected around an extruded rectangle turned
+  2120 into 2880). Old tied copies are removed only in unused sketches. Formula links, attachments and other
+  sketches' projections don't make a sketch used.
+- Ruling (2026-10-13; e939669..a22c908): assembly Parallel / Perpendicular constraints and Angle on straight edges
+  (pick = flat face or straight edge). FreeCAD compares the picks' axes (face normal, edge direction), so for a face +
+  edge InCad swaps Parallel ↔ Perpendicular and binds Angle as 90° − the user's value (Angle 90° there = FreeCAD
+  Parallel); the joint label stays. A new / edited / unsuppressed constraint is refused only when it leaves another
+  previously-met constraint unmet (FreeCAD silently drops the old joint otherwise); a stale pick blocks nothing.
+  GUI: test_assembly 6/6, test_constraint_rows 7/7, test_assembly_drag 20/21 (test_9c hover needs an attended Mac),
+  test_projected_edges 8/8; test_constraints_window 6c/6d fail identically on older commits that passed them before
+  (real pointer position) — environmental.
+- Ruling (2026-10-14, user tests on Train_1*): a Solid sketched on another Solid's face holds only its own piece (a
+  Pad first in a Solid took the sketch's support as its base — the new Solid held the hex too, Make Assembly failed):
+  no projection from that Solid → the sketch is left in place, unattached (independent, the user's rule); with
+  projections → attached through a SubShapeBinder of the face (follows it). Old files repaired on open: lost faces
+  ('?Face12') found again, sketches on them keep their place, the hidden base shown again. Make Assembly keeps the
+  part the active document after a failure (InCad showed an empty screen).
+- Ruling (2026-10-14): DOF slides / turns come from the span of the 6 test moves (SVD; slides = the turn-free part,
+  turns with screw-axis points): FreeCAD's solver moves a part about its own origin, far from a part drawn away from
+  its file's origin, so every test move came back as slide-and-turn (Train_1's D-part: 1 slide + far-off arcs → now
+  2 slides + 2 turns on the part). DOF handles: the clicked free part's gizmo stays until a click on empty space; drag
+  an arc to turn, an arrow to slide (InCad's own drag: others held by temporary grounds, solve per move, one "Move
+  part" step); caught within 12 px in screen space, each turn its own ring, the first move picks the handle it runs
+  along, an end-on arrow is no handle, a quick second press (Qt double-click) still grabs, a plain click on a handle
+  goes to FreeCAD. Constraint Flip: Tangent (outside by default, Flip inside; two round faces outside/inside), Insert,
+  Rotational / Slider / Cylindrical, Mate ↔ facing the same way, Flush ↔ facing each other. test_nav test_4 (marking
+  menu popup) is flaky: the same commit failed once and passed once.
