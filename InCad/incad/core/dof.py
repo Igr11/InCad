@@ -124,7 +124,7 @@ def _probe(doc, asm, link, start):
     return Freedom(n, *_local(link, slides, turns), error="")
 
 
-def _aligned(basis, preferred):
+def _aligned(basis, preferred, steepest=None):
     """An orthonormal basis of the span of `basis` (rows) that takes the `preferred` directions where they lie in it
     (the part's own axes first): any basis spans the same freedoms, but an arrow should move the part straight up or
     sideways, not along a diagonal of its free plane."""
@@ -135,6 +135,10 @@ def _aligned(basis, preferred):
     q, _ = np.linalg.qr(np.array(basis).T)  # columns: an orthonormal basis of the span
     q = q[:, :k]
     out = []
+    if steepest is not None:  # as much of this direction as the span holds, however little (up the slope)
+        p = q @ (q.T @ steepest)
+        if np.linalg.norm(p) > 1e-3:
+            out.append(p / np.linalg.norm(p))
     for cand in preferred:
         if len(out) == k:
             break
@@ -175,7 +179,8 @@ def _split(m, n, c, rot=None):
     slides = []
     if len(pure):
         _, sp, vts = np.linalg.svd(pure)
-        slides = _aligned([vts[k] for k in range(int((sp > TOL * STEP).sum()))], own + world)
+        slides = _aligned([vts[k] for k in range(int((sp > TOL * STEP).sum()))], own + world,
+                          steepest=np.array([0.0, 0.0, 1.0]))  # the user: up and down first, then level
     turns = []
     rot_coeffs = vtw[:r]
     if r:

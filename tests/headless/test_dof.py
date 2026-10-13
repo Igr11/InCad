@@ -170,6 +170,18 @@ class DofTest(unittest.TestCase):
         for s in f.slides:  # in the part's own frame: its X and Y, turned with it
             self.assertAlmostEqual(max(abs(s.x), abs(s.y), abs(s.z)), 1, places=3, msg=s)
 
+    def test_the_first_arrow_is_up_and_down_as_far_as_the_part_can(self):
+        """The user: "In more cases I need up and down movement, not diagonal movement". On a face tilted 30° the
+        block can only slide in that face's plane: its first arrow climbs the slope, the second runs level."""
+        self.a.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), 30))
+        self.doc.recompute()
+        make(self.doc, C.MATE, fz(self.a, 10), fz(self.b, 0))
+        f = dof.compute(self.doc)[self.b.Name]
+        rot = self.b.Placement.Rotation
+        up, level = (rot.multVec(s) for s in f.slides)
+        self.assertAlmostEqual(abs(up.z), math.sin(math.radians(30)), places=3, msg=up)  # the steepest it can
+        self.assertAlmostEqual(level.z, 0, places=3, msg=level)
+
     def test_count_is_relative_to_what_holds_it(self):
         _, mid_path = save_part(self.dir, "Mid", 20, 20, 10)
         m = assembly.place(self.doc, mid_path)  # free, no constraints
