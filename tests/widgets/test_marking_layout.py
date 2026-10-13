@@ -35,6 +35,12 @@ class MarkingLayoutTest(unittest.TestCase):
         self.assertEqual(marking_layout.LAYOUT["sketch"]["list"][:2], ["sketch.stop", "edit.delete"])  # RMB: Stop Tool first
         self.assertEqual(marking_layout.LAYOUT["assembly"]["N"], "assembly.place")
         self.assertEqual(marking_layout.LAYOUT["asm_face"]["N"], "constrain.mate")
+        for ctx in ("asm_face", "asm_edge"):  # Parallel / Perpendicular on a face or an edge: in the list
+            self.assertIn("constrain.parallel", marking_layout.LAYOUT[ctx]["list"], ctx)
+            self.assertIn("constrain.perpendicular", marking_layout.LAYOUT[ctx]["list"], ctx)
+        self.assertEqual({d: marking_layout.LAYOUT["asm_face"][d] for d in ("N", "S", "E", "W")},
+                         {"N": "constrain.mate", "S": "constrain.flush", "E": "constrain.angle", "W": "constrain.tangent"})
+        self.assertIn("constrain.angle", marking_layout.LAYOUT["asm_edge"]["list"])  # Angle takes edges too
         self.assertEqual(marking_layout.LAYOUT["sketch"]["N"], "sketch.finish")
         self.assertEqual(marking_layout.LAYOUT["sketch"]["S"], "sketch.dimension")
         self.assertEqual(marking_layout.LAYOUT["part"]["N"], "sketch.start")

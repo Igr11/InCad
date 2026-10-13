@@ -143,7 +143,8 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face")
+    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face", "direction")
+    _PICK_WORDS = {"direction": "a flat face or a straight edge"}  # 'Select … for First'; else the pick's own name
     _ON_BASE = _GEOMETRY + ("two_points",)  # picks made on the shape: the base is shown while they are active
 
     def _observe(self, on):
@@ -336,7 +337,7 @@ class FeatureSession(QtCore.QObject):
         if pairs and not ok:
             if f.pick in self._GEOMETRY and not any(el for _, el in pairs):
                 return  # a whole object (a tree row) while a face/edge is wanted: just looking, not an error
-            self.dialog.set_error("Select %s for %s" % (f.pick.replace("_", " "), f.label))
+            self.dialog.set_error("Select %s for %s" % (self._PICK_WORDS.get(f.pick, f.pick.replace("_", " ")), f.label))
             self._pick_error = True
             return
         if not pairs and getattr(self, "_pick_error", False):
@@ -546,7 +547,7 @@ class FeatureSession(QtCore.QObject):
         for f in self.kind.FIELDS:
             if f.kind.startswith("value"):
                 prop = getattr(self.kind, "PROPS", {}).get(f.key)
-                if prop and self.feature is not None:
+                if prop and self.feature is not None and f.key not in extra:  # the kind's own answer stands
                     target = self.kind._pad_of(self.feature) if hasattr(self.kind, "_pad_of") else self.feature
                     self.dialog.set_param_name(f.key, model.bound_parameter(target, prop) if target else None)
 

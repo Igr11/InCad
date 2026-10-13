@@ -51,8 +51,8 @@ LAYOUT = {
     "assembly": [
         ["Assemble", [["Component", ["assembly.place", "assembly.create", "assembly.ground", "assembly.combine",
                                      "assembly.threads_toggle"]],
-                      ["Constrain", ["constrain.mate", "constrain.flush", "constrain.angle", "constrain.tangent",
-                                     "constrain.insert"]],
+                      ["Constrain", ["constrain.mate", "constrain.flush", "constrain.angle", "constrain.parallel",
+                                     "constrain.perpendicular", "constrain.tangent", "constrain.insert"]],
                       ["Joint", ["joint.rigid", "joint.rotational", "joint.slider", "joint.cylindrical",
                                  "joint.ball"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],

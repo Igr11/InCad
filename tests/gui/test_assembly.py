@@ -101,6 +101,32 @@ def test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores():
     assert b.Placement.isSame(before, 1e-6), (b.Placement, before)
 
 
+def test_2b_parallel_from_3d_picks_is_one_undo_step():
+    doc = asm_doc()
+    a, b = doc.getObject(ST["a"]), doc.getObject(ST["b"])
+    b.Placement = App.Placement(App.Vector(50, 40, 25), App.Rotation(App.Vector(1, 1, 0.3), 134))
+    doc.recompute()
+    undo = len(doc.UndoNames)
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("constrain.parallel")
+    harness.pump(800)
+    asm = assembly.assembly_of(doc)
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (a.Name, face(a, 10)))
+    harness.pump(600)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, asm.Name, "%s.Face%d" % (b.Name, face(b, 0)))
+    harness.pump(1200)
+    v = dialog().values()
+    assert v["first"] == "%s:Face%d" % (a.Name, face(a, 10)) and v["second"] == "%s:Face%d" % (b.Name, face(b, 0)), v
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1000)
+    n1 = a.Shape.getElement("Face%d" % face(a, 10)).normalAt(0, 0)
+    n2 = b.Shape.getElement("Face%d" % face(b, 0)).normalAt(0, 0)
+    assert abs(abs(n1.dot(n2)) - 1) < 1e-6, (n1, n2)
+    assert doc.UndoNames[0] == "Parallel" and len(doc.UndoNames) == undo + 1, doc.UndoNames
+
+
 def test_3_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -108,4 +134,5 @@ def test_3_cleanup():
 
 
 harness.run([test_0_setup, test_1_place_two_parts_first_grounded, test_1b_padlock_is_small_and_calm,
-             test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores, test_3_cleanup])
+             test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores,
+             test_2b_parallel_from_3d_picks_is_one_undo_step, test_3_cleanup])

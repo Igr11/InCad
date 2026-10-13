@@ -81,6 +81,12 @@ class RibbonTest(unittest.TestCase):
         self.rb.refresh_checks()
         self.assertTrue(self.rb.button("t").isChecked())
 
+    def test_assembly_constrain_group_has_parallel_and_perpendicular_after_angle(self):
+        tab = dict((name, groups) for name, groups in ribbon_layout.LAYOUT["assembly"])["Assemble"]
+        group = dict((g[0], g[1]) for g in tab)["Constrain"]
+        i = group.index("constrain.angle")
+        self.assertEqual(group[i + 1:i + 3], ["constrain.parallel", "constrain.perpendicular"])
+
     def test_add_group(self):
         layout = {"part": [["Model", []]]}
         ribbon_layout.add_group("part", "Model", "Sketch", ["a"], layout)

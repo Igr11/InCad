@@ -204,3 +204,166 @@ class ConstraintsTest(unittest.TestCase):
         self.assertIsNone(C.kind_of(g))
         with self.assertRaises(ValueError):
             C.toggle_suppressed(g)
+
+
+def edge(link, x=None, y=None, z=None):
+    """A straight edge of the part (own coordinates) whose middle has the given coordinates."""
+    def ok(e):
+        c = e.CenterOfMass
+        return e.Curve.TypeId == "Part::GeomLine" and all(
+            want is None or abs(got - want) < 1e-6 for got, want in ((c.x, x), (c.y, y), (c.z, z)))
+    return "%s:Edge%d" % (link.Name, [i + 1 for i, e in enumerate(link.LinkedObject.Shape.Edges) if ok(e)][0])
+
+
+def axis_of(doc, pick):
+    """A pick's direction in the assembly: a flat face's normal, a straight edge's direction."""
+    name, _, sub = pick.partition(":")
+    el = doc.getObject(name).Shape.getElement(sub)
+    if el.ShapeType == "Face":
+        return App.Vector(el.normalAt(0, 0)).normalize()
+    return App.Vector(el.Curve.Direction).normalize()
+
+
+STARTS = (App.Rotation(10, 20, 30), App.Rotation(App.Vector(1, 1, 0.3), 134), App.Rotation(App.Vector(0, 1, 0), 20))
+
+
+class DirectionConstraintsTest(unittest.TestCase):
+    """Parallel, Perpendicular and Angle on flat faces and straight edges, in any mix: face + edge means what the user
+    expects (Parallel: the edge lies along the face), not FreeCAD's raw normal-against-edge."""
+    tearDown, make = ConstraintsTest.tearDown, ConstraintsTest.make
+
+    def setUp(self):
+        ConstraintsTest.setUp(self)
+        self.plate_at = App.Placement(self.plate.Placement)
+
+    def start(self, rot):
+        for j in [j for j in assembly.joints(self.doc) if C.claims(j)]:
+            self.doc.removeObject(j.Name)
+        self.block.Placement = App.Placement(App.Vector(50, 40, 25), rot)
+        self.doc.recompute()
+
+    def degrees(self, p1, p2):
+        """The angle between the two picks' axes, folded into 0..90 (edges have no side)."""
+        d = abs(axis_of(self.doc, p1).dot(axis_of(self.doc, p2)))
+        return math.degrees(math.acos(min(1.0, d)))
+
+    def check(self, kind, p1, p2, want, **values):
+        for rot in STARTS:
+            self.start(rot)
+            self.make(kind, first=p1, second=p2, **values)
+            self.assertAlmostEqual(self.degrees(p1, p2), want, places=4, msg=(kind.TITLE, p1, p2, rot))
+            self.assertTrue(self.plate.Placement.isSame(self.plate_at, 1e-9), "the grounded plate stays")
+
+    # face + face
+    def test_parallel_faces(self):
+        self.check(C.PARALLEL, face(self.plate, z_is(10)), face(self.block, x_is(10)), 0)
+
+    def test_perpendicular_faces(self):
+        self.check(C.PERPENDICULAR, face(self.plate, z_is(10)), face(self.block, z_is(0)), 90)
+
+    def test_angle_faces(self):
+        self.check(C.ANGLE, face(self.plate, z_is(10)), face(self.block, z_is(0)), 30, angle="30 °")
+
+    # edge + edge
+    def test_parallel_edges(self):
+        self.check(C.PARALLEL, edge(self.plate, y=0, z=10), edge(self.block, x=10, y=0), 0)
+
+    def test_perpendicular_edges(self):
+        self.check(C.PERPENDICULAR, edge(self.plate, y=0, z=10), edge(self.block, x=10, y=0), 90)
+
+    def test_angle_edges(self):
+        self.check(C.ANGLE, edge(self.plate, y=0, z=10), edge(self.block, x=10, y=0), 45, angle="45 °")
+
+    # face + edge: the angle between the edge and the FACE (not its normal)
+    def test_parallel_face_and_edge_lays_the_edge_along_the_face(self):
+        self.check(C.PARALLEL, face(self.plate, z_is(10)), edge(self.block, x=10, y=0), 90)  # edge ⟂ normal
+
+    def test_parallel_edge_and_face_in_that_order_too(self):
+        self.check(C.PARALLEL, edge(self.block, x=10, y=0), face(self.plate, z_is(10)), 90)
+
+    def test_perpendicular_face_and_edge_stands_the_edge_up(self):
+        self.check(C.PERPENDICULAR, face(self.plate, z_is(10)), edge(self.block, x=10, y=0), 0)  # edge ∥ normal
+
+    def test_angle_face_and_edge_is_the_angle_to_the_face(self):
+        self.check(C.ANGLE, face(self.plate, z_is(10)), edge(self.block, x=10, y=0), 60, angle="30 °")  # 90 − 30
+
+    def test_angle_90_on_face_and_edge_stands_the_edge_up(self):  # FreeCAD's Angle 0: normal along the edge
+        self.check(C.ANGLE, face(self.plate, z_is(10)), edge(self.block, x=10, y=0), 0, angle="90 °")
+
+    def test_angle_on_face_and_edge_reads_what_the_user_typed(self):
+        j = self.make(C.ANGLE, first=face(self.plate, z_is(10)), second=edge(self.block, x=10, y=0), angle="30 °")
+        self.assertEqual(C.ANGLE.read(self.doc, j)["angle"], "30°")
+        self.assertAlmostEqual(j.Angle.Value, 60, places=6)  # FreeCAD's meaning: normal against edge
+        name = C.ANGLE.param_names(j)["angle"]
+        self.assertEqual(model.parameter_text(self.doc, name), "30°")
+        model.set_model_parameter(self.doc, name, "20 °")  # the parameter still drives it
+        self.doc.recompute()
+        self.assertAlmostEqual(j.Angle.Value, 70, places=6)
+
+    def test_editing_a_parallel_from_faces_to_face_and_edge_stays_parallel_for_the_user(self):
+        j = self.make(C.PARALLEL, first=face(self.plate, z_is(10)), second=face(self.block, x_is(10)))
+        self.assertEqual(j.JointType, "Parallel")
+        values = dict(C.PARALLEL.read(self.doc, j), second=edge(self.block, x=10, y=0))
+        C.PARALLEL.update(self.doc, j, values)
+        self.doc.recompute()
+        self.assertEqual(j.JointType, "Perpendicular")  # FreeCAD's normal-against-edge meaning
+        self.assertAlmostEqual(self.degrees(values["first"], values["second"]), 90, places=4)
+        C.PARALLEL.update(self.doc, j, dict(values, second=face(self.block, x_is(10))))  # and back
+        self.assertEqual(j.JointType, "Parallel")
+
+    def test_editing_an_angle_from_face_and_edge_to_faces_binds_the_value_plainly(self):
+        j = self.make(C.ANGLE, first=face(self.plate, z_is(10)), second=edge(self.block, x=10, y=0), angle="30 °")
+        C.ANGLE.update(self.doc, j, dict(C.ANGLE.read(self.doc, j), second=face(self.block, z_is(0))))
+        self.doc.recompute()
+        self.assertAlmostEqual(j.Angle.Value, 30, places=6)
+        self.assertEqual(model.bound_parameter(j, "Angle"), C.ANGLE.param_names(j)["angle"])
+        self.assertAlmostEqual(self.degrees(face(self.plate, z_is(10)), face(self.block, z_is(0))), 30, places=4)
+
+    def test_parallel_after_perpendicular_on_the_same_faces_is_refused(self):
+        self.make(C.PERPENDICULAR, first=face(self.plate, z_is(10)), second=face(self.block, z_is(0)))
+        before = App.Placement(self.block.Placement)
+        with self.assertRaises(ValueError) as ctx:
+            self.make(C.PARALLEL, first=face(self.plate, z_is(10)), second=face(self.block, z_is(0)))
+        self.assertIn("Parallel conflicts with the other constraints (it can't be met)", str(ctx.exception))
+        self.assertTrue(self.block.Placement.isSame(before, 1e-6))
+        self.assertEqual([C.kind_of(j) for j in assembly.joints(self.doc) if C.claims(j)], [C.PERPENDICULAR])
+
+    def test_suppress_and_unsuppress_a_parallel(self):
+        p1, p2 = face(self.plate, z_is(10)), face(self.block, x_is(10))
+        j = self.make(C.PARALLEL, first=p1, second=p2)
+        self.assertTrue(C.toggle_suppressed(j))
+        self.block.Placement = App.Placement(App.Vector(50, 40, 25), App.Rotation(App.Vector(1, 1, 0.3), 70))
+        self.doc.recompute()
+        self.assertGreater(self.degrees(p1, p2), 1)
+        self.assertFalse(C.toggle_suppressed(j))
+        self.assertAlmostEqual(self.degrees(p1, p2), 0, places=4)
+
+    def test_the_new_kinds_are_listed_after_angle(self):
+        i = C.KINDS.index(C.ANGLE)
+        self.assertEqual(C.KINDS[i + 1:i + 3], [C.PARALLEL, C.PERPENDICULAR])
+        self.assertIs(kind_for(self.make(C.PARALLEL, first=face(self.plate, z_is(10)),
+                                         second=face(self.block, x_is(10)))), C.PARALLEL)
+        for k in (C.PARALLEL, C.PERPENDICULAR, C.ANGLE):
+            self.assertEqual([f.pick for f in k.FIELDS if f.kind == "pick"], ["direction", "direction"])
+        self.assertEqual([f.key for f in C.PARALLEL.FIELDS], ["first", "second"])  # no value
+
+
+class DirectionPickTest(unittest.TestCase):
+    def test_a_direction_is_a_flat_face_or_a_straight_edge(self):
+        from incad.features.common import accepts
+        doc = App.newDocument("Picks")
+        try:
+            box = doc.addObject("Part::Feature", "Box")
+            box.Shape = Part.makeBox(10, 10, 10)
+            cyl = doc.addObject("Part::Feature", "Cyl")
+            cyl.Shape = Part.makeCylinder(3, 10)
+            doc.recompute()
+            self.assertTrue(accepts("direction", box, "Face1"))
+            self.assertTrue(accepts("direction", box, "Edge1"))
+            curved = [i + 1 for i, f in enumerate(cyl.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"][0]
+            circle = [i + 1 for i, e in enumerate(cyl.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"][0]
+            self.assertFalse(accepts("direction", cyl, "Face%d" % curved))
+            self.assertFalse(accepts("direction", cyl, "Edge%d" % circle))
+            self.assertFalse(accepts("direction", box, "Vertex1"))
+        finally:
+            App.closeDocument(doc.Name)

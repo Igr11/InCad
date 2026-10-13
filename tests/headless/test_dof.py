@@ -67,6 +67,12 @@ class DofTest(unittest.TestCase):
         self.assertEqual(len(f.turns), 1)
         self.assertAlmostEqual(abs(f.turns[0][1].z), 1, places=3)
 
+    def test_parallel_faces_leave_three_slides_and_one_turn(self):
+        """Parallel limits rotation only: 2 turns away, the distance stays free."""
+        make(self.doc, C.PARALLEL, fz(self.a, 10), fz(self.b, 0))
+        f = dof.compute(self.doc)[self.b.Name]
+        self.assertEqual((f.n, len(f.slides), len(f.turns)), (4, 3, 1))
+
     def test_mate_and_flushes(self):
         make(self.doc, C.MATE, fz(self.a, 10), fz(self.b, 0))
         make(self.doc, C.FLUSH, fx(self.a, 0), fx(self.b, 0))

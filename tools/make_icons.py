@@ -211,6 +211,10 @@ ICONS.update({
               '<path d="M2 6 H30" stroke="{A}" stroke-width="2" stroke-dasharray="3 2"/>'),
     "angle_c": ('<path d="M5 27 H28 M5 27 L22 8" stroke="{S}" stroke-width="2.4"/>'
                 '<path d="M14 27 A9 9 0 0 0 11 20" fill="none" stroke="{A}" stroke-width="2"/>'),
+    "parallel_c": ('<path d="M4 21 L17 5 M11 27 L24 11" stroke="{S}" stroke-width="2.4"/>'
+                   '<path d="M21 25 L25 20 M25 28 L29 23" stroke="{A}" stroke-width="2"/>'),
+    "perpendicular_c": ('<path d="M4 27 H28 M12 27 V4" stroke="{S}" stroke-width="2.4"/>'
+                        '<path d="M12 19 H20 V27" fill="none" stroke="{A}" stroke-width="2"/>'),
     "tangent": ('<circle cx="16" cy="14" r="8" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
                 '<path d="M3 22 H29" stroke="{A}" stroke-width="2.4"/>'),
     "insert": ('<rect x="10" y="3" width="12" height="15" fill="{F}" stroke="{S}" stroke-width="1.4"/>'

@@ -111,7 +111,8 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components"}
+           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
+           "direction": "faces or edges"}
 
 
 def selection_ex(doc_name=""):
@@ -327,6 +328,10 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
+    if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face or a straight edge
+        if sub.startswith("Face") and el is not None:
+            return el.Surface.TypeId == "Part::GeomPlane"
+        return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomLine"
     if kind == "component":
         return tid == "App::Link"
     if kind == "piece":  # a face of one of the feature's own pieces (Split ▸ Keep picked)
@@ -386,7 +391,8 @@ def _accepts_sketch(kind, sk, sub):
     return False
 
 
-_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "plane": "Click a face or work plane…",
+_EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Click a flat face or a straight edge…",
+               "plane": "Click a face or work plane…",
                "limit": "Click a face, edge or work plane…", "to_face": "Click a face or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
                "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}
