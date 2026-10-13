@@ -43,6 +43,7 @@ class Navigator(QtCore.QObject):
         self.mode = None
         self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click
         self.dblclick_hook = None   # same for left double-clicks
+        self.drag_hook = None       # begin(view, viewport, x, y) on a left drag, end() on its release
         self._swallow_release = False
 
     def attached(self):
@@ -118,6 +119,16 @@ class Navigator(QtCore.QObject):
 
     def _do(self, viewport, view, action, press_modifiers):
         name = action[0]
+        if name in ("drag_start", "drag_end"):
+            if self.drag_hook is not None:
+                try:
+                    if name == "drag_start":
+                        self.drag_hook.begin(view, viewport, action[1], action[2])
+                    else:
+                        self.drag_hook.end()
+                except Exception:
+                    log.logger().exception("InCad drag")
+            return
         if name == "replay_press":
             self._replay(viewport, action[1], action[2], press_modifiers)
         elif name == "orbit_start":

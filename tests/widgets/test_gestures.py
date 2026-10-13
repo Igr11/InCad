@@ -22,12 +22,21 @@ class GesturesTest(unittest.TestCase):
         self.assertEqual(b, [("replay_press", 10, 10), PASS])
         self.assertEqual(self.g.state, "idle")
 
-    def test_left_drag_is_handed_to_freecad(self):
+    def test_left_drag_is_handed_to_freecad_and_reported(self):
         a, b, c, d = self.feed(("press", LEFT, LEFT, 10, 10), ("move", 0, LEFT, 12, 10),
                                ("move", 0, LEFT, 30, 10), ("release", LEFT, 0, 30, 10))
         self.assertEqual((a, b), ([], []))
-        self.assertEqual(c, [("replay_press", 10, 10), PASS])
-        self.assertEqual(d, [PASS])
+        self.assertEqual(c, [("drag_start", 10, 10), ("replay_press", 10, 10), PASS])
+        self.assertEqual(d, [("drag_end",), PASS])
+        self.assertEqual(self.g.state, "idle")
+
+    def test_a_click_is_no_drag(self):
+        out = self.feed(("press", LEFT, LEFT, 10, 10), ("release", LEFT, 0, 11, 10))
+        self.assertNotIn(("drag_start", 10, 10), out[1])
+
+    def test_a_lost_release_ends_the_drag(self):
+        self.feed(("press", LEFT, LEFT, 10, 10), ("move", 0, LEFT, 30, 10))
+        self.assertEqual(self.g.feed("move", 0, 0, 40, 10), [("drag_end",), PASS])
         self.assertEqual(self.g.state, "idle")
 
     def test_left_then_right_orbits_and_any_release_order_ends_it(self):
@@ -107,7 +116,7 @@ class RightButtonNeverReachesFreeCADTest(unittest.TestCase):
         g.feed("move", 0, LEFT, 30, 10)  # handed to FreeCAD as a left drag
         self.assertEqual(g.feed("press", RIGHT, LEFT | RIGHT, 30, 10), [])
         self.assertEqual(g.feed("release", RIGHT, LEFT, 30, 10), [])
-        self.assertEqual(g.feed("release", LEFT, 0, 30, 10), [PASS])
+        self.assertEqual(g.feed("release", LEFT, 0, 30, 10), [("drag_end",), PASS])
 
     def test_right_with_middle_held(self):
         g = Gestures()

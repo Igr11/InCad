@@ -41,6 +41,45 @@ class HooksTest(unittest.TestCase):
         self.nav.dblclick_hook = lambda *a: False
         self.assertFalse(self.nav.eventFilter(self.w, ev("dbl", L, L)))
 
+    def test_drag_hook_begins_before_the_replay_and_ends_on_release(self):
+        L = QtCore.Qt.LeftButton
+        seen = []
+
+        class Hook:
+            def begin(self, view, viewport, x, y):
+                seen.append(("begin", x, y))
+
+            def end(self):
+                seen.append(("end",))
+
+        self.nav.drag_hook = Hook()
+        self.nav._replay = lambda *a, **k: seen.append(("replay",))
+        move = lambda x: QtGui.QMouseEvent(QtCore.QEvent.MouseMove, QtCore.QPointF(x, 10), QtCore.QPointF(x, 10),
+                                           QtCore.Qt.NoButton, L, QtCore.Qt.NoModifier)
+        self.nav.eventFilter(self.w, ev("press", L, L))
+        self.nav.eventFilter(self.w, move(40))
+        self.nav.eventFilter(self.w, ev("release", L, QtCore.Qt.NoButton))
+        self.assertEqual(seen, [("begin", 10.0, 10.0), ("replay",), ("end",)])
+
+    def test_a_failing_drag_hook_still_replays(self):
+        L = QtCore.Qt.LeftButton
+        seen = []
+
+        class Hook:
+            def begin(self, *a):
+                raise RuntimeError("boom")
+
+            def end(self):
+                pass
+
+        self.nav.drag_hook = Hook()
+        self.nav._replay = lambda *a, **k: seen.append("replay")
+        move = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, QtCore.QPointF(40, 10), QtCore.QPointF(40, 10),
+                                 QtCore.Qt.NoButton, L, QtCore.Qt.NoModifier)
+        self.nav.eventFilter(self.w, ev("press", L, L))
+        self.nav.eventFilter(self.w, move)
+        self.assertEqual(seen, ["replay"])
+
 
 class Recorder(QtWidgets.QWidget):
     def __init__(self):
