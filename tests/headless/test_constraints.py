@@ -348,6 +348,94 @@ class DirectionConstraintsTest(unittest.TestCase):
         self.assertEqual([f.key for f in C.PARALLEL.FIELDS], ["first", "second"])  # no value
 
 
+class RoundOneFixesTest(unittest.TestCase):
+    """Review round 1: a stale or already-unmet constraint blocks nothing else; Angle 90° on a face and an edge is
+    FreeCAD's Parallel; the joint's label stays what InCad named it when FreeCAD's type swaps."""
+    tearDown, make = ConstraintsTest.tearDown, ConstraintsTest.make
+    degrees, start = DirectionConstraintsTest.degrees, DirectionConstraintsTest.start
+
+    def setUp(self):
+        ConstraintsTest.setUp(self)
+        _, bar = save_part(self.dir, "Bar", 20, 6, 4)
+        self.bar = assembly.place(self.doc, bar)
+        self.bar.Placement = App.Placement(App.Vector(-60, 10, 30), App.Rotation(App.Vector(1, 0.2, 0.5), 50))
+        self.doc.recompute()
+
+    def mate(self):
+        return self.make(C.MATE, first=face(self.plate, z_is(10)), second=face(self.block, z_is(0)))
+
+    def test_a_stale_reference_blocks_no_new_constraint_and_no_edit(self):
+        m = self.mate()
+        m.Reference2 = [self.block, ["Face99", "Face99"]]  # its face is gone (the part was changed)
+        self.doc.recompute()
+        p1, p2 = face(self.plate, z_is(10)), face(self.bar, z_is(4))
+        j = self.make(C.PARALLEL, first=p1, second=p2)
+        self.assertAlmostEqual(self.degrees(p1, p2), 0, places=4)
+        p3 = edge(self.bar, y=0, z=4)
+        C.PARALLEL.update(self.doc, j, dict(C.PARALLEL.read(self.doc, j), second=p3))
+        self.assertAlmostEqual(self.degrees(p1, p3), 90, places=4)
+
+    def test_unsuppress_next_to_an_already_unmet_angle(self):
+        a = self.make(C.ANGLE, first=face(self.plate, z_is(10)), second=face(self.bar, z_is(4)), angle="30 °")
+        # an old file: FreeCAD dropped this Angle without a word (here for a raw FreeCAD Parallel on the same faces)
+        import JointObject
+        raw = assembly.joint_group(self.doc).newObject("App::FeaturePython", "RawParallel")
+        JointObject.Joint(raw, JointObject.JointTypes.index("Parallel"))
+        (l1, e1), (l2, e2) = [(self.doc.getObject(n), el) for n, el in (r.split(":") for r in (
+            C.ANGLE.read(self.doc, a)["first"], C.ANGLE.read(self.doc, a)["second"]))]
+        raw.Proxy.setJointConnectors(raw, [[l1, [e1, e1]], [l2, [e2, e2]]])
+        self.doc.recompute()
+        self.assertFalse(C._met(self.doc, a, C.ANGLE, C.ANGLE.read(self.doc, a)))
+        m = self.mate()
+        self.assertTrue(C.toggle_suppressed(m))
+        self.assertFalse(C.toggle_suppressed(m))  # not refused for the Angle's sake
+        self.assertAlmostEqual(self.bb().ZMin, 10, places=4)
+
+    def bb(self):
+        return self.block.Shape.BoundBox
+
+    def test_an_edit_that_breaks_another_constraint_is_refused(self):
+        self.make(C.PERPENDICULAR, first=face(self.plate, z_is(10)), second=face(self.block, z_is(0)))
+        j = self.make(C.PARALLEL, first=face(self.plate, z_is(10)), second=face(self.block, x_is(10)))
+        before = App.Placement(self.block.Placement)
+        with self.assertRaises(ValueError) as ctx:
+            C.PARALLEL.update(self.doc, j, dict(C.PARALLEL.read(self.doc, j), second=face(self.block, z_is(0))))
+        self.assertIn("Parallel conflicts with the other constraints", str(ctx.exception))
+        self.assertTrue(self.block.Placement.isSame(before, 1e-6))
+
+    def test_angle_90_on_a_face_and_an_edge_is_freecads_parallel(self):
+        p1, p2 = face(self.plate, z_is(10)), edge(self.block, x=10, y=0)
+        for rot in STARTS:
+            self.start(rot)
+            j = self.make(C.ANGLE, first=p1, second=p2, angle="90 °")
+            self.assertEqual(j.JointType, "Parallel")  # not a degenerate Angle 0°
+            self.assertAlmostEqual(self.degrees(p1, p2), 0, places=4, msg=rot)  # the edge stands up on the face
+            self.assertEqual(C.ANGLE.read(self.doc, j)["angle"], "90°")
+            self.assertEqual(j.Label, "Angle")
+        C.ANGLE.update(self.doc, j, dict(C.ANGLE.read(self.doc, j), angle="30 °"))  # Edit: back to an Angle
+        self.assertEqual((j.JointType, round(j.Angle.Value, 6)), ("Angle", 60))
+        self.assertAlmostEqual(self.degrees(p1, p2), 60, places=4)
+        name = C.ANGLE.param_names(j)["angle"]
+        model.set_model_parameter(self.doc, name, "90 °")  # the Parameters window: the same switch
+        self.assertEqual(j.JointType, "Parallel")
+        self.assertAlmostEqual(self.degrees(p1, p2), 0, places=4)
+        model.set_model_parameter(self.doc, name, "45 °")
+        self.assertEqual(j.JointType, "Angle")
+        self.assertAlmostEqual(self.degrees(p1, p2), 45, places=4)
+        self.assertEqual((C.ANGLE.read(self.doc, j)["angle"], j.Label), ("45°", "Angle"))
+
+    def test_the_label_stays_when_freecads_type_swaps(self):
+        for kind in (C.PARALLEL, C.PERPENDICULAR):
+            j = self.make(kind, first=face(self.plate, z_is(10)), second=edge(self.block, x=10, y=0))
+            self.assertNotEqual(j.JointType, kind.joint)
+            self.assertEqual(j.Label, kind.TITLE)
+            self.doc.removeObject(j.Name)
+        j = self.make(C.PARALLEL, first=face(self.plate, z_is(10)), second=face(self.block, x_is(10)))
+        j.Label = "Lid Parallel"
+        C.PARALLEL.update(self.doc, j, dict(C.PARALLEL.read(self.doc, j), second=edge(self.block, x=10, y=0)))
+        self.assertEqual(j.Label, "Lid Parallel")
+
+
 class DirectionPickTest(unittest.TestCase):
     def test_a_direction_is_a_flat_face_or_a_straight_edge(self):
         from incad.features.common import accepts

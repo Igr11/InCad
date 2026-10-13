@@ -305,6 +305,8 @@ def set_model_parameter(doc, name, text):
     doc.recompute()
     if "Invalid" in obj.State or "Error" in obj.State:
         raise ValueError("%s: %s" % (name, friendly(obj.getStatusString())))
+    from incad.features import constraints  # an assembly Angle may change FreeCAD joint type with its value
+    constraints.follow_parameters(doc)
 
 
 def rename_model_parameter(doc, old, new):

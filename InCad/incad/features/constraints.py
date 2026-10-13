@@ -79,11 +79,23 @@ def _mixed(doc, values):
     return set(kinds) == {"Face", "Edge"}
 
 
-def _joint_type(doc, spec, values):
-    """FreeCAD's joint type for these picks: Parallel and Perpendicular swap for a face against an edge."""
+def _joint_type(doc, spec, values, j=None):
+    """FreeCAD's joint type for these picks: Parallel and Perpendicular swap for a face against an edge; an Angle of
+    90 deg there (FreeCAD's Angle 0, which its solver handles badly) is FreeCAD's Parallel: the edge stands up."""
     if spec.joint in _SWAP and _mixed(doc, values):
         return _SWAP[spec.joint]
+    if spec.joint == "Angle" and j is not None and _mixed(doc, values) and abs(j.Angle.Value) < 1e-9:
+        return "Parallel"
     return spec.joint
+
+
+def _set_type(j, joint):
+    """Set FreeCAD's joint type, keeping the label: FreeCAD renames 'Parallel' to 'Perpendicular' in it."""
+    if j.JointType != joint:
+        label = j.Label
+        j.JointType = joint
+        if j.Label != label:
+            j.Label = label
 
 
 _COMPLEMENT = "90 deg - "
@@ -220,14 +232,18 @@ def _pre_align(doc, spec, values, j=None):
 def _apply(doc, j, spec, values):
     import JointObject
     (l1, e1), (l2, e2) = _moving_refs(doc, values)
-    joint = _joint_type(doc, spec, values)
-    if j.JointType != joint:
-        j.JointType = joint
+    _set_type(j, _joint_type(doc, spec, values))
     if spec.value == "offset":
         value_param(doc, j, "Distance", values.get("offset") or "0 mm", "length", base=spec.TITLE)
     elif spec.value == "angle":
-        _bind_angle(doc, j, spec, values.get("angle") or "90 °", _mixed(doc, values))
-        doc.recompute()  # the joint's Angle follows its formula before the pre-align reads it
+        global _APPLYING
+        _APPLYING += 1
+        try:
+            _bind_angle(doc, j, spec, values.get("angle") or "90 °", _mixed(doc, values))
+        finally:
+            _APPLYING -= 1
+        doc.recompute()  # the joint's Angle follows its formula before the pre-align and the type read it
+        _set_type(j, _joint_type(doc, spec, values, j))
     _pre_align(doc, spec, values, j)
     held = _placements(doc)
     j.Proxy.setJointConnectors(j, [[l1, [e1, e1]], [l2, [e2, e2]]])
@@ -316,19 +332,6 @@ def kind_of(j):
     return next((k for k in KINDS if k.claims(j)), None) if j is not None else None
 
 
-def _others_met(doc, j):
-    """Do the other active constraints still hold after a solve? FreeCAD's solver drops one of two conflicting joints
-    without a word, so each one is checked on its own."""
-    from incad.core import assembly
-    for o in assembly.joints(doc):
-        spec = kind_of(o)
-        if o is j or spec is None or getattr(o, "Suppressed", False):
-            continue
-        if not _met(doc, o, spec, spec.read(doc, o)):
-            return False
-    return True
-
-
 def _unmet(doc, but=None):
     """Names of the active constraints the parts don't meet now (`but` left out)."""
     from incad.core import assembly
@@ -340,9 +343,34 @@ def _unmet(doc, but=None):
         try:
             if not _met(doc, o, spec, spec.read(doc, o)):
                 out.add(o.Name)
-        except ValueError:  # a pick that is gone: not this constraint's doing
+        except Exception:  # unreadable (a pick that is gone, a face index past the end): not this constraint's doing
             pass
     return out
+
+
+_APPLYING = 0  # an Angle being bound by _apply: follow_parameters leaves it to _apply
+
+
+def follow_parameters(doc):
+    """After a parameter change (model.set_model_parameter): an Angle on a face and an edge switches between
+    FreeCAD's Parallel (at 90 deg) and Angle, then solves; refused (ValueError) when it can't be met."""
+    from incad.core import assembly
+    if _APPLYING or not assembly.is_assembly(doc):
+        return
+    for j in assembly.joints(doc):
+        if kind_of(j) is not ANGLE or getattr(j, "Suppressed", False):
+            continue
+        try:
+            values = ANGLE.read(doc, j)
+            want = _joint_type(doc, ANGLE, values, j)
+        except Exception:
+            continue
+        if want == j.JointType:
+            continue
+        unmet = _unmet(doc, j)
+        result = _settle(doc, j, ANGLE, values)
+        if result != 0 or not _met(doc, j, ANGLE, values) or _unmet(doc, j) - unmet:
+            raise ValueError("%s conflicts with the other constraints (it can't be met)" % j.Label)
 
 
 def toggle_suppressed(j):
@@ -363,11 +391,12 @@ def toggle_suppressed(j):
     if off:
         raise ValueError("%s is suppressed: unsuppress the part first" % off[0].Label)
     before = _placements(doc)
+    unmet = _unmet(doc, j)
     j.Suppressed = False
     values = spec.read(doc, j)
     try:
         result = _settle(doc, j, spec, values)
-        met = result == 0 and _met(doc, j, spec, values) and _others_met(doc, j)
+        met = result == 0 and _met(doc, j, spec, values) and not _unmet(doc, j) - unmet
     except ValueError:  # a pick that is gone (its part deleted): the same refusal
         met = False
     if not met:
