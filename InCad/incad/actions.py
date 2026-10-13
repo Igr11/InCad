@@ -421,7 +421,10 @@ def make_assembly():
     asm_name, part_names = dlg.names()
     gdoc = Gui.getDocument(doc.Name)
     was_modified = gdoc.Modified
-    path = ma.make(doc, asm_name, part_names)
+    try:
+        path = ma.make(doc, asm_name, part_names)
+    finally:
+        Gui.ActiveDocument = gdoc  # the hidden copies took the active document while they were open
     if not was_modified:
         gdoc.Modified = False  # writing the copies (saveCopy) marks the part changed; it is not
     App.openDocument(path)

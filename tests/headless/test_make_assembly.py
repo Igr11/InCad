@@ -117,6 +117,24 @@ class MakeAssemblyTest(unittest.TestCase):
             ma._finish_copy = original
         self.assertEqual(sorted(os.listdir(self.dir)), ["Plate.FCStd"])
 
+    def test_the_part_stays_the_active_document(self):
+        """The user: after a Make Assembly that failed, InCad showed an empty screen and Undo did nothing — the
+        hidden copies it opens become FreeCAD's active document, and closing them left none active."""
+        original = ma._finish_copy
+
+        def opens_then_fails(path, point):
+            App.openDocument(path, hidden=True)
+            raise ValueError("boom")
+        ma._finish_copy = opens_then_fails
+        try:
+            with self.assertRaises(ValueError):
+                ma.make(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid2"])
+        finally:
+            ma._finish_copy = original
+        self.assertIs(App.ActiveDocument, self.doc)
+        ma.make(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid2"])
+        self.assertIs(App.ActiveDocument, self.doc)
+
     def test_a_split_box_gives_two_parts_each_keeping_one_piece(self):
         from incad.features import split
         d = util.new_doc("Sb")

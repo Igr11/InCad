@@ -179,6 +179,16 @@ def _close_paths(paths):
 
 
 def make(doc, asm_name, names):
+    """Write the part files and the assembly. The part stays FreeCAD's active document: the hidden copies opened here
+    become active on open, and closing them would leave none (InCad then showed an empty screen, Undo did nothing)."""
+    try:
+        return _make(doc, asm_name, names)
+    finally:
+        if doc.Name in App.listDocuments():
+            App.setActiveDocument(doc.Name)
+
+
+def _make(doc, asm_name, names):
     found = pieces_or_refuse(doc)
     if len(names) != len(found):
         raise ValueError("One name per piece")
