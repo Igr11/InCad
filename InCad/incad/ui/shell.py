@@ -58,9 +58,10 @@ class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
     def __init__(self, callback, sketch_callback=None, undo_callback=None, activate_callback=None,
-                 delete_callback=None):
+                 delete_callback=None, projection_callback=None):
         self.callback = callback
         self.sketch_callback = sketch_callback
+        self.projection_callback = projection_callback
         self.undo_callback = undo_callback
         self.activate_callback = activate_callback
         self.delete_callback = delete_callback
@@ -89,6 +90,9 @@ class _DocObserver:
 
     def slotChangedObject(self, obj, prop):
         self.callback()
+        if prop == "ExternalGeometry" and self.projection_callback is not None \
+                and getattr(obj, "TypeId", "") == "Sketcher::SketchObject":
+            self.projection_callback(obj)  # FreeCAD sets it on many recomputes: only the projection follow-up
         if prop in ("Constraints", "Geometry") and getattr(obj, "TypeId", "") == "Sketcher::SketchObject" \
                 and self.sketch_callback is not None:
             self.sketch_callback(obj)
@@ -1271,6 +1275,7 @@ class Shell(QtCore.QObject):
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
         QtCore.QTimer.singleShot(0, self.refresh_constraints_window)  # a delete, an undo: never stale rows
@@ -1315,6 +1320,61 @@ class Shell(QtCore.QObject):
             return "%s.%s" % (getattr(getattr(pre, "Object", None), "Name", None), getattr(pre, "SubElementName", ""))
         except Exception as e:
             return "n/a (%s)" % e
+
+    @staticmethod
+    def _adopt_waits(doc):
+        """Someone else's open undo step (a feature dialog, a Sketcher tool still placing) or a recompute running
+        (its progress bar runs these handlers mid-way): adopting waits."""
+        from incad.core import safe
+        return bool(safe.busy() or doc.HasPendingTransaction or getattr(doc, "Recomputing", False))
+
+    def _projection_changed(self, sk):
+        """An edge projected (or its projection undone / redone): it becomes normal geometry right away."""
+        if getattr(sk.Document, "Restoring", False):
+            return  # a file being loaded: the on-open migration handles its sketches
+        QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
+
+    def _adopt_projections(self, sk, tries=0):
+        """Inventor: a projected edge is normal geometry right away (FreeCAD's tool projects construction). When it
+        must wait (see _adopt_waits) it looks again a little later, then leaves it to the next change."""
+        from incad.core import document
+        from incad.core import sketch as sketches
+        if not _alive(sk):
+            return
+        try:
+            doc = sk.Document
+            if not document.is_incad_part(doc) or getattr(doc, "Restoring", False) or not sketches.projected(sk):
+                return
+            if self._adopt_waits(doc):
+                if tries < 40:
+                    QtCore.QTimer.singleShot(150, lambda: self._adopt_projections(sk, tries + 1))
+                return
+            notes = []
+            sketches.adopt_projections(sk, notes)
+            for text in notes:
+                log.report("info", text)
+        except Exception as e:
+            log.report("warning", "Could not make the projected edges normal geometry: %s" % e, traceback.format_exc())
+
+    def _adopt_all_projections(self, name, tries=0):
+        """Once per opened file: sketches made before follow the rule (projected edges normal, old copies gone)."""
+        import FreeCAD as App
+        from incad.core import sketch as sketches
+        if name not in App.listDocuments():
+            return
+        doc = App.getDocument(name)
+        try:
+            if getattr(doc, "Restoring", False) or self._adopt_waits(doc):
+                if tries < 200:  # a long recompute of a big part: half a minute
+                    QtCore.QTimer.singleShot(150, lambda: self._adopt_all_projections(name, tries + 1))
+                return
+            notes = []
+            for sk in [o for o in doc.Objects if sketches.is_sketch(o)]:
+                sketches.adopt_projections(sk, notes)  # recomputes only when it changed something
+            for text in notes:
+                log.report("info", text)
+        except Exception as e:
+            log.logger().warning("Projected edges on open: %s", e)
 
     def _make_construction(self, sk):
         if not _alive(sk):
@@ -1998,7 +2058,7 @@ class Shell(QtCore.QObject):
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
         self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo,
-                                      self._document_activated, self._document_deleted)
+                                      self._document_activated, self._document_deleted, self._projection_changed)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
@@ -2244,6 +2304,7 @@ class Shell(QtCore.QObject):
                     log.report("info", "Split pieces are separate Solids now (hide or show each one)")
             except Exception as e:
                 log.logger().warning("Split pieces on open: %s", e)
+            self._adopt_all_projections(doc.Name)  # Inventor: projected edges are normal; old files follow
             try:  # area copies whose feature was deleted outside InCad: nothing uses them, they go
                 from incad.core import regions
                 if regions.purge_orphans(doc):

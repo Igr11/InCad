@@ -53,11 +53,11 @@ def construction_lines(sk):
     return out
 
 
-def projected_lines(sk):
+def _projected_line_items(sk):
     """[("extK", label, (global start, global end))] for straight PROJECTED edges that lie IN the sketch plane.
     A projection is in the plane by definition, so it is a valid in-plane revolve axis — each resolves to a helper
     line through the projection's own endpoints, NOT the 3D source edge (whose direction can be perpendicular to
-    the plane; such an edge projects to a point and is skipped)."""
+    the plane; such an edge projects to a point and is skipped). Each item also carries its geo id."""
     out = []
     if sk is None:
         return out
@@ -79,9 +79,36 @@ def projected_lines(sk):
             g0, g1 = pl.multVec(g.StartPoint), pl.multVec(g.EndPoint)
         except Exception:
             continue
-        out.append(("ext%d" % k, "Projected line · %s" % _mm(length), (g0, g1)))
+        out.append(("ext%d" % k, "Projected line · %s" % _mm(length), (g0, g1), -i - 1))
         k += 1
     return out
+
+
+def projected_lines(sk):
+    """[("extK", label, (global start, global end))] for straight projected edges in the sketch plane (see
+    _projected_line_items)."""
+    return [item[:3] for item in _projected_line_items(sk)]
+
+
+def _keep_axis_out_of_profile(sk, value):
+    """Projected edges are normal geometry by default (Inventor). A projected axis line that closes no profile is an
+    open wire beside it, and FreeCAD refuses the revolve ('Wire is not closed'): it becomes construction, recorded
+    as the user's choice (Construction switches it back). One that closes the profile (drawn up to the axis) stays."""
+    from incad.core import sketch
+    geo = next((item[3] for item in _projected_line_items(sk) if item[0] == value), None)
+    if geo is None or not sketch.is_defining(sk, geo):
+        return
+    g = sk.ExternalGeo[-geo - 1]
+    ends = [sk.Placement.multVec(g.StartPoint), sk.Placement.multVec(g.EndPoint)]
+    for w in sk.Shape.Wires:
+        if not w.isClosed():
+            continue
+        for e in w.Edges:
+            pts = [v.Point for v in e.Vertexes]
+            if len(pts) == 2 and any(all((p - q).Length < 1e-6 for p, q in zip(pts, order))
+                                     for order in (ends, ends[::-1])):
+                return
+    sketch.set_projected_construction(sk, [geo], True)
 
 
 def axis_line_options(sk):
@@ -234,6 +261,7 @@ def _axis(doc, f, values):
             ends = _projected_ends(profile, wanted)
             if ends is None:
                 raise ValueError("That projected line is no longer in the sketch: pick another axis")
+            _keep_axis_out_of_profile(profile, wanted)
             return _place_helper(doc, f, [ends[0], ends[1]]), [""]
         return profile, [wanted]
     if mode == "reference":
