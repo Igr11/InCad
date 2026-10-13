@@ -120,11 +120,41 @@ def _probe(doc, asm, link, start):
         motions.append(rel)
     m = np.array(rows)
     n = int(np.linalg.matrix_rank(m, tol=TOL)) if m.any() else 0
-    slides, turns = _split(m, n, c)
+    slides, turns = _split(m, n, c, start[link.Name].Rotation)
     return Freedom(n, *_local(link, slides, turns), error="")
 
 
-def _split(m, n, c):
+def _aligned(basis, preferred):
+    """An orthonormal basis of the span of `basis` (rows) that takes the `preferred` directions where they lie in it
+    (the part's own axes first): any basis spans the same freedoms, but an arrow should move the part straight up or
+    sideways, not along a diagonal of its free plane."""
+    import numpy as np
+    k = len(basis)
+    if k == 0:
+        return []
+    q, _ = np.linalg.qr(np.array(basis).T)  # columns: an orthonormal basis of the span
+    q = q[:, :k]
+    out = []
+    for cand in preferred:
+        if len(out) == k:
+            break
+        p = q @ (q.T @ cand)                  # into the span
+        for o in out:
+            p = p - o * p.dot(o)
+        if np.linalg.norm(p) > 0.5:          # mostly in the span (and new): take it
+            out.append(p / np.linalg.norm(p))
+    for col in q.T:                          # whatever the preferred ones left: the span's own directions
+        if len(out) == k:
+            break
+        p = col.copy()
+        for o in out:
+            p = p - o * p.dot(o)
+        if np.linalg.norm(p) > 1e-6:
+            out.append(p / np.linalg.norm(p))
+    return out
+
+
+def _split(m, n, c, rot=None):
     """The freedoms in the kept test moves `m` (rows: the centre's motion per STEP, the turn per TURN), rank `n`, as
     slides and turns. FreeCAD's solver moves a part about its own origin, which can lie far from the part (a part
     drawn away from its file's origin): a test push then comes back as a slide-and-turn, so no single row is a pure
@@ -140,12 +170,19 @@ def _split(m, n, c):
     _, sw, vtw = np.linalg.svd(w.T)              # w.T is 3 x n
     r = int((sw > TOL * math.radians(TURN)).sum())
     pure = vtw[r:] @ v                           # the combinations that do not turn: slides
+    own = [np.array(list(rot.multVec(App.Vector(*e)))) for e in ((1, 0, 0), (0, 1, 0), (0, 0, 1))] if rot else []
+    world = [np.eye(3)[k] for k in range(3)]
     slides = []
     if len(pure):
         _, sp, vts = np.linalg.svd(pure)
-        slides = [vts[k] for k in range(int((sp > TOL * STEP).sum()))]
+        slides = _aligned([vts[k] for k in range(int((sp > TOL * STEP).sum()))], own + world)
     turns = []
-    for coeff in vtw[:r]:
+    rot_coeffs = vtw[:r]
+    if r:
+        dirs = rot_coeffs @ w                 # r x 3: the ways it can turn
+        wanted = _aligned(list(dirs), own + world)
+        rot_coeffs = [np.linalg.lstsq(dirs.T, a, rcond=None)[0] @ vtw[:r] for a in wanted]
+    for coeff in rot_coeffs:
         wv, vv = coeff @ w, coeff @ v
         for sl in slides:  # a free slide may ride along with the turn: take it out
             vv = vv - sl * vv.dot(sl)

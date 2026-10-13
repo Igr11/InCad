@@ -154,6 +154,22 @@ class DofTest(unittest.TestCase):
         self.assertEqual(sorted(round(max(abs(a.dot(rod_axis)), abs(a.dot(normal))), 2) for a in axes), [1.0, 1.0],
                          "one turn about the rod's axis, one about the face's normal")
 
+    def test_slides_run_along_the_parts_own_axes_where_they_can(self):
+        """The user's Train_3 (Tangent + Angle, DOF 2): the slides were two diagonals of the free plane, so no arrow
+        moved the part straight up or sideways. Any pair spans the plane; the arrows take the part's own axes."""
+        make(self.doc, C.MATE, fz(self.a, 10), fz(self.b, 0))
+        f = dof.compute(self.doc)[self.b.Name]
+        self.assertEqual(len(f.slides), 2)
+        for s in f.slides:
+            self.assertAlmostEqual(max(abs(s.x), abs(s.y), abs(s.z)), 1, places=3, msg=s)
+        self.assertAlmostEqual(abs(f.turns[0][1].z), 1, places=3)
+        self.b.Placement = App.Placement(self.b.Placement.Base, App.Rotation(App.Vector(0, 0, 1), 30))
+        self.doc.recompute()
+        dof._CACHE.clear()
+        f = dof.compute(self.doc)[self.b.Name]
+        for s in f.slides:  # in the part's own frame: its X and Y, turned with it
+            self.assertAlmostEqual(max(abs(s.x), abs(s.y), abs(s.z)), 1, places=3, msg=s)
+
     def test_count_is_relative_to_what_holds_it(self):
         _, mid_path = save_part(self.dir, "Mid", 20, 20, 10)
         m = assembly.place(self.doc, mid_path)  # free, no constraints
