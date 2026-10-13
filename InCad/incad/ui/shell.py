@@ -1134,6 +1134,9 @@ class Shell(QtCore.QObject):
             kind = "asm_face"
         elif obj is not None and obj.TypeId == "PartDesign::Body":  # a Solid's row (Solid Bodies)
             kind = "solid"
+        from incad.core import asm_cut, assembly
+        if obj is not None and (obj in assembly.joints(App.ActiveDocument) or asm_cut.is_record(obj)):
+            kind = "joint"  # a Relationships row: Edit, Delete, Suppress, Rename
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----

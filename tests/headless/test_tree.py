@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import FreeCAD as App
@@ -289,3 +290,35 @@ class NestedUsedUpToolTreeTest(unittest.TestCase):
             return out
         self.assertIn("PinA", names(tree.build(doc)))
         App.closeDocument(doc.Name)
+
+
+class AssemblyRowsTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from headless.test_assembly import save_part
+        from incad.core import assembly
+        self.dir = tempfile.mkdtemp(prefix="incad_tree_asm_")
+        _, plate = save_part(self.dir, "Plate", 40, 30, 10)
+        _, block = save_part(self.dir, "Block", 10, 10, 10)
+        self.doc = App.newDocument("Asm")
+        self.doc.UndoMode = 1
+        assembly.make_assembly(self.doc, "mm")
+        self.doc.saveAs(os.path.join(self.dir, "Asm.FCStd"))
+        self.a, self.b = assembly.place(self.doc, plate), assembly.place(self.doc, block)
+
+    def tearDown(self):
+        import shutil
+        for name in list(App.listDocuments()):
+            App.closeDocument(name)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_a_suppressed_constraint_row_says_so(self):
+        from incad.core import tree
+        from incad.features import constraints as C
+        top = [i + 1 for i, f in enumerate(self.a.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        bot = [i + 1 for i, f in enumerate(self.b.LinkedObject.Shape.Faces) if abs(f.CenterOfMass.z) < 1e-6][0]
+        j = C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None), first="%s:Face%d" % (self.a.Name, top),
+                                                     second="%s:Face%d" % (self.b.Name, bot)))
+        C.toggle_suppressed(j)
+        rel = [n for n in tree.build(self.doc)[0].children if n.kind == "relationships"][0]
+        self.assertEqual([(n.name, n.state) for n in rel.children], [(j.Name, "suppressed")])

@@ -190,7 +190,9 @@ def _assembly(doc):
     from incad.core import asm_cut
     rel = [j for j in assembly.joints(doc) if constraints.claims(j)] + asm_cut.records(doc)
     root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
-                              children=[Node("joint", j.Label, j.Name) for j in rel]))
+                              children=[Node("joint", j.Label, j.Name,
+                                             state="suppressed" if getattr(j, "Suppressed", False) else "")
+                                        for j in rel]))
     return [root]
 
 

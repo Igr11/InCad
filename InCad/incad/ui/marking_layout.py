@@ -40,6 +40,8 @@ LAYOUT = {
     "browser": {"N": "browser.edit", "S": "browser.move_end_of_part", "E": "browser.suppress",
                 "W": "browser.rename", "list": ["browser.edit", "browser.show_in_window", "sketch.start", "browser.delete",
                          "view.toggle_visibility"]},
+    "joint": {"N": "browser.edit", "S": "browser.delete", "E": "constraint.suppress", "W": "browser.rename",
+              "list": ["browser.edit", "browser.delete", "constraint.suppress", "browser.rename"]},
 }
 
 

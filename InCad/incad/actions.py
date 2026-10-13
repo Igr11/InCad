@@ -176,6 +176,15 @@ def toggle_suppress():
     suppress.toggle(_target_object())
 
 
+def toggle_constraint_suppressed():
+    """A constraint row's Suppress / Unsuppress (Inventor): the solver ignores it, the parts stay."""
+    from incad.core import log
+    from incad.features import constraints
+    j = _target_object()
+    on = constraints.toggle_suppressed(j)
+    log.report("info", "%s %s" % (j.Label, "suppressed" if on else "back on"))
+
+
 def _threads_off():
     import FreeCAD as App
     from incad.core import suppress
@@ -846,6 +855,9 @@ def commands():
                 handler=move_end_of_part_here, transactional=True, contexts=frozenset({"browser"})),
         Command(id="browser.suppress", label="Suppress / Unsuppress", icon="suppress", handler=toggle_suppress,
                 transactional=True, contexts=frozenset({"browser"})),
+        Command(id="constraint.suppress", label="Suppress / Unsuppress", icon="suppress",
+                handler=toggle_constraint_suppressed, transactional=True, contexts=frozenset({"browser"}),
+                tooltip="Turn the constraint off (the parts stay where they are) or back on"),
         Command(id="browser.rename", label="Rename", icon="rename", handler=rename, transactional=True,
                 contexts=frozenset({"browser"})),
         Command(id="nav.orbit", label="Orbit", icon="orbit", handler=lambda: toggle_nav_mode("orbit"),
