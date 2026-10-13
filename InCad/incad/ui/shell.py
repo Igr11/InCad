@@ -57,17 +57,21 @@ def _std_new_actions():
 class _DocObserver:
     """FreeCAD document observer: any change schedules one (coalesced) panel refresh."""
 
-    def __init__(self, callback, sketch_callback=None, undo_callback=None, activate_callback=None):
+    def __init__(self, callback, sketch_callback=None, undo_callback=None, activate_callback=None,
+                 delete_callback=None):
         self.callback = callback
         self.sketch_callback = sketch_callback
         self.undo_callback = undo_callback
         self.activate_callback = activate_callback
+        self.delete_callback = delete_callback
 
     def slotCreatedDocument(self, doc):
         self.callback()
 
     def slotDeletedDocument(self, doc):
         self.callback()
+        if self.delete_callback is not None:
+            self.delete_callback(doc)
 
     def slotRelabelDocument(self, doc):
         self.callback()
@@ -1971,7 +1975,7 @@ class Shell(QtCore.QObject):
         for w in self._freecad_toolbars() + self._freecad_docks():
             w.installEventFilter(self)
         self._observer = _DocObserver(self.schedule_refresh, self._sketch_changed, self._after_undo,
-                                      self._document_activated)
+                                      self._document_activated, self._document_deleted)
         App.addDocumentObserver(self._observer)
         QtWidgets.QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
         from incad.core import params
@@ -2456,6 +2460,14 @@ class Shell(QtCore.QObject):
         if computed:
             self.schedule_refresh()  # the rows read the new counts (cached now: no second count)
         self.dof_display_changed()
+
+    def _document_deleted(self, doc):
+        """A document is closing: a drag of one of its parts ends now (its release will never come)."""
+        try:
+            if self.asm_drag is not None and self.asm_drag.active() and self.asm_drag.doc_name == doc.Name:
+                self.asm_drag.finish(moved_ok=False, closing=True)
+        except Exception:
+            log.logger().exception("InCad drag on close")
 
     def dof_display_changed(self):
         """Redraw the DOF glyphs (Task 8)."""
@@ -3014,6 +3026,8 @@ def _finish_open_tools():
     if _shell is None or not _shell.active:
         return
     try:
+        if _shell.asm_drag is not None and _shell.asm_drag.active():
+            _shell.asm_drag.finish()  # its temporary grounds and open step must not reach the Save dialog
         _shell.stop_slot_tool()
         _shell._close_feature_session(cancel=True)
         _shell._cancel_profile_pick()

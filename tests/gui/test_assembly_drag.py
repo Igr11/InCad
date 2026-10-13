@@ -248,6 +248,25 @@ def test_8b_no_drag_while_a_constraint_dialog_is_open():
     harness.pump(800)
 
 
+def test_8c_closing_the_document_ends_a_drag():
+    t = obj("t")
+    bt = App.Placement(t.Placement)
+    n0 = len(doc().UndoNames)
+    pos = top_of("t")
+    assert s().asm_drag.begin(view(), viewport(), pos.x(), pos.y()), "a drag began"
+    shell._finish_open_tools()  # what ⌘W does before its Save dialog
+    assert not s().asm_drag.active() and not safe.drag_edit()
+    assert same(t.Placement, bt) and len(doc().UndoNames) == n0, "nothing moved, no step"
+    assert len([j for j in assembly.joints(doc()) if hasattr(j, "ObjectToGround")]) == 1, "only Plate's ground"
+    assert Gui.getDocument(ST["asm"]).getInEdit() is None
+    pos = top_of("t")
+    assert s().asm_drag.begin(view(), viewport(), pos.x(), pos.y()), "a drag began"
+    App.closeDocument(ST["asm"])  # mid-drag: its release never comes
+    assert s().asm_drag.link_name is None, "the close itself ended the drag"
+    harness.pump(800)
+    assert not s().asm_drag.active() and not safe.drag_edit() and not safe.edit_open()
+
+
 def test_9_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -258,5 +277,6 @@ TESTS = [test_0_setup, test_1_rows_show_dof, test_2_undo_of_a_constraint_recount
          test_3_count_does_not_mark_the_file_modified, test_4_drag_moves_only_along_its_own_dof,
          test_5_undo_and_redo_of_a_drag, test_5b_a_lost_release_does_not_block_the_next_drag,
          test_6_grounded_part_stays_and_says_so, test_7_a_click_selects_without_edit,
-         test_8_fully_constrained_part_is_not_dragged, test_8b_no_drag_while_a_constraint_dialog_is_open]
+         test_8_fully_constrained_part_is_not_dragged, test_8b_no_drag_while_a_constraint_dialog_is_open,
+         test_8c_closing_the_document_ends_a_drag]
 harness.run(TESTS + [test_9_cleanup])

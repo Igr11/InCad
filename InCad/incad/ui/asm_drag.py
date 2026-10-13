@@ -19,6 +19,8 @@ class AssemblyDrag:
         self._serial = 0  # which drag a deferred finish belongs to
 
     def active(self):
+        if self.link_name is not None and self.doc_name not in App.listDocuments():
+            self.finish(moved_ok=False, closing=True)  # its document went without telling us
         return self.link_name is not None
 
     def _component_at(self, view, viewport, x, y):
@@ -98,14 +100,16 @@ class AssemblyDrag:
             serial = self._serial
             QtCore.QTimer.singleShot(0, lambda: self._serial == serial and self.finish())
 
-    def finish(self, moved_ok=True):
-        if not self.active():
+    def finish(self, moved_ok=True, closing=False):
+        """End the drag: grounds off, its step committed when the part moved (else aborted), edit closed. closing:
+        the document is going (or gone): it and its window are left alone, only InCad's own state is reset."""
+        if self.link_name is None:
             return
         import FreeCADGui as Gui
         doc_name, link_name, held, start = self.doc_name, self.link_name, self._held, self._start
         self.doc_name = self.link_name = self._start = None
         self._held = []
-        doc = App.getDocument(doc_name) if doc_name in App.listDocuments() else None
+        doc = App.getDocument(doc_name) if not closing and doc_name in App.listDocuments() else None
         moved, label = False, link_name
         try:
             if doc is not None:
