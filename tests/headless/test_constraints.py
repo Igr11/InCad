@@ -130,3 +130,50 @@ class ConstraintsTest(unittest.TestCase):
             second = face(self.block, z_is(0)) if kind is C.MATE else face(self.block, z_is(10))
             self.make(kind, first=face(self.plate, z_is(10)), second=second)
             self.assertTrue(check(self.bb()), (kind.TITLE, pitch_roll, self.bb()))
+
+    def _mate(self):
+        return C.MATE.create(self.doc, None, None, dict(C.MATE.defaults(self.doc, None),
+                                                        first=face(self.plate, z_is(10)), second=face(self.block, z_is(0))))
+
+    def test_suppress_keeps_the_parts_and_unsuppress_solves_again(self):
+        from incad.core import safe
+        j = self._mate()
+        at = App.Placement(self.block.Placement)
+        r = safe.run_safely("Suppress", lambda: C.toggle_suppressed(j), self.doc)
+        self.assertTrue(r.ok and r.value, r.error)
+        self.assertTrue(j.Suppressed)
+        self.assertTrue(self.block.Placement.isSame(at, 1e-9), "the parts stay where they are")
+        self.assertEqual(self.doc.UndoNames[0], "Suppress")
+        self.block.Placement = App.Placement(App.Vector(5, 5, 40), App.Rotation())  # moved while it was off
+        self.doc.recompute()
+        r = safe.run_safely("Suppress", lambda: C.toggle_suppressed(j), self.doc)
+        self.assertTrue(r.ok and r.value is False, r.error)
+        self.assertFalse(j.Suppressed)
+        self.assertAlmostEqual(self.block.Shape.BoundBox.ZMin, 10, places=4)  # solved onto the plate again
+
+    def test_unsuppress_that_cannot_be_met_is_refused_and_stays_suppressed(self):
+        from incad.core import safe
+        j = self._mate()
+        safe.run_safely("Suppress", lambda: C.toggle_suppressed(j), self.doc)
+        C.FLUSH.create(self.doc, None, None, dict(C.FLUSH.defaults(self.doc, None),  # block top flush with plate top
+                                                  first=face(self.plate, z_is(10)), second=face(self.block, z_is(10))))
+        at = App.Placement(self.block.Placement)
+        r = safe.run_safely("Suppress", lambda: C.toggle_suppressed(j), self.doc)
+        self.assertFalse(r.ok)
+        self.assertIn("can't be met any more: it stays suppressed", r.error)
+        self.assertTrue(j.Suppressed)
+        self.assertTrue(self.block.Placement.isSame(at, 1e-6))
+
+    def test_a_constraint_of_a_suppressed_part_is_not_unsuppressed_alone(self):
+        j = self._mate()
+        assembly.toggle_suppressed(self.block)  # the part's constraints go off with it
+        self.assertTrue(j.Suppressed)
+        with self.assertRaises(ValueError) as e:
+            C.toggle_suppressed(j)
+        self.assertIn("Block is suppressed", str(e.exception))
+
+    def test_grounding_is_not_a_constraint_to_suppress(self):
+        g = [x for x in assembly.joints(self.doc) if hasattr(x, "ObjectToGround")][0]
+        self.assertIsNone(C.kind_of(g))
+        with self.assertRaises(ValueError):
+            C.toggle_suppressed(g)

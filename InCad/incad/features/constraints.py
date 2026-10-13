@@ -190,6 +190,59 @@ def _met(doc, j, spec, values):
     return abs(gap - want) < 1e-3 and abs(abs(n1.dot(n2)) - 1) < 1e-6 and facing
 
 
+def kind_of(j):
+    """The InCad constraint kind of a joint, None for anything else (a grounding, say)."""
+    return next((k for k in KINDS if k.claims(j)), None) if j is not None else None
+
+
+def _others_met(doc, j):
+    """Do the other active constraints still hold after a solve? FreeCAD's solver drops one of two conflicting joints
+    without a word, so each one is checked on its own."""
+    from incad.core import assembly
+    for o in assembly.joints(doc):
+        spec = kind_of(o)
+        if o is j or spec is None or getattr(o, "Suppressed", False):
+            continue
+        if not _met(doc, o, spec, spec.read(doc, o)):
+            return False
+    return True
+
+
+def toggle_suppressed(j):
+    """Suppress (Inventor) a constraint: the solver ignores it, the parts stay where they are; again to bring it back,
+    solved to meet it — refused (it stays suppressed, the parts back) when it can't be met any more. Returns True when
+    it is suppressed now."""
+    from incad.core import assembly
+    spec = kind_of(j)
+    if spec is None or "Suppressed" not in j.PropertiesList:
+        raise ValueError("%s can't be suppressed" % getattr(j, "Label", j))
+    doc = j.Document
+    if not j.Suppressed:
+        j.Suppressed = True
+        doc.recompute()
+        return True
+    refs = [(getattr(j, p, None) or (None,))[0] for p in ("Reference1", "Reference2")]
+    off = [c for c in assembly.components(doc) if c in refs and assembly.is_suppressed(c)]
+    if off:
+        raise ValueError("%s is suppressed: unsuppress the part first" % off[0].Label)
+    before = _placements(doc)
+    j.Suppressed = False
+    values = spec.read(doc, j)
+    try:
+        result = _settle(doc, j, spec, values)
+        met = result == 0 and _met(doc, j, spec, values) and _others_met(doc, j)
+    except ValueError:  # a pick that is gone (its part deleted): the same refusal
+        met = False
+    if not met:
+        j.Suppressed = True
+        for name, plc in before.items():
+            doc.getObject(name).Placement = plc
+        _solve(doc)
+        raise ValueError("%s can't be met any more: it stays suppressed" % j.Label)
+    doc.recompute()
+    return False
+
+
 def _make(spec):
     def defaults(doc, body, profile=None):
         values = {f.key: f.default for f in spec.FIELDS}
