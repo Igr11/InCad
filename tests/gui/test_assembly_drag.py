@@ -308,6 +308,37 @@ def test_9c_hover_from_real_preselection():
     assert glyph_parts() == 0, glyph_parts()
 
 
+def glyph_rgb():
+    g = s()._dof_glyphs
+    for i in range(g.node.getNumChildren()):
+        sep = g.node.getChild(i)
+        for j in range(sep.getNumChildren()):
+            c = sep.getChild(j)
+            if c.getTypeId().getName().getString() == "BaseColor":
+                return tuple(round(v, 3) for v in c.rgb[0].getValue())
+    return None
+
+
+def test_9d_glyphs_follow_the_theme():
+    from incad.ui import theme as themes
+    from incad.ui.dof_glyphs import _rgb
+    commands.REGISTRY.run("view.dof")
+    harness.pump(500)
+    start = themes.current()
+    want = lambda name: tuple(round(v, 3) for v in _rgb(themes.PALETTES[name]["marker_end"]))
+    assert glyph_rgb() == want(start), (glyph_rgb(), start)
+    commands.REGISTRY.run("view.theme_toggle")
+    harness.pump(800)
+    other = themes.current()
+    assert other != start and glyph_rgb() == want(other), (glyph_rgb(), other)
+    commands.REGISTRY.run("view.theme_toggle")
+    harness.pump(800)
+    assert themes.current() == start and glyph_rgb() == want(start)
+    commands.REGISTRY.run("view.dof")
+    harness.pump(500)
+    assert glyph_parts() == 0
+
+
 def test_9_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -320,5 +351,6 @@ TESTS = [test_0_setup, test_1_rows_show_dof, test_2_undo_of_a_constraint_recount
          test_6_grounded_part_stays_and_says_so, test_7_a_click_selects_without_edit,
          test_8_fully_constrained_part_is_not_dragged, test_8b_no_drag_while_a_constraint_dialog_is_open,
          test_9a_view_button_draws_only_available_freedoms, test_9b_hover_tip_on_a_free_part_only,
-         test_9c_hover_from_real_preselection, test_8c_closing_the_document_ends_a_drag]  # 8c closes the document
+         test_9c_hover_from_real_preselection, test_9d_glyphs_follow_the_theme,
+         test_8c_closing_the_document_ends_a_drag]  # 8c closes the document
 harness.run(TESTS + [test_9_cleanup])

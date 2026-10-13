@@ -835,6 +835,7 @@ class Shell(QtCore.QObject):
         for group, values in themes.sketch_params(self.theme, prefs.dimension_display()).items():
             params.write(group, values)
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
+        self.dof_display_changed()  # DOF glyphs in the new theme's colours
 
     def set_navigation(self, enabled):
         """Off gives FreeCAD's own navigation back exactly (the user's style and zoom setting)."""
@@ -2518,6 +2519,7 @@ class Shell(QtCore.QObject):
             if not items:
                 return
             self._dof_glyphs = DofGlyphs(view, self.theme)
+        self._dof_glyphs.theme = self.theme
         self._dof_glyphs.set(items)
 
     def toggle_dof(self):
