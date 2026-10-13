@@ -154,9 +154,7 @@ def compute(doc):
         gdoc = Gui.getDocument(doc.Name)
     modified = gdoc.Modified if gdoc is not None else None
     out, held = {}, []
-    opened = bool(doc.UndoMode)
-    if opened:
-        doc.openTransaction("InCad DOF count")
+    # no transaction: opening one (even to abort it) empties the redo stack, and a count must not break Redo
     try:
         for c in free:
             if not _held_by_a_joint(doc, c):
@@ -182,8 +180,6 @@ def compute(doc):
         for name, plc in start.items():
             if doc.getObject(name) is not None:
                 doc.getObject(name).Placement = plc
-        if opened:
-            doc.abortTransaction()
         doc.recompute()
         if gdoc is not None:
             gdoc.Modified = modified

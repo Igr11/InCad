@@ -322,3 +322,15 @@ class AssemblyRowsTest(unittest.TestCase):
         C.toggle_suppressed(j)
         rel = [n for n in tree.build(self.doc)[0].children if n.kind == "relationships"][0]
         self.assertEqual([(n.name, n.state) for n in rel.children], [(j.Name, "suppressed")])
+
+    def test_component_rows_show_the_last_count(self):
+        from incad.core import dof, tree
+        dof._CACHE.clear()
+        detail = lambda: {n.name: n.detail for n in tree.build(self.doc)[0].children if n.kind == "component"}
+        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: ""})  # not counted yet: nothing shown
+        dof.ensure(self.doc)
+        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: "DOF 6"})
+        dof._CACHE[self.doc.Name] = (dof.signature(self.doc),
+                                     {self.b.Name: dof.Freedom(None, [], [], "Could not count: the solver failed")})
+        node = [n for n in tree.build(self.doc)[0].children if n.name == self.b.Name][0]
+        self.assertEqual((node.detail, node.tooltip), ("DOF ?", "Could not count: the solver failed"))

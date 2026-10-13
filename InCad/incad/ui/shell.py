@@ -319,6 +319,7 @@ class Shell(QtCore.QObject):
         self._box_focus_hooked = False
 
         self._wait_notice = None
+        self._dof_pending = False
         self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
@@ -2296,6 +2297,8 @@ class Shell(QtCore.QObject):
         self._raise_overlays()
         if self._wait_notice is not None and not self._edit_open():
             self._close_wait_notice()
+        if is_asm and fs is None:
+            self._schedule_dof(doc)
 
     # ----- assemblies -----
     def _assembly_doc(self):
@@ -2422,6 +2425,34 @@ class Shell(QtCore.QObject):
         action = assembly.unground if assembly.is_grounded(link) else assembly.ground
         safe.run_safely("Ground", lambda: action(link), doc)
         self.schedule_refresh()
+
+    def _schedule_dof(self, doc):
+        """Count the parts' degrees of freedom after the refresh (never inside it): the rows fill in when done."""
+        if self._dof_pending:
+            return
+        self._dof_pending = True
+        QtCore.QTimer.singleShot(0, lambda name=doc.Name: self._update_dof(name))
+
+    def _update_dof(self, name):
+        import FreeCAD as App
+        from incad.core import dof
+        self._dof_pending = False
+        if name not in App.listDocuments() or self.feature_session is not None:
+            return
+        drag = getattr(self, "asm_drag", None)
+        if drag is not None and drag.active():
+            return
+        try:
+            _, computed = dof.ensure(App.getDocument(name))
+        except Exception as e:
+            log.logger().warning("DOF count: %s", e)
+            return
+        if computed:
+            self.schedule_refresh()  # the rows read the new counts (cached now: no second count)
+        self.dof_display_changed()
+
+    def dof_display_changed(self):
+        """Redraw the DOF glyphs (Task 8)."""
 
     def open_component(self, link):
         """Open the component's file in its own tab (Inventor: Open)."""

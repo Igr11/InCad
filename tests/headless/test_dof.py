@@ -138,6 +138,19 @@ class DofTest(unittest.TestCase):
             self.assertTrue(c.Placement.isSame(at[c.Name], 1e-9), c.Name)
         self.assertFalse(self.doc.HasPendingTransaction)
 
+    def test_count_keeps_the_redo_stack(self):
+        self.doc.openTransaction("Mate")
+        make(self.doc, C.MATE, fz(self.a, 10), fz(self.b, 0))
+        self.doc.commitTransaction()
+        self.doc.undo()
+        redo = list(self.doc.RedoNames)
+        self.assertTrue(redo)
+        dof.compute(self.doc)
+        self.assertEqual(list(self.doc.RedoNames), redo)  # a count opens no step: Redo still works
+        self.doc.redo()
+        self.assertEqual(list(self.doc.RedoNames), [])
+        self.assertEqual(list(self.doc.UndoNames), redo)
+
     def test_busy_while_a_step_is_open(self):
         self.doc.openTransaction("Mate")
         self.b.Label = "Block 2"  # a dialog's step has changes (FreeCAD reports HasPendingTransaction only then)

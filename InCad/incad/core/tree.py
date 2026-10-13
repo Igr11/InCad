@@ -180,13 +180,17 @@ def _assembly(doc):
     from incad.features import constraints
     root = Node("assembly", doc.Label, detail="⚡ Needs update" if assembly.needs_update(doc) else "",
                 tooltip="Parts changed: Refresh updates the assembly" if assembly.needs_update(doc) else "")
+    from incad.core import dof
+    counts = dof.last(doc) or {}
     for c in assembly.components(doc):
+        f = counts.get(c.Name)
+        detail = "grounded" if assembly.is_grounded(c) else "" if assembly.is_suppressed(c) or f is None else \
+            "DOF ?" if f.n is None else "DOF %d" % f.n
+        tip = f.error if f is not None and f.n is None else (c.LinkedObject.Document.FileName if c.LinkedObject else "")
         root.children.append(Node("component", c.Label, c.Name,
                                   state="suppressed" if assembly.is_suppressed(c) else
                                   ("" if document.is_shown(c) else "hidden"),
-                                  detail="grounded" if assembly.is_grounded(c) else "",
-                                  tooltip=(c.LinkedObject.Document.FileName if c.LinkedObject else ""),
-                                  children=_component_rows(c)))
+                                  detail=detail, tooltip=tip, children=_component_rows(c)))
     from incad.core import asm_cut
     rel = [j for j in assembly.joints(doc) if constraints.claims(j)] + asm_cut.records(doc)
     root.children.append(Node("relationships", "Relationships (%d)" % len(rel),
