@@ -1348,6 +1348,8 @@ class Shell(QtCore.QObject):
             if self._adopt_waits(doc):
                 if tries < 40:
                     QtCore.QTimer.singleShot(150, lambda: self._adopt_projections(sk, tries + 1))
+                else:
+                    log.logger().info("Projected edges of %s: still busy after 6 s, left to the next change", sk.Label)
                 return
             notes = []
             sketches.adopt_projections(sk, notes)
@@ -1367,6 +1369,9 @@ class Shell(QtCore.QObject):
             if getattr(doc, "Restoring", False) or self._adopt_waits(doc):
                 if tries < 200:  # a long recompute of a big part: half a minute
                     QtCore.QTimer.singleShot(150, lambda: self._adopt_all_projections(name, tries + 1))
+                else:
+                    log.logger().info("Projected edges on open of %s: still busy after 30 s, left to the next "
+                                      "change of each sketch", name)
                 return
             notes = []
             for sk in [o for o in doc.Objects if sketches.is_sketch(o)]:

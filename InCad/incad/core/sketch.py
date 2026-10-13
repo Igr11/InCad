@@ -69,7 +69,7 @@ def key_points(sk):
         except Exception:
             pass
         normal.append(geo)
-    normal += [sk.ExternalGeo[-g - 1] for g in projected(sk) if is_defining(sk, g)]  # projected, normal (Inventor)
+    normal += defining_geometry(sk)  # projected edges that are normal geometry (Inventor)
     for geo in normal:
         tid = geo.TypeId
         if tid == "Part::GeomBSplineCurve":
@@ -299,9 +299,10 @@ def toggle_construction(sk, geo_ids):
     normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction').
     A projected (external) edge switches FreeCAD's own 'defining' flag; the choice of construction is remembered
     (CHOSEN_PROP) so adopt_projections leaves it. Returns the ids changed."""
-    external = [i for i in geo_ids if i < -2 and i in projected(sk)]
+    flags = _projected_flags(sk)
+    external = [i for i in geo_ids if i in flags]
     geo_ids = [i for i in geo_ids if 0 <= i < sk.GeometryCount]
-    states = [sk.getConstruction(i) for i in geo_ids] + [not is_defining(sk, i) for i in external]
+    states = [sk.getConstruction(i) for i in geo_ids] + [not flags[i][0] for i in external]
     if not states:
         return []
     make = not all(states)
@@ -316,6 +317,8 @@ def toggle_construction(sk, geo_ids):
 
 # ----- projected (external) edges -----
 CHOSEN_PROP = "InCadProjConstruction"  # Refs of projected edges the user switched to construction
+KEPT_PROP = "InCadProjKept"  # Refs kept construction because, normal, they would break or change a feature
+KEPT_FOR_PROP = "InCadProjKeptFor"  # the features using the sketch when KEPT_PROP was decided
 
 
 def _external_ext(geo):
@@ -325,13 +328,34 @@ def _external_ext(geo):
     return None
 
 
-def projected(sk):
-    """Geo ids (-3, -4, …) of the sketch's projected edges: its external geometry minus the H/V axes and points."""
+def _projected_flags(sk):
+    """{geo id: (defining, Ref)} for the projected edges (external geometry minus the H/V axes and points), in
+    order; sk.ExternalGeo read once."""
     try:
         geos = sk.ExternalGeo
     except Exception:
+        return {}
+    out = {}
+    for i in range(2, len(geos)):
+        if geos[i].TypeId == "Part::GeomPoint":
+            continue
+        x = _external_ext(geos[i])
+        out[-i - 1] = (bool(x is not None and x.testFlag("Defining")), (x.Ref if x is not None else "") or "")
+    return out
+
+
+def projected(sk):
+    """Geo ids (-3, -4, …) of the sketch's projected edges: its external geometry minus the H/V axes and points."""
+    return list(_projected_flags(sk))
+
+
+def defining_geometry(sk):
+    """The projected edges that are normal geometry (Part geometries, sketch coordinates)."""
+    flags = _projected_flags(sk)
+    if not flags:
         return []
-    return [-i - 1 for i in range(2, len(geos)) if geos[i].TypeId != "Part::GeomPoint"]
+    geos = sk.ExternalGeo
+    return [geos[-g - 1] for g, (on, _ref) in flags.items() if on]
 
 
 def is_defining(sk, geo_id):
@@ -342,14 +366,6 @@ def is_defining(sk, geo_id):
     except Exception:
         return False
     return bool(x is not None and x.testFlag("Defining"))
-
-
-def _ref(sk, geo_id):
-    try:
-        x = _external_ext(sk.ExternalGeo[-geo_id - 1])
-    except Exception:
-        return ""
-    return (x.Ref if x is not None else "") or ""
 
 
 def set_defining(sk, geo_ids, on):
@@ -373,71 +389,199 @@ def set_defining(sk, geo_ids, on):
 
 def set_projected_construction(sk, geo_ids, construction):
     """The user's choice for projected edges: construction (remembered in CHOSEN_PROP, so adopt_projections leaves
-    them) or normal again. Returns the ids changed; the caller recomputes."""
+    them) or normal again. Either way the edge is no longer one adopt_projections kept back (KEPT_PROP). Returns
+    the ids changed; the caller recomputes."""
+    flags = _projected_flags(sk)
     changed = set_defining(sk, geo_ids, not construction)
-    refs = {_ref(sk, g) for g in geo_ids} - {""}
+    refs = {flags[g][1] for g in geo_ids if g in flags} - {""}
     if refs:
-        before = _chosen(sk)
+        before = _strings(sk, CHOSEN_PROP)
         after = (before | refs) if construction else (before - refs)
         if after != before:
-            _set_chosen(sk, after)
+            _set_strings(sk, CHOSEN_PROP, after, "Projected edges switched to construction by the user")
+        kept = _strings(sk, KEPT_PROP)
+        if kept & refs:
+            _set_strings(sk, KEPT_PROP, kept - refs, "")
     return changed
 
 
-def _chosen(sk):
-    return set(getattr(sk, CHOSEN_PROP, None) or [])
+def _strings(sk, prop):
+    return set(getattr(sk, prop, None) or [])
 
 
-def _set_chosen(sk, refs):
-    if CHOSEN_PROP not in sk.PropertiesList:
-        sk.addProperty("App::PropertyStringList", CHOSEN_PROP, "InCad",
-                       "Projected edges switched to construction by the user", 0, False, True)
-    setattr(sk, CHOSEN_PROP, sorted(refs))
+def _set_strings(sk, prop, refs, doc):
+    if prop not in sk.PropertiesList:
+        sk.addProperty("App::PropertyStringList", prop, "InCad", doc, 0, False, True)
+    setattr(sk, prop, sorted(refs))
+
+
+_GROUPS = ("PartDesign::Body", "App::Part", "App::DocumentObjectGroup")
+
+
+def _users_key(sk):
+    """The features using the sketch (its InList without the body): a change re-checks the edges kept back."""
+    return ",".join(sorted(o.Name for o in sk.InList if o.TypeId not in _GROUPS))
+
+
+def _results(sk):
+    """{name: (invalid, volume, area, faces)} of everything built on the sketch (sketches aside): what adopting
+    must leave as it is."""
+    out = {}
+    for o in sk.InListRecursive:
+        if is_sketch(o) or not hasattr(o, "Shape") or o.TypeId in _GROUPS:
+            continue  # a body holds the sketch without being built on it; its features are listed themselves
+        try:
+            sh = o.Shape
+            out[o.Name] = ("Invalid" in o.State, sh.isNull(),
+                           0.0 if sh.isNull() else sh.Volume, 0.0 if sh.isNull() else sh.Area,
+                           0 if sh.isNull() else len(sh.Faces))
+        except Exception:
+            out[o.Name] = ("Invalid" in o.State, True, 0.0, 0.0, 0)
+    return out
+
+
+def _differences(doc, before, after):
+    """'Extrude001 changes' / 'Extrude001: Wire is not closed.' for each result that is not as before."""
+    def close(a, b):
+        return abs(a - b) <= 1e-6 * max(1.0, abs(a), abs(b))
+    out = []
+    for name, was in before.items():
+        now = after.get(name)
+        o = doc.getObject(name)
+        label = o.Label if o is not None else name
+        if now is None:
+            out.append("%s is gone" % label)
+        elif now[0] and not was[0]:
+            out.append("%s: %s" % (label, o.getStatusString() if o is not None else "fails"))
+        elif now[1] != was[1] or now[4] != was[4] or not close(now[2], was[2]) or not close(now[3], was[3]):
+            out.append("%s changes" % label)
+    return out
+
+
+def _try_defining(sk, group, before):
+    """Adopt `group` if nothing built on the sketch changes; else halve it (edges that only work together stay
+    together until the halves are tried). Returns (adopted ids, [(id, reasons)] kept back). Recomputes."""
+    doc = sk.Document
+    set_defining(sk, group, True)
+    doc.recompute()
+    diff = _differences(doc, before, _results(sk))
+    if not diff:
+        return list(group), []
+    set_defining(sk, group, False)
+    doc.recompute()
+    if len(group) == 1:
+        return [], [(group[0], diff)]
+    half = len(group) // 2
+    ok1, bad1 = _try_defining(sk, group[:half], before)
+    ok2, bad2 = _try_defining(sk, group[half:], before)
+    return ok1 + ok2, bad1 + bad2
 
 
 def adopt_projections(sk, notes=None):
     """Inventor: projected edges are normal geometry. Every projected edge becomes defining unless the user switched
-    it to construction (CHOSEN_PROP); the old Construction button's tied normal copies are removed, their projected
-    edges taking their place (the profile stays the same). An edge that would break a feature that was fine (a
-    reference edge projected into a sketch an Extrude already uses: 'Wire is not closed') stays construction,
-    recorded as a choice, and `notes` (a list) gets why. Idempotent; True when it changed something (then it has
-    recomputed). Never inside an open undo step (a feature dialog's, a Sketcher tool's): it changes no undo
-    history, the next call adopts. Never while the document recomputes either: the GUI's progress bar runs
-    deferred handlers mid-recompute, where a recompute of ours does nothing and the check above would see stale
-    states (the user's part: an Extrude left broken)."""
-    from incad.core import safe
+    it to construction (CHOSEN_PROP). The old Construction button's tied normal copies are removed, their projected
+    edges taking their place. Nothing built on the sketch may change: an edge that would break or change a
+    feature's result (a face projected to dimension against, a rectangle drawn inside and extruded) stays
+    construction, kept apart in KEPT_PROP and tried again when the features using the sketch change; a migration
+    that would change a result is rolled back. `notes` (a list) gets what was kept back and why.
+    Idempotent; True when it changed something (then it has recomputed). Never inside an open undo step (a feature
+    dialog's, a Sketcher tool's) and never while the document recomputes (the GUI's progress bar runs deferred
+    handlers mid-recompute, where a recompute of ours does nothing): the next call adopts. Adopting makes no undo
+    step; a migration of old copies is one, and on a file just opened (no history) that step is cleared."""
     doc = sk.Document
     if getattr(doc, "Restoring", False) or getattr(doc, "Recomputing", False) or doc.HasPendingTransaction:
         return False
-    ids = projected(sk)
-    if not ids:
+    flags = _projected_flags(sk)
+    if not flags:
         return False
-    chosen = _chosen(sk)
+    did = False
+    key = _users_key(sk)
+    kept = _strings(sk, KEPT_PROP)
+    if kept and getattr(sk, KEPT_FOR_PROP, key) != key:  # the features using it changed: try those edges again
+        _set_strings(sk, KEPT_PROP, set(), "")
+        kept = set()
+        did = True
     copies = _old_copies(sk)
+    if copies:
+        migrated = _migrate_copies(sk, copies, notes)
+        if migrated is None:
+            return did  # rolled back: the sketch stays as it was (its copies keep the profile)
+        did = True
+        flags = _projected_flags(sk)
+    chosen = _strings(sk, CHOSEN_PROP)
+    todo = [g for g, (on, ref) in flags.items() if not on and ref not in chosen and ref not in kept]
+    if not todo:
+        if did:
+            doc.recompute()
+        return did
+    before = _results(sk)
+    if not before:  # nothing is built on it yet: all at once
+        set_defining(sk, todo, True)
+        doc.recompute()
+        return True
+    from incad.core import safe
+    broken = safe.snapshot_broken(doc)
+    adopted, back = _try_defining(sk, todo, before)
+    found = safe.problems(doc, broken, set(before)) if adopted else []
+    if found:  # broken in a way the results do not show (a shape gone bad): nothing adopted
+        set_defining(sk, adopted, False)
+        doc.recompute()
+        back += [(g, found) for g in adopted]
+        adopted = []
+    if back:
+        refs = {flags[g][1] for g, _why in back} - {""}
+        _set_strings(sk, KEPT_PROP, kept | refs, "Projected edges kept construction: normal, they would change a "
+                                                   "feature built on the sketch")
+        if KEPT_FOR_PROP not in sk.PropertiesList:
+            sk.addProperty("App::PropertyString", KEPT_FOR_PROP, "InCad", "", 0, False, True)
+        setattr(sk, KEPT_FOR_PROP, key)
+        if notes is not None:
+            reasons = []
+            for _g, why in back:
+                reasons += [w for w in why if w not in reasons]
+            notes.append("%s: %s kept as construction; as normal geometry: %s" % (
+                sk.Label, "a projected edge" if len(back) == 1 else "%d projected edges" % len(back),
+                "; ".join(reasons)))
+    return bool(adopted or back or did)
+
+
+def _migrate_copies(sk, copies, notes):
+    """Remove the old copies (their projected edges take their place) as one undo step that is rolled back when a
+    result built on the sketch would change. On a file just opened (no undo history) the step is cleared again.
+    Returns the copies removed, or None when rolled back."""
+    from incad.core import safe
+    doc = sk.Document
+    if not doc.UndoMode:
+        doc.UndoMode = 1  # the rollback needs the step
+    fresh = doc.UndoCount == 0 and doc.RedoCount == 0
+    before = _results(sk)
+    broken = safe.snapshot_broken(doc)
+    doc.openTransaction("Projected edges as normal geometry")
     construction = {ext for copy, ext in copies.items() if sk.getConstruction(copy)}  # a copy switched back
     copied = [ext for ext in copies.values() if ext not in construction]
-    rest = [g for g in ids if g not in construction and g not in copied and _ref(sk, g) not in chosen]
-    if not copies and not [g for g in rest if not is_defining(sk, g)]:
-        return False
-    broken = safe.snapshot_broken(doc)
-    if copies:
-        _remove_copies(sk, copies)
-        set_defining(sk, copied, True)  # the projected edge takes its copy's place: the same profile
-        refs = {_ref(sk, g) for g in construction} - {""}
-        if refs - chosen:
-            _set_chosen(sk, chosen | refs)
-    changed = set_defining(sk, rest, True)
-    touched = {o.Name for o in doc.Objects if "Touched" in o.State}
+    flags = _projected_flags(sk)
+    lost = _remove_copies(sk, copies)
+    set_defining(sk, copied, True)  # the projected edge takes its copy's place: the same profile
+    refs = {flags[g][1] for g in construction} - {""}
+    chosen = _strings(sk, CHOSEN_PROP)
+    if refs - chosen:
+        _set_strings(sk, CHOSEN_PROP, chosen | refs, "Projected edges switched to construction by the user")
     doc.recompute()
-    found = safe.problems(doc, broken, touched) if changed else []
-    if found:
-        set_projected_construction(sk, changed, True)
+    diff = _differences(doc, before, _results(sk)) + safe.problems(doc, broken, set(before))
+    if diff:
+        doc.abortTransaction()
         doc.recompute()
         if notes is not None:
-            notes.append("%s: %s kept as construction; as normal geometry: %s" % (
-                sk.Label, "a projected edge" if len(changed) == 1 else "%d projected edges" % len(changed),
-                "; ".join(found)))
-    return True
+            notes.append("%s: its old normal copies of projected edges are kept; without them: %s" % (
+                sk.Label, "; ".join(diff)))
+        return None
+    doc.commitTransaction()
+    if fresh:
+        doc.clearUndos()
+    if lost and notes is not None:
+        notes.append("%s: %s on the old copies of projected edges could not move to the projected edges" % (
+            sk.Label, ", ".join(lost)))
+    return copies
 
 
 def _same_curve(a, b, tol=1e-6):
@@ -458,8 +602,10 @@ def _old_copies(sk):
     """{copy index: projected geo id} for the normal copies the old Construction button put on projected edges:
     the same curve, tied to its ends (centre for a circle or ellipse), or Blocked on a closed spline."""
     out = {}
-    geos = sk.ExternalGeo
     ids = projected(sk)
+    if not ids:
+        return out
+    geos = sk.ExternalGeo
     for ext in ids:
         for i in _copies_of_external(sk, ext):
             if i not in out and _same_curve(sk.Geometry[i], geos[-ext - 1]):
@@ -478,8 +624,10 @@ def _old_copies(sk):
 
 def _remove_copies(sk, copies):
     """Delete the copies; constraints joining other geometry to a copy move to its projected edge (same point
-    numbers). The ties themselves go; a constraint left on projected geometry alone goes (FreeCAD refuses it)."""
+    numbers). The ties themselves go; a constraint left on projected geometry alone goes (FreeCAD refuses it).
+    Returns the names (or kinds) of constraints that could not move."""
     gone = sorted(copies)
+    lost = []
 
     def moved(g):
         if g in copies:
@@ -497,6 +645,8 @@ def _remove_copies(sk, copies):
                                  (copies.get(c.First) == c.Second or copies.get(c.Second) == c.First)):
             continue  # the tie
         if all(moved(g) < 0 for g in refs):
+            if c.Name or c.Type in DIMENSIONAL:
+                lost.append(c.Name or c.Type)  # a dimension on the copy alone: FreeCAD refuses it on projections
             continue
         for field in ("First", "Second", "Third"):  # c is the sketch's copy (sk.Constraints copies): ours to change
             g = getattr(c, field)
@@ -522,7 +672,8 @@ def _remove_copies(sk, copies):
             if expr:
                 sk.setExpression(".Constraints.%s" % name, expr)
         except Exception:
-            pass  # a constraint FreeCAD no longer accepts on the projected edge: the copy's own, it goes with it
+            lost.append(name or n.Type)
+    return lost
 
 
 def _copies_of_external(sk, geo_id):
