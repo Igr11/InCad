@@ -31,7 +31,7 @@ NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtC
 MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", "file.close", None, "file.quit"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
-                   "view.style_wireframe", "view.parameters", None, "view.freecad"])]
+                   "view.style_wireframe", "view.assembly_context", "view.parameters", None, "view.freecad"])]
 
 _shell = None
 
@@ -337,6 +337,7 @@ class Shell(QtCore.QObject):
         self._dof_glyphs = None   # DofGlyphs on the active assembly view
         self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
         self._dof_hover = None    # (document name, part name) under the pointer (the tip)
+        self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
         self._hover_watch = None
         self._polygons_from = {}
         self.marking_menu = None
@@ -681,6 +682,9 @@ class Shell(QtCore.QObject):
                     continue
                 cmd = self.registry.get(cmd_id)
                 act = menu.addAction(themes.icon(cmd.icon, self.theme), cmd.label)
+                if cmd.checkable:
+                    act.setCheckable(True)
+                    menu.aboutToShow.connect(lambda a=act, c=cmd: a.setChecked(bool(c.is_checked and c.is_checked())))
                 if cmd.shortcut:
                     act.setShortcut(QtGui.QKeySequence(cmd.shortcut))
                 act.triggered.connect(lambda _=False, i=cmd_id: self.registry.run(i))
@@ -721,6 +725,9 @@ class Shell(QtCore.QObject):
         if self._dof_glyphs is not None:
             self._dof_glyphs.remove()
             self._dof_glyphs = None
+        for ctx in self._contexts.values():
+            ctx.remove()
+        self._contexts = {}
         self._peeked = None
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish(moved_ok=False)
@@ -852,6 +859,8 @@ class Shell(QtCore.QObject):
         for group, values in themes.sketch_params(self.theme, prefs.dimension_display()).items():
             params.write(group, values)
         params.write(themes.VIEW_GROUP, themes.view_params(self.theme))
+        for ctx in self._contexts.values():
+            ctx.set_theme(self.theme)  # the assembly around an edited part in the new grey
         self.dof_display_changed()  # DOF glyphs in the new theme's colours
 
     def set_navigation(self, enabled):
@@ -2602,6 +2611,14 @@ class Shell(QtCore.QObject):
         except Exception:
             log.logger().exception("InCad drag on close")
         try:
+            self._contexts.pop(doc.Name, None)  # the part's tab goes: its picture goes with its view
+            for name, ctx in list(self._contexts.items()):
+                if ctx.asm_name == doc.Name:  # the assembly closes: no more parts around the edited one
+                    ctx.remove()
+                    del self._contexts[name]
+        except Exception:
+            log.logger().exception("InCad assembly context on close")
+        try:
             from incad.core import dof
             self._dof_on.discard(doc.Name)
             dof._CACHE.pop(doc.Name, None)
@@ -2702,6 +2719,46 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
+        self._show_context(link, part)
+
+    def _show_context(self, link, part):
+        """Edit from the assembly: the other parts drawn around this one in its tab (ui/assembly_context), from the
+        assembly's current placements; any earlier picture in that tab goes first."""
+        import FreeCADGui as Gui
+        from incad.core import assembly
+        from incad.ui.assembly_context import AssemblyContext
+        old = self._contexts.pop(part.Name, None)
+        if old is not None:
+            old.remove()
+        asm = link.Document
+        if not assembly.is_assembly(asm):
+            return
+        gui = Gui.getDocument(part.Name)
+        view = gui.ActiveView if gui is not None else None
+        if view is None or not hasattr(view, "getSceneGraph"):
+            return
+        try:
+            self._contexts[part.Name] = AssemblyContext(view, assembly.context_of(asm, link), self.theme, asm.Name)
+        except Exception:
+            log.logger().exception("Assembly context")
+            return
+        log.report("info", "Editing %s in %s: the other parts are shown for reference" % (link.Label, asm.Label))
+
+    def _active_context(self):
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        return self._contexts.get(doc.Name) if doc is not None else None
+
+    def toggle_assembly_context(self):
+        ctx = self._active_context()
+        if ctx is None:
+            raise ValueError("Edit this part from its assembly (Edit on the part) to see the parts around it")
+        ctx.set_visible(not ctx.shown)
+        self.schedule_refresh()  # the button's checked state
+
+    def assembly_context_shown(self):
+        ctx = self._active_context()
+        return ctx is not None and ctx.shown
 
     PADLOCK_SCALE = 1.2
 
@@ -3502,6 +3559,15 @@ def assembly_remove(link=None):
 
 def toggle_dof():
     return _active().toggle_dof()
+
+
+def toggle_assembly_context():
+    return _active().toggle_assembly_context()
+
+
+def assembly_context_shown():
+    sh = _shell
+    return bool(sh is not None and sh.active and sh.assembly_context_shown())
 
 
 def dof_shown():

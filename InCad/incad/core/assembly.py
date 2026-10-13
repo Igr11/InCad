@@ -254,6 +254,38 @@ def toggle_suppressed(link):
 
 
 
+def _frame(link):
+    """The placement that takes the linked object's own geometry into the assembly: the link's (it replaces the
+    linked object's placement), or both with LinkTransform on."""
+    linked = link.LinkedObject
+    if getattr(link, "LinkTransform", False):
+        return link.Placement.multiply(getattr(linked, "Placement", App.Placement()))
+    return App.Placement(link.Placement)
+
+
+def context_of(doc, link):
+    """Edit a part from the assembly: every OTHER visible, unsuppressed component (other instances of the same
+    part too) as [(name, shape, placement)] — the linked object's own shape and where it sits in the edited part's
+    tab (the part's frame, its body's placement included)."""
+    import Part
+    linked = link.LinkedObject
+    view = getattr(linked, "Placement", App.Placement()) if linked is not None else App.Placement()
+    to_view = view.multiply(_frame(link).inverse())
+    out = []
+    for c in components(doc):
+        target = c.LinkedObject
+        if c is link or target is None or not c.Visibility or is_suppressed(c):
+            continue
+        try:
+            shape = Part.getShape(target, transform=False)
+        except Exception:
+            continue
+        if shape.isNull() or not shape.Faces:
+            continue
+        out.append((c.Name, shape, to_view.multiply(_frame(c))))
+    return out
+
+
 def parts_signature(doc):
     """What the components' parts look like now (each part's volume and box): changed when a part was edited in
     its own tab."""

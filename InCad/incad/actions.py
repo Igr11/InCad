@@ -272,6 +272,16 @@ def dof_shown():
     return shell.dof_shown()
 
 
+def toggle_assembly_context():
+    from incad.ui import shell
+    shell.toggle_assembly_context()
+
+
+def assembly_context_shown():
+    from incad.ui import shell
+    return shell.assembly_context_shown()
+
+
 def toggle_visibility():
     from incad.core import document, log
     objects = _visibility_targets()
@@ -856,6 +866,9 @@ def commands():
         Command(id="view.dof", label="Degrees of Freedom", icon="rotational", handler=toggle_dof,
                 checkable=True, is_checked=dof_shown, contexts=frozenset({"assembly"}),
                 tooltip="Show how each part can still move: arrows for slides, arcs for turns"),
+        Command(id="view.assembly_context", label="Assembly Context", icon="assembly", handler=toggle_assembly_context,
+                checkable=True, is_checked=assembly_context_shown, contexts=frozenset({"part"}),
+                tooltip="A part opened with Edit from its assembly: show or hide the other parts around it"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
                 handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
                 tooltip="Show every origin plane, axis and the centre point"),
