@@ -209,20 +209,27 @@ def compute(doc):
     return out
 
 
-def glyph(freedom, placement, centre, size):
-    """Inventor's DOF glyph for a part now at `placement`: a double arrow per slide through `centre`, a 270° arc per
-    turn around its axis (level with the centre). ([[Vector…]…] polylines, [(tip, direction)…] arrow heads)."""
-    lines, heads = [], []
+Handle = namedtuple("Handle", "kind index line heads axis point u w radius pivot")
+"""One freedom's part of the glyph, in global coordinates: kind 'slide' (a double arrow through `point` along `axis`)
+or 'turn' (an arc of `radius` around `axis` through `point`, from `u` towards `w`, w = axis x u: a positive turn;
+`pivot`: a point of the line the part really turns about — `point` too unless that line is far from the part);
+index: its place among the freedom's slides or turns; line: its polyline; heads: [(tip, direction)...]."""
+FAR = 1.5  # a turn axis farther from the part's centre than this many glyph sizes: its arc is drawn at the centre
+
+
+def handles(freedom, placement, centre, size):
+    """The glyph of a part now at `placement`, one Handle per freedom: the slides first, then the turns."""
+    out = []
     rot = placement.Rotation
-    for d in freedom.slides:
+    for i, d in enumerate(freedom.slides):
         g = rot.multVec(d).normalize()
         a, b = centre - g * size, centre + g * size
-        lines.append([a, b])
-        heads += [(b, g), (a, g * -1)]
-    for point, axis in freedom.turns:
+        out.append(Handle("slide", i, [a, b], [(b, g), (a, g * -1)], g, App.Vector(centre), None, None, None, None))
+    for i, (point, axis) in enumerate(freedom.turns):
         ax = rot.multVec(axis).normalize()
         p = placement.multVec(point)
-        base = p + ax * (centre - p).dot(ax)
+        pivot = p + ax * (centre - p).dot(ax)
+        base = App.Vector(centre) if (pivot - centre).Length > FAR * size else pivot  # always on the part
         u = ax.cross(App.Vector(1, 0, 0))
         if u.Length < 1e-6:
             u = ax.cross(App.Vector(0, 1, 0))
@@ -231,7 +238,14 @@ def glyph(freedom, placement, centre, size):
         r = size * 0.6
         ts = [1.5 * math.pi * k / 24 for k in range(25)]
         pts = [base + (u * math.cos(t) + w * math.sin(t)) * r for t in ts]
-        lines.append(pts)
         end = ts[-1]
-        heads.append((pts[-1], (u * -math.sin(end) + w * math.cos(end)).normalize()))
-    return lines, heads
+        out.append(Handle("turn", i, pts, [(pts[-1], (u * -math.sin(end) + w * math.cos(end)).normalize())],
+                          ax, base, u, w, r, pivot))
+    return out
+
+
+def glyph(freedom, placement, centre, size):
+    """Inventor's DOF glyph for a part now at `placement`: a double arrow per slide through `centre`, a 270° arc per
+    turn around its axis (level with the centre). ([[Vector…]…] polylines, [(tip, direction)…] arrow heads)."""
+    hs = handles(freedom, placement, centre, size)
+    return [h.line for h in hs], [hd for h in hs for hd in h.heads]

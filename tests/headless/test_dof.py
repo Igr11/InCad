@@ -1,3 +1,4 @@
+import math
 import os
 import shutil
 import tempfile
@@ -274,6 +275,41 @@ class GlyphTest(unittest.TestCase):
         for p in arc:
             self.assertAlmostEqual(p.z, 5, places=6)  # level with the centre
             self.assertAlmostEqual((p - App.Vector(10, 0, 5)).Length, 4.0 * 0.6, places=6)  # around the moved axis
+
+    def test_handles_say_which_freedom_each_line_is(self):
+        z = App.Vector(0, 0, 1)
+        f = dof.Freedom(3, [App.Vector(1, 0, 0), App.Vector(0, 1, 0)], [(App.Vector(0, 0, 0), z)], "")
+        plc = App.Placement(App.Vector(10, 0, 0), App.Rotation(z, 90))
+        centre = App.Vector(10, 0, 5)
+        hs = dof.handles(f, plc, centre, 4.0)
+        self.assertEqual([(h.kind, h.index) for h in hs], [("slide", 0), ("slide", 1), ("turn", 0)])
+        lines, heads = dof.glyph(f, plc, centre, 4.0)
+        self.assertEqual([h.line for h in hs], lines, "the same lines as the glyph, in its order")
+        self.assertEqual([hd for h in hs for hd in h.heads], heads)
+        s0, _, t = hs
+        self.assertAlmostEqual(s0.axis.dot(App.Vector(0, 1, 0)), 1, places=6)  # own X turned to global Y
+        self.assertAlmostEqual((s0.point - centre).Length, 0, places=6)
+        self.assertAlmostEqual(abs(t.axis.z), 1, places=6)
+        self.assertAlmostEqual((t.point - centre).Length, 0, places=6)  # the turn axis is through the centre
+        self.assertAlmostEqual(t.radius, 4.0 * 0.6, places=6)
+        for k, p in enumerate((t.line[0], t.line[8])):  # the arc starts on u and runs towards w (positive turn)
+            a = 1.5 * math.pi * (0, 8)[k] / 24
+            want = t.point + (t.u * math.cos(a) + t.w * math.sin(a)) * t.radius
+            self.assertAlmostEqual((p - want).Length, 0, places=6)
+        self.assertAlmostEqual(t.u.cross(t.w).dot(t.axis), 1, places=6)
+
+    def test_an_axis_far_from_the_part_has_its_arc_at_the_centre(self):
+        z = App.Vector(0, 0, 1)
+        f = dof.Freedom(1, [], [(App.Vector(100, 0, 0), z)], "")  # the part turns about a line 100 mm away
+        centre = App.Vector(0, 0, 5)
+        (t,) = dof.handles(f, App.Placement(), centre, 4.0)
+        self.assertAlmostEqual((t.point - centre).Length, 0, places=6, msg="the arc is drawn on the part")
+        for p in t.line:
+            self.assertAlmostEqual((p - centre).Length, 4.0 * 0.6, places=6)
+        self.assertAlmostEqual((t.pivot - App.Vector(100, 0, 5)).Length, 0, places=6, msg="it still turns there")
+        near = dof.Freedom(1, [], [(App.Vector(3, 0, 0), z)], "")  # within 1.5 sizes: drawn on its own line
+        (t,) = dof.handles(near, App.Placement(), centre, 4.0)
+        self.assertAlmostEqual((t.point - App.Vector(3, 0, 5)).Length, 0, places=6)
 
     def test_no_freedom_no_glyph(self):
         self.assertEqual(dof.glyph(dof.Freedom(0, [], [], ""), App.Placement(), App.Vector(), 4.0), ([], []))

@@ -108,6 +108,120 @@ class HooksTest(unittest.TestCase):
         self.assertEqual(seen, ["begin", "end"], "the reset drops the drag's release: the drag ends now")
         self.assertEqual(machine.state, "idle")
 
+def mouse(kind, x, button, buttons):
+    t = {"press": QtCore.QEvent.MouseButtonPress, "release": QtCore.QEvent.MouseButtonRelease,
+         "move": QtCore.QEvent.MouseMove}[kind]
+    return QtGui.QMouseEvent(t, QtCore.QPointF(x, 10), QtCore.QPointF(x, 10), button, buttons, QtCore.Qt.NoModifier)
+
+
+class HandleHook:
+    """Records the navigator's calls; takes the press when `take`."""
+
+    def __init__(self, take):
+        self.take, self.seen = take, []
+
+    def at(self, view, viewport, x, y):
+        return self.take
+
+    def press(self, view, viewport, x, y):
+        self.seen.append(("press", x))
+        return self.take
+
+    def move(self, x, y):
+        self.seen.append(("move", x))
+
+    def release(self):
+        self.seen.append(("release",))
+
+    def hover(self, view, viewport, x, y):
+        self.seen.append(("hover", x))
+
+
+class HandleModeTest(unittest.TestCase):
+    """A left press the handle hook takes is InCad's handle drag: its moves and release go to the hook, consumed
+    (FreeCAD would box-select or start its own drag); a press it declines goes through the gesture rules."""
+    def setUp(self):
+        qtapp.app()
+        self.nav = Navigator(lambda *a: None)
+        self.w = QtWidgets.QWidget()
+        self.machine = gestures.Gestures()
+        self.nav._attached[self.w] = [None, self.machine, QtCore.Qt.NoModifier]
+        self.replays = []
+        self.nav._replay = lambda *a, **k: self.replays.append(a[1:3])
+        self.drags = []
+
+        class Drag:
+            def begin(_, *a):
+                self.drags.append("begin")
+
+            def end(_):
+                self.drags.append("end")
+        self.nav.drag_hook = Drag()
+
+    def test_a_taken_press_sends_moves_and_release_to_the_hook(self):
+        hook = self.nav.handle_hook = HandleHook(True)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("press", 10, L, L)))
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("move", 30, N, L)), "a handle drag's move is consumed")
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("move", 60, N, L)))
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("release", 60, L, N)), "and its release")
+        self.assertEqual(hook.seen, [("press", 10.0), ("move", 30.0), ("move", 60.0), ("release",)])
+        self.assertEqual((self.replays, self.drags), ([], []), "FreeCAD never sees it; no native drag")
+        self.assertEqual(self.machine.state, "idle")
+        self.assertFalse(self.nav.eventFilter(self.w, mouse("move", 70, N, N)), "back to normal: a hover passes")
+        self.assertEqual(hook.seen[-1], ("hover", 70.0))
+
+    def test_a_declined_press_is_the_normal_gesture_flow(self):
+        hook = self.nav.handle_hook = HandleHook(False)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        self.nav.eventFilter(self.w, mouse("press", 10, L, L))
+        self.assertEqual(self.machine.state, "left_held")
+        self.nav.eventFilter(self.w, mouse("move", 40, N, L))
+        self.nav.eventFilter(self.w, mouse("release", 40, L, N))
+        self.assertEqual(self.drags, ["begin", "end"], "FreeCAD's own drag (asm_drag), as before")
+        self.assertEqual(self.replays, [(10.0, 10.0)])
+        self.assertEqual([s for s in hook.seen if s[0] != "hover"], [("press", 10.0)])
+
+    def test_a_lost_release_ends_handle_mode(self):
+        hook = self.nav.handle_hook = HandleHook(True)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        self.nav.eventFilter(self.w, mouse("press", 10, L, L))
+        self.nav.eventFilter(self.w, mouse("move", 30, N, L))
+        self.assertFalse(self.nav.eventFilter(self.w, mouse("move", 40, N, N)), "buttons gone: the move passes")
+        self.assertEqual(hook.seen[:3], [("press", 10.0), ("move", 30.0), ("release",)])
+        hook.take = False
+        self.nav.eventFilter(self.w, mouse("press", 50, L, L))
+        self.assertEqual(self.machine.state, "left_held", "the next press is a normal one")
+
+    def test_hover_reaches_the_hook_and_still_passes(self):
+        hook = self.nav.handle_hook = HandleHook(False)
+        N = QtCore.Qt.NoButton
+        self.assertFalse(self.nav.eventFilter(self.w, mouse("move", 25, N, N)))
+        self.assertEqual(hook.seen, [("hover", 25.0)])
+
+    def test_a_failing_hook_never_blocks_the_mouse(self):
+        class Boom(HandleHook):
+            def press(self, *a):
+                raise RuntimeError("boom")
+
+            def hover(self, *a):
+                raise RuntimeError("boom")
+        self.nav.handle_hook = Boom(True)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        self.assertFalse(self.nav.eventFilter(self.w, mouse("move", 25, N, N)))
+        self.nav.eventFilter(self.w, mouse("press", 10, L, L))
+        self.assertEqual(self.machine.state, "left_held", "a failed press is a normal press")
+
+    def test_no_handle_press_while_a_navigation_tool_runs(self):
+        hook = self.nav.handle_hook = HandleHook(True)
+        self.nav.set_mode("orbit")
+        self.nav._pivot_at = lambda *a: None  # no 3D view here
+        L = QtCore.Qt.LeftButton
+        self.nav.eventFilter(self.w, mouse("press", 10, L, L))
+        self.assertEqual(self.machine.state, "tool")
+        self.assertEqual(hook.seen, [])
+
+
 class Recorder(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()

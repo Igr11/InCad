@@ -1,5 +1,5 @@
 """Inventor's DOF glyphs on the 3D view (never in the document): a double arrow per direction a part can slide, an
-arc per axis it can turn about. Never picked (an UNPICKABLE pick style first under the SoAnnotation, outside the
+arc per axis it can turn about; the handle under the pointer (ui/dof_handles) lit. Never picked (an UNPICKABLE pick style first under the SoAnnotation, outside the
 document): a click or a drag on a glyph reaches the part under it. HoverWatch tells which assembly
 part the pointer rests on (FreeCAD's preselection), for the tip."""
 from incad.ui import theme as themes
@@ -14,7 +14,7 @@ class DofGlyphs:
     def __init__(self, view, theme="light", doc_name=None):
         from pivy import coin
         self.view, self.theme, self.doc_name = view, theme, doc_name
-        self.count, self.parts, self.highlighted = 0, {}, []
+        self.count, self.parts, self.highlighted, self.lit = 0, {}, [], None
         self.node = coin.SoAnnotation()
         self.node.setName("InCadDOF")
         self._pick = coin.SoPickStyle()
@@ -23,11 +23,12 @@ class DofGlyphs:
         view.getSceneGraph().addChild(self.node)
 
     def set(self, items):
-        """items: [(name, lines, heads, size, highlight)] — dof.glyph output per part, its size, the tip colour."""
+        """items: [(name, handles, size, highlight, lit)] — dof.handles output per part, its size, the tip colour
+        (accent) and the index of the handle under the pointer (accent and thicker; None: none)."""
         from pivy import coin
         self.clear()
         palette = themes.PALETTES[self.theme]
-        for name, lines, heads, size, highlight in items:
+        for name, handles, size, highlight, lit in items:
             sep = coin.SoSeparator()
             color = coin.SoBaseColor()
             color.rgb.setValue(*_rgb(palette["accent" if highlight else "marker_end"]))
@@ -35,33 +36,45 @@ class DofGlyphs:
             style.lineWidth = 3
             sep.addChild(color)
             sep.addChild(style)
-            for pts in lines:
+            h = size * 0.25
+            for k, handle in enumerate(handles):
+                one = coin.SoSeparator()
+                if k == lit:
+                    c = coin.SoBaseColor()
+                    c.rgb.setValue(*_rgb(palette["accent"]))
+                    st = coin.SoDrawStyle()
+                    st.lineWidth = 6
+                    one.addChild(c)
+                    one.addChild(st)
+                pts = handle.line
                 coords = coin.SoCoordinate3()
                 coords.point.setValues(0, len(pts), [(p.x, p.y, p.z) for p in pts])
-                sep.addChild(coords)
-                sep.addChild(coin.SoLineSet())
-            h = size * 0.25
-            for tip, d in heads:
-                head = coin.SoSeparator()
-                t = coin.SoTransform()
-                base = tip - d * (h / 2)
-                t.translation.setValue(base.x, base.y, base.z)
-                t.rotation.setValue(coin.SbRotation(coin.SbVec3f(0, 1, 0), coin.SbVec3f(d.x, d.y, d.z)))
-                cone = coin.SoCone()
-                cone.height, cone.bottomRadius = h, size * 0.1
-                head.addChild(t)
-                head.addChild(cone)
-                sep.addChild(head)
+                one.addChild(coords)
+                one.addChild(coin.SoLineSet())
+                for tip, d in handle.heads:
+                    head = coin.SoSeparator()
+                    t = coin.SoTransform()
+                    base = tip - d * (h / 2)
+                    t.translation.setValue(base.x, base.y, base.z)
+                    t.rotation.setValue(coin.SbRotation(coin.SbVec3f(0, 1, 0), coin.SbVec3f(d.x, d.y, d.z)))
+                    cone = coin.SoCone()
+                    cone.height, cone.bottomRadius = h, size * (0.14 if k == lit else 0.1)
+                    head.addChild(t)
+                    head.addChild(cone)
+                    one.addChild(head)
+                sep.addChild(one)
             self.node.addChild(sep)
-            self.parts[name] = (len(lines), len(heads))
+            self.parts[name] = (len(handles), sum(len(x.heads) for x in handles))
             if highlight:
                 self.highlighted.append(name)
+            if lit is not None and 0 <= lit < len(handles):
+                self.lit = (name, lit)
         self.count = len(items)
 
     def clear(self):
         self.node.removeAllChildren()
         self.node.addChild(self._pick)
-        self.count, self.parts, self.highlighted = 0, {}, []
+        self.count, self.parts, self.highlighted, self.lit = 0, {}, [], None
 
     def remove(self):
         self.clear()

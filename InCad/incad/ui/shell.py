@@ -228,6 +228,7 @@ class _SelectionWatch:
             self.shell._on_model_selection_changed()
         except Exception:
             log.logger().exception("InCad selection sync")
+        self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes
 
     def addSelection(self, doc, obj, sub, pnt):
         self._check()
@@ -330,6 +331,7 @@ class Shell(QtCore.QObject):
         self._wait_notice = None
         self._dof_pending = False
         self.asm_drag = None
+        self.dof_handles = None   # the selected part's DOF gizmo: grab an arc to turn it, an arrow to slide it
         self._dof_glyphs = None   # DofGlyphs on the active assembly view
         self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
         self._dof_hover = None    # (document name, part name) under the pointer (the tip)
@@ -657,6 +659,9 @@ class Shell(QtCore.QObject):
         from incad.ui.asm_drag import AssemblyDrag
         self.asm_drag = AssemblyDrag(self)
         self.navigator.drag_hook = self.asm_drag
+        from incad.ui.dof_handles import Handles
+        self.dof_handles = Handles(self)
+        self.navigator.handle_hook = self.dof_handles
         self._build_shortcuts()
 
     def _build_menus(self):
@@ -715,6 +720,9 @@ class Shell(QtCore.QObject):
         self._peeked = None
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish(moved_ok=False)
+        if self.dof_handles is not None:
+            self.dof_handles.finish(moved_ok=False)
+            self.dof_handles.clear_drawn()
         self.stop_slot_tool()
         self._stop_measuring()
         self.close_constraints_window()
@@ -2560,7 +2568,7 @@ class Shell(QtCore.QObject):
         if name not in App.listDocuments() or self.feature_session is not None or dof.loading():
             return  # a file still loading (any tab): the refresh after it counts
         drag = getattr(self, "asm_drag", None)
-        if drag is not None and drag.active():
+        if drag is not None and drag.active() or self.dof_handles is not None and self.dof_handles.dragging():
             return
         try:
             _, computed = dof.ensure(App.getDocument(name))
@@ -2576,6 +2584,8 @@ class Shell(QtCore.QObject):
         temporary grounds of the other parts never reach the command."""
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish()
+        if self.dof_handles is not None and self.dof_handles.dragging():
+            self.dof_handles.finish()
 
     def _document_deleted(self, doc):
         """A document is closing: a drag of one of its parts ends now (its release will never come), and its DOF
@@ -2583,6 +2593,8 @@ class Shell(QtCore.QObject):
         try:
             if self.asm_drag is not None and self.asm_drag.active() and self.asm_drag.doc_name == doc.Name:
                 self.asm_drag.finish(moved_ok=False, closing=True)
+            if self.dof_handles is not None:
+                self.dof_handles.document_closing(doc.Name)
         except Exception:
             log.logger().exception("InCad drag on close")
         try:
@@ -2601,8 +2613,9 @@ class Shell(QtCore.QObject):
 
     def dof_display_changed(self):
         """Redraw the DOF glyphs: every free part while View > Degrees of Freedom is on, else the part under the
-        pointer or being dragged (highlighted). Only the freedoms a part has; none for DOF 0, none for a part
-        without a solid. Never raises: it runs from a selection observer, timers and a drag's finally."""
+        pointer or being dragged (highlighted), and the selected part's gizmo (its handles, ui/dof_handles). Only the
+        freedoms a part has; none for DOF 0, none for a part without a solid. Never raises: it runs from a
+        selection observer, timers and a drag's finally."""
         try:
             self._draw_dof()
         except Exception:
@@ -2618,21 +2631,32 @@ class Shell(QtCore.QObject):
         if self._dof_glyphs is not None and (view is None or self._dof_glyphs.view is not view):
             self._dof_glyphs.remove()
             self._dof_glyphs = None
+        handles = self.dof_handles
         if view is None or not hasattr(view, "getSceneGraph"):
+            if handles is not None:
+                handles.clear_drawn()
             return
         counts = dof.last(doc) or {}
         hover = self._dof_hover[1] if self._dof_hover is not None and self._dof_hover[0] == doc.Name else None
         tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else hover
-        names = list(counts) if doc.Name in self._dof_on else [tip] if tip else []
-        items = []
+        gizmo = handles.gizmo_part(doc) if handles is not None else None  # the clicked part: its glyph has handles
+        names = list(counts) if doc.Name in self._dof_on else [n for n in dict.fromkeys((gizmo, tip)) if n]
+        items, drawn = [], False
         for name in names:
             f, link = counts.get(name), doc.getObject(name)
             bb = assembly._box(link) if link is not None else None  # an empty part's link has no Shape at all
             if f is None or not f.n or bb is None:
                 continue
             size = max(bb.DiagonalLength * 0.35, 5.0)
-            lines, heads = dof.glyph(f, link.Placement, bb.Center, size)
-            items.append((name, lines, heads, size, name == tip))
+            hs = dof.handles(f, link.Placement, bb.Center, size)
+            if name == gizmo:  # normal colour, the handle under the pointer lit
+                handles.set_drawn(doc.Name, name, hs, size, view)
+                drawn = True
+                items.append((name, hs, size, False, handles.lit))
+            else:
+                items.append((name, hs, size, name == tip, None))
+        if handles is not None and not drawn:
+            handles.clear_drawn()
         if self._dof_glyphs is None:
             if not items:
                 return
@@ -3216,6 +3240,8 @@ def _finish_open_tools():
     try:
         if _shell.asm_drag is not None and _shell.asm_drag.active():
             _shell.asm_drag.finish()  # its temporary grounds and open step must not reach the Save dialog
+        if _shell.dof_handles is not None and _shell.dof_handles.dragging():
+            _shell.dof_handles.finish()
         _shell.stop_slot_tool()
         _shell._close_feature_session(cancel=True)
         _shell._cancel_profile_pick()
