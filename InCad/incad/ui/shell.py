@@ -320,6 +320,7 @@ class Shell(QtCore.QObject):
 
         self._wait_notice = None
         self._dof_pending = False
+        self.asm_drag = None
         self._polygons_from = {}
         self.marking_menu = None
         self.menu_kind = None
@@ -465,7 +466,7 @@ class Shell(QtCore.QObject):
         obj = getattr(vp, "Object", None)
         if sketch.is_sketch(obj) and document.is_incad_part(obj.Document):
             return False
-        return vp is not None or safe.edit_open()
+        return (vp is not None or safe.edit_open()) and not safe.drag_edit()
 
     @staticmethod
     def _finish_freecad_sketch():
@@ -640,6 +641,9 @@ class Shell(QtCore.QObject):
         self.status.dofClicked.connect(lambda: self.registry.run("sketch.show_dof"))
         self.navigator.click_hook = self._click_hook
         self.navigator.dblclick_hook = self._dblclick_hook
+        from incad.ui.asm_drag import AssemblyDrag
+        self.asm_drag = AssemblyDrag(self)
+        self.navigator.drag_hook = self.asm_drag
         self._build_shortcuts()
 
     def _build_menus(self):
@@ -686,6 +690,8 @@ class Shell(QtCore.QObject):
                 pass
             self._sel_watch = None
         self._peeked = None
+        if self.asm_drag is not None and self.asm_drag.active():
+            self.asm_drag.finish(moved_ok=False)
         self.stop_slot_tool()
         self._stop_measuring()
         self.close_constraints_window()

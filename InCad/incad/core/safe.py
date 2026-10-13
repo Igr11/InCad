@@ -114,8 +114,24 @@ _SUBTRACTIVE = ("PartDesign::Groove", "PartDesign::Pocket", "PartDesign::Subtrac
                 "PartDesign::SubtractivePipe", "PartDesign::SubtractiveLoft", "PartDesign::Hole")
 
 
+_drag_edit = False
+
+
+def set_drag_edit(on):
+    """An assembly is in FreeCAD's edit only for a drag of one of its parts (incad.ui.asm_drag): that is no FreeCAD
+    task, InCad's commands and refreshes go on."""
+    global _drag_edit
+    _drag_edit = bool(on)
+
+
+def drag_edit():
+    return _drag_edit
+
+
 def edit_open():
     """True while FreeCAD has a sketch or feature task dialog open (GUI only)."""
+    if _drag_edit:
+        return False
     try:
         import FreeCAD as App
         if not App.GuiUp:

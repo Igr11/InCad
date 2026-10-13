@@ -116,6 +116,16 @@ class SafeTest(unittest.TestCase):
             safe.set_busy(None)
         self.assertIsNone(safe.busy())
 
+    def test_a_drag_edit_is_no_open_task(self):
+        from incad.core import safe
+        safe.set_drag_edit(True)
+        try:
+            self.assertTrue(safe.drag_edit())
+            self.assertFalse(safe.edit_open())
+        finally:
+            safe.set_drag_edit(False)
+        self.assertFalse(safe.drag_edit())
+
     def test_problems_reports_invalid_features(self):
         body, pad = util.padded_part(self.doc, length=10)
         before = safe.snapshot_broken(self.doc)
