@@ -342,3 +342,19 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
   GUI: test_assembly 6/6, test_constraint_rows 7/7, test_assembly_drag 20/21 (test_9c hover needs an attended Mac),
   test_projected_edges 8/8; test_constraints_window 6c/6d fail identically on older commits that passed them before
   (real pointer position) — environmental.
+- Ruling (2026-10-14, user tests on Train_1*): a Solid sketched on another Solid's face holds only its own piece (a
+  Pad first in a Solid took the sketch's support as its base — the new Solid held the hex too, Make Assembly failed):
+  no projection from that Solid → the sketch is left in place, unattached (independent, the user's rule); with
+  projections → attached through a SubShapeBinder of the face (follows it). Old files repaired on open: lost faces
+  ('?Face12') found again, sketches on them keep their place, the hidden base shown again. Make Assembly keeps the
+  part the active document after a failure (InCad showed an empty screen).
+- Ruling (2026-10-14): DOF slides / turns come from the span of the 6 test moves (SVD; slides = the turn-free part,
+  turns with screw-axis points): FreeCAD's solver moves a part about its own origin, far from a part drawn away from
+  its file's origin, so every test move came back as slide-and-turn (Train_1's D-part: 1 slide + far-off arcs → now
+  2 slides + 2 turns on the part). DOF handles: the clicked free part's gizmo stays until a click on empty space; drag
+  an arc to turn, an arrow to slide (InCad's own drag: others held by temporary grounds, solve per move, one "Move
+  part" step); caught within 12 px in screen space, each turn its own ring, the first move picks the handle it runs
+  along, an end-on arrow is no handle, a quick second press (Qt double-click) still grabs, a plain click on a handle
+  goes to FreeCAD. Constraint Flip: Tangent (outside by default, Flip inside; two round faces outside/inside), Insert,
+  Rotational / Slider / Cylindrical, Mate ↔ facing the same way, Flush ↔ facing each other. test_nav test_4 (marking
+  menu popup) is flaky: the same commit failed once and passed once.
