@@ -212,6 +212,47 @@ class HandleModeTest(unittest.TestCase):
         self.nav.eventFilter(self.w, mouse("press", 10, L, L))
         self.assertEqual(self.machine.state, "left_held", "a failed press is a normal press")
 
+    def test_a_quick_second_press_is_a_handle_press_too(self):
+        """Within the double-click interval Qt sends a double-click event, not a press: the retry after a press
+        that moved too little must still be the handle's, not FreeCAD's."""
+        hook = self.nav.handle_hook = HandleHook(True)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        dbl = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonDblClick, QtCore.QPointF(12, 10), QtCore.QPointF(12, 10),
+                                L, L, QtCore.Qt.NoModifier)
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("press", 10, L, L)))
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("release", 10, L, N)))
+        self.assertTrue(self.nav.eventFilter(self.w, dbl), "the double-click event is the hook's press")
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("move", 40, N, L)))
+        self.assertTrue(self.nav.eventFilter(self.w, mouse("release", 40, L, N)))
+        self.assertEqual(hook.seen, [("press", 10.0), ("release",), ("press", 12.0), ("move", 40.0), ("release",)])
+        self.assertEqual((self.replays, self.drags), ([], []))
+
+    def test_a_click_the_hook_gives_back_is_replayed_to_freecad(self):
+        class Click(HandleHook):
+            def release(self):
+                super().release()
+                return True  # a plain click, not on the gizmo's own part
+        hook = self.nav.handle_hook = Click(True)
+        L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+        self.nav.eventFilter(self.w, mouse("press", 10, L, L))
+        self.nav.eventFilter(self.w, mouse("release", 11, L, N))
+        self.assertEqual(self.replays, [(10.0, 10.0)], "press and release replayed where it was pressed")
+        self.nav.eventFilter(self.w, mouse("press", 30, L, L))
+        self.nav.eventFilter(self.w, mouse("move", 33, N, N))  # a lost release: nothing replayed
+        self.assertEqual(self.replays, [(10.0, 10.0)])
+        self.assertEqual(hook.seen.count(("release",)), 2)
+
+    def test_shift_or_ctrl_press_is_never_a_handle_grab(self):
+        hook = self.nav.handle_hook = HandleHook(True)
+        L = QtCore.Qt.LeftButton
+        for mod in (QtCore.Qt.ShiftModifier, QtCore.Qt.ControlModifier, QtCore.Qt.MetaModifier):
+            self.machine.reset()
+            press = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, QtCore.QPointF(10, 10),
+                                      QtCore.QPointF(10, 10), L, L, mod)
+            self.nav.eventFilter(self.w, press)
+            self.assertEqual(self.machine.state, "left_held", "FreeCAD adds to the selection")
+        self.assertEqual(hook.seen, [])
+
     def test_no_handle_press_while_a_navigation_tool_runs(self):
         hook = self.nav.handle_hook = HandleHook(True)
         self.nav.set_mode("orbit")

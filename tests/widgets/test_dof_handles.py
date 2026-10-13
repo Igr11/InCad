@@ -94,6 +94,20 @@ class TrackTest(unittest.TestCase):
             self.assertAlmostEqual(H.track_angle(c, pu, pw, p, deg + 20), deg, delta=0.5)
 
 
+class EndOnTest(unittest.TestCase):
+    """An arrow seen (nearly) end-on is a dot at the part's centre: no handle, and no slide that would fling."""
+    def test_end_on_against_the_views_own_scale(self):
+        axes = [(10, 0), (0, 0), (0, -10)]  # front view, 10 px/mm: Y points at the viewer
+        self.assertTrue(H.end_on((0, 0), axes))
+        self.assertTrue(H.end_on((0.5, 0.5), axes), "barely tilted: still end-on")
+        self.assertFalse(H.end_on((7, 0), axes))
+        self.assertTrue(H.end_on((1, 1), []), "no scale: refused")
+
+    def test_shaft_length(self):
+        self.assertEqual(H.polyline_length([(0, 0), (3, 4), (3, 10)]), 11)
+        self.assertEqual(H.MIN_SHAFT_PX, 2 * H.HANDLE_PX)
+
+
 class SlideTest(unittest.TestCase):
     def test_screen_delta_to_mm_along_the_arrow(self):
         per_mm = (3, 4)  # 1 mm along the direction = 5 px on screen, at (0.6, 0.8)

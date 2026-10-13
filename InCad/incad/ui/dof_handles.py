@@ -11,6 +11,8 @@ import math
 from incad.core import gestures, log
 
 HANDLE_PX = 12        # logical px around a handle's line or arrow head that catch it
+MIN_SHAFT_PX = 2 * HANDLE_PX  # a slide arrow seen shorter (nearly end-on, a dot at the centre) is no handle
+MIN_FORESHORTEN = 0.2  # a slide whose mm shows shorter than this share of the view's mm is refused (it would fling)
 EDGE_ON = 0.1         # an arc seen flatter than this (minor / major axis) is followed along its line instead
 
 
@@ -25,6 +27,10 @@ def polyline_distance(p, pts):
     if len(pts) == 1:
         return math.hypot(p[0] - pts[0][0], p[1] - pts[0][1])
     return min(segment_distance(p, pts[k], pts[k + 1]) for k in range(len(pts) - 1))
+
+
+def polyline_length(pts):
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:]))
 
 
 def nearest(candidates, p, tol=HANDLE_PX):
@@ -109,6 +115,13 @@ def track_angle(centre, pu, pw, p, last=None, window=90.0):
     return best
 
 
+def end_on(per_mm, axes_px, minimum=MIN_FORESHORTEN):
+    """True when a direction showing 1 mm as the screen vector per_mm is seen (nearly) end-on: shorter than
+    `minimum` of the view's own scale (the longest of the screen vectors of 1 mm along X, Y and Z, axes_px)."""
+    scale = max((math.hypot(*v) for v in axes_px), default=0)
+    return scale <= 0 or math.hypot(*per_mm) < minimum * scale
+
+
 def mm_along(delta, per_mm):
     """A screen delta -> mm along a direction that 1 mm of shows as the screen vector per_mm."""
     n = per_mm[0] ** 2 + per_mm[1] ** 2
@@ -186,8 +199,9 @@ class HandleDrag:
         else:
             a, b = sc(h.point), sc(h.point + h.axis)
             self._per_mm = (b[0] - a[0], b[1] - a[1])
-            if math.hypot(*self._per_mm) < 1e-3:
-                raise RuntimeError("the direction points at the viewer")
+            axes = [sc(h.point + App.Vector(*e)) for e in ((1, 0, 0), (0, 1, 0), (0, 0, 1))]
+            if end_on(self._per_mm, [(q[0] - a[0], q[1] - a[1]) for q in axes]):
+                raise RuntimeError("that direction points at the viewer: turn the view")
         if doc.HasPendingTransaction:  # a stray change: its own step, apart from the drag
             doc.commitTransaction()
         if not doc.UndoMode:
@@ -260,18 +274,24 @@ class HandleDrag:
         doc = None if closing else self._doc()
         if doc is None:
             return False
-        moved = False
+        moved, done = False, False
         try:
-            for name in self._held:
-                o = doc.getObject(name)
-                if o is not None:
-                    assembly.unground(o)
-            link = doc.getObject(self.link_name)
-            moved = moved_ok and link is not None and not link.Placement.isSame(self._start, 1e-9)
-            if moved:
-                doc.recompute()
-            if doc.HasPendingTransaction:
-                doc.commitTransaction() if moved else doc.abortTransaction()
+            try:
+                for name in self._held:
+                    o = doc.getObject(name)
+                    if o is not None:
+                        assembly.unground(o)
+                link = doc.getObject(self.link_name)
+                moved = moved_ok and link is not None and not link.Placement.isSame(self._start, 1e-9)
+                if moved:
+                    doc.recompute()
+                if doc.HasPendingTransaction:
+                    doc.commitTransaction() if moved else doc.abortTransaction()
+                done = True
+            finally:
+                if not done and doc.HasPendingTransaction:
+                    moved = False
+                    doc.abortTransaction()  # a failed clean-up: the step goes, the part and the grounds with it
         finally:
             self._held = []
         return moved
@@ -350,6 +370,8 @@ class Handles:
         out = []
         for k, h in enumerate(handles):
             polylines = [[sc(p) for p in h.line]]
+            if h.kind == "slide" and polyline_length(polylines[0]) < MIN_SHAFT_PX:
+                continue  # seen end-on: a dot at the part's centre, where the user aims to drag the part itself
             polylines += [[sc(tip), sc(tip - d * h_len)] for tip, d in h.heads]
             out.append((k, polylines))
         return out
@@ -404,7 +426,22 @@ class Handles:
             self.finish(moved_ok=False)
 
     def release(self):
+        """The press's release: True when it was a plain click (no drag) for FreeCAD to have — it selects or clears
+        as usual — unless the gizmo's own part is under it (then nothing changes)."""
+        drag = self.drag
+        click = drag is not None and not drag.started
         self.finish()
+        if not click:
+            return False
+        try:
+            from incad.ui.asm_drag import component_in_hits
+            from incad.ui.nav import to_coin
+            import FreeCAD as App
+            doc = App.getDocument(drag.doc_name)
+            link = component_in_hits(doc, drag.view.getObjectsInfo(to_coin(drag.viewport, *drag.press)))
+            return link is None or link.Name != drag.link_name
+        except Exception:
+            return False
 
     def finish(self, moved_ok=True, closing=False):
         """End the handle drag (its release, a command, a closing document or tab): the clean-up runs once."""

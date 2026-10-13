@@ -417,6 +417,8 @@ class Shell(QtCore.QObject):
             a.setMenuRole(QAction.QuitRole)
 
     def _on_subwindow(self, window):
+        if self.dof_handles is not None and self.dof_handles.dragging():
+            self.dof_handles.finish()  # another tab: a handle drag going on ends (its release goes elsewhere)
         if window is not None and _is_start_page(window):  # FreeCAD's Start page came up (seen after Finish
             QtCore.QTimer.singleShot(0, self._front_last_view)  # Sketch): the part stays in front
 

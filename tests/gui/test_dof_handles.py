@@ -398,6 +398,115 @@ def test_8_no_handle_while_a_constraint_dialog_is_open():
     assert same(b.Placement, bb) and temp_grounds() == 1
 
 
+def own_arc_spot(deg=45):
+    """(k, arc, t0): a point of the arc 8 px outside it that lies over the bar itself and catches that arc."""
+    k, arc = handle("turn")
+    for i in range(48):
+        t0 = 0.05 + 0.1 * i
+        if not 0 <= t0 + math.radians(deg) <= 1.5 * math.pi:
+            continue
+        q = arc_path(arc, t0, deg)[0]
+        if hits_bar(q) and s().dof_handles.hit(view(), viewport(), q.x(), q.y()) == k:
+            return k, arc, t0
+    return k, arc, None
+
+
+def test_10_a_click_on_a_handle_goes_to_freecad_unless_over_its_own_part():
+    select_bar()
+    sel = lambda: [(x.ObjectName, tuple(x.SubElementNames)) for x in Gui.Selection.getSelectionEx("", 0)]
+    k, arc, t0 = own_arc_spot()
+    assert t0 is not None, "a spot of the arc over the bar"
+    before = sel()
+    click(arc_path(arc, t0, 45)[0])
+    assert gizmo() == ST["b"] and sel() == before, ("a click on a handle over its own part changes nothing", sel())
+    outside = [p for p in arc.line if not hits_bar(screen_of(p))
+               and s().dof_handles.hit(view(), viewport(), *pt(screen_of(p))) == k]
+    assert outside, "a point of the arc off the bar"
+    click(screen_of(outside[len(outside) // 2]))
+    assert gizmo() is None, ("the click went to FreeCAD: it selected what is there (not the bar)", sel())
+
+
+def test_11_a_quick_second_press_still_grabs():
+    """Qt sends the second press of a quick retry as a double-click event: it must still be the handle's."""
+    select_bar()
+    b = obj("b")
+    bb = App.Placement(b.Placement)
+    k, arc, t0 = own_arc_spot()
+    path = arc_path(arc, t0, 45)
+    hover(path[0], 300)
+    send(QtCore.QEvent.MouseButtonPress, path[0], L, L)
+    harness.pump(30)
+    send(QtCore.QEvent.MouseButtonRelease, path[0], L, N)  # a press that did not move: a click on its own part
+    harness.pump(30)
+    send(QtCore.QEvent.MouseButtonDblClick, path[0], L, L)
+    harness.pump(60)
+    for p in path[1:]:
+        send(QtCore.QEvent.MouseMove, p, N, L)
+        harness.pump(40)
+    send(QtCore.QEvent.MouseButtonRelease, path[-1], L, N)
+    harness.pump(800)
+    rel = b.Placement.multiply(bb.inverse())
+    assert abs(math.degrees(rel.Rotation.Angle) - 45) < 4 or abs(math.degrees(rel.Rotation.Angle) - 315) < 4, \
+        ("the retry turned the bar", math.degrees(rel.Rotation.Angle))
+    assert doc().UndoNames[0] == "Move part" and temp_grounds() == 1
+    commands.REGISTRY.run("edit.undo")
+    harness.pump(800)
+    assert same(b.Placement, bb)
+
+
+def test_12_shift_press_on_a_handle_is_freecads():
+    select_bar()
+    b = obj("b")
+    bb = App.Placement(b.Placement)
+    k, arc, t0 = own_arc_spot()
+    path = arc_path(arc, t0, 45)
+    vp = viewport()
+    for i, p in enumerate(path):
+        kind = QtCore.QEvent.MouseButtonPress if i == 0 else QtCore.QEvent.MouseMove
+        QtWidgets.QApplication.sendEvent(vp, QtGui.QMouseEvent(kind, p, QtCore.QPointF(vp.mapToGlobal(p.toPoint())),
+                                                                L if i == 0 else N, L, QtCore.Qt.ShiftModifier))
+        harness.pump(40)
+    assert not s().dof_handles.dragging(), "no handle drag with Shift"
+    send(QtCore.QEvent.MouseButtonRelease, path[-1], L, N)
+    harness.pump(800)
+    rel = b.Placement.multiply(bb.inverse())
+    assert abs(math.degrees(rel.Rotation.Angle)) < 1e-6 or abs(math.degrees(rel.Rotation.Angle) - 360) < 1e-6, \
+        "the bar did not turn"
+    if not same(b.Placement, bb):  # FreeCAD's own drag of the part (it slides on the plate)
+        commands.REGISTRY.run("edit.undo")
+        harness.pump(800)
+    Gui.Selection.clearSelection()
+    harness.pump(300)
+
+
+def test_13_an_arrow_seen_end_on_is_no_handle():
+    c = obj("c")
+    start = App.Placement(c.Placement)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, c.Name)
+    view().viewFront()  # looking along +Y: the cube's Y arrow is a dot at its centre
+    Gui.SendMsgToActiveView("ViewSelection")
+    harness.pump(800)
+    assert gizmo() == ST["c"], gizmo()
+    hs = s().dof_handles.drawn[2]
+    ky = [k for k, h in enumerate(hs) if h.kind == "slide" and abs(h.axis.y) > 0.99][0]
+    keys = [k for k, _ in s().dof_handles._candidates(view(), viewport())]
+    assert ky not in keys, ("the end-on arrow is no handle", ky, keys)
+    centre = screen_of(c.Shape.BoundBox.Center)
+    assert s().dof_handles.hit(view(), viewport(), centre.x(), centre.y()) != ky
+    n0 = len(doc().UndoNames)
+    drag_path([QtCore.QPointF(centre.x() + i, centre.y()) for i in range(0, 11)])
+    moved = c.Placement.Base - start.Base
+    assert abs(moved.y) < 1e-6 and moved.Length < 20, ("no fling along the end-on arrow", moved)
+    if len(doc().UndoNames) > n0:
+        commands.REGISTRY.run("edit.undo")
+        harness.pump(800)
+    Gui.Selection.clearSelection()
+    view().viewIsometric()
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(500)
+
+
 def test_9_cleanup():
     for name in list(App.listDocuments()):
         App.closeDocument(name)
@@ -408,5 +517,7 @@ TESTS = [test_0_setup, test_1_a_click_shows_the_gizmo, test_2_the_gizmo_stays_on
          test_3_drag_the_arc_a_quarter_turn, test_3b_every_arc_of_a_free_part_turns_by_the_pointer_both_ways,
          test_4_drag_an_arrow_slides_along_it,
          test_5_a_press_on_the_part_off_the_handles_is_freecads_drag, test_6_a_command_ends_a_handle_drag_first,
-         test_7_a_click_on_empty_space_hides_the_gizmo, test_8_no_handle_while_a_constraint_dialog_is_open]
+         test_7_a_click_on_empty_space_hides_the_gizmo, test_8_no_handle_while_a_constraint_dialog_is_open,
+         test_10_a_click_on_a_handle_goes_to_freecad_unless_over_its_own_part, test_11_a_quick_second_press_still_grabs,
+         test_12_shift_press_on_a_handle_is_freecads, test_13_an_arrow_seen_end_on_is_no_handle]
 harness.run(TESTS + [test_9_cleanup])

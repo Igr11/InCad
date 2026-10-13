@@ -11,6 +11,9 @@ KINDS = {QtCore.QEvent.MouseButtonPress: "press", QtCore.QEvent.MouseButtonRelea
          QtCore.QEvent.MouseMove: "move", QtCore.QEvent.MouseButtonDblClick: "dblclick"}
 
 
+SELECT_MODIFIERS = QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier | QtCore.Qt.MetaModifier  # add to the selection
+
+
 def to_coin(viewport, x, y):
     """Qt viewport position (logical px, top-left origin) -> Coin position (device px, bottom-left origin)."""
     dpr = viewport.devicePixelRatioF()
@@ -50,11 +53,13 @@ class Navigator(QtCore.QObject):
         self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click
         self.dblclick_hook = None   # same for left double-clicks
         self.drag_hook = None       # begin(view, viewport, x, y) on a left drag, end() on its release
-        # InCad's own drags (DOF handles): press(view, viewport, x, y) -> True takes a left press; its moves go to
-        # move(x, y) and its release (or a lost one) to release(), all consumed; hover(view, viewport, x, y) on every
-        # move with no button (the event still reaches FreeCAD)
+        # InCad's own drags (DOF handles): press(view, viewport, x, y) -> True takes a plain left press (or the
+        # double-click event Qt sends for a quick second press); its moves go to move(x, y) and its release (or a
+        # lost one) to release(), all consumed — release() -> True: it was a click for FreeCAD, which gets it
+        # replayed; hover(view, viewport, x, y) on every move with no button (the event still reaches FreeCAD)
         self.handle_hook = None
         self._handle_viewport = None  # the viewport of a handle drag going on
+        self._handle_press = None     # (x, y, modifiers) of its press
         self._swallow_release = False
 
     def attached(self):
@@ -112,10 +117,11 @@ class Navigator(QtCore.QObject):
             if self._handle_viewport is not None and obj is self._handle_viewport:
                 return self._handle_event(kind, event, pos)
             if self.handle_hook is not None and self.mode is None and machine.state == "idle":
-                if kind == "press" and event.button() == QtCore.Qt.LeftButton \
-                        and event.buttons() == QtCore.Qt.LeftButton \
+                if kind in ("press", "dblclick") and event.button() == QtCore.Qt.LeftButton \
+                        and event.buttons() == QtCore.Qt.LeftButton and not event.modifiers() & SELECT_MODIFIERS \
                         and self._call_handle("press", view, obj, pos.x(), pos.y()):
                     self._handle_viewport = obj
+                    self._handle_press = (pos.x(), pos.y(), event.modifiers())
                     return True
                 if kind == "move" and event.buttons() == QtCore.Qt.NoButton:
                     self._call_handle("hover", view, obj, pos.x(), pos.y())
@@ -160,14 +166,20 @@ class Navigator(QtCore.QObject):
         if kind == "move":
             self._call_handle("move", pos.x(), pos.y())
         elif kind == "release" and event.button() == QtCore.Qt.LeftButton:
-            self._end_handle()
+            self._end_handle(replay=True)
         return True
 
-    def _end_handle(self):
-        if self._handle_viewport is not None:
-            self._handle_viewport = None
-            if self.handle_hook is not None:
-                self._call_handle("release")
+    def _end_handle(self, replay=False):
+        """The handle drag's end; replay: a release that ended a click the hook gives back goes to FreeCAD as
+        that click (it selects or clears the selection as usual)."""
+        viewport, press = self._handle_viewport, self._handle_press
+        if viewport is not None:
+            self._handle_viewport = self._handle_press = None
+            if self.handle_hook is not None and self._call_handle("release") and replay and press is not None:
+                try:
+                    self._replay(viewport, press[0], press[1], press[2], QtCore.Qt.LeftButton, release=True)
+                except RuntimeError:
+                    pass
 
     def _do(self, viewport, view, action, press_modifiers):
         name = action[0]
