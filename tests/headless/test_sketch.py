@@ -377,7 +377,7 @@ class ProjectedEdgesTest(unittest.TestCase):
             sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, g, 2))
         self.doc.recompute()
 
-    def test_old_tied_copies_are_removed_and_the_projected_edges_take_their_place(self):
+    def test_old_tied_copies_in_an_unused_sketch_are_removed_and_the_projected_edges_take_their_place(self):
         sk = self.top_sketch()
         self.old_style_copies(sk)
         # the user's own (construction) line joined to a copy's end: it stays joined, to the projected edge
@@ -385,17 +385,34 @@ class ProjectedEdgesTest(unittest.TestCase):
         own = sk.addGeometry(Part.LineSegment(corner, corner + App.Vector(-5, -7, 0)), True)
         sk.addConstraint(Sketcher.Constraint("Coincident", own, 1, 0, 1))
         self.doc.recompute()
-        pad = self.pad_of(sk)
-        self.assertAlmostEqual(pad.Shape.Volume, 3000, 3)
         exts = sketch.projected(sk)
+        undo = self.doc.UndoCount
         self.assertTrue(sketch.adopt_projections(sk))
+        self.assertEqual(self.doc.UndoCount, undo)
         self.assertEqual(sk.GeometryCount, 1, "only the user's own line is left")
         self.assertTrue(all(sketch.is_defining(sk, g) for g in exts))
         joined = [(c.First, c.FirstPos, c.Second, c.SecondPos) for c in sk.Constraints if c.Type == "Coincident"]
         self.assertEqual(joined, [(0, 1, exts[0], 1)], "the user's line now joins the projected edge")
+        pad = self.pad_of(sk)
         self.assertNotIn("Invalid", pad.State)
-        self.assertAlmostEqual(pad.Shape.Volume, 3000, 3)
+        self.assertAlmostEqual(pad.Shape.Volume, 3000, 3)  # the same profile the copies made
         self.assertFalse(sketch.adopt_projections(sk))
+
+    def test_old_tied_copies_in_a_used_sketch_stay_until_nothing_uses_it(self):
+        sk = self.top_sketch()
+        self.old_style_copies(sk)
+        pad = self.pad_of(sk)
+        notes = []
+        self.assertFalse(sketch.adopt_projections(sk, notes))
+        self.assertEqual(sk.GeometryCount, 4, "the copies stay: the Extrude is left exactly as it was")
+        self.assertFalse(any(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
+        self.assertAlmostEqual(pad.Shape.Volume, 3000, 3)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("is used by Pad2", notes[0])
+        self.unuse(pad)
+        self.assertTrue(sketch.adopt_projections(sk))
+        self.assertEqual(sk.GeometryCount, 0)
+        self.assertTrue(all(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
 
     def test_an_old_copy_switched_to_construction_leaves_its_projected_edge_construction(self):
         sk = self.top_sketch()
@@ -408,133 +425,124 @@ class ProjectedEdgesTest(unittest.TestCase):
         self.assertEqual([sketch.is_defining(sk, g) for g in exts], [True, True, False, True])
         self.assertFalse(self.closed(sk))
 
-    def test_a_projected_reference_edge_that_would_break_an_extrude_stays_construction(self):
-        """The user's real part (p2_test_reordered): a rectangle extruded, an edge projected beside it to dimension
-        against. As normal geometry that edge is a loose wire and the Extrude fails ('Wire is not closed'): it
-        stays construction, recorded as a choice, and the reason is noted."""
-        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
-        sk = sketch.make_sketch(self.body, self.pad, "Face%d" % top)
-        pts = [App.Vector(2, 2, 0), App.Vector(8, 2, 0), App.Vector(8, 6, 0), App.Vector(2, 6, 0)]
-        for i in range(4):
-            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
-        edge = [i + 1 for i, e in enumerate(self.pad.Shape.Edges) if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes)][0]
-        sk.addExternal(self.pad.Name, "Edge%d" % edge)
-        self.doc.recompute()
-        pad = self.pad_of(sk)
-        self.assertNotIn("Invalid", pad.State)
-        notes = []
-        self.assertTrue(sketch.adopt_projections(sk, notes))
-        self.assertNotIn("Invalid", pad.State, pad.getStatusString())
-        self.assertAlmostEqual(pad.Shape.Volume, 2000 + 6 * 4 * 5, 3)
-        self.assertFalse(sketch.is_defining(sk, -3))
-        self.assertEqual(len(notes), 1)
-        self.assertIn("Wire is not closed", notes[0])
-        self.assertFalse(sketch.adopt_projections(sk), "decided once: it stays construction")
-
-    def test_a_face_projected_around_an_extruded_rectangle_stays_construction_until_the_extrude_goes(self):
-        """The common Inventor workflow (review of d677c54): project the face to dimension against, draw a
-        rectangle inside, extrude it. As normal geometry the face loop would turn the Pad into face-minus-rectangle
-        (2120 -> 2880, still valid): a CHANGED result keeps the edges construction too. They are kept apart from
-        the user's own choices and tried again when the features using the sketch change."""
-        sk = self.top_sketch()
-        pts = [App.Vector(2, 2, 0), App.Vector(8, 2, 0), App.Vector(8, 6, 0), App.Vector(2, 6, 0)]
-        for i in range(4):
-            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
-        self.doc.recompute()
-        pad = self.pad_of(sk)
-        self.assertAlmostEqual(pad.Shape.Volume, 2120, 3)
-        undo = self.doc.UndoCount
-        notes = []
-        self.assertTrue(sketch.adopt_projections(sk, notes))
-        self.assertNotIn("Invalid", pad.State)
-        self.assertAlmostEqual(pad.Shape.Volume, 2120, 3)
-        self.assertFalse(any(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
-        self.assertEqual(len(notes), 1, notes)
-        self.assertIn("4 projected edges kept as construction", notes[0])
-        self.assertEqual(getattr(sk, sketch.CHOSEN_PROP, []), [], "not the user's choice")
-        self.assertEqual(len(getattr(sk, sketch.KEPT_PROP)), 4)
-        self.assertEqual(self.doc.UndoCount, undo)
-        self.assertFalse(sketch.adopt_projections(sk), "decided while the same features use the sketch")
-        self.doc.removeObject(pad.Name)  # the Extrude goes: the sketch is used by nothing, the rule applies again
-        self.body.Tip = self.pad
-        self.doc.recompute()
-        self.assertTrue(sketch.adopt_projections(sk))
-        self.assertTrue(all(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
-        self.assertEqual(getattr(sk, sketch.KEPT_PROP), [])
-
-    def test_kept_edges_are_tried_one_by_one(self):
-        """Only the edges that would change the result are kept back: a Hole drills the sketch's circles, so a
-        projected circle would add a hole (kept construction), a projected straight edge changes nothing (normal)."""
-        src = sketch.make_sketch(self.body, plane(self.body, "XY_Plane"))
-        src.addGeometry(Part.Circle(App.Vector(15, 5, 0), App.Vector(0, 0, 1), 1.5), False)
-        self.doc.recompute()
-        sk = self.top_sketch(project=False)
-        sk.addGeometry(Part.Circle(App.Vector(5, 5, 0), App.Vector(0, 0, 1), 1.5), False)
-        edge = [i + 1 for i, e in enumerate(self.pad.Shape.Edges) if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes)
-                and e.Curve.TypeId == "Part::GeomLine"][0]
-        sk.addExternal(self.pad.Name, "Edge%d" % edge)
-        sk.addExternal(src.Name, "Edge1")
-        self.doc.recompute()
-        hole = self.body.newObject("PartDesign::Hole", "Hole")
-        hole.Profile = sk
-        hole.Diameter = 3
-        hole.Depth = 4
-        self.body.Tip = hole
-        self.doc.recompute()
-        self.assertNotIn("Invalid", hole.State, hole.getStatusString())
-        volume = hole.Shape.Volume
-        line, circle = sketch.projected(sk)
-        notes = []
-        self.assertTrue(sketch.adopt_projections(sk, notes))
-        self.assertTrue(sketch.is_defining(sk, line), "a straight edge leaves the Hole as it is")
-        self.assertFalse(sketch.is_defining(sk, circle), "a projected circle would drill a second hole")
-        self.assertAlmostEqual(hole.Shape.Volume, volume, 6)
-        self.assertEqual(len(notes), 1)
-        self.assertIn("a projected edge kept as construction", notes[0])
-        self.assertIn("Hole changes", notes[0])
-        # the user's Construction on a kept edge is the user's choice: it is no longer kept back
-        sketch.set_projected_construction(sk, [circle], False)
-        self.assertTrue(sketch.is_defining(sk, circle))
-        self.assertEqual(getattr(sk, sketch.KEPT_PROP), [])
-
-    def test_a_migration_that_would_change_a_result_is_rolled_back(self):
-        sk = self.top_sketch()
-        self.old_style_copies(sk)
-        pad = self.pad_of(sk)
-        count, volume = sk.GeometryCount, pad.Shape.Volume
-        original = sketch._remove_copies
-
-        def spoiled(s, copies):  # a migration gone wrong: a line left across the profile
-            lost = original(s, copies)
-            s.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(20, 10, 0)), False)
-            return lost
-        sketch._remove_copies = spoiled
-        try:
-            notes = []
-            self.doc.clearUndos()
-            self.assertFalse(sketch.adopt_projections(sk, notes))
-        finally:
-            sketch._remove_copies = original
-        self.assertEqual(sk.GeometryCount, count, "the copies are back")
-        self.assertFalse(any(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
-        self.assertNotIn("Invalid", pad.State)
-        self.assertAlmostEqual(pad.Shape.Volume, volume, 6)
-        self.assertEqual((self.doc.UndoCount, self.doc.RedoCount), (0, 0), "the rolled-back step leaves nothing")
-        self.assertEqual(len(notes), 1)
-        self.assertIn("old normal copies of projected edges are kept", notes[0])
-
-    def test_a_migration_on_a_file_just_opened_leaves_no_undo_step_and_names_a_lost_dimension(self):
+    def test_a_dimension_on_an_old_copy_that_cannot_move_is_named(self):
         sk = self.top_sketch()
         self.old_style_copies(sk)
         k = sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 20))  # a dimension on a copy alone
         sk.renameConstraint(k, "d7")
         self.doc.recompute()
-        self.doc.clearUndos()
         notes = []
         self.assertTrue(sketch.adopt_projections(sk, notes))
         self.assertEqual(sk.GeometryCount, 0)
-        self.assertEqual((self.doc.UndoCount, self.doc.RedoCount), (0, 0))
         self.assertTrue(any("d7" in n for n in notes), notes)
+
+    def unuse(self, feature):
+        self.doc.removeObject(feature.Name)
+        self.body.Tip = self.pad
+        self.doc.recompute()
+
+    def test_a_projected_reference_edge_in_an_extruded_sketch_stays_construction(self):
+        """The user's real part (p2_test_reordered): a rectangle extruded, an edge projected beside it to dimension
+        against. The sketch is used: its projections stay construction (normal, the edge would be a loose wire and
+        the Extrude would fail), and a note says how to make them normal."""
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+        sk = sketch.make_sketch(self.body, self.pad, "Face%d" % top)
+        pts = [App.Vector(2, 2, 0), App.Vector(8, 2, 0), App.Vector(8, 6, 0), App.Vector(2, 6, 0)]
+        for i in range(4):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        self.doc.recompute()
+        pad = self.pad_of(sk)
+        edge = [i + 1 for i, e in enumerate(self.pad.Shape.Edges) if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes)][0]
+        sk.addExternal(self.pad.Name, "Edge%d" % edge)  # projected after the Extrude
+        self.doc.recompute()
+        notes = []
+        self.assertFalse(sketch.adopt_projections(sk, notes))
+        self.assertNotIn("Invalid", pad.State, pad.getStatusString())
+        self.assertAlmostEqual(pad.Shape.Volume, 2000 + 6 * 4 * 5, 3)
+        self.assertFalse(sketch.is_defining(sk, -3))
+        self.assertEqual(notes, ["%s is used by Pad2: projected edges stay construction — Construction makes them "
+                                 "normal" % sk.Label])
+        self.assertEqual(getattr(sk, sketch.CHOSEN_PROP, []), [], "not recorded as the user's choice")
+        self.assertEqual(len(sketch.pending_projections(sk)), 1)
+
+    def test_a_face_projected_around_an_extruded_rectangle_stays_construction_until_the_extrude_goes(self):
+        """The reviewer's probe: project the face to dimension against, draw a rectangle inside, extrude it. As
+        normal geometry the face loop would turn the Pad into face-minus-rectangle (2120 -> 2880, still valid).
+        The sketch is used, so nothing changes; when the Extrude goes, the next adopt makes them normal."""
+        sk = self.top_sketch()
+        pts = [App.Vector(2, 2, 0), App.Vector(8, 2, 0), App.Vector(8, 6, 0), App.Vector(2, 6, 0)]
+        for i in range(4):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        self.doc.recompute()
+        pad = self.pad_of(sk)
+        self.assertAlmostEqual(pad.Shape.Volume, 2120, 3)
+        notes = []
+        self.assertFalse(sketch.adopt_projections(sk, notes))
+        self.assertAlmostEqual(pad.Shape.Volume, 2120, 3)
+        self.assertFalse(any(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
+        self.assertEqual(len(notes), 1)
+        self.unuse(pad)
+        self.assertTrue(sketch.adopt_projections(sk))
+        self.assertTrue(all(sketch.is_defining(sk, g) for g in sketch.projected(sk)))
+
+    def test_a_line_projected_across_a_circle_with_an_area_profile_stays_construction(self):
+        """The reviewer's second probe: an InCad area profile names its source only in its data (not a link), so the
+        sketch's InList misses it. A projected line across the circle would halve the extruded area silently
+        (2251.3 -> 2125.7 once the area follows): an area profile makes the sketch used too."""
+        from incad.core import regions
+        src = sketch.make_sketch(self.body, plane(self.body, "XY_Plane"))
+        src.addGeometry(Part.LineSegment(App.Vector(10, -1, 0), App.Vector(10, 11, 0)), False)
+        self.doc.recompute()
+        sk = self.top_sketch(project=False)
+        sk.addGeometry(Part.Circle(regions.to_local(sk, App.Vector(10, 5, 10)), App.Vector(0, 0, 1), 4), False)
+        self.doc.recompute()
+        face = regions.region_at(sk, regions.to_local(sk, App.Vector(8, 5, 10)))
+        prof = regions.make_profile(self.doc, self.body, sk, face)
+        pad = self.body.newObject("PartDesign::Pad", "AreaPad")
+        pad.Profile = prof
+        pad.Length = 5
+        self.body.Tip = pad
+        self.doc.recompute()
+        volume = pad.Shape.Volume
+        sk.addExternal(src.Name, "Edge1")
+        self.doc.recompute()
+        self.assertIn(prof, sketch.users(sk))
+        notes = []
+        self.assertFalse(sketch.adopt_projections(sk, notes))
+        self.assertFalse(sketch.is_defining(sk, -3))
+        self.assertEqual(len(notes), 1)
+        regions.follow(sk, set())  # what the shell's _update_area_profiles does after a change
+        self.doc.recompute()
+        self.assertAlmostEqual(pad.Shape.Volume, volume, 6)
+        self.unuse(pad)
+        self.doc.removeObject(prof.Name)
+        self.doc.recompute()
+        self.assertEqual(sketch.users(sk), [])
+        self.assertTrue(sketch.adopt_projections(sk))
+        self.assertTrue(sketch.is_defining(sk, -3))
+
+    def test_a_second_adopt_does_nothing(self):
+        """One burst of changes at most: the second call neither sets a flag nor removes geometry."""
+        sk = self.top_sketch()
+        self.old_style_copies(sk)
+        calls = []
+        set_defining, remove = sketch.set_defining, sketch._remove_copies
+        sketch.set_defining = lambda *a: calls.append("set_defining") or set_defining(*a)
+        sketch._remove_copies = lambda *a: calls.append("remove") or remove(*a)
+        try:
+            self.assertTrue(sketch.adopt_projections(sk))
+            self.assertEqual(calls, ["remove", "set_defining"])
+            del calls[:]
+            geos = [g.TypeId for g in sk.ExternalGeo]
+            self.assertFalse(sketch.adopt_projections(sk))
+            self.assertEqual(calls, [])
+            self.assertEqual([g.TypeId for g in sk.ExternalGeo], geos)
+            pad = self.pad_of(sk)  # used now: still nothing
+            self.assertFalse(sketch.adopt_projections(sk))
+            self.assertEqual(calls, [])
+            self.assertAlmostEqual(pad.Shape.Volume, 3000, 3)
+        finally:
+            sketch.set_defining, sketch._remove_copies = set_defining, remove
 
     def test_adopt_is_idempotent_makes_no_undo_step_and_waits_for_an_open_step(self):
         sk = self.top_sketch()

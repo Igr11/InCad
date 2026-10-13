@@ -170,31 +170,41 @@ def test_4b_construction_that_would_break_the_extrude_is_refused_like_any_profil
     assert "Invalid" not in ST["extrude"].State and abs(body().Shape.Volume - volume) < 1e-6
 
 
+def _with_old_copies(pad, sk):
+    for i, e in enumerate(pad.Shape.Edges):
+        if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes):
+            sk.addExternal(pad.Name, "Edge%d" % (i + 1))
+    doc().recompute()
+    for g in sketch.projected(sk):
+        new = sk.addGeometry(sk.ExternalGeo[-g - 1].copy(), False)
+        sk.setConstruction(new, False)
+        sk.addConstraint(Sketcher.Constraint("Coincident", new, 1, g, 1))
+        sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, g, 2))
+    doc().recompute()
+
+
 def _old_style_file(path):
     """A part as the old InCad left it: projected edges construction, a normal copy tied on each (the old
-    Construction button), extruded. Built with the shell's adopting switched off, as an older InCad would."""
+    Construction button), in two sketches: one extruded, one used by nothing. Built with the shell's adopting
+    switched off, as an older InCad would."""
     commands.REGISTRY.run("file.new")
     harness.pump(800)
     adopt, s()._adopt_projections = s()._adopt_projections, lambda *a, **k: None
     try:
         pad, sk = block()
-        for i, e in enumerate(pad.Shape.Edges):
-            if all(abs(v.Z - 10) < 1e-6 for v in e.Vertexes):
-                sk.addExternal(pad.Name, "Edge%d" % (i + 1))
-        doc().recompute()
-        for g in sketch.projected(sk):
-            new = sk.addGeometry(sk.ExternalGeo[-g - 1].copy(), False)
-            sk.setConstruction(new, False)
-            sk.addConstraint(Sketcher.Constraint("Coincident", new, 1, g, 1))
-            sk.addConstraint(Sketcher.Constraint("Coincident", new, 2, g, 2))
+        _with_old_copies(pad, sk)
+        top = sk.AttachmentSupport[0][1][0]
+        spare = sketch.make_sketch(body(), pad, top)
+        _with_old_copies(pad, spare)
         ext = util.add_pad(body(), sk, 5, name="OnTop")
         body().Tip = ext
         doc().recompute()
         harness.pump(500)
-        assert sk.GeometryCount == 4 and not any(sketch.is_defining(sk, g) for g in sketch.projected(sk))
+        for k in (sk, spare):
+            assert k.GeometryCount == 4 and not any(sketch.is_defining(k, g) for g in sketch.projected(k))
         assert "Invalid" not in ext.State, ext.getStatusString()
         volume = body().Shape.Volume
-        names = (sk.Name, ext.Name)
+        names = (sk.Name, spare.Name, ext.Name)
         doc().saveAs(path)
     finally:
         s()._adopt_projections = adopt
@@ -203,16 +213,18 @@ def _old_style_file(path):
     return names, volume
 
 
-def test_5_an_old_file_is_migrated_on_open():
+def test_5_an_old_file_is_migrated_on_open_where_nothing_uses_the_sketch():
     path = os.path.join(ST["dir"], "OldStyle.FCStd")
-    (sk_name, ext_name), volume = _old_style_file(path)
+    (sk_name, spare_name, ext_name), volume = _old_style_file(path)
     App.openDocument(path)
     harness.pump(3000)
     d = App.ActiveDocument
     assert d is not None and d.FileName == path
-    sk, ext = d.getObject(sk_name), d.getObject(ext_name)
-    assert sk.GeometryCount == 0, "the tied copies are gone (%d left)" % sk.GeometryCount
-    assert all(sketch.is_defining(sk, g) for g in sketch.projected(sk))
+    sk, spare, ext = d.getObject(sk_name), d.getObject(spare_name), d.getObject(ext_name)
+    assert spare.GeometryCount == 0, "the unused sketch's tied copies are gone (%d left)" % spare.GeometryCount
+    assert all(sketch.is_defining(spare, g) for g in sketch.projected(spare))
+    assert sk.GeometryCount == 4, "the extruded sketch is left as it was"
+    assert not any(sketch.is_defining(sk, g) for g in sketch.projected(sk))
     assert "Invalid" not in ext.State, ext.getStatusString()
     assert abs(document.primary_body(d).Shape.Volume - volume) < 1e-6
     assert d.UndoCount == 0, d.UndoNames  # the migration is no undo step
@@ -237,5 +249,5 @@ harness.run([test_0_setup, test_1_edges_projected_while_sketching_are_normal_rig
              test_3_the_construction_choice_is_kept_when_more_is_projected,
              test_4_finish_and_extrude_the_loop_of_projected_edges,
              test_4b_construction_that_would_break_the_extrude_is_refused_like_any_profile_edge,
-             test_5_an_old_file_is_migrated_on_open,
+             test_5_an_old_file_is_migrated_on_open_where_nothing_uses_the_sketch,
              test_6_a_file_with_nothing_to_adopt_is_not_marked_modified_on_open])

@@ -317,6 +317,7 @@ class Shell(QtCore.QObject):
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
         self._area_warned = set()  # area copies already reported as lost (until their area is back)
         self._visibility_applied = set()  # document names whose saved visibility was put in step once
+        self._projections_told = {}  # (doc, sketch) -> Refs of projected edges a used sketch was told to keep
         self._sel_watch = None
         self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
@@ -1352,9 +1353,14 @@ class Shell(QtCore.QObject):
                     log.logger().info("Projected edges of %s: still busy after 6 s, left to the next change", sk.Label)
                 return
             notes = []
-            sketches.adopt_projections(sk, notes)
-            for text in notes:
-                log.report("info", text)
+            adopted = sketches.adopt_projections(sk, notes)
+            key = (doc.Name, sk.Name)
+            pending = sketches.pending_projections(sk)
+            new = pending - self._projections_told.get(key, set())
+            self._projections_told[key] = pending
+            if adopted or new:  # a used sketch says so once per new projection, not on every edit
+                for text in notes:
+                    log.report("info", text)
         except Exception as e:
             log.report("warning", "Could not make the projected edges normal geometry: %s" % e, traceback.format_exc())
 
@@ -1375,7 +1381,10 @@ class Shell(QtCore.QObject):
                 return
             notes = []
             for sk in [o for o in doc.Objects if sketches.is_sketch(o)]:
-                sketches.adopt_projections(sk, notes)  # recomputes only when it changed something
+                told = []
+                if sketches.adopt_projections(sk, told):  # recomputes only when it changed something
+                    notes += told  # a used sketch is left as it is, silently: it was made that way
+                self._projections_told[(name, sk.Name)] = sketches.pending_projections(sk)
             for text in notes:
                 log.report("info", text)
         except Exception as e:
