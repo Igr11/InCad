@@ -43,11 +43,29 @@ def claims(feature):
     return hasattr(feature, _STORE)
 
 
-def defaults(doc, body, profile_=None):
+def default_clearance(std):
+    """The print clearance a thread of this standard starts with (mm): more for print-friendly threads."""
     from incad.core import prefs
+    return standards.default_clearance(std, prefs.thread_clearance())
+
+
+def defaults(doc, body, profile_=None):
     values = {f.key: f.default for f in FIELDS}
-    values.update(face="", start_face="", size="", clearance="%g mm" % prefs.thread_clearance(), internal=False)
+    values.update(face="", start_face="", size="", internal=False)
+    values["clearance"] = "%g mm" % default_clearance(values.get("standard"))
     return values
+
+
+def follow(before, values):
+    """Dialog values that follow a change: a new standard brings its own print clearance, unless the clearance was
+    typed (it is no longer the old standard's default)."""
+    old, new = before.get("standard"), values.get("standard")
+    if old == new or old is None:
+        return {}
+    was = _mm(before.get("clearance"), None)
+    if was is None or abs(was - default_clearance(old)) > 1e-9:
+        return {}
+    return {"clearance": "%g mm" % default_clearance(new)}
 
 
 def _mm(text, default=0.0):

@@ -64,7 +64,7 @@ Logs: ~/Library/Logs/InCad.log
   profiles, assembly cuts); one undo step.
 - Thread: select the outside of a shaft or the inside of a hole, then Thread. Real helical geometry in ISO metric,
   ISO fine, UNC, UNF, G/BSP, NPT (tapered), Trapezoidal, ACME, Print-friendly (flat crests) or Custom; the size is
-  suggested from the face; a print clearance (default 0.2 mm) makes printed parts fit.
+  suggested from the face; a print clearance (default 0.2 mm, 0.3 mm print-friendly) makes printed parts fit.
 - Hole ▸ Threaded: modeled ISO / UNC / UNF / UNEF / NPT / G / BSW / BSF threads with the same print clearance.
   For Trapezoidal, ACME, print-friendly or custom threads in a hole, drill the hole, then use Thread on its face.
 - Combine: select the base solid, then the tool solid(s), then Combine — Join, Cut or Intersect. Tools are always

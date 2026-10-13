@@ -94,6 +94,8 @@ Bug fixes
   those threads off too; the holes themselves stay.
 - Threads Off / On (and Suppress on a thread) did nothing when something was made on a face of a
   later feature while the threads were off. InCad now finds the same face again by its geometry.
+- Thread: choosing the Print-friendly standard sets the print clearance to 0.3 mm (0.2 mm for the
+  others); a clearance you typed yourself is kept.
 - Thread on a rod came out sloppy: a hair-thin fin (about 0.04 mm) stayed on every crest, worse
   when the rod was a little larger than the size (M2.5 on Ø2.594), and next to a shoulder. The rod
   is now turned down to the thread's crests first (a ThreadTrim step under the Thread); the end

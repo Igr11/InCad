@@ -90,6 +90,7 @@ class FeatureSession(QtCore.QObject):
         if self.feature is not None:
             self.dialog.set_values({f.key: values.get(f.key) for f in self.kind.FIELDS if f.kind == "combo"})
         self._applied = self.dialog.values()
+        self._seen = self.dialog.values()  # what kind.follow compares a change with
         self._label_params()
         self.dialog.move(16, 16)
         self.dialog.show()
@@ -572,7 +573,25 @@ class FeatureSession(QtCore.QObject):
                 if ok:
                     self.dialog.set_values({key: ok[0]})
 
+    def _follow(self, values):
+        """Values that follow a change the user made (kind.follow: Thread's clearance follows its standard)."""
+        hook = getattr(self.kind, "follow", None)
+        before = getattr(self, "_seen", None)
+        self._seen = dict(values)  # first: setting the followers below may report a change again
+        if hook is not None and before is not None and self.dialog is not None:
+            try:
+                more = hook(before, values)
+            except Exception as e:
+                log.logger().warning("%s follow: %s", getattr(self.kind, "NAME", "dialog"), e)
+                more = {}
+            if more:
+                self.dialog.set_values(more)
+                values = self.dialog.values()
+        self._seen = dict(values)
+        return values
+
     def _changed(self, values):
+        values = self._follow(values)
         self._sync_choices(values)
         self._activate_revealed_pick()
         self._refresh_options()

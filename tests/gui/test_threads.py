@@ -86,6 +86,32 @@ def test_2_edit_the_thread_size():
     assert abs(doc().getObject(ST["thread"]).Pitch.Value - 1.0) < 1e-6
 
 
+def test_2b_print_friendly_takes_0_3_mm_clearance():
+    """The user: print-friendly threads get 0.3 mm print clearance, set when the standard is chosen; back to ISO puts
+    0.2 mm back; a typed clearance stays."""
+    t = doc().getObject(ST["thread"])
+    shell.edit_feature(t)
+    harness.pump(900)
+    assert dialog().values()["clearance"] == "0.2 mm", dialog().values()
+    combo = dialog().field("standard")
+    combo.setCurrentIndex(combo.findData("print"))
+    harness.pump(600)
+    assert dialog().values()["clearance"] == "0.3 mm", dialog().values()
+    combo.setCurrentIndex(combo.findData("iso"))
+    harness.pump(600)
+    assert dialog().values()["clearance"] == "0.2 mm", dialog().values()
+    w = dialog().field("clearance")
+    w.setText("0.25 mm")
+    w.editingFinished.emit()
+    harness.pump(600)
+    combo.setCurrentIndex(combo.findData("print"))
+    harness.pump(600)
+    assert dialog().values()["clearance"] == "0.25 mm", dialog().values()
+    s().feature_session.cancel()
+    harness.pump(900)
+    assert s().feature_session is None
+
+
 def test_3_threaded_hole():
     tip = body().Tip
     sk = util.add_rect_sketch(body(), w=30, h=20, name="Plate")
@@ -194,6 +220,7 @@ def test_4_threads_button_turns_every_thread_off_and_on():
 
 
 harness.run([test_0_setup, test_1_thread_on_a_selected_shaft_face, test_2_edit_the_thread_size,
+             test_2b_print_friendly_takes_0_3_mm_clearance,
              test_3_threaded_hole, test_4_threads_button_turns_every_thread_off_and_on,
              test_edit_changes_the_start_face_and_offset,
              test_delete_from_a_3d_face_selection_removes_only_the_thread])
