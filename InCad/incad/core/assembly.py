@@ -107,12 +107,18 @@ def place(doc, path, beside=True):
     if not existing:
         ground(link)
     elif beside:
-        boxes = [c.Shape.BoundBox for c in existing if not c.Shape.isNull()]
+        boxes = [b for b in (_box(c) for c in existing) if b is not None]  # a part without a solid has no shape
         right = max(bb.XMax for bb in boxes) if boxes else 0.0
-        left = link.Shape.BoundBox.XMin if not link.Shape.isNull() else 0.0
+        mine = _box(link)
+        left = mine.XMin if mine is not None else 0.0
         link.Placement = App.Placement(App.Vector(right + GAP - left, 0, 0), App.Rotation())
         doc.recompute()
     return link
+
+
+def _box(link):
+    shape = getattr(link, "Shape", None)
+    return shape.BoundBox if shape is not None and not shape.isNull() else None
 
 
 def _safe_name(stem):
