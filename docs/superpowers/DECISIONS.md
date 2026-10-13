@@ -320,3 +320,8 @@ on the user's behalf with what it costs if wrong; every **minor** is a review fi
   test_dimbox, test_features 9–12 and test_selection_sync 7 failed on keyboard focus while the user was using the Mac:
   the pre-plan commit 1a3888e fails them the same way at that moment and they passed on an idle Mac earlier the same
   day; test_pattern_real_part timed out once and passed 6/6 on rerun.
+- Status (2026-10-13, after the final branch review): review fixes bba3ad5 (DOF view with an empty part, no drag
+  while any document is in edit or a FreeCAD task is open, every command ends a running drag first so Save never
+  writes the temporary grounds, a part's suppress/unsuppress keeps the constraints the user suppressed, unpickable
+  glyphs, cleanup on close). On an idle Mac: test_dimbox 12/12, test_features 20/20, test_selection_sync 8/8,
+  test_assembly_drag 21/21 — the earlier keyboard-focus failures were the Mac being in use.
