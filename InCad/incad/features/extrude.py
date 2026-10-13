@@ -121,6 +121,7 @@ def create(doc, body, profile, values):
             f = target.newObject(_feature_type("join"), "Extrude")
             f.Profile = profile
             _apply(doc, f, values)
+            document.show_result(body)  # the first try, in the part, hid the part's last step (FreeCAD hides a base)
             from incad.core import log
             log.report("info", "%s does not touch the part: made as its own Solid (%s)" % (f.Label, target.Label))
     if operation == "intersect":

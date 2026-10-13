@@ -179,6 +179,7 @@ class ExtrudeTest(unittest.TestCase):
         self.assertAlmostEqual(f.Shape.Volume, 4 * 4 * 5, places=3)
         self.assertTrue(sk.getGlobalPlacement().isSame(at, 1e-7), "the sketch stays where it was drawn")
         self.assertFalse(sk.AttachmentSupport, "no link to the other Solid")
+        self.assertTrue(base.Visibility, "the part stays shown")
         model.set_model_parameter(self.doc, model.bound_parameter(base, "Length"), "30 mm")
         self.doc.recompute()
         self.assertTrue(sk.getGlobalPlacement().isSame(at, 1e-7), "independent: the part's change doesn't move it")
@@ -237,12 +238,15 @@ class ExtrudeTest(unittest.TestCase):
         other.Tip = cut
         self.doc.recompute()
         self.assertEqual([o.Label for o in self.doc.Objects if "Invalid" in o.State], [])
+        base.Visibility = False  # FreeCAD hid the part's step: the old Pad took it as its base
         self.assertTrue(document.settle_cross_solid_sketches(self.doc))
         self.doc.recompute()
         self.assertAlmostEqual(pad.Shape.Volume, 4 * 4 * 5, places=3)
         self.assertEqual([o.Label for o in self.doc.Objects if "Invalid" in o.State], [], "the cut's face found again")
         self.assertAlmostEqual(other.Shape.Volume, 4 * 4 * 5 - 2 * 2 * 1, places=3)
         self.assertAlmostEqual(base.Shape.Volume, 20 * 10 * 10, places=3)
+        self.assertTrue(base.Visibility, "the part is shown again (the user saw only the new Solid)")
+        self.assertTrue(cut.Visibility)
         self.assertFalse(document.settle_cross_solid_sketches(self.doc), "once")
 
     def test_new_solid_moves_the_sketch(self):

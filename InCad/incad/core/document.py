@@ -147,6 +147,9 @@ def settle_cross_solid_sketches(doc):
             o.touch()  # untying moves nothing: the steps on it would keep the shape that held the other Solid
         doc.recompute()
         _refind_faces(b, old, places)
+    if changed:  # the old Pad took the other Solid's last step as its base, and FreeCAD hid that step
+        for b in bodies(doc):
+            show_result(b)
     return changed
 
 
