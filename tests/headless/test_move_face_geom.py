@@ -182,11 +182,21 @@ class FrustumTest(unittest.TestCase):
             self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, d)
 
 
-def blended(kind, edges):
-    """The 40 x 30 x 10 box with 2 mm fillets / chamfers made in ONE makeFillet / makeChamfer call on all its edges
-    ("all") or on the top and vertical edges ("top+vertical"): at each top corner OCC leaves a patch (a sphere, a
-    flat triangle) that touches the top face at its corner vertex only."""
-    box = Part.makeBox(40, 30, 10)
+# non-convex tops: an L and a U, 40 x 30 overall, walls 10 wide
+L_SHAPE = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
+U_SHAPE = [(0, 0), (40, 0), (40, 30), (30, 30), (30, 10), (10, 10), (10, 30), (0, 30)]
+
+
+def prism(outline):
+    """The outline (in z 0) extruded 10 up."""
+    return Part.Face(Part.makePolygon([V(x, y, 0) for x, y in outline + outline[:1]])).extrude(V(0, 0, 10))
+
+
+def blended(kind, edges, outline=None):
+    """The 40 x 30 x 10 box (or a prism of `outline`) with 2 mm fillets / chamfers made in ONE makeFillet /
+    makeChamfer call on all its edges ("all") or on the top and vertical edges ("top+vertical"): at each top corner
+    OCC leaves a patch (a sphere, a flat triangle) that touches the top face at its corner vertex only."""
+    box = Part.makeBox(40, 30, 10) if outline is None else prism(outline)
     if edges == "all":
         chosen = box.Edges
     else:
@@ -257,6 +267,25 @@ class AllEdgesTest(unittest.TestCase):
             with self.assertRaises(ValueError) as e:
                 mf.apply(s, [top(s)], -2.5, "inventor")  # past the 2 mm top chamfers
             self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, edges)
+
+    def test_inventor_inward_on_non_convex_tops(self):
+        """An L and a U: a convex corner's triangle plane runs on through the top far from that corner (across the
+        inner corner's leg); it may clip its own corner only, never leave an uncut sliver elsewhere."""
+        for name, outline in (("L", L_SHAPE), ("U", U_SHAPE)):
+            for edges in ("all", "top+vertical"):
+                s = blended("chamfer", edges, outline)
+                for d in (-0.5, -1, -1.99):
+                    r = mf.apply(s, [top(s)], d, "inventor")
+                    expected = below(s, 10 + d)
+                    case = (name, edges, d)
+                    self.assertTrue(r.isValid(), case)
+                    self.assertEqual(len(r.Solids), 1, case)
+                    self.assertLess(r.cut(expected).Volume + expected.cut(r).Volume, 1e-6, case)
+                    self.assertAlmostEqual(r.BoundBox.ZMax, 10 + d, 6, case)
+                    exact_edges(self, r)  # the clips' balls never reach the result
+                with self.assertRaises(ValueError) as e:
+                    mf.apply(s, [top(s)], -2.5, "inventor")  # past the 2 mm top chamfers
+                self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, (name, edges))
 
     def test_inventor_outward_at_chamfered_corners_unchanged(self):
         for edges in ("all", "top+vertical"):

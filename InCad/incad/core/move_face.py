@@ -130,7 +130,8 @@ def _neighbour(shape, face, edge):
 
 def _corner_patches(shape, face):
     """The faces touching `face` at a corner vertex only, between its two neighbours there (OCC's corner patch where
-    blends made in one feature meet: a sphere for fillets, a flat triangle for chamfers), each with those neighbours."""
+    blends made in one feature meet: a sphere for fillets, a flat triangle for chamfers), each with those neighbours
+    and the corner vertex."""
     out = []
     for v in face.Vertexes:
         nbs = []
@@ -139,19 +140,19 @@ def _corner_patches(shape, face):
             if nb is not None and not any(_same(nb, g) for g in nbs):
                 nbs.append(nb)
         for g in shape.ancestorsOfType(v, Part.Face):
-            if _same(g, face) or any(_same(g, f) for f in nbs) or any(_same(g, p) for p, _ in out):
+            if _same(g, face) or any(_same(g, f) for f in nbs) or any(_same(g, p) for p, _, _ in out):
                 continue
             touching = [f for f in nbs if any(_same(e, x) for e in g.Edges for x in f.Edges)]
             if len(touching) >= 2:
-                out.append((g, touching))
+                out.append((g, touching, v))
     return out
 
 
-def _material_side(face, size):
-    """A block on the material side of a flat face's plane, `size` beyond it every way."""
+def _air_side(face, size):
+    """A block on the air side of a flat face's plane, `size` beyond it every way."""
     n = _normal(face)
     sheet = Part.Plane(face.CenterOfMass, n).toShape(-size, size, -size, size)
-    return sheet.extrude(n * -size)
+    return sheet.extrude(n * size)
 
 
 def _side_dir(shape, face, vertex, n):
@@ -249,11 +250,14 @@ def _inventor_slab(shape, face, n, d):
     if not slab.isValid() or not slab.Shells[0].isClosed() or slab.Volume < _TOL:
         raise ValueError(TOO_LARGE_MSG)
     if d < 0:  # a corner patch (touching the face at a vertex only) cuts the corner off: the slab stops at its plane
+        # there only — on a non-convex face (an L, a U) the plane runs on through the slab far from that corner, so
+        # each clip is held to a ball at its corner, as big as the patch plus the move
         size = shape.BoundBox.DiagonalLength + abs(d)
-        for patch, _ in _corner_patches(shape, face):
+        for patch, _, v in _corner_patches(shape, face):
             if not _is_plane(patch):
                 raise ValueError(ROUND_MSG)
-            slab = slab.common(_material_side(patch, size))
+            ball = Part.makeSphere(patch.BoundBox.DiagonalLength + 2 * abs(d), v.Point)
+            slab = slab.cut(_air_side(patch, size).common(ball))
         if len(slab.Solids) != 1:
             raise ValueError(TOO_LARGE_MSG)
         slab = slab.Solids[0]
@@ -268,7 +272,7 @@ def _together_slab(shape, face, n, d):
         if not any(_same(f, g) for g in group):
             group.append(f)
     # the corner patches between two moved blends (a sphere, a triangle where they meet) move with them
-    group += [p for p, nbs in _corner_patches(shape, face)
+    group += [p for p, nbs, _ in _corner_patches(shape, face)
               if not _along(p, n) and all(any(_same(f, g) for g in group) for f in nbs)]
     count = {}
     for f in group:
