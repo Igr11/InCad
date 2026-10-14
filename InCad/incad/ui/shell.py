@@ -2668,7 +2668,7 @@ class Shell(QtCore.QObject):
             bb = assembly._box(link) if link is not None else None  # an empty part's link has no Shape at all
             if f is None or not f.n or bb is None:
                 continue
-            size = max(bb.DiagonalLength * 0.35, 5.0)
+            size = dof.glyph_size(bb.DiagonalLength)
             hs = dof.handles(f, link.Placement, bb.Center, size)
             if name == gizmo:  # normal colour, the handle under the pointer lit
                 handles.set_drawn(doc.Name, name, hs, size, view)

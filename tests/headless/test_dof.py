@@ -351,3 +351,12 @@ class GlyphTest(unittest.TestCase):
 
     def test_no_freedom_no_glyph(self):
         self.assertEqual(dof.glyph(dof.Freedom(0, [], [], ""), App.Placement(), App.Vector(), 4.0), ([], []))
+
+
+class GlyphSizeTest(unittest.TestCase):
+    """The user (2026-10-14): the gizmo arrows a little smaller — 20 % — the grab zone stays as wide."""
+
+    def test_twenty_percent_smaller_than_before(self):
+        from incad.core import dof
+        self.assertAlmostEqual(dof.glyph_size(100.0), 28.0)   # was 35
+        self.assertAlmostEqual(dof.glyph_size(10.0), 4.0)     # the floor: was 5
