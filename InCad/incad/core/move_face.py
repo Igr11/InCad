@@ -106,6 +106,17 @@ def _along(face, n):
     return False
 
 
+def _straight(edge):
+    """A straight edge: a line, or a B-spline / Bezier as long as its chord (FreeCAD's refine — removeSplitter —
+    makes one of the seam of a hole wall it merges)."""
+    kind = edge.Curve.__class__.__name__
+    if kind == "Line":
+        return True
+    if kind not in ("BSplineCurve", "BezierCurve") or edge.isClosed():
+        return False
+    return abs(edge.Length - edge.Vertexes[0].Point.distanceToPoint(edge.Vertexes[-1].Point)) < _TOL
+
+
 def _same(a, b):
     return a.isSame(b)
 
@@ -123,7 +134,7 @@ def _side_dir(shape, face, vertex):
     for e in shape.ancestorsOfType(vertex, Part.Edge):
         if any(_same(e, o) for o in own):
             continue
-        if e.Curve.__class__.__name__ != "Line":
+        if not _straight(e):
             raise ValueError(ROUND_MSG)
         a, b = e.Vertexes[0].Point, e.Vertexes[-1].Point
         far = b if a.distanceToPoint(vertex.Point) < _TOL else a
@@ -131,8 +142,9 @@ def _side_dir(shape, face, vertex):
     raise ValueError(ROUND_MSG)
 
 
-def _moved_wire(shape, face, wire, n, d):
-    """The wire in the new plane, every vertex along its side line, every edge on its neighbour (inventor)."""
+def _moved_edges(shape, face, wire, n, d):
+    """Each edge of the wire with its moved copy in the new plane, every vertex along its side line, every edge on
+    its neighbour (inventor): straight edges stay straight, an arc / circle on a cylinder along the move slides."""
     for e in wire.Edges:
         nb = _neighbour(shape, face, e)
         if nb is None or not (_is_plane(nb) or _along(nb, n)):
@@ -146,40 +158,52 @@ def _moved_wire(shape, face, wire, n, d):
         if t < 0 and -t >= length - _TOL:  # back along its side edge past that edge's far end: the neighbour vanishes
             raise ValueError(TOO_LARGE_MSG)
         moved[v.hashCode()] = v.Point + u * t
-    edges = []
+    pairs = []
     for e in wire.OrderedEdges:
         a, b = moved[e.Vertexes[0].hashCode()], moved[e.Vertexes[-1].hashCode()]
-        if e.Curve.__class__.__name__ == "Line":
+        if _straight(e):
             old = e.Vertexes[-1].Point - e.Vertexes[0].Point
             if (b - a).dot(old) <= _TOL:  # shrunk to nothing, or turned round: the outline would cross itself
                 raise ValueError(TOO_LARGE_MSG)
-            edges.append(Part.LineSegment(a, b).toShape())
-        else:  # an arc / circle on a cylinder along the move: it slides
-            edges.append(e.translated(n * d))
-    w = Part.Wire(Part.__sortEdges__(edges))
+            pairs.append((e, Part.LineSegment(a, b).toShape()))
+        else:
+            pairs.append((e, e.translated(n * d)))
+    w = Part.Wire(Part.__sortEdges__([m for _, m in pairs]))
     if not w.isClosed():
         raise ValueError(TOO_LARGE_MSG)
-    return w
+    return pairs, w
 
 
-def _loft(a, b):
-    return Part.makeLoft([a, b], True, True)
+def _side_face(e, moved, n, d):
+    """The slab's wall between an edge and its moved copy: flat (in the neighbour's plane) for a straight edge, a
+    piece of the cylinder along the move for an arc / circle. Exact faces: no B-spline edges for later moves."""
+    if _straight(e):
+        a, b = e.Vertexes[0].Point, e.Vertexes[-1].Point
+        a2, b2 = moved.Vertexes[0].Point, moved.Vertexes[-1].Point
+        return Part.Face(Part.makePolygon([a, b, b2, a2, a]))
+    return e.extrude(n * d).Faces[0]
 
 
 def _inventor_slab(shape, face, n, d):
-    outer = Part.Wire(face.OuterWire.OrderedEdges)
-    new_outer = _moved_wire(shape, face, face.OuterWire, n, d)
+    walls, new_wires = [], []
+    for wire in [face.OuterWire] + [w for w in face.Wires if not w.isSame(face.OuterWire)]:
+        pairs, w = _moved_edges(shape, face, wire, n, d)
+        new_wires.append(w)
+        walls += [_side_face(e, m, n, d) for e, m in pairs]
     try:
-        new_face = Part.Face(new_outer)
-        if not new_face.isValid() or new_face.Area < _TOL:
+        outline = Part.Face(new_wires[0])
+        if not outline.isValid() or outline.Area < _TOL:
             raise ValueError(TOO_LARGE_MSG)
+        new_face = Part.Face(new_wires, "Part::FaceMakerBullseye")  # the moved outline with its holes
+        shell = Part.Shell([face.copy(), new_face] + walls)
+        shell.sewShape()
+        slab = Part.Solid(shell)
     except Part.OCCError:
         raise ValueError(TOO_LARGE_MSG)
-    slab = _loft(outer, new_outer)
-    for inner in face.Wires:
-        if inner.isSame(face.OuterWire):
-            continue
-        slab = slab.cut(_loft(Part.Wire(inner.OrderedEdges), _moved_wire(shape, face, inner, n, d)))
+    if slab.Volume < 0:
+        slab.reverse()
+    if not slab.isValid() or not slab.Shells[0].isClosed() or slab.Volume < _TOL:
+        raise ValueError(TOO_LARGE_MSG)
     return slab
 
 

@@ -43,7 +43,7 @@ class MoveFaceFeatureTest(unittest.TestCase):
     def test_the_row_reads_move_face(self):
         f = self.make(distance="5 mm")
         self.assertEqual(f.Label, "Move Face")
-        g = self.make(distance="1 mm", mode="step")  # (Inventor on Inventor's result: see the task-3 report)
+        g = self.make(distance="1 mm")
         self.assertTrue(g.Label.startswith("Move Face0"), g.Label)
 
     def test_a_refused_create_leaves_nothing(self):

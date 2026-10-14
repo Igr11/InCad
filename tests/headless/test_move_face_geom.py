@@ -28,6 +28,16 @@ def filleted():
     return box.makeFillet(2, [e])
 
 
+def exact_edges(test, shape):
+    """Inventor's result has only lines and circles (a curved edge stops the next Inventor move: round); the one
+    exception is FreeCAD's refine turning the merged seam of a hole wall into a straight B-spline."""
+    for e in shape.Edges:
+        kind = e.Curve.__class__.__name__
+        if kind == "BSplineCurve" and e.Curve.Degree == 1 and e.Curve.NbPoles == 2:
+            continue
+        test.assertIn(kind, ("Line", "Circle"))
+
+
 class BoxTest(unittest.TestCase):
     def test_every_mode_moves_a_box_top(self):
         box = Part.makeBox(40, 30, 10)
@@ -38,6 +48,17 @@ class BoxTest(unittest.TestCase):
             self.assertAlmostEqual(up.Volume, 40 * 30 * 15, 6, mode)
             self.assertAlmostEqual(down.Volume, 40 * 30 * 7, 6, mode)
             self.assertAlmostEqual(up.BoundBox.ZMax, 15, 9, mode)
+            if mode == "inventor":
+                exact_edges(self, up)
+                exact_edges(self, down)
+
+    def test_two_inventor_moves_in_a_row(self):
+        box = Part.makeBox(40, 30, 10)
+        once = mf.apply(box, [top(box)], 3, "inventor")
+        twice = mf.apply(once, [top(once)], 2, "inventor")
+        self.assertAlmostEqual(twice.BoundBox.ZMax, 15, 9)
+        self.assertAlmostEqual(twice.Volume, 40 * 30 * 15, 6)
+        exact_edges(self, twice)
 
     def test_zero_is_the_shape_before(self):
         box = Part.makeBox(40, 30, 10)
@@ -50,11 +71,21 @@ class ChamferTest(unittest.TestCase):
         r = mf.apply(ch, [top(ch)], 4, "inventor")
         self.assertAlmostEqual(r.Volume, 40 * 30 * 14 - 0.5 * 7 * 7 * 30, 6)
         self.assertAlmostEqual(top(r).BoundBox.XMax, 40 - 7, 6)  # the top face 4 mm narrower toward the chamfer
+        exact_edges(self, r)
+
+    def test_inventor_twice_is_one_move(self):
+        ch = chamfered()
+        once = mf.apply(ch, [top(ch)], 2, "inventor")
+        twice = mf.apply(once, [top(once)], 2, "inventor")
+        self.assertAlmostEqual(twice.Volume, mf.apply(ch, [top(ch)], 4, "inventor").Volume, 6)
+        self.assertAlmostEqual(twice.Volume, 40 * 30 * 14 - 0.5 * 7 * 7 * 30, 6)
+        exact_edges(self, twice)
 
     def test_inventor_inward(self):
         ch = chamfered()
         r = mf.apply(ch, [top(ch)], -2, "inventor")
         self.assertAlmostEqual(r.Volume, 40 * 30 * 8 - 0.5 * 1 * 1 * 30, 6)
+        exact_edges(self, r)
 
     def test_inventor_too_far_inward_is_refused(self):
         ch = chamfered()
@@ -98,6 +129,7 @@ class FrustumTest(unittest.TestCase):
         r = mf.apply(fr, [top(fr)], 3, "inventor")  # the top 4 x 4 at z 13
         self.assertAlmostEqual(r.Volume, 20 * 20 * 5 + 8 / 3 * (20 * 20 + 4 * 4 + 20 * 4), 6)
         self.assertAlmostEqual(top(r).Area, 16, 6)
+        exact_edges(self, r)
 
     def test_inventor_past_the_apex_is_refused(self):
         fr = self.frustum()
@@ -114,6 +146,10 @@ class HoleSlotTest(unittest.TestCase):
         self.assertAlmostEqual(r.Volume, (40 * 30 - 3.141592653589793 * 16) * 15, 3)
         hit = r.common(Part.LineSegment(V(20, 15, -1), V(20, 15, 20)).toShape())
         self.assertAlmostEqual(hit.Length, 0, 6)  # the hole still goes through
+        exact_edges(self, r)
+        again = mf.apply(r, [top(r)], 2, "inventor")  # past the hole wall's seam (a straight B-spline after refine)
+        self.assertAlmostEqual(again.Volume, (40 * 30 - 3.141592653589793 * 16) * 17, 3)
+        exact_edges(self, again)
 
     def test_slot_floor_deeper_and_shallower(self):
         part = Part.makeBox(40, 30, 10).cut(Part.makeBox(20, 10, 4, V(10, 10, 6)))  # floor at z 6
