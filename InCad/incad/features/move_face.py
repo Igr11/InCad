@@ -11,7 +11,7 @@ from incad.features.common import Field, parse_picks, resolve, value_param, valu
 
 TITLE = "Move Face"
 ICON = "move_face"
-FINISH = "Finish move"  # the view's right-click menu entry while the dialog is open: the same as OK
+FINISH = "feature.finish_move"  # on top of the view's right-click menu while the dialog is open: the same as OK
 TYPES = ("PartDesign::FeaturePython",)
 NEEDS_PROFILE = False
 STRUCTURAL = ()
@@ -23,7 +23,8 @@ OTHER_SOLID_MSG = "The faces must be on this Solid"
 FIELDS = (
     Field("faces", "Faces", "picks", pick="face"),
     Field("extent", "Extent", "choice", (("distance", "Distance"), ("to", "To")), "distance"),
-    Field("distance", "Distance", "value_length", default="5 mm", show_if=("extent", ("distance",))),
+    # starts at 0: nothing moves until a value is typed or the arrow dragged (5 mm opened refused on small parts)
+    Field("distance", "Distance", "value_length", default="0 mm", show_if=("extent", ("distance",))),
     Field("to", "To", "pick", pick="plane", show_if=("extent", ("to",))),
     Field("mode", "Neighbours", "choice", (("inventor", "Inventor"), ("step", "Step"), ("together", "Together")),
           "inventor"),
@@ -151,7 +152,7 @@ def _build(doc, f, values):
         f.Target = (obj, [sub] if sub else [])
     else:
         f.Target = None  # a To edited back to Distance: no dead link to the plane / another Solid
-        value_param(doc, f, "Distance", values.get("distance") or "5 mm", "length")
+        value_param(doc, f, "Distance", values.get("distance") or "0 mm", "length")
     _store(f, {"faces": values.get("faces") or "", "to": values.get("to") or ""})
     return f
 

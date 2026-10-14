@@ -393,6 +393,11 @@ def finish_sketch():
     shell.sketch_session().finish()
 
 
+def finish_dialog():
+    from incad.ui import shell
+    shell.instance().finish_dialog()
+
+
 def start_feature(kind_name):
     from incad import features
     from incad.ui import shell
@@ -971,6 +976,8 @@ def commands():
         Command(id="file.make_assembly", label="Make Assembly", icon="make_assembly", handler=make_assembly,
                 contexts=frozenset({"part"}),
                 tooltip="Each separate piece of this part becomes a part file (with its history), linked by a new assembly"),
+        Command(id="feature.finish_move", label="Finish move", icon="finish", handler=finish_dialog,
+                contexts=frozenset({"part"}), tooltip="Finish the Move Face dialog: the same as OK"),
         Command(id="feature.split", label="Split", icon="split", handler=lambda: start_feature("split"),
                 contexts=frozenset({"part"}),
                 tooltip="Cut the part along a sketch's lines (made into thin surfaces): keep every piece, or the ones you click"),

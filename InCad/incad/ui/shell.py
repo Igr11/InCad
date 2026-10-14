@@ -928,8 +928,11 @@ class Shell(QtCore.QObject):
                      "pan": "Pan: drag with the left button (click Pan again to stop)"}
             self.status.set_prompt(hints.get(mode, "Ready"))
 
-    def _show_marking_menu(self, kind, global_pos, flick=False, extras=()):
+    def _show_marking_menu(self, kind, global_pos, flick=False, extras=(), top=None):
+        """top: a command that takes the N slot (the open dialog's finish: Move Face's Finish move)."""
         slots, items = marking_layout.resolve(kind, self.registry)
+        if top and self.registry.has(top):
+            slots = [("N", self.registry.get(top))] + [(d, c) for d, c in slots if d != "N"]
         if not slots and not items and not extras:
             return None
         if self.marking_menu is not None:
@@ -966,7 +969,7 @@ class Shell(QtCore.QObject):
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
                 kind = "origin" if datum else "browser"
-                return self._show_marking_menu(kind, global_pos, flick, extras=self._session_menu_items())
+                return self._show_marking_menu(kind, global_pos, flick, top=self._session_finish())
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()
@@ -976,13 +979,17 @@ class Shell(QtCore.QObject):
         from incad.core import assembly
         if assembly.is_assembly(doc):
             kind = {"face": "asm_face", "edge": "asm_edge", "vertex": "asm_edge"}.get(kind, "assembly")
-        return self._show_marking_menu(kind, global_pos, flick, extras=self._session_menu_items())
+        return self._show_marking_menu(kind, global_pos, flick, top=self._session_finish())
 
-    def _session_menu_items(self):
-        """The open dialog's own finish entry (Move Face: "Finish move", the same as OK) for the view's menu."""
+    def _session_finish(self):
+        """The open dialog's own finish command for the top of the view's menu (Move Face: Finish move = OK)."""
         fs = self.feature_session
-        label = getattr(fs.kind, "FINISH", None) if fs is not None else None
-        return [(label, "finish", lambda: self._close_feature_session(cancel=False))] if label else []
+        return getattr(fs.kind, "FINISH", None) if fs is not None else None
+
+    def finish_dialog(self):
+        """Finish move (and any dialog's finish command): the same as the dialog's OK."""
+        if self.feature_session is not None:
+            self._close_feature_session(cancel=False)
 
     def _on_browser_select(self, name):
         """A click in the model tree selects the object in the model: the view highlights it, a dialog waiting

@@ -177,6 +177,9 @@ def test_1_dialog_and_typed_distance():
     commands.REGISTRY.run("feature.move_face")
     harness.pump(1500)
     assert dialog() is not None and dialog().values()["faces"], dialog().values()
+    # the user: it starts at 0 mm — nothing moved, no red "too large" on a small part
+    assert dialog().values()["distance"] == "0 mm", dialog().values()
+    assert not dialog().error_text(), dialog().error_text()
     set_distance("5 mm")
     harness.pump(1500)
     assert abs(body().Shape.BoundBox.ZMax - 15) < 1e-6, body().Shape.BoundBox
@@ -399,8 +402,8 @@ def test_7_other_views_go_to_the_dof_gizmo():
 
 
 def test_8_finish_move_in_the_right_click_menu():
-    """The user: the right-click menu has "Finish move" while the dialog is open, doing the same as OK."""
-    top = body().Shape.BoundBox.ZMax
+    """The user: the right-click menu has "Finish move" on top (N) while the dialog is open, doing the same as OK."""
+    height = body().Shape.BoundBox.ZMax
     n = len(doc().UndoNames)
     select_top()
     commands.REGISTRY.run("feature.move_face")
@@ -412,16 +415,20 @@ def test_8_finish_move_in_the_right_click_menu():
     s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
     harness.pump(400)
     menu = s().marking_menu
-    assert menu is not None and menu.extra_button("Finish move") is not None, "Finish move is in the menu"
-    menu.extra_button("Finish move").click()
+    top = menu.button("N") if menu is not None else None
+    assert top is not None and top.text() == "Finish move", (menu and menu._slot_ids, s()._session_finish(),
+                                                             s().registry.has("feature.finish_move"), s().menu_kind)
+    assert menu.extra_button("Finish move") is None, "only on top, not again below the list"
+    top.click()
     harness.pump(1500)
     assert s().feature_session is None, "the dialog closed as with OK"
     assert doc().UndoNames[0] == "Move Face" and len(doc().UndoNames) == n + 1, doc().UndoNames
-    assert abs(body().Shape.BoundBox.ZMax - (top + 2)) < 1e-6, body().Shape.BoundBox.ZMax
+    assert abs(body().Shape.BoundBox.ZMax - (height + 2)) < 1e-6, body().Shape.BoundBox.ZMax
     # no dialog open: no Finish move
     s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
     harness.pump(400)
-    assert s().marking_menu is not None and s().marking_menu.extra_button("Finish move") is None
+    menu = s().marking_menu
+    assert menu is not None and (menu.button("N") is None or menu.button("N").text() != "Finish move")
     s().marking_menu.close()
     harness.pump(300)
 

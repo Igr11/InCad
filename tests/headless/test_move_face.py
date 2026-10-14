@@ -33,6 +33,13 @@ class MoveFaceFeatureTest(unittest.TestCase):
         self.doc.recompute()
         return f
 
+    def test_starts_at_zero_and_changes_nothing(self):
+        """The user: 5 mm by default opened refused ("too large") on small parts — it starts at 0 mm."""
+        self.assertEqual(move_face.defaults(self.doc, self.body, None)["distance"], "0 mm")
+        f = self.make()
+        self.assertNotIn("Invalid", f.State)
+        self.assertAlmostEqual(f.Shape.Volume, 20 * 10 * 10, 6)
+
     def test_moves_the_top_and_is_the_tip(self):
         f = self.make(distance="5 mm")
         self.assertIs(self.body.Tip, f)

@@ -737,8 +737,8 @@ the thread; you can also drag End of Part above the thread, make the Shell there
 Inventor does, without going back to the sketch. Select the faces first, then the command (also on the marking menu of a
 face and of the part) — or pick them in the dialog. Everything is a step at the end of the part's history, a row
 <span class="ui">Move Face</span> in the browser: double-click it to change the values, Suppress or Delete it like any
-feature. One <span class="ui">OK</span> is one undo step; <span class="ui">Finish move</span> in the right-click menu of
-the view does the same as OK.</p></div>
+feature. One <span class="ui">OK</span> is one undo step; <span class="ui">Finish move</span> on top of the right-click menu
+of the view does the same as OK.</p></div>
 <table>
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
   <tr><td>Faces</td><td class="wrap">One or more flat faces. Several faces must face the same way (a boss top and the floor
@@ -746,7 +746,7 @@ the view does the same as OK.</p></div>
       refused: <i>The faces must be flat and face the same way</i>.</td></tr>
   <tr><td>Extent</td><td class="wrap"><b>Distance</b> (a number) or <b>To</b> (up to a face or plane).</td></tr>
   <tr><td>Distance</td><td class="wrap">The move along the face's outward direction: positive grows the part, negative cuts
-      into it, 0 changes nothing. Units, parameters and formulas work as everywhere (3.6). Default 5 mm.</td></tr>
+      into it, 0 changes nothing. Units, parameters and formulas work as everywhere (3.6). It starts at 0 mm: type a value or drag the arrow.</td></tr>
   <tr><td>To</td><td class="wrap">Pick a flat face or a work / origin plane parallel to the faces; they move into its
       plane. The distance is the gap, found again on every change, so the faces follow the target if it moves. A target
       that is not parallel is refused: <i>Pick a face or plane parallel to the faces</i>.</td></tr>
