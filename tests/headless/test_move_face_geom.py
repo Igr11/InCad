@@ -185,6 +185,11 @@ class FrustumTest(unittest.TestCase):
 # non-convex tops: an L and a U, 40 x 30 overall, walls 10 wide
 L_SHAPE = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
 U_SHAPE = [(0, 0), (40, 0), (40, 30), (30, 30), (30, 10), (10, 10), (10, 30), (0, 30)]
+# a corner's patch near another part of the top (within |d| + the chamfer): a 5 mm leg by a 5 mm upright, two 5 mm
+# steps, a U of 8 mm prongs round a 5 mm slot
+L_SHORT5 = [(0, 0), (40, 0), (40, 5), (5, 5), (5, 10), (0, 10)]
+STAIR5 = [(0, 0), (40, 0), (40, 5), (10, 5), (10, 10), (5, 10), (5, 15), (0, 15)]
+SLOT5 = [(0, 0), (21, 0), (21, 20), (13, 20), (13, 8), (8, 8), (8, 20), (0, 20)]
 
 
 def prism(outline):
@@ -269,12 +274,15 @@ class AllEdgesTest(unittest.TestCase):
             self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, edges)
 
     def test_inventor_inward_on_non_convex_tops(self):
-        """An L and a U: a convex corner's triangle plane runs on through the top far from that corner (across the
-        inner corner's leg); it may clip its own corner only, never leave an uncut sliver elsewhere."""
-        for name, outline in (("L", L_SHAPE), ("U", U_SHAPE)):
+        """An L, a U, and tops with another part close to a corner: a convex corner's triangle plane runs on through
+        the top far from that corner (across the inner corner's leg, the next step, the other prong); it may clip its
+        own corner only, never leave an uncut sliver elsewhere."""
+        cases = [("L", L_SHAPE, (-0.5, -1, -1.99)), ("U", U_SHAPE, (-0.5, -1, -1.99)),
+                 ("Lshort5", L_SHORT5, (-1.5, -1.99)), ("Stair5", STAIR5, (-1.5, -1.99)), ("Slot5", SLOT5, (-1.5, -1.99))]
+        for name, outline, ds in cases:
             for edges in ("all", "top+vertical"):
                 s = blended("chamfer", edges, outline)
-                for d in (-0.5, -1, -1.99):
+                for d in ds:
                     r = mf.apply(s, [top(s)], d, "inventor")
                     expected = below(s, 10 + d)
                     case = (name, edges, d)
