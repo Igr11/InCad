@@ -739,6 +739,10 @@ face and of the part) — or pick them in the dialog. Everything is a step at th
 <span class="ui">Move Face</span> in the browser: double-click it to change the values, Suppress or Delete it like any
 feature. One <span class="ui">OK</span> is one undo step; <span class="ui">Finish move</span> on top of the right-click menu
 of the view does the same as OK.</p></div>
+<figure>
+  <img src="img/15_move_face.jpg" alt="Move Face open on a part: the dialog, the preview and the drag arrow with its distance">
+  <figcaption>Figure 9. Move Face on the sample part's top, 3 mm, Neighbours Together (its top edges are filleted, so Inventor refuses): the preview, the arrow and the value at its tip.</figcaption>
+</figure>
 <table>
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
   <tr><td>Faces</td><td class="wrap">One or more flat faces. Several faces must face the same way (a boss top and the floor
@@ -803,7 +807,7 @@ them.</p>
 outside of a shaft or the inside of a hole (a full round face), then click Thread. Also on the marking menu of a face.</p></div>
 <figure>
   <img src="img/13_thread_dialog.jpg" alt="The Thread dialog">
-  <figcaption>Figure 9. The Thread dialog.</figcaption>
+  <figcaption>Figure 10. The Thread dialog.</figcaption>
 </figure>
 <table class="long">
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
@@ -1022,7 +1026,7 @@ and joints.</p></div>
 <div class="keep"><h2>9.4 Adding a constraint or a joint</h2>
 <figure>
   <img src="img/7_mate_flip.jpg" alt="The Mate dialog with Flip">
-  <figcaption>Figure 10. A Mate being made: the dialog with Offset and Flip, the preview in the view.</figcaption>
+  <figcaption>Figure 11. A Mate being made: the dialog with Offset and Flip, the preview in the view.</figcaption>
 </figure></div>
 <ol>
   <li>Click the constraint on <span class="path">Assemble ▸ Constrain</span> or <span class="path">Assemble ▸ Joint</span>
@@ -1079,13 +1083,13 @@ against what holds the part (the other free parts are held still while it counts
   <li>the part row says <b>grounded</b>, <b>DOF n</b> or <b>DOF ?</b> (9.3);</li>
   <li><span class="path">View ▸ Visual Style ▸ Degrees of Freedom</span> (View tab of the assembly) draws Inventor's DOF
       symbols on every free part — a double arrow for each direction it can slide, an arc for each axis it can turn about
-      (figure 11);</li>
+      (figure 12);</li>
   <li>with that button off, the part under the pointer shows its symbol as a tip.</li>
 </ul>
 <p>A fully constrained part (DOF 0) and a grounded part show no symbol.</p>
 <figure>
   <img src="img/9_dof.jpg" alt="Degrees of freedom in the browser and on the parts">
-  <figcaption>Figure 11. View ▸ Degrees of Freedom on: each part row says grounded or DOF n, and every free part shows its
+  <figcaption>Figure 12. View ▸ Degrees of Freedom on: each part row says grounded or DOF n, and every free part shows its
   DOF symbol.</figcaption>
 </figure>
 
@@ -1096,7 +1100,7 @@ constrained part does not move (the status line says "… is fully constrained")
 grounded.</p></div>
 <figure>
   <img src="img/8_gizmo.jpg" alt="The DOF gizmo of a free part">
-  <figcaption>Figure 12. Click a free part for its gizmo: arrows slide the part, arcs turn it.</figcaption>
+  <figcaption>Figure 13. Click a free part for its gizmo: arrows slide the part, arcs turn it.</figcaption>
 </figure>
 <p><b>The gizmo.</b> Click a free part: its DOF symbol becomes a gizmo with an <b>arrow</b> for each direction it can
 slide and an <b>arc</b> for each axis it can turn about.</p>
@@ -1114,7 +1118,7 @@ other parts of the assembly drawn around it — grey, semi-transparent, at their
 only: they cannot be picked and are not saved in the part. Change the part as usual and save it.</p></div>
 <figure>
   <img src="img/10_context.jpg" alt="A part edited in the assembly context">
-  <figcaption>Figure 13. A part opened with Edit from its assembly: the other parts around it, semi-transparent.</figcaption>
+  <figcaption>Figure 14. A part opened with Edit from its assembly: the other parts around it, semi-transparent.</figcaption>
 </figure>
 <p><span class="path">View ▸ Assembly Context</span> (View menu, or the View tab of the part) turns the other parts off
 and on.</p>
@@ -1149,7 +1153,7 @@ now?</span></p></div>
 </ol>
 <figure>
   <img src="img/11_make_assembly.jpg" alt="The Make Assembly dialog">
-  <figcaption>Figure 14. Make Assembly: the names of the new assembly and part files.</figcaption>
+  <figcaption>Figure 15. Make Assembly: the names of the new assembly and part files.</figcaption>
 </figure>
 <ul>
   <li>Every separate piece becomes a part file <b>with its history</b>; the assembly links them where they were, the

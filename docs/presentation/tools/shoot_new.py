@@ -9,7 +9,7 @@ import harness  # noqa: E402
 import FreeCAD as App  # noqa: E402
 import FreeCADGui as Gui  # noqa: E402
 from PySide import QtCore, QtGui, QtWidgets  # noqa: E402
-from incad.core import assembly, commands, context, prefs  # noqa: E402
+from incad.core import assembly, commands, context, document, prefs  # noqa: E402
 from incad.ui import shell  # noqa: E402
 from incad.ui import make_assembly_dialog  # noqa: E402
 
@@ -101,9 +101,10 @@ def test_0_window():
     prefs.set_default_units("mm")
     shell.UPDATE_ASK = lambda *a, **k: True
     shell.CONFIRM = lambda *a, **k: True
-    mw().showNormal()
-    mw().resize(1680, 1000)
-    mw().move(40, 40)
+    if os.environ.get("INCAD_SHOTS_RESIZE"):  # the window as for the 0.2 shots; moving it hung FreeCAD now and then
+        mw().showNormal()
+        mw().resize(1680, 1000)
+        mw().move(40, 40)
     Gui.activateWorkbench("InCadWorkbench")
     harness.pump(1500)
 
@@ -215,6 +216,42 @@ def test_4_assembly():
     close_all()
 
 
-TESTS = [test_0_window, test_1_part_dialogs, test_2_constraint_list, test_3_make_assembly_dialog, test_4_assembly]
+def test_5_move_face():
+    """15_move_face: Move Face on the sample part's top, 3 mm typed: the dialog, the preview, the arrow and its label."""
+    App.openDocument(os.path.join(SHOTS, "part.FCStd"))
+    harness.pump(3000)
+    s().schedule_refresh()
+    harness.pump(800)
+    fit()
+    doc = App.ActiveDocument
+    tip = document.primary_body(doc).Tip
+    faces = tip.Shape.Faces
+    i = max((k for k, fc in enumerate(faces) if fc.Surface.__class__.__name__ == "Plane" and fc.normalAt(0, 0).z > 0.999),
+            key=lambda k: faces[k].Area)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.Name, tip.Name, "Face%d" % (i + 1))
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(2000)
+    fs = s().feature_session
+    fs.dialog.set_values({"mode": "together"})  # the sample's top has fillets: Together carries them up
+    w = fs.dialog.field("distance")
+    w.setText("3 mm")
+    w.editingFinished.emit()
+    harness.pump(2500)
+    Gui.ActiveDocument.ActiveView.viewIsometric()
+    Gui.SendMsgToActiveView("ViewFit")  # after the preview: the part grew, the arrow and its label stay in view
+    harness.pump(800)
+    Gui.ActiveDocument.ActiveView.getCameraNode().height.setValue(Gui.ActiveDocument.ActiveView.getCameraNode().height.getValue() * 1.25)
+    harness.pump(500)
+    Gui.Selection.clearSelection()
+    harness.pump(500)
+    save("15_move_face")
+    fs.cancel()
+    harness.pump(1000)
+    close_all()
+
+
+TESTS = [test_0_window, test_1_part_dialogs, test_2_constraint_list, test_3_make_assembly_dialog, test_4_assembly,
+         test_5_move_face]
 ONLY = os.environ.get("INCAD_SHOTS_ONLY")  # e.g. "test_4_assembly": that one after test_0_window
 harness.run([t for t in TESTS if not ONLY or t is test_0_window or t.__name__ in ONLY.split(",")])
