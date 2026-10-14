@@ -58,9 +58,10 @@ Logs: ~/Library/Logs/InCad.log
 - Unused values of deleted features can be removed with − in the Parameters panel.
 - Sweep (profile + path sketch), Loft (two or more sections in order), Coil (springs: profile + axis, pitch,
   height), Draft (tilt faces by an angle).
-- Move Face (direct editing): push or pull flat faces by a distance or up to a face / plane; the neighbours follow as
-  in Inventor, as a straight Step, or Together with their chamfers / fillets. A drag arrow on the face shows the
-  distance live.
+- Move Face (direct editing): push or pull flat faces by a distance, or To a parallel face / plane, an edge running
+  parallel to them or a point (also on another Solid); the neighbours follow as in Inventor, as a straight Step, or
+  Together with their chamfers / fillets. A drag arrow on the face shows the distance live; Finish move is on top of
+  the right-click menu.
 - Tools ▸ Material sets the part material (PLA, PETG, ABS, ASA, TPU, Nylon, Resin, Aluminium, Steel): Mass
   Properties uses its density. View ▸ Section cuts the view open (toggle).
 - Delete (right-click in the browser) removes a feature with everything InCad made for it (Combine helpers, thread
