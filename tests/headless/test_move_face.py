@@ -1,5 +1,6 @@
 """Move Face as a feature: a step at the tip that finds its faces by geometry on every recompute."""
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -38,6 +39,61 @@ class MoveFaceFeatureTest(unittest.TestCase):
         self.assertIs(kind_for(f), move_face)
         self.assertAlmostEqual(f.Shape.Volume, 20 * 10 * 15, 6)
         self.assertNotIn("Invalid", f.State)
+
+    def test_the_row_reads_move_face(self):
+        f = self.make(distance="5 mm")
+        self.assertEqual(f.Label, "Move Face")
+        g = self.make(distance="1 mm", mode="step")  # (Inventor on Inventor's result: see the task-3 report)
+        self.assertTrue(g.Label.startswith("Move Face0"), g.Label)
+
+    def test_a_refused_create_leaves_nothing(self):
+        side = next(k for k, g in enumerate(self.pad.Shape.Faces) if g.normalAt(0, 0).x > 0.999)
+        with self.assertRaises(ValueError) as e:
+            self.make(faces="%s,%s:Face%d" % (top_name(self.pad), self.pad.Name, side + 1))
+        self.assertEqual(str(e.exception), move_face.mf.FACES_MSG)
+        self.assertFalse([o.Name for o in self.doc.Objects if move_face.claims(o)])
+        self.assertIs(self.body.Tip, self.pad)
+
+    def test_step_and_together_on_a_chamfered_top(self):
+        """A 2 mm chamfer on the top's right edge: Step pushes only the top (18 x 10) up, Together takes the chamfer
+        along (the whole 20 x 10 grows); an edit switches the mode."""
+        edge = next(k for k, e in enumerate(self.pad.Shape.Edges)
+                    if abs(e.CenterOfMass.x - 20) < 1e-6 and abs(e.CenterOfMass.z - 10) < 1e-6)
+        ch = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        ch.Base = (self.pad, ["Edge%d" % (edge + 1)])
+        ch.Size = 2
+        self.body.Tip = ch
+        self.doc.recompute()
+        f = self.make(distance="5 mm", mode="step")
+        before = 20 * 10 * 10 - 0.5 * 2 * 2 * 10
+        self.assertAlmostEqual(f.Shape.Volume, before + 18 * 10 * 5, 6)
+        move_face.update(self.doc, f, dict(move_face.read(self.doc, f), mode="together"))
+        self.assertNotIn("Invalid", f.State)
+        self.assertAlmostEqual(f.Shape.Volume, before + 20 * 10 * 5, 6)
+
+    def test_to_with_faces_in_two_planes(self):
+        """Two boss tops at 13 and 16 moved To one plane at 20: both end in it."""
+        for name, x, h in (("Low", 2, 3), ("High", 12, 6)):
+            box = self.body.newObject("PartDesign::AdditiveBox", name)
+            box.Length, box.Width, box.Height = 4, 4, h
+            box.Placement = App.Placement(App.Vector(x, 2, 10), App.Rotation())
+            self.body.Tip = box
+        self.doc.recompute()
+        tip = self.body.Tip
+        tops = ["%s:Face%d" % (tip.Name, k + 1) for k, g in enumerate(tip.Shape.Faces)
+                if g.normalAt(0, 0).z > 0.999 and g.CenterOfMass.z > 10 + 1e-6]
+        self.assertEqual(len(tops), 2)
+        plane = self.body.newObject("PartDesign::Plane", "Target")
+        plane.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        plane.MapMode = "FlatFace"
+        plane.AttachmentOffset = App.Placement(App.Vector(0, 0, 20), App.Rotation())
+        self.body.Tip = tip
+        self.doc.recompute()
+        f = self.make(faces=",".join(tops), extent="to", to=plane.Name)
+        self.assertNotIn("Invalid", f.State)
+        at_20 = [g for g in f.Shape.Faces if g.normalAt(0, 0).z > 0.999 and abs(g.CenterOfMass.z - 20) < 1e-6]
+        self.assertAlmostEqual(sum(g.Area for g in at_20), 2 * 16, 6)
+        self.assertAlmostEqual(f.Shape.Volume, 20 * 10 * 10 + 2 * 16 * 10, 6)
 
     def test_read_gives_the_values_back(self):
         f = self.make(distance="3 mm", mode="step")
@@ -88,6 +144,10 @@ class MoveFaceFeatureTest(unittest.TestCase):
         plane.AttachmentOffset = App.Placement(App.Vector(0, 0, 18), App.Rotation())
         self.doc.recompute()
         self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 18, 6)
+        move_face.update(self.doc, f, dict(move_face.read(self.doc, f), extent="distance", distance="5 mm"))
+        self.assertIsNone(f.Target)  # back to Distance: no link to the plane left
+        self.assertNotIn(plane, f.OutList)
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 15, 6)
 
     def test_to_a_face_of_a_moved_solid(self):
         """To takes what the To field accepts (an origin plane, a flat face); a face of another Solid placed 3 mm up."""
@@ -107,7 +167,9 @@ class MoveFaceFeatureTest(unittest.TestCase):
 
     def test_save_and_reopen(self):
         f = self.make(distance="4 mm", mode="step")
-        path = os.path.join(tempfile.mkdtemp(), "move_face.FCStd")
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = os.path.join(tmp, "move_face.FCStd")
         self.doc.saveAs(path)
         name = f.Name
         App.closeDocument(self.doc.Name)

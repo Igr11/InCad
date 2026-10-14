@@ -92,8 +92,11 @@ def _target(obj):
     target, subs = link[0], link[1]
     to_body = _frame(obj).inverse()
     if subs and subs[0]:
-        face = target.Shape.getElement(subs[0])
-        if face.Surface.__class__.__name__ != "Plane":
+        try:
+            face = target.Shape.getElement(subs[0])
+        except Exception:  # the face picked as To is no longer there
+            raise ValueError(mf.PARALLEL_MSG)
+        if not mf._is_plane(face):
             raise ValueError(mf.PARALLEL_MSG)
         pl = to_body.multiply(_frame(target))  # the target's Solid frame -> this Solid's frame
         return pl.multVec(face.CenterOfMass), pl.Rotation.multVec(face.normalAt(0, 0))
@@ -141,6 +144,7 @@ def _build(doc, f, values):
         obj, sub = resolve(*picks[0])
         f.Target = (obj, [sub] if sub else [])
     else:
+        f.Target = None  # a To edited back to Distance: no dead link to the plane / another Solid
         value_param(doc, f, "Distance", values.get("distance") or "5 mm", "length")
     _store(f, {"faces": values.get("faces") or "", "to": values.get("to") or ""})
     return f
@@ -149,6 +153,7 @@ def _build(doc, f, values):
 def create(doc, body, profile, values):
     tip = body.Tip
     f = body.newObject("PartDesign::FeaturePython", "MoveFace")
+    f.Label = TITLE  # the browser row: "Move Face", "Move Face001" (FreeCAD makes it unique)
     MoveFaceFeature(f)
     f.BaseFeature = tip
     from incad.core import document
@@ -191,6 +196,7 @@ def _current_picks(f):
 def read(doc, f):
     data = _load_json(getattr(f, _STORE, ""), {})
     values = defaults(doc, f.getParentGeoFeatureGroup(), None)
+    # a face gone: the picks as last made, so the edit shows what was picked (and its error) instead of nothing
     values.update(faces=_current_picks(f) or data.get("faces", ""), to=data.get("to", ""), mode=f.Mode or "inventor",
                   extent=f.Extent or "distance")
     values["distance"] = value_text(doc, f, "Distance") or "%g mm" % f.Distance.Value
@@ -213,7 +219,7 @@ def param_names(f):
 
 def arrow(f):
     """The drag arrow's place: the first face's centre and outward normal, in global coordinates (after the move).
-    None while the step has no shape or its face is gone."""
+    None while the step has no shape, its face is gone or its To target gives no gap."""
     sigs = _load_json(getattr(f, "Signatures", ""), [])
     base = f.BaseFeature
     if not sigs or f.Shape.isNull() or base is None or base.Shape.isNull():
@@ -226,7 +232,7 @@ def arrow(f):
     if f.Extent == "to":
         try:
             d = mf.gap_to([face], _target(f))
-        except Exception:
-            d = 0.0
+        except ValueError:
+            return None
     to_global = _frame(f)
     return to_global.multVec(face.CenterOfMass + n * d), to_global.Rotation.multVec(n)
