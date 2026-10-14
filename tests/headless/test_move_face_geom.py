@@ -422,3 +422,16 @@ class FindAndGapTest(unittest.TestCase):
             with self.assertRaises(ValueError) as e:
                 f([top(box)], (V(0, 0, 16), V(0, 0, 0)))
             self.assertEqual(str(e.exception), mf.PARALLEL_MSG)
+
+    def test_gap_to_an_edge_or_a_point(self):
+        """The user: Move Face To an edge too (and a point): it must lie at one height above the faces."""
+        box = Part.makeBox(40, 30, 10)
+        line = Part.LineSegment(V(0, 40, 16), V(40, 45, 16)).toShape()  # level, not over the face: any direction
+        self.assertAlmostEqual(mf.gap_to([top(box)], line), 6, 9)
+        circle = Part.makeCircle(5, V(60, 0, 13), UP)
+        self.assertAlmostEqual(mf.gap_to([top(box)], circle), 3, 9)
+        self.assertAlmostEqual(mf.gap_to([top(box)], Part.Vertex(V(-5, -5, 4))), -6, 9)
+        with self.assertRaises(ValueError) as e:
+            mf.gap_to([top(box)], Part.LineSegment(V(0, 40, 12), V(0, 40, 16)).toShape())  # tilted / upright
+        self.assertEqual(str(e.exception), mf.PARALLEL_MSG)
+        self.assertEqual(mf.PARALLEL_MSG, "Pick a face, plane, edge or point parallel to the faces")

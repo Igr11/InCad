@@ -25,7 +25,7 @@ FIELDS = (
     Field("extent", "Extent", "choice", (("distance", "Distance"), ("to", "To")), "distance"),
     # starts at 0: nothing moves until a value is typed or the arrow dragged (5 mm opened refused on small parts)
     Field("distance", "Distance", "value_length", default="0 mm", show_if=("extent", ("distance",))),
-    Field("to", "To", "pick", pick="plane", show_if=("extent", ("to",))),
+    Field("to", "To", "pick", pick="move_to", show_if=("extent", ("to",))),
     Field("mode", "Neighbours", "choice", (("inventor", "Inventor"), ("step", "Step"), ("together", "Together")),
           "inventor"),
 )
@@ -88,7 +88,8 @@ def _frame(obj):
 
 
 def _target(obj):
-    """The To target as (point, normal) in this Solid's frame: a work / origin plane or a flat face (of any Solid)."""
+    """The To target in this Solid's frame: (point, normal) for a work / origin plane or a flat face (of any Solid);
+    the edge or vertex itself (moved into this frame) for an edge, a corner point or a work point."""
     link = obj.Target
     if not link or link[0] is None:
         raise ValueError(mf.PARALLEL_MSG)
@@ -99,11 +100,19 @@ def _target(obj):
             face = target.Shape.getElement(subs[0])
         except Exception:  # the face picked as To is no longer there
             raise ValueError(mf.PARALLEL_MSG)
+        pl = to_body.multiply(_frame(target))  # the target's Solid frame -> this Solid's frame
+        if subs[0].startswith(("Edge", "Vertex")):
+            el = face.copy()
+            el.Placement = pl.multiply(el.Placement)
+            return el
         if not mf._is_plane(face):
             raise ValueError(mf.PARALLEL_MSG)
-        pl = to_body.multiply(_frame(target))  # the target's Solid frame -> this Solid's frame
         return pl.multVec(face.CenterOfMass), pl.Rotation.multVec(face.normalAt(0, 0))
-    pl = to_body.multiply(target.getGlobalPlacement())  # a datum plane: its placement's Z axis
+    pl = to_body.multiply(target.getGlobalPlacement())
+    if target.TypeId in ("PartDesign::Point", "App::Point"):  # a work point: its place
+        import Part
+        return Part.Vertex(pl.Base)
+    # a datum plane: its placement's Z axis
     return pl.Base, pl.Rotation.multVec(App.Vector(0, 0, 1))
 
 

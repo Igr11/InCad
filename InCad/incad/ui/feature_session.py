@@ -146,8 +146,11 @@ class FeatureSession(QtCore.QObject):
 
     # ----- picking from the 3D view -----
     _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face", "direction")
-    _PICK_WORDS = {"direction": "a flat face or a straight edge"}  # 'Select … for First'; else the pick's own name
-    _ON_BASE = _GEOMETRY + ("two_points",)  # picks made on the shape: the base is shown while they are active
+    _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
+                   "move_to": "a face, plane, edge or point"}
+    # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
+    # so it is no _GEOMETRY pick that must lie on the base)
+    _ON_BASE = _GEOMETRY + ("two_points", "move_to")
 
     def _observe(self, on):
         try:
