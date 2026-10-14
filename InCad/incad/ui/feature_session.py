@@ -591,14 +591,16 @@ class FeatureSession(QtCore.QObject):
         self._seen = dict(values)
         return values
 
-    def _changed(self, values):
+    def _changed(self, values, throttle=False):
+        """throttle: a value that keeps changing (a drag) is previewed every interval, not only once it rests."""
         values = self._follow(values)
         self._sync_choices(values)
         self._activate_revealed_pick()
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
-        self._timer.start()
+        if not (throttle and self._timer.isActive()):
+            self._timer.start()
         self._sync_sketch_markers()
 
     def _activate_revealed_pick(self):

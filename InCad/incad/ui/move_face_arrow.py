@@ -8,6 +8,7 @@ from incad.ui import dof_handles as dh
 from incad.ui import theme as themes
 
 NAME = "InCadMoveFaceArrow"
+MINUS = "−"  # the label's minus sign (the field keeps "-")
 
 
 def _rgb(hex_color):
@@ -28,10 +29,16 @@ def _mm(text):
         return None
 
 
+def _shown(text):
+    """A distance as the label shows it: a typographic minus ("−3 mm")."""
+    text = str(text or "").strip()
+    return MINUS + text[1:].lstrip() if text.startswith("-") else text
+
+
 def _arrow_node(point, normal, size, text, theme, dpr=1.0):
     """The arrow (a line and a cone, as dof_glyphs draws a slide arrow) from `point` along `normal`, and the label
-    beyond its tip: an SoAnnotation that is never picked. Returns (root, shift, label): `shift` moves it all along
-    the normal during a drag, `label` is the SoText2."""
+    beyond its tip: an SoAnnotation that is never picked. Returns a dict of the nodes: root, shift (moves it all
+    along the normal during a drag), label (the SoText2), and color / style / cone (lit by _light)."""
     from pivy import coin
     palette = themes.PALETTES[theme]
     root = coin.SoAnnotation()
@@ -78,20 +85,30 @@ def _arrow_node(point, normal, size, text, theme, dpr=1.0):
     for n in (c, move, font, label):
         lab.addChild(n)
     root.addChild(lab)
-    return root, shift, label
+    return dict(root=root, shift=shift, label=label, color=color, style=style, cone=cone, size=size)
 
 
 def _set_label(label, text):
     label.string = text
 
 
+def _light(nodes, lit, theme):
+    """The arrow under the pointer (or dragged) in the accent colour and thicker, as the gizmo lights a handle."""
+    palette = themes.PALETTES[theme]
+    nodes["color"].rgb.setValue(*_rgb(palette["accent" if lit else "marker_end"]))
+    nodes["style"].lineWidth = 6 if lit else 3
+    nodes["cone"].bottomRadius = nodes["size"] * (0.14 if lit else 0.1)
+
+
 class FaceArrow:
     def __init__(self, shell, session):
         self.shell, self.session = shell, session
         self.root, self._drag, self._label = None, None, ""
-        self._geom, self._view, self._shift, self._text = None, None, None, None
+        self._geom, self._view, self._nodes = None, None, None
         self._built = 0.0   # the feature's distance the arrow was drawn at
         self._offset = 0.0  # mm along the normal it is shown moved by (the drag ahead of the preview)
+        self.lit = False    # the pointer is over it (or it is dragged)
+        self._cursor = None  # viewport we set a hand cursor on
         self.refresh()
 
     def _active_view(self):
@@ -121,11 +138,11 @@ class FaceArrow:
             return ""
         text = values.get("distance", "")
         if _mm(text) is not None:
-            return text
-        return "%g mm" % round(f.Distance.Value, 4)
+            return _shown(text)
+        return _shown("%g mm" % round(f.Distance.Value, 4))
 
     def refresh(self):
-        """Redraw at the feature's current place (after every preview) with the dialog's distance."""
+        """Redraw at the feature's current place (after every preview, a theme switch) with the dialog's distance."""
         self._remove_node()
         f = self.session.feature
         place, view = self._place(), self._active_view()
@@ -145,9 +162,11 @@ class FaceArrow:
             dpr = view.graphicsView().viewport().devicePixelRatioF()
         except Exception:
             dpr = 1.0
-        self.root, self._shift, self._text = _arrow_node(point, normal, size, self._label, self.shell.theme, dpr)
+        self._nodes = _arrow_node(point, normal, size, self._label, self.shell.theme, dpr)
+        self.root = self._nodes["root"]
+        _light(self._nodes, self.lit, self.shell.theme)
         off = normal * self._offset
-        self._shift.translation.setValue(off.x, off.y, off.z)
+        self._nodes["shift"].translation.setValue(off.x, off.y, off.z)
         view.getSceneGraph().addChild(self.root)
         self._geom, self._view = (point, normal, size), view
 
@@ -157,38 +176,60 @@ class FaceArrow:
                 self._view.getSceneGraph().removeChild(self.root)
             except Exception:
                 pass  # the view is gone with its document
-        self.root = self._shift = self._text = self._view = None
+        self.root = self._nodes = self._view = None
 
     def _ends_px(self, view, viewport):
         point, normal, size = self._geom
         base = point + normal * self._offset
         return dh.screen(view, viewport, base), dh.screen(view, viewport, base + normal * size)
 
+    def _hit(self, viewport, x, y):
+        """The arrow's screen ends (base, tip) when (x, y) catches it and it can be dragged, else None."""
+        session = self.session
+        if self.root is None or session.dialog is None or getattr(session, "_closed", False):
+            return None
+        if self._values().get("extent") != "distance":
+            return None  # To: the arrow shows where the face goes, nothing to drag
+        try:
+            if self._view.graphicsView().viewport() != viewport:
+                return None  # the arrow is in another view
+        except Exception:
+            return None
+        a, b = self._ends_px(self._view, viewport)
+        if math.hypot(b[0] - a[0], b[1] - a[1]) < dh.MIN_SHAFT_PX:
+            return None  # seen end-on: a dot on the face, where the user means the face itself
+        if dh.segment_distance((x, y), a, b) > dh.HANDLE_PX:
+            return None
+        return a, b
+
+    def _set_lit(self, lit):
+        if lit != self.lit:
+            self.lit = lit
+            if self._nodes is not None:
+                _light(self._nodes, lit, self.shell.theme)
+
     def hover(self, view, viewport, x, y):
+        if self._drag is not None:
+            return False
+        on = self._hit(viewport, x, y) is not None
+        self._set_lit(on)
+        self._set_cursor(viewport if on else None)
         return False
 
     def press(self, view, viewport, x, y):
-        session = self.session
-        if self.root is None or session.dialog is None or getattr(session, "_closed", False):
+        ends = self._hit(viewport, x, y)
+        if ends is None:
             return False
-        if self._values().get("extent") != "distance":
-            return False  # To: the arrow shows where the face goes, nothing to drag
-        try:
-            if self._view.graphicsView().viewport() != viewport:
-                return False  # the arrow is in another view
-        except Exception:
-            return False
-        a, b = self._ends_px(self._view, viewport)
-        if math.hypot(b[0] - a[0], b[1] - a[1]) < dh.MIN_SHAFT_PX:
-            return False  # seen end-on: a dot on the face, where the user means the face itself
-        if dh.segment_distance((x, y), a, b) > dh.HANDLE_PX:
-            return False
+        a, b = ends
         size = self._geom[2]
         per_mm = ((b[0] - a[0]) / size, (b[1] - a[1]) / size)  # screen px per mm along the arrow
-        start = _mm(self._values().get("distance"))
-        if start is None:
-            start = self._built + self._offset  # a formula: from its value
+        start = self._built + self._offset  # from where the arrow is drawn (a failed preview never makes it jump)
+        typed = _mm(self._values().get("distance"))
+        if typed is not None and abs(typed - start) < 1e-6:
+            start = typed
         self._drag = [x, y, per_mm, start, start, False]  # press, px per mm, start, now, moved past DRAG_PX
+        self._set_lit(True)
+        self._set_cursor(viewport, closed=True)
         return True
 
     def move(self, x, y):
@@ -205,30 +246,53 @@ class FaceArrow:
             return
         drag[4] = d
         text = "%g mm" % d
-        self._label = text
-        if self._text is not None:
-            _set_label(self._text, text)
+        self._label = _shown(text)
+        if self._nodes is not None:
+            _set_label(self._nodes["label"], self._label)
             self._offset = d - self._built
             off = self._geom[1] * self._offset
-            self._shift.translation.setValue(off.x, off.y, off.z)
+            self._nodes["shift"].translation.setValue(off.x, off.y, off.z)
         dialog = self.session.dialog
         if dialog is None:
             return
         dialog.set_values({"distance": text})
         try:
-            self.session._changed(dialog.values())  # the throttled preview, as typing does
+            self.session._changed(dialog.values(), throttle=True)  # a preview every interval while it moves
         except Exception:
             log.logger().exception("Move Face drag")
 
     def release(self):
-        """True when the press was a plain click (no drag): FreeCAD gets it as a click (it picks or selects)."""
-        drag, self._drag = self._drag, None
-        return drag is not None and not drag[5]
+        """The press's release. Never handed to FreeCAD as a click, even without a drag: a click there would pick
+        the face under the arrow into the Faces field."""
+        self._end()
+        return False
+
+    def _end(self):
+        self._drag = None
+        self._set_lit(False)
+        self._set_cursor(None)
 
     def finish(self, moved_ok=True, closing=False):
         """A command, another tab or a closing document ends the drag: the distance stays where it got to."""
-        self._drag = None
+        self._end()
 
     def remove(self):
-        self._drag = None
+        self._end()
         self._remove_node()
+
+    def _set_cursor(self, viewport, closed=False):
+        """Open hand over the arrow, closed while dragging; FreeCAD's own cursor is never taken away."""
+        from incad.qt import QtCore, QtGui
+        ours = (QtCore.Qt.OpenHandCursor, QtCore.Qt.ClosedHandCursor)
+        try:
+            if self._cursor is not None and self._cursor is not viewport:
+                if self._cursor.cursor().shape() in ours:
+                    self._cursor.unsetCursor()
+                self._cursor = None
+            if viewport is not None:
+                if viewport.cursor().shape() == QtCore.Qt.BitmapCursor:
+                    return  # a Sketcher tool's cursor
+                viewport.setCursor(QtGui.QCursor(ours[1] if closed else ours[0]))
+                self._cursor = viewport
+        except RuntimeError:
+            self._cursor = None

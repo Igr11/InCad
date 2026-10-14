@@ -865,6 +865,11 @@ class Shell(QtCore.QObject):
         for ctx in self._contexts.values():
             ctx.set_theme(self.theme)  # the assembly around an edited part in the new grey
         self.dof_display_changed()  # DOF glyphs in the new theme's colours
+        if self._overlay is not None:
+            try:
+                self._overlay.refresh()  # Move Face's arrow too
+            except Exception:
+                log.logger().exception("InCad overlay")
 
     def set_navigation(self, enabled):
         """Off gives FreeCAD's own navigation back exactly (the user's style and zoom setting)."""

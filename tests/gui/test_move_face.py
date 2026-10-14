@@ -3,6 +3,7 @@
 re-pick lands on the base shape) and a command that ends a drag."""
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
 sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
@@ -82,12 +83,12 @@ def press(pos):
     harness.pump(100)
 
 
-def move_by(dx, dy, steps=8):
+def move_by(dx, dy, steps=8, ms=40):
     start = ST["at"]
     for k in range(1, steps + 1):
         p = QtCore.QPointF(start.x() + dx * k / steps, start.y() + dy * k / steps)
         send(QtCore.QEvent.MouseMove, p, N, L)
-        harness.pump(40)
+        harness.pump(ms)
     ST["at"] = QtCore.QPointF(start.x() + dx, start.y() + dy)
 
 
@@ -106,6 +107,38 @@ def select_top():
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(doc().Name, tip.Name, top_face(tip))
     harness.pump(200)
+
+
+class SelectionLog:
+    """What FreeCAD's selection was told, for a failure message."""
+    def __init__(self):
+        self.events = []
+
+    def addSelection(self, doc, obj, sub, pnt):
+        self.events.append(("add", obj, sub))
+
+    def clearSelection(self, doc):
+        self.events.append(("clear",))
+
+
+def clear_selection(timeout_ms=3000):
+    """Empty the selection and wait until it stays empty."""
+    end, quiet = time.time() + timeout_ms / 1000.0, 0
+    while time.time() < end:
+        if Gui.Selection.getSelectionEx(doc().Name):
+            Gui.Selection.clearSelection()
+            quiet = 0
+        else:
+            quiet += 1
+            if quiet >= 3:
+                return
+        harness.pump(100)
+    raise AssertionError("the selection does not stay empty: %s"
+                         % [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name)])
+
+
+def lit_cursor():
+    return viewport().cursor().shape() in (QtCore.Qt.OpenHandCursor, QtCore.Qt.ClosedHandCursor)
 
 
 def set_distance(text):
@@ -154,6 +187,11 @@ def test_1_dialog_and_typed_distance():
     set_distance("3 mm")
     harness.pump(1500)
     assert arrow.label_text() == "3 mm" and abs(arrow._geom[0].z - 13) < 1e-6, (arrow.label_text(), arrow._geom)
+    set_distance("-3 mm")
+    harness.pump(1500)
+    assert arrow.label_text() == "\u22123 mm" and dialog().values()["distance"] == "-3 mm", arrow.label_text()
+    assert abs(arrow._geom[0].z - 7) < 1e-6 and abs(body().Shape.BoundBox.ZMax - 7) < 1e-6, \
+        (arrow._geom, body().Shape.BoundBox)
     set_distance("5 mm")
     harness.pump(1500)
 
@@ -161,11 +199,33 @@ def test_1_dialog_and_typed_distance():
 def test_2_drag_the_arrow_changes_the_distance_and_shows_it():
     arrow = s()._overlay
     head = arrow_head_screen()
-    press(head)
-    move_by(0, -40)
-    harness.pump(300)
+    faces = dialog().values()["faces"]
+    hover(head)
+    assert arrow.lit and lit_cursor(), (arrow.lit, viewport().cursor().shape())
+    hover(QtCore.QPointF(viewport().width() - 5, viewport().height() - 5))
+    assert not arrow.lit and not lit_cursor(), (arrow.lit, viewport().cursor().shape())
+    click(head)  # a plain click on the arrow is neither a drag nor a pick of the face under it
+    harness.pump(800)
+    assert not arrow.dragging() and dialog().values()["faces"] == faces, dialog().values()
+    assert dialog().values()["distance"] == "5 mm", dialog().values()
+    dialog().set_values({"extent": "to"})  # To: the arrow shows, but can't be dragged
+    assert not arrow.press(view(), viewport(), head.x(), head.y()) and not arrow.dragging()
+    dialog().set_values({"extent": "distance"})
+    fs = s().feature_session
+    previews, shown_before = [0], fs.on_previewed
+    fs.on_previewed = lambda: (previews.__setitem__(0, previews[0] + 1), shown_before())
+    try:
+        press(head)
+        move_by(0, -40, steps=12, ms=90)  # a steady drag over about a second
+        during = previews[0]
+        harness.pump(300)
+    finally:
+        fs.on_previewed = shown_before
+    assert during >= 2, ("the preview follows a steady drag (throttled, not only when it rests)", during)
     assert arrow.dragging()
     shown = arrow.label_text()
+    t = arrow._nodes["shift"].translation.getValue()
+    assert abs(arrow._geom[0].z + t[2] - (10 + float(shown.split()[0]))) < 1e-6, (arrow._geom, t[2], shown)
     assert shown.endswith("mm") and shown != "5 mm", shown   # the label follows the pointer during the drag
     assert float(shown.split()[0]) > 5, shown  # up on the screen = outward
     names = list(doc().UndoNames)
@@ -204,16 +264,21 @@ def test_4_edit_reopens_with_the_values_and_modes_switch():
     dialog().set_active_pick("faces")
     harness.pump(500)
     assert base.Visibility and not mf.Visibility, (base.Visibility, mf.Visibility)
-    Gui.Selection.clearSelection()
     dialog().set_pick("faces", "")
-    harness.pump(800)
-    click(screen_of(App.Vector(4, 3, 10)))
-    harness.pump(1500)
+    harness.pump(800)  # its preview (no faces: an error) is done
+    clear_selection()
+    watch = SelectionLog()
+    Gui.Selection.addObserver(watch)
+    try:
+        click(screen_of(App.Vector(4, 3, 10)))
+        harness.pump(1500)
+    finally:
+        Gui.Selection.removeObserver(watch)
     faces = dialog().values()["faces"]
     sel = [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name)]
     info = view().getObjectInfo(to_coin(viewport(), *dof_handles.screen(view(), viewport(), App.Vector(4, 3, 10))))
     assert faces.startswith(base.Name + ":Face") and mf.Name not in faces, (faces, sel, info, dialog().error_text(),
-                                                                          dialog().active_pick())
+                                                                          dialog().active_pick(), watch.events)
     assert faces == "%s:%s" % (base.Name, top_face(base)), faces
     dialog().set_active_pick(None)
     harness.pump(800)
