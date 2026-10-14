@@ -147,11 +147,12 @@ def _corner_patches(shape, face):
     return out
 
 
-def _material_side(face, size):
-    """A block on the material side of a flat face's plane, `size` beyond it every way."""
+def _side_of(face, size, way):
+    """A block on one side of a flat face's plane (way 1: the air side, -1: the material side), `size` beyond it
+    every way."""
     n = _normal(face)
     sheet = Part.Plane(face.CenterOfMass, n).toShape(-size, size, -size, size)
-    return sheet.extrude(n * -size)
+    return sheet.extrude(n * (size * way))
 
 
 def _side_dir(shape, face, vertex, n):
@@ -249,11 +250,17 @@ def _inventor_slab(shape, face, n, d):
     if not slab.isValid() or not slab.Shells[0].isClosed() or slab.Volume < _TOL:
         raise ValueError(TOO_LARGE_MSG)
     if d < 0:  # a corner patch (touching the face at a vertex only) cuts the corner off: the slab stops at its plane
+        # there only — on a non-convex face (an L, a U) the plane runs on through the slab far from that corner, so
+        # each clip is the cone at the corner vertex on the patch's air side, inside both neighbours there (the
+        # slab's own walls): its three edges run down from the vertex, it meets the slab in that corner only
         size = shape.BoundBox.DiagonalLength + abs(d)
-        for patch, _ in _corner_patches(shape, face):
-            if not _is_plane(patch):
+        for patch, nbs in _corner_patches(shape, face):
+            if not _is_plane(patch) or not all(_is_plane(f) for f in nbs):
                 raise ValueError(ROUND_MSG)
-            slab = slab.common(_material_side(patch, size))
+            cone = _side_of(patch, size, 1)
+            for f in nbs:
+                cone = cone.common(_side_of(f, size, -1))
+            slab = slab.cut(cone)
         if len(slab.Solids) != 1:
             raise ValueError(TOO_LARGE_MSG)
         slab = slab.Solids[0]
