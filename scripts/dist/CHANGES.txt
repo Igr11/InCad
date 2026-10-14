@@ -5,6 +5,14 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.3.1
+-----
+Improvements
+- Move Face: To also takes an edge that runs parallel to the faces (a level line, an arc, a circle)
+  or a point (a corner, a work point); the faces move to its height and follow it if it moves. The
+  edge or point may be on another Solid.
+
+
 0.3.0
 -----
 Direct editing: Move Face.

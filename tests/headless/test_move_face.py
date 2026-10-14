@@ -222,6 +222,32 @@ class MoveFaceFeatureTest(unittest.TestCase):
         self.assertAlmostEqual(point.z, 12, 6)
         self.assertAlmostEqual(normal.z, 1, 9)
 
+    def test_to_an_edge_and_a_point_of_another_solid(self):
+        """The user: Move Face up to an edge (and a point): the top goes to a taller block's top edge, follows it."""
+        from incad.features import common
+        other = document.new_solid(self.doc)
+        box = other.newObject("PartDesign::AdditiveBox", "Tall")
+        box.Length, box.Width, box.Height = 6, 6, 15
+        box.Placement = App.Placement(App.Vector(50, 0, 0), App.Rotation())
+        other.Tip = box
+        self.doc.recompute()
+        edges = box.Shape.Edges
+        top_edge = next(i for i, e in enumerate(edges) if abs(e.BoundBox.ZMin - 15) < 1e-9 and abs(e.BoundBox.ZMax - 15) < 1e-9)
+        upright = next(i for i, e in enumerate(edges) if e.BoundBox.ZLength > 1)
+        corner = next(i for i, v in enumerate(box.Shape.Vertexes) if abs(v.Point.z - 15) < 1e-9)
+        for sub in ("Edge%d" % (top_edge + 1), "Vertex%d" % (corner + 1)):
+            self.assertTrue(common.accepts(move_face.FIELDS[3].pick, box, sub), sub)
+        f = self.make(extent="to", to="%s:Edge%d" % (box.Name, top_edge + 1))
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 15, 6)
+        box.Height = 18
+        self.doc.recompute()
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 18, 6)  # it follows the edge
+        move_face.update(self.doc, f, dict(move_face.read(self.doc, f), to="%s:Vertex%d" % (box.Name, corner + 1)))
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 18, 6)
+        with self.assertRaises(ValueError) as e:
+            move_face.update(self.doc, f, dict(move_face.read(self.doc, f), to="%s:Edge%d" % (box.Name, upright + 1)))
+        self.assertIn(move_face.mf.PARALLEL_MSG, str(e.exception))
+
     def test_face_on_a_second_solid(self):
         """A second Solid (as tests/headless/test_make_assembly.py makes one); Move Face on its top goes into it."""
         other = document.new_solid(self.doc)

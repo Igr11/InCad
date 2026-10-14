@@ -10,7 +10,7 @@ import FreeCAD as App
 import Part
 
 FACES_MSG = "The faces must be flat and face the same way"
-PARALLEL_MSG = "Pick a face or plane parallel to the faces"
+PARALLEL_MSG = "Pick a face, plane, edge or point parallel to the faces"
 ROUND_MSG = "A neighbouring face is round: Inventor mode can't follow it yet — try Step or Together"
 WALLS_MSG = "The walls around the chamfer / fillet must run along the move — try Inventor or Step"
 TOO_LARGE_MSG = "The move is too large: a neighbouring face would vanish"
@@ -80,6 +80,13 @@ def check_faces(faces):
 def gaps_to(faces, target):
     """One signed gap per face from its plane to `target` (faces in different planes each reach the target plane)."""
     n = check_faces(faces)
+    if isinstance(target, (Part.Edge, Part.Vertex)):  # an edge or a point: all of it at one height above the faces
+        pts = [target.Point] if isinstance(target, Part.Vertex) else target.discretize(24)
+        heights = [p.dot(n) for p in pts]
+        if max(heights) - min(heights) > _TOL:
+            raise ValueError(PARALLEL_MSG)
+        h = sum(heights) / len(heights)
+        return [h - f.CenterOfMass.dot(n) for f in faces]
     if isinstance(target, Part.Face):
         if not _is_plane(target):
             raise ValueError(PARALLEL_MSG)

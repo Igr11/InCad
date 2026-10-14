@@ -112,7 +112,7 @@ def profile_of(feature):
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
            "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
-           "direction": "faces or edges"}
+           "direction": "faces or edges", "move_to": "items"}
 
 
 def selection_ex(doc_name=""):
@@ -359,6 +359,12 @@ def accepts(kind, obj, sub):
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
         return sub.startswith("Face") and el is not None
+    if kind == "move_to":  # Move Face To: a flat face, a work / origin plane, any edge, a vertex or a work point
+        if not sub:
+            return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point")
+        if sub.startswith(("Edge", "Vertex")):
+            return el is not None
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
     if kind == "plane":
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
@@ -393,6 +399,7 @@ def _accepts_sketch(kind, sk, sub):
 
 _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Click a flat face or a straight edge…",
                "plane": "Click a face or work plane…",
+               "move_to": "Click a face, plane, edge or point…",
                "limit": "Click a face, edge or work plane…", "to_face": "Click a face or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
                "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}

@@ -414,9 +414,8 @@ def test_8_finish_move_in_the_right_click_menu():
     harness.pump(1500)
     vp = viewport()
     local = QtCore.QPoint(8, 8)  # empty space in a corner of the view
-    s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
-    harness.pump(400)
-    menu = s().marking_menu
+    # read the menu at once: a popup may close by itself when the test window lacks the focus
+    menu = s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
     top = menu.button("N") if menu is not None else None
     assert top is not None and top.text() == "Finish move", (menu and menu._slot_ids, s()._session_finish(),
                                                              s().registry.has("feature.finish_move"), s().menu_kind)
@@ -427,12 +426,41 @@ def test_8_finish_move_in_the_right_click_menu():
     assert doc().UndoNames[0] == "Move Face" and len(doc().UndoNames) == n + 1, doc().UndoNames
     assert abs(body().Shape.BoundBox.ZMax - (height + 2)) < 1e-6, body().Shape.BoundBox.ZMax
     # no dialog open: no Finish move
-    s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
-    harness.pump(400)
-    menu = s().marking_menu
+    menu = s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
     assert menu is not None and (menu.button("N") is None or menu.button("N").text() != "Finish move")
-    s().marking_menu.close()
+    menu.close()
     harness.pump(300)
+
+
+def test_8b_to_takes_an_edge_clicked_in_the_view():
+    """The user: Move Face up to an edge too — with To active, a click on an edge fills To."""
+    if s().feature_session is not None:  # an earlier test left its dialog open: start clean
+        s().feature_session.cancel()
+        harness.pump(900)
+    zmax = body().Shape.BoundBox.ZMax  # the shape before the move: what the view shows while To picks
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    dialog().set_values({"extent": "to"})
+    s().feature_session._changed(dialog().values())
+    harness.pump(800)
+    dialog().set_active_pick("to")
+    harness.pump(500)
+    clear_selection()
+    watch = SelectionLog()
+    Gui.Selection.addObserver(watch)
+    p = App.Vector(10, 0, zmax)
+    try:
+        click(screen_of(p))  # the middle of the top front edge
+        harness.pump(1500)
+    finally:
+        Gui.Selection.removeObserver(watch)
+    to = dialog().values()["to"]
+    info = view().getObjectInfo(to_coin(viewport(), *dof_handles.screen(view(), viewport(), p)))
+    assert ":Edge" in to, (to, dialog().error_text(), dialog().active_pick(), info, watch.events, zmax)
+    assert not dialog().error_text(), dialog().error_text()  # its own top edge: level with the face, no move
+    s().feature_session.cancel()
+    harness.pump(900)
 
 
 def test_9_cleanup():
@@ -443,4 +471,5 @@ def test_9_cleanup():
 harness.run([test_0_setup, test_1_dialog_and_typed_distance, test_2_drag_the_arrow_changes_the_distance_and_shows_it,
              test_3_ok_is_one_undo_step_and_the_arrow_goes, test_4_edit_reopens_with_the_values_and_modes_switch,
              test_5_a_command_ends_the_drag, test_6_a_refused_distance_leaves_the_arrow_at_the_last_good_one,
-             test_7_other_views_go_to_the_dof_gizmo, test_8_finish_move_in_the_right_click_menu, test_9_cleanup])
+             test_7_other_views_go_to_the_dof_gizmo, test_8_finish_move_in_the_right_click_menu,
+             test_8b_to_takes_an_edge_clicked_in_the_view, test_9_cleanup])
