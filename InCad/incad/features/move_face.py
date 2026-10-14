@@ -236,3 +236,9 @@ def arrow(f):
             return None
     to_global = _frame(f)
     return to_global.multVec(face.CenterOfMass + n * d), to_global.Rotation.multVec(n)
+
+
+def overlay(shell, session):
+    """While the dialog is open: the drag arrow on the first face with the distance at its tip."""
+    from incad.ui.move_face_arrow import FaceArrow
+    return FaceArrow(shell, session)

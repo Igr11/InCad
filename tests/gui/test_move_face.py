@@ -1,0 +1,256 @@
+"""Move Face in the real window: the dialog from a selected top face, a typed distance, the drag arrow on the face
+(screen-space press on its head, move, release) with the distance shown at it, one undo step on OK, the edit (a
+re-pick lands on the base shape) and a command that ends a drag."""
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests", "gui"))
+sys.path.insert(0, os.path.join(os.environ["INCAD_REPO"], "tests"))
+import harness  # noqa: E402
+import FreeCAD as App  # noqa: E402
+import FreeCADGui as Gui  # noqa: E402
+from pivy import coin  # noqa: E402,F401
+from PySide6.QtTest import QTest  # noqa: E402
+from incad.qt import QtCore, QtGui, QtWidgets  # noqa: E402
+from incad.core import commands, document, prefs  # noqa: E402
+from incad.ui import dof_handles, shell  # noqa: E402
+from incad.ui.nav import to_coin  # noqa: E402
+import headless.util as util  # noqa: E402
+
+ST = {}
+L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+
+
+def s():
+    return shell.instance()
+
+
+def doc():
+    return App.getDocument(ST["doc"])
+
+
+def body():
+    return document.primary_body(doc())
+
+
+def dialog():
+    fs = s().feature_session
+    return fs.dialog if fs is not None else None
+
+
+def ok():
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1500)
+
+
+def view():
+    return Gui.getDocument(ST["doc"]).ActiveView
+
+
+def viewport():
+    return view().graphicsView().viewport()
+
+
+def screen_of(point):
+    x, y = dof_handles.screen(view(), viewport(), point)
+    return QtCore.QPointF(x, y)
+
+
+def send(kind, pos, button, buttons):
+    vp = viewport()
+    glob = QtCore.QPointF(vp.mapToGlobal(pos.toPoint()))
+    QtWidgets.QApplication.sendEvent(vp, QtGui.QMouseEvent(kind, pos, glob, button, buttons, QtCore.Qt.NoModifier))
+
+
+def hover(pos, ms=150):
+    send(QtCore.QEvent.MouseMove, pos, N, N)
+    harness.pump(ms)
+
+
+def click(pos):
+    hover(pos, 300)
+    send(QtCore.QEvent.MouseButtonPress, pos, L, L)
+    harness.pump(60)
+    send(QtCore.QEvent.MouseButtonRelease, pos, L, N)
+    harness.pump(600)
+
+
+def press(pos):
+    hover(pos, 300)
+    send(QtCore.QEvent.MouseButtonPress, pos, L, L)
+    ST["at"] = QtCore.QPointF(pos)
+    harness.pump(100)
+
+
+def move_by(dx, dy, steps=8):
+    start = ST["at"]
+    for k in range(1, steps + 1):
+        p = QtCore.QPointF(start.x() + dx * k / steps, start.y() + dy * k / steps)
+        send(QtCore.QEvent.MouseMove, p, N, L)
+        harness.pump(40)
+    ST["at"] = QtCore.QPointF(start.x() + dx, start.y() + dy)
+
+
+def release():
+    send(QtCore.QEvent.MouseButtonRelease, ST["at"], L, N)
+
+
+def top_face(obj):
+    z = obj.Shape.BoundBox.ZMax
+    return "Face%d" % [i + 1 for i, f in enumerate(obj.Shape.Faces)
+                       if abs(f.CenterOfMass.z - z) < 1e-6 and abs(f.normalAt(0, 0).z - 1) < 1e-6][0]
+
+
+def select_top():
+    tip = body().Tip
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, tip.Name, top_face(tip))
+    harness.pump(200)
+
+
+def set_distance(text):
+    w = dialog().field("distance")
+    w.setText(text)
+    w.editingFinished.emit()
+
+
+def arrow_head_screen():
+    a = s()._overlay
+    point, normal, size = a._geom
+    return screen_of(point + normal * (a._offset + size))
+
+
+def test_0_setup():
+    prefs.set_remember_new_choice(True)
+    prefs.set_default_units("mm")
+    Gui.activateWorkbench("InCadWorkbench")
+    harness.pump(1000)
+    d = App.newDocument("MoveFaceGui")
+    ST["doc"] = d.Name
+    harness.pump(500)
+    _, pad = util.padded_part(d, 10, incad=True)
+    ST["pad"] = pad.Name
+    harness.pump(300)
+    view().viewIsometric()
+    view().fitAll()
+    harness.pump(500)
+    assert s()._overlay is None
+
+
+def test_1_dialog_and_typed_distance():
+    ST["undo"] = len(doc().UndoNames)  # FreeCAD lists the dialog's open step among UndoNames already
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    assert dialog() is not None and dialog().values()["faces"], dialog().values()
+    set_distance("5 mm")
+    harness.pump(1500)
+    assert abs(body().Shape.BoundBox.ZMax - 15) < 1e-6, body().Shape.BoundBox
+    arrow = s()._overlay
+    assert arrow is not None and arrow.label_text() == "5 mm", arrow.label_text() if arrow else None
+    assert s().navigator.handle_hook is arrow
+    assert arrow.root is not None and view().getSceneGraph().findChild(arrow.root) >= 0, "the arrow is drawn"
+    assert abs(arrow._geom[0].z - 15) < 1e-6 and abs(arrow._geom[1].z - 1) < 1e-9, arrow._geom
+    set_distance("3 mm")
+    harness.pump(1500)
+    assert arrow.label_text() == "3 mm" and abs(arrow._geom[0].z - 13) < 1e-6, (arrow.label_text(), arrow._geom)
+    set_distance("5 mm")
+    harness.pump(1500)
+
+
+def test_2_drag_the_arrow_changes_the_distance_and_shows_it():
+    arrow = s()._overlay
+    head = arrow_head_screen()
+    press(head)
+    move_by(0, -40)
+    harness.pump(300)
+    assert arrow.dragging()
+    shown = arrow.label_text()
+    assert shown.endswith("mm") and shown != "5 mm", shown   # the label follows the pointer during the drag
+    assert float(shown.split()[0]) > 5, shown  # up on the screen = outward
+    names = list(doc().UndoNames)
+    release()
+    harness.pump(1500)
+    assert not arrow.dragging()
+    assert dialog().values()["distance"] == shown, (dialog().values()["distance"], shown)
+    assert abs(body().Shape.BoundBox.ZMax - (10 + float(shown.split()[0]))) < 1e-6, body().Shape.BoundBox
+    assert arrow.label_text() == shown, arrow.label_text()  # it stays while the dialog is open
+    assert list(doc().UndoNames) == names, "the drag is no undo step of its own"
+    sel = [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name)]
+    assert dialog().values()["faces"] and not dialog().error_text(), (dialog().values(), dialog().error_text(), sel)
+    ST["shown"] = shown
+
+
+def test_3_ok_is_one_undo_step_and_the_arrow_goes():
+    n = ST["undo"]
+    root = s()._overlay.root
+    ok()
+    harness.pump(1200)
+    assert doc().UndoNames[0] == "Move Face" and len(doc().UndoNames) == n + 1, doc().UndoNames
+    assert s()._overlay is None
+    assert s().navigator.handle_hook is s().dof_handles
+    assert view().getSceneGraph().findChild(root) < 0, "the arrow is gone from the view"
+
+
+def test_4_edit_reopens_with_the_values_and_modes_switch():
+    mf = body().Tip
+    shell.edit_feature(mf)
+    harness.pump(1200)
+    assert dialog().values()["mode"] == "inventor"
+    assert dialog().values()["distance"] == ST["shown"], dialog().values()
+    assert s()._overlay is not None and s()._overlay.label_text() == ST["shown"]
+    # a new face pick during the edit lands on the base shape (shown while picking), never on the Move Face itself
+    base = mf.BaseFeature
+    dialog().set_active_pick("faces")
+    harness.pump(500)
+    assert base.Visibility and not mf.Visibility, (base.Visibility, mf.Visibility)
+    Gui.Selection.clearSelection()
+    dialog().set_pick("faces", "")
+    harness.pump(800)
+    click(screen_of(App.Vector(4, 3, 10)))
+    harness.pump(1500)
+    faces = dialog().values()["faces"]
+    sel = [(x.ObjectName, x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name)]
+    info = view().getObjectInfo(to_coin(viewport(), *dof_handles.screen(view(), viewport(), App.Vector(4, 3, 10))))
+    assert faces.startswith(base.Name + ":Face") and mf.Name not in faces, (faces, sel, info, dialog().error_text(),
+                                                                          dialog().active_pick())
+    assert faces == "%s:%s" % (base.Name, top_face(base)), faces
+    dialog().set_active_pick(None)
+    harness.pump(800)
+    dialog().set_values({"mode": "step"})
+    s().feature_session._changed(dialog().values())
+    harness.pump(1500)
+    assert not dialog().error_text(), dialog().error_text()
+    s().feature_session.cancel()
+    harness.pump(900)
+    assert s()._overlay is None and s().navigator.handle_hook is s().dof_handles
+
+
+def test_5_a_command_ends_the_drag():
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    arrow = s()._overlay
+    press(arrow_head_screen())
+    move_by(0, -20)
+    harness.pump(300)
+    assert arrow.dragging()
+    commands.REGISTRY.run("view.zoom_all")
+    harness.pump(500)
+    assert not arrow.dragging(), "the command ended the drag"
+    assert dialog() is not None and dialog().values()["distance"].endswith("mm")
+    release()
+    harness.pump(300)
+    s().feature_session.cancel()
+    harness.pump(900)
+    assert s()._overlay is None
+
+
+def test_9_cleanup():
+    App.closeDocument(ST["doc"])
+    harness.pump(500)
+
+
+harness.run([test_0_setup, test_1_dialog_and_typed_distance, test_2_drag_the_arrow_changes_the_distance_and_shows_it,
+             test_3_ok_is_one_undo_step_and_the_arrow_goes, test_4_edit_reopens_with_the_values_and_modes_switch,
+             test_5_a_command_ends_the_drag, test_9_cleanup])
