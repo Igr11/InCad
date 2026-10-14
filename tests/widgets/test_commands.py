@@ -69,3 +69,13 @@ class RegistryTest(unittest.TestCase):
             self.assertTrue(self.r.run("a").ok, "a failing hook does not stop the command")
         finally:
             commands.set_before_run_hook(None)
+
+
+class MoveFaceCommandTest(unittest.TestCase):
+    def test_move_face_is_on_the_ribbon_and_the_face_menu(self):
+        from incad.ui import marking_layout, ribbon_layout
+        modify = [g for tab, groups in ribbon_layout.LAYOUT["part"] if tab == "3D Model"
+                  for g in groups if g[0] == "Modify"][0][1]
+        flat = [c for item in modify for c in (item if isinstance(item, list) else [item])]
+        self.assertIn("feature.move_face", flat)
+        self.assertIn("feature.move_face", marking_layout.LAYOUT["face"]["list"])

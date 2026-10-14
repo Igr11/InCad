@@ -974,6 +974,10 @@ def commands():
         Command(id="feature.split", label="Split", icon="split", handler=lambda: start_feature("split"),
                 contexts=frozenset({"part"}),
                 tooltip="Cut the part along a sketch's lines (made into thin surfaces): keep every piece, or the ones you click"),
+        Command(id="feature.move_face", label="Move Face", icon="move_face",
+                handler=lambda: start_feature("move_face"), contexts=frozenset({"part"}),
+                tooltip="Move flat faces by a distance or up to a face; the neighbours follow (Inventor), stay "
+                        "(Step) or move with them (Together)"),
         Command(id="sketch.construction", label="Construction", icon="construction",
                 handler=lambda: _construction(), contexts=frozenset({"sketch"}), checkable=True,
                 is_checked=lambda: _construction_on(),
