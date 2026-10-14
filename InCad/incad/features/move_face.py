@@ -17,6 +17,7 @@ STRUCTURAL = ()
 PROPS = {"distance": "Distance"}
 PRESELECT = {"faces": "face"}  # faces selected before the command fill the field (key: the pick kind, as Shell's)
 _STORE = "InCadMoveFace"
+OTHER_SOLID_MSG = "The faces must be on this Solid"
 
 FIELDS = (
     Field("faces", "Faces", "picks", pick="face"),
@@ -114,12 +115,16 @@ def defaults(doc, body, profile=None):
     return values
 
 
-def _picked_faces(doc, text):
+def _picked_faces(doc, text, body):
+    """The picked faces; one of another Solid is refused (its geometry, in that Solid's frame, would be matched to a
+    face of this one)."""
     out = []
     for obj, sub in parse_picks(doc, text):
         obj, sub = resolve(obj, sub)
         if obj is None or not sub.startswith("Face"):
             continue
+        if obj.getParentGeoFeatureGroup() != body:
+            raise ValueError(OTHER_SOLID_MSG)
         out.append(obj.Shape.getElement(sub))
     return out
 
@@ -132,7 +137,7 @@ def _store(f, data):
 
 
 def _build(doc, f, values):
-    faces = _picked_faces(doc, values.get("faces"))
+    faces = _picked_faces(doc, values.get("faces"), f.getParentGeoFeatureGroup())
     mf.check_faces(faces)
     f.Signatures = json.dumps([mf.signature(face) for face in faces])
     f.Mode = values.get("mode") or "inventor"

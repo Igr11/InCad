@@ -222,6 +222,26 @@ class MoveFaceFeatureTest(unittest.TestCase):
         self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 6, 6)
         self.assertAlmostEqual(self.pad.Shape.BoundBox.ZMax, 10, 6)  # the first Solid untouched
 
+    def test_faces_of_another_solid_are_refused(self):
+        """An identical Solid 60 mm away: its top lies where this Solid's top is in its own frame, never matched."""
+        other = document.new_solid(self.doc)
+        twin = other.newObject("PartDesign::AdditiveBox", "Twin")
+        twin.Length, twin.Width, twin.Height = 20, 10, 10
+        other.Tip = twin
+        other.Placement = App.Placement(App.Vector(60, 0, 0), App.Rotation())
+        self.doc.recompute()
+        with self.assertRaises(ValueError) as e:
+            self.make(faces=top_name(twin), distance="5 mm")
+        self.assertEqual(str(e.exception), move_face.OTHER_SOLID_MSG)
+        self.assertEqual(move_face.OTHER_SOLID_MSG, "The faces must be on this Solid")
+        self.assertFalse([o.Name for o in self.doc.Objects if move_face.claims(o)])
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertAlmostEqual(self.body.Shape.Volume, 20 * 10 * 10, 6)
+        f = self.make(distance="5 mm")  # an edit that picks the other Solid's face is refused too
+        with self.assertRaises(ValueError) as e:
+            move_face.update(self.doc, f, dict(move_face.read(self.doc, f), faces=top_name(twin)))
+        self.assertEqual(str(e.exception), move_face.OTHER_SOLID_MSG)
+
 
 if __name__ == "__main__":
     unittest.main()
