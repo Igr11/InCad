@@ -290,7 +290,7 @@ class AllEdgesTest(unittest.TestCase):
                     self.assertEqual(len(r.Solids), 1, case)
                     self.assertLess(r.cut(expected).Volume + expected.cut(r).Volume, 1e-6, case)
                     self.assertAlmostEqual(r.BoundBox.ZMax, 10 + d, 6, case)
-                    exact_edges(self, r)  # the clips' balls never reach the result
+                    exact_edges(self, r)  # the corner cones never reach the result
                 with self.assertRaises(ValueError) as e:
                     mf.apply(s, [top(s)], -2.5, "inventor")  # past the 2 mm top chamfers
                 self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, (name, edges))
