@@ -88,6 +88,25 @@ class FilletTest(unittest.TestCase):
         self.assertAlmostEqual(mf.apply(fl, [top(fl)], 3, "step").Volume, fl.Volume + top(fl).Area * 3, 6)
 
 
+class FrustumTest(unittest.TestCase):
+    def frustum(self):
+        box = Part.makeBox(20, 20, 10)
+        return box.makeChamfer(5, [e for e in box.Edges if abs(e.CenterOfMass.z - 10) < 1e-9])  # top 10 x 10
+
+    def test_inventor_grows_the_frustum(self):
+        fr = self.frustum()
+        r = mf.apply(fr, [top(fr)], 3, "inventor")  # the top 4 x 4 at z 13
+        self.assertAlmostEqual(r.Volume, 20 * 20 * 5 + 8 / 3 * (20 * 20 + 4 * 4 + 20 * 4), 6)
+        self.assertAlmostEqual(top(r).Area, 16, 6)
+
+    def test_inventor_past_the_apex_is_refused(self):
+        fr = self.frustum()
+        for d in (5, 7):  # at +5 the top shrinks to a point, past it the outline would turn inside out
+            with self.assertRaises(ValueError) as e:
+                mf.apply(fr, [top(fr)], d, "inventor")
+            self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, d)
+
+
 class HoleSlotTest(unittest.TestCase):
     def test_face_with_a_hole_keeps_the_hole(self):
         part = Part.makeBox(40, 30, 10).cut(Part.makeCylinder(4, 10, V(20, 15, 0)))
@@ -111,6 +130,22 @@ class HoleSlotTest(unittest.TestCase):
         self.assertAlmostEqual(mf.apply(part, [floor], -5, "inventor").Volume, part.Volume - 20 * 10 * 5, 6)
 
 
+    def test_a_cut_through_the_part_is_refused(self):
+        part = Part.makeBox(40, 30, 10).cut(Part.makeBox(20, 10, 4, V(10, 10, 6)))  # floor at z 6
+        floor = next(f for f in part.Faces if f.Surface.__class__.__name__ == "Plane"
+                     and f.normalAt(0, 0).z > 0.999 and abs(f.CenterOfMass.z - 6) < 1e-9)
+        for mode in ("inventor", "step", "together"):
+            for d in (-6, -7):  # down to the bottom face, or through it
+                with self.assertRaises(ValueError) as e:
+                    mf.apply(part, [floor], d, mode)
+                self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, (mode, d))
+
+    def test_together_through_the_bottom_is_refused(self):
+        ch = chamfered()
+        with self.assertRaises(ValueError) as e:
+            mf.apply(ch, [top(ch)], -8, "together")  # the 7 mm wall under the chamfer would vanish
+        self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG)
+
 class SeveralFacesTest(unittest.TestCase):
     def two_bosses(self):
         base = Part.makeBox(60, 20, 5)
@@ -131,6 +166,26 @@ class SeveralFacesTest(unittest.TestCase):
         self.assertEqual(str(e.exception), mf.FACES_MSG)
 
 
+    def test_tops_in_two_planes_move_to_one_plane(self):
+        base = Part.makeBox(60, 20, 5)
+        part = base.fuse([Part.makeBox(10, 10, 5, V(5, 5, 5)), Part.makeBox(10, 10, 2, V(45, 5, 5))]).removeSplitter()
+        tops = sorted((f for f in part.Faces if f.normalAt(0, 0).z > 0.999 and f.CenterOfMass.z > 6),
+                      key=lambda f: -f.CenterOfMass.z)  # z 10, z 7
+        gaps = mf.gaps_to(tops, (V(0, 0, 12), UP))
+        self.assertEqual([round(g, 9) for g in gaps], [2, 5])
+        self.assertAlmostEqual(mf.gap_to(tops, (V(0, 0, 12), UP)), 2, 9)
+        r = mf.apply(part, tops, gaps, "inventor")
+        self.assertAlmostEqual(r.Volume, part.Volume + 100 * 2 + 100 * 5, 6)
+        at12 = [f for f in r.Faces if f.normalAt(0, 0).z > 0.999 and abs(f.CenterOfMass.z - 12) < 1e-9]
+        self.assertEqual(len(at12), 2)
+        self.assertIs(mf.apply(part, tops, [0, 0], "inventor"), part)
+
+    def test_unknown_mode(self):
+        box = Part.makeBox(40, 30, 10)
+        with self.assertRaises(ValueError) as e:
+            mf.apply(box, [top(box)], 3, "sideways")
+        self.assertEqual(str(e.exception), "Unknown neighbours mode: sideways")
+
 class FindAndGapTest(unittest.TestCase):
     def test_signature_finds_the_face_again_on_a_changed_shape(self):
         box = Part.makeBox(40, 30, 10)
@@ -147,3 +202,7 @@ class FindAndGapTest(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             mf.gap_to([top(box)], (V(0, 0, 16), V(0, 1, 1).normalize()))
         self.assertEqual(str(e.exception), mf.PARALLEL_MSG)
+        for f in (mf.gap_to, mf.gaps_to):
+            with self.assertRaises(ValueError) as e:
+                f([top(box)], (V(0, 0, 16), V(0, 0, 0)))
+            self.assertEqual(str(e.exception), mf.PARALLEL_MSG)

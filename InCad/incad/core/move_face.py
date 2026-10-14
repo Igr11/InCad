@@ -77,7 +77,8 @@ def check_faces(faces):
     return n
 
 
-def gap_to(faces, target):
+def gaps_to(faces, target):
+    """One signed gap per face from its plane to `target` (faces in different planes each reach the target plane)."""
     n = check_faces(faces)
     if isinstance(target, Part.Face):
         if not _is_plane(target):
@@ -85,9 +86,14 @@ def gap_to(faces, target):
         point, normal = target.CenterOfMass, _normal(target)
     else:
         point, normal = target
-    if abs(abs(App.Vector(normal).normalize().dot(n)) - 1) > _ANG:
+    normal = App.Vector(normal)
+    if normal.Length < _TOL or abs(abs(normal.normalize().dot(n)) - 1) > _ANG:
         raise ValueError(PARALLEL_MSG)
-    return (App.Vector(point) - faces[0].CenterOfMass).dot(n)
+    return [(App.Vector(point) - f.CenterOfMass).dot(n) for f in faces]
+
+
+def gap_to(faces, target):
+    return gaps_to(faces, target)[0]
 
 
 def _along(face, n):
@@ -144,7 +150,8 @@ def _moved_wire(shape, face, wire, n, d):
     for e in wire.OrderedEdges:
         a, b = moved[e.Vertexes[0].hashCode()], moved[e.Vertexes[-1].hashCode()]
         if e.Curve.__class__.__name__ == "Line":
-            if a.distanceToPoint(b) < _TOL:
+            old = e.Vertexes[-1].Point - e.Vertexes[0].Point
+            if (b - a).dot(old) <= _TOL:  # shrunk to nothing, or turned round: the outline would cross itself
                 raise ValueError(TOO_LARGE_MSG)
             edges.append(Part.LineSegment(a, b).toShape())
         else:  # an arc / circle on a cylinder along the move: it slides
@@ -163,7 +170,8 @@ def _inventor_slab(shape, face, n, d):
     outer = Part.Wire(face.OuterWire.OrderedEdges)
     new_outer = _moved_wire(shape, face, face.OuterWire, n, d)
     try:
-        if not Part.Face(new_outer).isValid() or Part.Face(new_outer).Area < _TOL:
+        new_face = Part.Face(new_outer)
+        if not new_face.isValid() or new_face.Area < _TOL:
             raise ValueError(TOO_LARGE_MSG)
     except Part.OCCError:
         raise ValueError(TOO_LARGE_MSG)
@@ -194,26 +202,51 @@ def _together_slab(shape, face, n, d):
             raise ValueError(WALLS_MSG)
     caps = [f.copy() for f in group] + [f.translated(n * d) for f in group]
     strips = [e.extrude(n * d).Faces[0] for e in rim]
-    sh = Part.Shell(caps + strips).sewShape() or Part.Shell(caps + strips)
-    if sh.ShapeType != "Shell":
-        sh = Part.Shell(sh.Faces)
-    return Part.Solid(sh)
+    return Part.Solid(Part.Shell(caps + strips))
+
+
+_SLABS = {"step": lambda shape, f, n, d: f.extrude(n * d), "together": _together_slab, "inventor": _inventor_slab}
+
+
+def _on_far_side(shape, face, n, d):
+    """The moved face lies on the part's boundary facing the other way: the cut would open the part through there."""
+    moved = face.translated(n * d)
+    plane = moved.CenterOfMass
+    for g in shape.Faces:
+        if not _is_plane(g) or _normal(g).dot(n) > -1 + _ANG or abs((g.CenterOfMass - plane).dot(n)) > _TOL:
+            continue
+        if moved.common(g).Area > _TOL:
+            return True
+    return False
 
 
 def apply(shape, faces, d, mode):
-    if abs(d) < _TOL:
+    """`d` one distance for every face, or a list of one per face (To: faces in different planes reach one plane)."""
+    if mode not in _SLABS:
+        raise ValueError("Unknown neighbours mode: %s" % mode)
+    ds = list(d) if isinstance(d, (list, tuple)) else [d] * len(faces)
+    if len(ds) != len(faces):
+        raise ValueError("One distance per face: %d faces, %d distances" % (len(faces), len(ds)))
+    if all(abs(x) < _TOL for x in ds):
         return shape
     n = check_faces(faces)
-    slabs = []
-    for f in faces:
-        if mode == "step":
-            slabs.append(f.extrude(n * d))
-        elif mode == "together":
-            slabs.append(_together_slab(shape, f, n, d))
+    adds, cuts = [], []
+    for f, x in zip(faces, ds):
+        if abs(x) < _TOL:
+            continue
+        slab = _SLABS[mode](shape, f, n, x)
+        if x < 0:  # the slab must lie inside the material, and not end on the part's far side
+            if slab.cut(shape).Volume > _TOL or _on_far_side(shape, f, n, x):
+                raise ValueError(TOO_LARGE_MSG)
+            cuts.append(slab)
         else:
-            slabs.append(_inventor_slab(shape, f, n, d))
-    slab = slabs[0] if len(slabs) == 1 else slabs[0].fuse(slabs[1:])
-    result = (shape.fuse(slab) if d > 0 else shape.cut(slab)).removeSplitter()
+            adds.append(slab)
+    result = shape
+    if adds:
+        result = result.fuse(adds)
+    if cuts:
+        result = result.cut(cuts)
+    result = result.removeSplitter()
     if not result.isValid() or len(result.Solids) != len(shape.Solids):
         raise ValueError(TOO_LARGE_MSG)
     return result
