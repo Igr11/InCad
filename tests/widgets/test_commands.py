@@ -79,3 +79,4 @@ class MoveFaceCommandTest(unittest.TestCase):
         flat = [c for item in modify for c in (item if isinstance(item, list) else [item])]
         self.assertIn("feature.move_face", flat)
         self.assertIn("feature.move_face", marking_layout.LAYOUT["face"]["list"])
+        self.assertIn("feature.move_face", marking_layout.LAYOUT["part"]["list"])
