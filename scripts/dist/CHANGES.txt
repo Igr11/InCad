@@ -19,14 +19,17 @@ New features
   edge) or Together (the face and the chamfers / fillets next to it move as one piece).
 - Move Face: an arrow stands on the face while the dialog is open. Drag it and the face moves with
   the preview; the Distance field follows and a label at the arrow shows the value. The arrow lights
-  up under the pointer. With To it only shows where the face goes.
+  up under the pointer. Dragging replaces a formula or parameter in Distance with the dragged value
+  in mm. With To it only shows where the face goes.
 - Move Face is a step in the history ("Move Face" in the browser): double-click to edit, Suppress or
-  Delete like any feature; one OK is one undo step. It finds its faces again by their place and
-  shape, so it keeps working when an earlier feature is edited. When it cannot do the move it says
-  why (a round neighbour in Inventor mode, a move so large that a neighbouring face would vanish,
-  a face that is no longer there) and changes nothing. Limits: flat faces only; in Inventor mode an
-  inward move at a corner where a top chamfer meets a vertical chamfer is refused as "too large"
-  (Step and Together are not affected).
+  Delete like any feature; one OK is one undo step. It finds its faces again by their geometry, so
+  it keeps working when an earlier feature is edited. When it cannot do the move it says why (a
+  neighbour round across the move in Inventor mode, a move so large that a neighbouring face would
+  vanish, a face that is no longer there, a face of another Solid) and changes nothing. Limits: flat
+  faces only; in Inventor mode a neighbour that is round across the move cannot follow yet (use
+  Step or Together).
+
+Improvements
 - Assembly: the gizmo arrows are a little smaller (the grab zone is as wide as before).
 
 

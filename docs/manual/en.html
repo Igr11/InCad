@@ -755,8 +755,9 @@ feature. One <span class="ui">OK</span> is one undo step.</p></div>
 <p><b>The arrow.</b> While the dialog is open an arrow stands on the first face, along its direction (drawn like the
 assembly gizmo's arrow). Drag it with the mouse: the face moves, the preview follows, the <span class="ui">Distance</span>
 field changes in steps of 0.1 mm and a label at the arrow tip shows the value ("12.5 mm", "−3 mm"). The arrow lights up
-and the cursor becomes a hand when you are on it. Type a distance and the arrow and the label follow. With Extent
-<b>To</b> the arrow only shows where the face goes; it cannot be dragged.</p>
+and the cursor becomes a hand when you are on it. Type a distance and the arrow and the label follow. Dragging replaces
+a formula or parameter in <span class="ui">Distance</span> with the dragged value in mm. With Extent <b>To</b> the arrow
+only shows where the face goes; it cannot be dragged.</p>
 <p><b>The three ways the neighbours behave.</b> Take a block with a chamfer on one top edge and pull the top face up:</p>
 <table class="long">
   <tr><th>Neighbours</th><th class="wrap">What happens</th><th class="wrap">When it refuses</th></tr>
@@ -766,7 +767,7 @@ and the cursor becomes a hand when you are on it. Type a distance and the arrow 
       Inventor mode can't follow it yet — try Step or Together</i>.</td></tr>
   <tr><td>Step</td><td class="wrap">Only the face moves, as a straight slab. A slanted or round neighbour stays as it was and a
       straight wall appears at its edge.</td>
-      <td class="wrap">Not because of the neighbours — it works next to chamfers and fillets.</td></tr>
+      <td class="wrap">Never because of a round or slanted neighbour; only “too large” (below).</td></tr>
   <tr><td>Together</td><td class="wrap">The face and the chamfers or fillets next to it move as one piece, keeping their size; the
       walls around them grow.</td>
       <td class="wrap">The walls around the chamfer or fillet are not along the move (slanted or round themselves):
@@ -774,8 +775,11 @@ and the cursor becomes a hand when you are on it. Type a distance and the arrow 
 </table>
 <p>Other messages: <i>The move is too large: a neighbouring face would vanish</i> (for example a face pushed in further
 than the chamfer next to it is wide; nothing changes), and <i>A face to move is no longer there</i> (an earlier feature
-removed the face; the Move Face row turns red). InCad finds the faces again by their place and shape, not by their names,
-so Move Face keeps working when an earlier feature is edited, for example when the block is made taller.</p>
+removed the face; the Move Face row turns red); a face picked on another Solid is refused: <i>The faces must be on this
+Solid</i>. InCad finds the faces again by their geometry, not by their names: in their plane or — if an earlier change
+moved them — in the nearest parallel plane where they overlap, so Move Face keeps working when an earlier feature is
+edited, for example when the block is made taller. The To target is kept by its name, like other features'
+references.</p>
 
 <div class="keep"><h2>6.9 Sweep, Loft and Coil</h2>
 <p>On the <span class="path">3D Model ▸ Create</span> split button after Hole. Each has an <b>Operation</b>: Join or Cut.</p></div>
@@ -1232,9 +1236,8 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
   <li>The interface is in English.</li>
   <li>FreeCAD cannot shell a part that already has a modeled thread (InCad offers to shell before the thread).</li>
   <li>Some offsets (clearances) fail on threads and other complex shapes; the dialog says so.</li>
-  <li>Move Face moves flat faces only, along their own direction. In Inventor mode it cannot follow a round neighbour yet
-      (use Step or Together), and an inward move at a corner where a top chamfer meets a vertical chamfer is refused as
-      "too large".</li>
+  <li>Move Face moves flat faces only, along their own direction. In Inventor mode it cannot follow a neighbour that is
+      round across the move yet (use Step or Together).</li>
 </ul></div>
 
 <!-- ============================================================ A -->
