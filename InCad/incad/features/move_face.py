@@ -11,6 +11,7 @@ from incad.features.common import Field, parse_picks, resolve, value_param, valu
 
 TITLE = "Move Face"
 ICON = "move_face"
+FINISH = "Finish move"  # the view's right-click menu entry while the dialog is open: the same as OK
 TYPES = ("PartDesign::FeaturePython",)
 NEEDS_PROFILE = False
 STRUCTURAL = ()

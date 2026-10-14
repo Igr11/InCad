@@ -966,7 +966,7 @@ class Shell(QtCore.QObject):
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
                 kind = "origin" if datum else "browser"
-                return self._show_marking_menu(kind, global_pos, flick)
+                return self._show_marking_menu(kind, global_pos, flick, extras=self._session_menu_items())
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()
@@ -976,7 +976,13 @@ class Shell(QtCore.QObject):
         from incad.core import assembly
         if assembly.is_assembly(doc):
             kind = {"face": "asm_face", "edge": "asm_edge", "vertex": "asm_edge"}.get(kind, "assembly")
-        return self._show_marking_menu(kind, global_pos, flick)
+        return self._show_marking_menu(kind, global_pos, flick, extras=self._session_menu_items())
+
+    def _session_menu_items(self):
+        """The open dialog's own finish entry (Move Face: "Finish move", the same as OK) for the view's menu."""
+        fs = self.feature_session
+        label = getattr(fs.kind, "FINISH", None) if fs is not None else None
+        return [(label, "finish", lambda: self._close_feature_session(cancel=False))] if label else []
 
     def _on_browser_select(self, name):
         """A click in the model tree selects the object in the model: the view highlights it, a dialog waiting

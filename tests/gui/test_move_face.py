@@ -398,6 +398,34 @@ def test_7_other_views_go_to_the_dof_gizmo():
     assert s()._overlay is None
 
 
+def test_8_finish_move_in_the_right_click_menu():
+    """The user: the right-click menu has "Finish move" while the dialog is open, doing the same as OK."""
+    top = body().Shape.BoundBox.ZMax
+    n = len(doc().UndoNames)
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    set_distance("2 mm")
+    harness.pump(1500)
+    vp = viewport()
+    local = QtCore.QPoint(8, 8)  # empty space in a corner of the view
+    s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
+    harness.pump(400)
+    menu = s().marking_menu
+    assert menu is not None and menu.extra_button("Finish move") is not None, "Finish move is in the menu"
+    menu.extra_button("Finish move").click()
+    harness.pump(1500)
+    assert s().feature_session is None, "the dialog closed as with OK"
+    assert doc().UndoNames[0] == "Move Face" and len(doc().UndoNames) == n + 1, doc().UndoNames
+    assert abs(body().Shape.BoundBox.ZMax - (top + 2)) < 1e-6, body().Shape.BoundBox.ZMax
+    # no dialog open: no Finish move
+    s()._open_marking_menu(view(), vp, local, vp.mapToGlobal(local), False)
+    harness.pump(400)
+    assert s().marking_menu is not None and s().marking_menu.extra_button("Finish move") is None
+    s().marking_menu.close()
+    harness.pump(300)
+
+
 def test_9_cleanup():
     App.closeDocument(ST["doc"])
     harness.pump(500)
@@ -406,4 +434,4 @@ def test_9_cleanup():
 harness.run([test_0_setup, test_1_dialog_and_typed_distance, test_2_drag_the_arrow_changes_the_distance_and_shows_it,
              test_3_ok_is_one_undo_step_and_the_arrow_goes, test_4_edit_reopens_with_the_values_and_modes_switch,
              test_5_a_command_ends_the_drag, test_6_a_refused_distance_leaves_the_arrow_at_the_last_good_one,
-             test_7_other_views_go_to_the_dof_gizmo, test_9_cleanup])
+             test_7_other_views_go_to_the_dof_gizmo, test_8_finish_move_in_the_right_click_menu, test_9_cleanup])

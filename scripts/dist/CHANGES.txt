@@ -20,7 +20,7 @@ New features
 - Move Face: an arrow stands on the face while the dialog is open. Drag it and the face moves with
   the preview; the Distance field follows and a label at the arrow shows the value. The arrow lights
   up under the pointer. Dragging replaces a formula or parameter in Distance with the dragged value
-  in mm. With To it only shows where the face goes.
+  in mm. With To it only shows where the face goes. Finish move in the right-click menu = OK.
 - Move Face is a step in the history ("Move Face" in the browser): double-click to edit, Suppress or
   Delete like any feature; one OK is one undo step. It finds its faces again by their geometry, so
   it keeps working when an earlier feature is edited. When it cannot do the move it says why (a
