@@ -96,7 +96,7 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <li><span class="n">3</span><span><a class="t" href="#window">Окно InCad</a><br><span class="d">Лента, дерево модели, параметры, строка состояния, темы, настройки, отмена.</span></span></li>
     <li><span class="n">4</span><span><a class="t" href="#mouse">Мышь, виды и меню-жесты</a><br><span class="d">Вращение, сдвиг и масштаб вида, меню по правой кнопке, вкладка View.</span></span></li>
     <li><span class="n">5</span><span><a class="t" href="#sketch">Эскизы</a><br><span class="d">Создание эскиза, инструменты рисования, размеры и формулы, зависимости и Constraint List, проецирование, массивы в эскизе.</span></span></li>
-    <li><span class="n">6</span><span><a class="t" href="#features">Операции детали</a><br><span class="d">Как устроены диалоги, затем каждая операция: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Thread, Sweep, Loft, Coil, Boolean, Split, массивы, рабочие элементы.</span></span></li>
+    <li><span class="n">6</span><span><a class="t" href="#features">Операции детали</a><br><span class="d">Как устроены диалоги, затем каждая операция: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Move Face, Thread, Sweep, Loft, Coil, Boolean, Split, массивы, рабочие элементы.</span></span></li>
     <li><span class="n">7</span><span><a class="t" href="#solids">Несколько тел в одной детали</a><br><span class="d">Отдельные тела, эскиз на грани другого тела, скрытие, удаление, превращение в сборку.</span></span></li>
     <li><span class="n">8</span><span><a class="t" href="#inspect">Анализ и инструменты</a><br><span class="d">Измерения, масса, материал, сечения, настройки.</span></span></li>
     <li><span class="n">9</span><span><a class="t" href="#assembly">Сборки</a><br><span class="d">Вставка деталей, связи и соединения, степени свободы, перемещение деталей, правка детали в контексте сборки, Make Assembly, Boolean между деталями.</span></span></li>
@@ -401,9 +401,9 @@ features</b>).</p></div>
   <tr><th>Под курсором</th><th class="wrap">Кольцо (сначала N, S, E, W)</th><th class="wrap">Список</th></tr>
   <tr><td>Пустое место (деталь)</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Redo,
       SE Parameters, SW Light / Dark</td><td class="wrap">Zoom All, Home View, Return to FreeCAD, Hide / Show, Show All
-      Origin, Hide All Origin, Make Assembly</td></tr>
+      Origin, Hide All Origin, Make Assembly, Move Face</td></tr>
   <tr><td>Грань</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Look At, SE Home
-      View, SW Zoom All</td><td class="wrap">Show in Browser, Zoom Selection, Hole, Fillet, Thread, Hide / Show</td></tr>
+      View, SW Zoom All</td><td class="wrap">Show in Browser, Zoom Selection, Hole, Fillet, Move Face, Thread, Hide / Show</td></tr>
   <tr><td>Ребро</td><td class="wrap">N Look At, S Zoom Selection, E Fillet, W Chamfer, NW Undo, NE Redo, SE Home View,
       SW Zoom All</td><td class="wrap">Show in Browser, Shaded, Wireframe, Hide / Show</td></tr>
   <tr><td>В эскизе</td><td class="wrap">N Finish Sketch, S Dimension, E Circle, W Undo, NE Line, SE Rectangle,
@@ -707,7 +707,7 @@ Parameters, где его можно переименовать (<code>Width</co
       резьбы, чтобы винт легко заходил. С цековкой, зенковкой или подрезкой фаска возможна только на выходе (Start серый).</td></tr>
 </table>
 <div class="tip"><b>Другие резьбы в отверстии:</b> для Trapezoidal, ACME, print-friendly или своей (Custom) резьбы сначала
-сделайте простое отверстие (Simple), затем примените к его грани <b>Thread</b> (6.9).</div>
+сделайте простое отверстие (Simple), затем примените к его грани <b>Thread</b> (6.10).</div>
 
 <div class="keep"><h2>6.5 Fillet <kbd>F</kbd> и Chamfer — скругление и фаска</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Fillet</span> / <span class="ui">Chamfer</span> (одна кнопка с вариантами).
@@ -738,7 +738,56 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 (<b>Faces</b>), нейтральную плоскость (<b>Neutral plane</b> — там грани сохраняют размер), угол <b>Angle</b> (1°);
 <b>Reverse</b> наклоняет в другую сторону.</p></div>
 
-<div class="keep"><h2>6.8 Sweep, Loft и Coil</h2>
+<div class="keep"><h2 id="move-face">6.8 Move Face — сдвиг грани</h2>
+<p><span class="path">3D Model ▸ Modify ▸ Move Face</span>. Прямое редактирование: толкает или тянет плоские грани детали,
+как в Inventor, не возвращаясь к эскизу. Выберите грани, затем команду (она есть и в меню-жестах правой кнопки на грани и на детали) —
+или выберите грани в диалоге. Это шаг в конце истории детали, строка <span class="ui">Move Face</span> в дереве: двойной
+щелчок открывает значения, Suppress и Delete работают как у любой операции. Один <span class="ui">OK</span> — один шаг
+отмены; <span class="ui">Finish move</span> сверху в меню правой кнопки в окне модели делает то же, что OK.</p></div>
+<table>
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Faces</td><td class="wrap">Одна или несколько плоских граней. Несколько граней должны смотреть в одну сторону
+      (например, верх бобышки и дно кармана), двигаются они вместе. Круглые грани и грани, смотрящие в разные стороны,
+      не принимаются: <i>The faces must be flat and face the same way</i>.</td></tr>
+  <tr><td>Extent</td><td class="wrap"><b>Distance</b> (число) или <b>To</b> (до грани или плоскости).</td></tr>
+  <tr><td>Distance</td><td class="wrap">Сдвиг по внешнему направлению грани: положительный наращивает деталь, отрицательный
+      врезается в неё, 0 ничего не меняет. Единицы, параметры и формулы — как везде (3.6). Начинается с 0 мм: введите значение или потяните стрелку.</td></tr>
+  <tr><td>To</td><td class="wrap">Выберите плоскую грань или рабочую / начальную плоскость, параллельную граням; грани
+      сдвинутся в её плоскость. Расстояние — это зазор, он пересчитывается при каждом изменении, так что грани следуют за
+      целью, если она сдвинется. Непараллельная цель не принимается: <i>Pick a face or plane parallel to the faces</i>.</td></tr>
+  <tr><td>Neighbours</td><td class="wrap">Как ведут себя грани рядом со сдвигаемой: <b>Inventor</b> (по умолчанию),
+      <b>Step</b> или <b>Together</b> — см. ниже.</td></tr>
+</table>
+<p><b>Стрелка.</b> Пока диалог открыт, на первой грани стоит стрелка вдоль её направления (нарисована как стрелка гизмо в
+сборке). Тяните её мышью: грань двигается, предпросмотр следует за ней, поле <span class="ui">Distance</span> меняется
+шагом 0,1 мм, а подпись у кончика стрелки показывает значение («12.5 mm», «-3 mm»). Под курсором стрелка подсвечивается, а
+курсор становится рукой. Введите расстояние — стрелка и подпись передвинутся. Перетаскивание заменяет формулу или
+параметр в <span class="ui">Distance</span> перетянутым значением в мм. При Extent <b>To</b> стрелка лишь показывает,
+куда придёт грань; тянуть её нельзя.</p>
+<p><b>Три способа поведения соседних граней.</b> Возьмём брусок с фаской на одном верхнем ребре и потянем верхнюю грань
+вверх:</p>
+<table class="long">
+  <tr><th>Neighbours</th><th class="wrap">Что происходит</th><th class="wrap">Когда отказывает</th></tr>
+  <tr><td>Inventor</td><td class="wrap">Соседние грани сохраняют угол и вытягиваются или укорачиваются: фаска становится выше, а
+      верхняя грань уже. Отверстие в грани остаётся отверстием, стенка бобышки скользит вдоль.</td>
+      <td class="wrap">Сосед, закруглённый поперёк сдвига (скругление, конус): <i>A neighbouring face is round: Inventor
+      mode can't follow it yet — try Step or Together</i>.</td></tr>
+  <tr><td>Step</td><td class="wrap">Двигается только грань, как прямая плита. Наклонный или круглый сосед остаётся как был, а
+      у его края появляется прямая стенка.</td>
+      <td class="wrap">Никогда из-за круглого или наклонного соседа; только «too large» (см. ниже).</td></tr>
+  <tr><td>Together</td><td class="wrap">Грань и примыкающие к ней фаски или скругления двигаются как одно целое, сохраняя размер;
+      стенки вокруг них вытягиваются.</td>
+      <td class="wrap">Стенки вокруг фаски или скругления не идут вдоль сдвига (сами наклонные или круглые):
+      <i>The walls around the chamfer / fillet must run along the move — try Inventor or Step</i>.</td></tr>
+</table>
+<p>Другие сообщения: <i>The move is too large: a neighbouring face would vanish</i> (например, грань вдавлена глубже, чем
+ширина фаски рядом с ней; ничего не меняется) и <i>A face to move is no longer there</i> (предыдущая операция убрала грань;
+строка Move Face становится красной); грань другого Solid не принимается: <i>The faces must be on this Solid</i>. InCad
+находит грани заново по геометрии, а не по именам: в их плоскости или — если более раннее изменение их сдвинуло — в
+ближайшей параллельной плоскости, где они перекрываются, поэтому Move Face продолжает работать, когда меняют более раннюю
+операцию, например делают брусок выше. Цель To хранится по имени, как ссылки других операций.</p>
+
+<div class="keep"><h2>6.9 Sweep, Loft и Coil</h2>
 <p>В кнопке с вариантами в <span class="path">3D Model ▸ Create</span> после Hole. У каждой есть <b>Operation</b>: Join или Cut.</p></div>
 <table class="long">
   <tr><th>Операция</th><th class="wrap">Поля</th></tr>
@@ -754,7 +803,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 </table>
 <p>Путь для Sweep обычно незамкнутый эскиз; такие эскизы остаются видимыми после Finish Sketch, их легко выбрать.</p>
 
-<div class="keep"><h2 id="thread">6.9 Thread — резьба</h2>
+<div class="keep"><h2 id="thread">6.10 Thread — резьба</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Thread</span>. Настоящая винтовая резьба — геометрия, которую можно напечатать.
 Выделите наружную поверхность вала или внутреннюю поверхность отверстия (полную цилиндрическую грань) и нажмите Thread.
 Есть и в меню-жесте на грани.</p></div>
@@ -789,13 +838,13 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 вершинах не оставалось тонкого гребня.</p>
 <p>Suppress, Delete и Edit для резьбы действуют на неё вместе с её вспомогательными шагами.</p>
 
-<div class="keep"><h2>6.10 Threads Off / On — резьбы выкл./вкл.</h2>
+<div class="keep"><h2>6.11 Threads Off / On — резьбы выкл./вкл.</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Threads</span>. Моделированные резьбы замедляют перерисовку. Нажмите
 <span class="ui">Threads</span>, чтобы на время работы подавить все резьбы, и ещё раз, чтобы вернуть их. Резьба, которую
 вы подавили сами, остаётся выключенной. Команда выключает и моделированную резьбу резьбовых отверстий (сами отверстия
 остаются).</p></div>
 
-<div class="keep"><h2 id="boolean">6.11 Boolean — булевы операции</h2>
+<div class="keep"><h2 id="boolean">6.12 Boolean — булевы операции</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (в Inventor — Combine) объединяет, вычитает или пересекает тела
 детали. Выделите базовое тело, затем тело-инструмент (одно или несколько) и нажмите Boolean — или выберите их в диалоге:
 щелчок в любом месте тела выбирает всё тело.</p></div>
@@ -815,7 +864,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 <p>Инструменты остаются редактируемыми: измените инструмент — изменится и результат. Резьба и другие сложные формы могут
 не принять зазор; диалог об этом скажет.</p>
 
-<div class="keep"><h2>6.12 Split — разделение</h2>
+<div class="keep"><h2>6.13 Split — разделение</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Split</span>. Линии эскиза (отрезки, дуги, сплайны) становятся тонкими
 режущими поверхностями через всю деталь.</p></div>
 <table>
@@ -827,7 +876,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 </table>
 <p>Удаление Split снова соединяет части; InCad сначала спросит и назовёт тела, которые исчезнут.</p>
 
-<div class="keep"><h2>6.13 Массивы и зеркало</h2>
+<div class="keep"><h2>6.14 Массивы и зеркало</h2>
 <p><span class="path">3D Model ▸ Pattern</span>: <span class="ui">Rectangular</span>, <span class="ui">Circular</span> и
 <span class="ui">Mirror</span> (одна кнопка с вариантами). Они повторяют операции: выберите их в дереве или щёлкните одну
 из их граней. Выбор скругления, фаски или резьбы означает операцию, которую они изменяют.</p></div>
@@ -843,7 +892,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
   <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (плоская грань или плоскость).</td></tr>
 </table>
 
-<div class="keep"><h2>6.14 Рабочие элементы</h2>
+<div class="keep"><h2>6.15 Рабочие элементы</h2>
 <p><span class="path">3D Model ▸ Work Features</span>: <span class="ui">Plane</span>, <span class="ui">Axis</span>,
 <span class="ui">Point</span> (одна кнопка с вариантами). Выберите способ (<b>Method</b>) и укажите то, что он просит.
 Рабочие элементы следуют за геометрией, по которой построены.</p></div>
@@ -1134,7 +1183,7 @@ Update the assembly now?</span></p></div>
   <tr><td>Cut this</td><td class="wrap">Деталь, которую вырезаем.</td></tr>
   <tr><td>With</td><td class="wrap">Деталь (детали), которыми вырезаем.</td></tr>
   <tr><td>Clearance</td><td class="wrap">Зазор для печатных деталей (0,2 мм).</td></tr>
-  <tr><td>Clearance on</td><td class="wrap"><b>Cavity</b>, <b>Tool</b> или <b>Split</b> — как у Boolean в детали (6.11).</td></tr>
+  <tr><td>Clearance on</td><td class="wrap"><b>Cavity</b>, <b>Tool</b> или <b>Split</b> — как у Boolean в детали (6.12).</td></tr>
 </table>
 <p>Вырез записывается в собственный файл вырезаемой детали и следует за инструментами, когда они двигаются или
 меняются. Сохраните и этот файл детали. У выреза есть строка в Relationships (Edit, Delete, Rename).</p>
@@ -1205,6 +1254,8 @@ Boolean или изменённая Threads Off / On, — это отдельн�
   <li>FreeCAD не делает оболочку (Shell) детали, в которой уже есть моделированная резьба (InCad предлагает сделать Shell
       до резьбы).</li>
   <li>Некоторые смещения (зазоры) не строятся на резьбе и других сложных формах; диалог об этом скажет.</li>
+  <li>Move Face двигает только плоские грани и только вдоль их собственного направления. В режиме Inventor он пока не
+      следует за соседом, закруглённым поперёк сдвига (используйте Step или Together).</li>
 </ul></div>
 
 <!-- ============================================================ A -->
@@ -1263,7 +1314,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
   <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil</td></tr>
-  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
   <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>

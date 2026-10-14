@@ -260,6 +260,11 @@ RING = 0.3  # each further turn's arc is this many glyph sizes wider (0.6, 0.9, 
 FAR = 1.5  # a turn axis farther from the part's centre than this many glyph sizes: its arc is drawn at the centre
 
 
+def glyph_size(diagonal):
+    """A part's DOF glyph / gizmo size (mm) from its box diagonal (the user: 20 % smaller than 0.35 / 5 mm)."""
+    return max(diagonal * 0.28, 4.0)
+
+
 def handles(freedom, placement, centre, size):
     """The glyph of a part now at `placement`, one Handle per freedom: the slides first, then the turns."""
     out = []

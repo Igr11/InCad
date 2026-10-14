@@ -42,6 +42,7 @@ class FeatureSession(QtCore.QObject):
         self._saved_visibility = []
         self._markers = None       # key points of the sketches picked for Sweep/Loft, on the view
         self._saved_sketches = []  # picked sketches shown for the dialog, hidden again when it closes
+        self.on_previewed = None  # callable() after each preview that worked (the shell's overlay follows)
 
     def start(self):
         doc = self.doc
@@ -590,14 +591,16 @@ class FeatureSession(QtCore.QObject):
         self._seen = dict(values)
         return values
 
-    def _changed(self, values):
+    def _changed(self, values, throttle=False):
+        """throttle: a value that keeps changing (a drag) is previewed every interval, not only once it rests."""
         values = self._follow(values)
         self._sync_choices(values)
         self._activate_revealed_pick()
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
-        self._timer.start()
+        if not (throttle and self._timer.isActive()):
+            self._timer.start()
         self._sync_sketch_markers()
 
     def _activate_revealed_pick(self):
@@ -722,6 +725,11 @@ class FeatureSession(QtCore.QObject):
             self._sync_pick_view()
         elif key and self.dialog.field_def(key).pick in self._ON_BASE:
             self._sync_pick_view()  # the first pick just made the feature: show the base again for the next pick
+        if self.on_previewed is not None:
+            try:
+                self.on_previewed()
+            except Exception:
+                log.logger().exception("%s overlay", self.kind.TITLE)
 
     def _show_summary(self):
         """A kind may describe what its pick fields now stand for (names, dependents) beyond the picks themselves."""

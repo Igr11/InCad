@@ -302,6 +302,7 @@ class Shell(QtCore.QObject):
         self.sketches = SketchSession(on_change=self.schedule_refresh, on_edit=self._seed_geometry)
         self._box_owner = None
         self.feature_session = None
+        self._overlay = None  # the open dialog's own view handle (Move Face's arrow): the navigator's handle hook
         self.info_panel = None
         self.plane_panel = None
         self.slot_tool = None
@@ -422,6 +423,8 @@ class Shell(QtCore.QObject):
     def _on_subwindow(self, window):
         if self.dof_handles is not None and self.dof_handles.dragging():
             self.dof_handles.finish()  # another tab: a handle drag going on ends (its release goes elsewhere)
+        if self._overlay is not None and self._overlay.dragging():
+            self._overlay.finish()
         if window is not None and _is_start_page(window):  # FreeCAD's Start page came up (seen after Finish
             QtCore.QTimer.singleShot(0, self._front_last_view)  # Sketch): the part stays in front
 
@@ -862,6 +865,11 @@ class Shell(QtCore.QObject):
         for ctx in self._contexts.values():
             ctx.set_theme(self.theme)  # the assembly around an edited part in the new grey
         self.dof_display_changed()  # DOF glyphs in the new theme's colours
+        if self._overlay is not None:
+            try:
+                self._overlay.refresh()  # Move Face's arrow too
+            except Exception:
+                log.logger().exception("InCad overlay")
 
     def set_navigation(self, enabled):
         """Off gives FreeCAD's own navigation back exactly (the user's style and zoom setting)."""
@@ -920,8 +928,11 @@ class Shell(QtCore.QObject):
                      "pan": "Pan: drag with the left button (click Pan again to stop)"}
             self.status.set_prompt(hints.get(mode, "Ready"))
 
-    def _show_marking_menu(self, kind, global_pos, flick=False, extras=()):
+    def _show_marking_menu(self, kind, global_pos, flick=False, extras=(), top=None):
+        """top: a command that takes the N slot (the open dialog's finish: Move Face's Finish move)."""
         slots, items = marking_layout.resolve(kind, self.registry)
+        if top and self.registry.has(top):
+            slots = [("N", self.registry.get(top))] + [(d, c) for d, c in slots if d != "N"]
         if not slots and not items and not extras:
             return None
         if self.marking_menu is not None:
@@ -958,7 +969,7 @@ class Shell(QtCore.QObject):
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
                 kind = "origin" if datum else "browser"
-                return self._show_marking_menu(kind, global_pos, flick)
+                return self._show_marking_menu(kind, global_pos, flick, top=self._session_finish())
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()
@@ -968,7 +979,17 @@ class Shell(QtCore.QObject):
         from incad.core import assembly
         if assembly.is_assembly(doc):
             kind = {"face": "asm_face", "edge": "asm_edge", "vertex": "asm_edge"}.get(kind, "assembly")
-        return self._show_marking_menu(kind, global_pos, flick)
+        return self._show_marking_menu(kind, global_pos, flick, top=self._session_finish())
+
+    def _session_finish(self):
+        """The open dialog's own finish command for the top of the view's menu (Move Face: Finish move = OK)."""
+        fs = self.feature_session
+        return getattr(fs.kind, "FINISH", None) if fs is not None else None
+
+    def finish_dialog(self):
+        """Finish move (and any dialog's finish command): the same as the dialog's OK."""
+        if self.feature_session is not None:
+            self._close_feature_session(cancel=False)
 
     def _on_browser_select(self, name):
         """A click in the model tree selects the object in the model: the view highlights it, a dialog waiting
@@ -1780,6 +1801,8 @@ class Shell(QtCore.QObject):
     def _session_closed(self, fs):
         if self.feature_session is fs:
             self.feature_session = None
+        if self._overlay is None or getattr(self._overlay, "session", fs) is fs:
+            self._drop_overlay()
         dispose(fs)
         self.schedule_refresh()
 
@@ -2052,7 +2075,27 @@ class Shell(QtCore.QObject):
             raise
         if not started:
             self.feature_session = None
+        hook = getattr(kind, "overlay", None)
+        if started and hook is not None and self.feature_session is fs and fs.dialog is not None:
+            try:  # (an Esc or OK during the first preview closed it already)
+                self._overlay = hook(self, fs)
+                fs.on_previewed = lambda: self._overlay.refresh() if self._overlay is not None else None
+                if self.navigator is not None:
+                    self.navigator.handle_hook = self._overlay
+            except Exception:
+                log.logger().exception("%s overlay", kind.TITLE)
+                self._drop_overlay()
         self.schedule_refresh()
+
+    def _drop_overlay(self):
+        overlay, self._overlay = self._overlay, None
+        if overlay is not None:
+            try:
+                overlay.remove()
+            except Exception:
+                log.logger().exception("InCad overlay")
+        if self.navigator is not None and self.navigator.handle_hook is not self.dof_handles:
+            self.navigator.handle_hook = self.dof_handles
 
     def _begin_profile_pick(self, kind):
         import FreeCADGui as Gui
@@ -2599,6 +2642,8 @@ class Shell(QtCore.QObject):
             self.asm_drag.finish()
         if self.dof_handles is not None and self.dof_handles.dragging():
             self.dof_handles.finish()
+        if self._overlay is not None and self._overlay.dragging():
+            self._overlay.finish()
 
     def _document_deleted(self, doc):
         """A document is closing: a drag of one of its parts ends now (its release will never come), and its DOF
@@ -2668,7 +2713,7 @@ class Shell(QtCore.QObject):
             bb = assembly._box(link) if link is not None else None  # an empty part's link has no Shape at all
             if f is None or not f.n or bb is None:
                 continue
-            size = max(bb.DiagonalLength * 0.35, 5.0)
+            size = dof.glyph_size(bb.DiagonalLength)
             hs = dof.handles(f, link.Placement, bb.Center, size)
             if name == gizmo:  # normal colour, the handle under the pointer lit
                 handles.set_drawn(doc.Name, name, hs, size, view)
