@@ -272,6 +272,13 @@ def apply(shape, faces, d, mode):
     if all(abs(x) < _TOL for x in ds):
         return shape
     n = check_faces(faces)
+    try:
+        return _moved(shape, faces, ds, n, mode)
+    except Part.OCCError:  # a slab or a boolean OCC can't make: a refusal like the others, never a raw OCC error
+        raise ValueError(TOO_LARGE_MSG)
+
+
+def _moved(shape, faces, ds, n, mode):
     adds, cuts = [], []
     for f, x in zip(faces, ds):
         if abs(x) < _TOL:
