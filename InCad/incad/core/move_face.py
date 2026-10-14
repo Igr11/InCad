@@ -128,17 +128,33 @@ def _neighbour(shape, face, edge):
     return None
 
 
-def _side_dir(shape, face, vertex):
-    """The line a vertex of `face` moves along (inventor): the solid's edge at that vertex that is not on `face`."""
+def _side_dir(shape, face, vertex, n):
+    """The line a vertex of `face` moves along (inventor), on both neighbours of the vertex (the faces across the two
+    edges of `face` meeting there): their common edge, pointing at the vertex, with its length; else (a chamfered
+    corner between them touches the face at the vertex only) the line the two neighbour planes meet in, up along n,
+    with no length."""
     own = list(face.Edges)
+    nbs = []
+    for e in own:
+        if any(v.isSame(vertex) for v in e.Vertexes):
+            nb = _neighbour(shape, face, e)
+            if nb is None:
+                raise ValueError(ROUND_MSG)
+            if not any(_same(nb, g) for g in nbs):
+                nbs.append(nb)
     for e in shape.ancestorsOfType(vertex, Part.Edge):
-        if any(_same(e, o) for o in own):
+        if any(_same(e, o) for o in own) or not all(any(_same(e, g) for g in nb.Edges) for nb in nbs):
             continue
         if not _straight(e):
             raise ValueError(ROUND_MSG)
         a, b = e.Vertexes[0].Point, e.Vertexes[-1].Point
         far = b if a.distanceToPoint(vertex.Point) < _TOL else a
         return (vertex.Point - far).normalize(), e.Length
+    if len(nbs) == 2 and all(_is_plane(f) for f in nbs):
+        u = _normal(nbs[0]).cross(_normal(nbs[1]))
+        if u.Length > _ANG:
+            u.normalize()
+            return (u if u.dot(n) > 0 else u * -1), None
     raise ValueError(ROUND_MSG)
 
 
@@ -151,11 +167,13 @@ def _moved_edges(shape, face, wire, n, d):
             raise ValueError(ROUND_MSG)
     moved = {}
     for v in wire.OrderedVertexes:
-        u, length = _side_dir(shape, face, v)
+        u, length = _side_dir(shape, face, v, n)
         if abs(u.dot(n)) < _ANG:
             raise ValueError(TOO_LARGE_MSG)
         t = d / u.dot(n)
-        if t < 0 and -t >= length - _TOL:  # back along its side edge past that edge's far end: the neighbour vanishes
+        # back along its side edge past that edge's far end: a neighbour vanishes (no side edge: the checks on the
+        # result catch a cut that leaves the material)
+        if t < 0 and length is not None and -t >= length - _TOL:
             raise ValueError(TOO_LARGE_MSG)
         moved[v.hashCode()] = v.Point + u * t
     pairs = []
@@ -186,11 +204,11 @@ def _side_face(e, moved, n, d):
 
 def _inventor_slab(shape, face, n, d):
     walls, new_wires = [], []
-    for wire in [face.OuterWire] + [w for w in face.Wires if not w.isSame(face.OuterWire)]:
-        pairs, w = _moved_edges(shape, face, wire, n, d)
-        new_wires.append(w)
-        walls += [_side_face(e, m, n, d) for e, m in pairs]
     try:
+        for wire in [face.OuterWire] + [w for w in face.Wires if not w.isSame(face.OuterWire)]:
+            pairs, w = _moved_edges(shape, face, wire, n, d)
+            new_wires.append(w)
+            walls += [_side_face(e, m, n, d) for e, m in pairs]
         outline = Part.Face(new_wires[0])
         if not outline.isValid() or outline.Area < _TOL:
             raise ValueError(TOO_LARGE_MSG)

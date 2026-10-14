@@ -73,6 +73,43 @@ class ChamferTest(unittest.TestCase):
         self.assertAlmostEqual(top(r).BoundBox.XMax, 40 - 7, 6)  # the top face 4 mm narrower toward the chamfer
         exact_edges(self, r)
 
+    def test_inventor_at_a_chamfered_corner(self):
+        """The top's right edge and the back right vertical edge chamfered 3: the top's corner (37, 30, 10) has two
+        side edges (top chamfer / corner chamfer, back wall / corner chamfer) and neither lies on both its neighbours
+        (the top chamfer and the back wall); it moves along the line those two planes meet in.
+        Expected, built from half-spaces: the part is the box minus x + z > 47 (top chamfer) minus x + y > 67 (corner
+        chamfer). Top +2 extends the neighbours and leaves the other faces: the 40 x 30 x 12 box minus the same two
+        half-spaces (the top chamfer plane unchanged, now 5 wide; the corner chamfer still ends below z 10)."""
+        def wedges(height):
+            x0 = 47 - height - 1  # on x + z = 47 at z height + 1
+            top_ch = Part.Face(Part.makePolygon([V(x0, -1, height + 1), V(41, -1, height + 1), V(41, -1, 6),
+                                                 V(x0, -1, height + 1)])).extrude(V(0, 32, 0))
+            corner = Part.Face(Part.makePolygon([V(36, 31, -1), V(41, 31, -1), V(41, 26, -1), V(36, 31, -1)]))
+            return top_ch, corner.extrude(V(0, 0, height + 2))
+
+        def built(height):
+            a, b = wedges(height)
+            return Part.makeBox(40, 30, height).cut(a).cut(b)
+
+        box = Part.makeBox(40, 30, 10)
+        c = [e.CenterOfMass for e in box.Edges]
+        edges = [e for e, m in zip(box.Edges, c) if abs(m.x - 40) < 1e-9 and (
+            abs(m.z - 10) < 1e-9 or abs(m.y - 30) < 1e-9 and abs(m.z - 5) < 1e-9)]
+        s = box.makeChamfer(3, edges)
+        self.assertAlmostEqual(s.Volume, built(10).Volume, 6)  # the half-space model is the chamfered part
+        r = mf.apply(s, [top(s)], 2, "inventor")
+        expected = built(12)
+        self.assertTrue(r.isValid())
+        self.assertEqual(len(r.Solids), 1)
+        self.assertAlmostEqual(r.Volume, expected.Volume, 6)
+        self.assertAlmostEqual(r.cut(expected).Volume + expected.cut(r).Volume, 0, 6)
+        planes = [(f.normalAt(0, 0), f.CenterOfMass) for f in r.Faces if f.Surface.__class__.__name__ == "Plane"]
+        for e in top(s).Edges:  # every neighbour's plane is still a face of the result
+            nb = next(f for f in s.ancestorsOfType(e, Part.Face) if not f.isSame(top(s)))
+            nn, p = nb.normalAt(0, 0), nb.CenterOfMass
+            self.assertTrue(any(m.dot(nn) > 1 - 1e-9 and abs((c - p).dot(nn)) < 1e-6 for m, c in planes), nn)
+        exact_edges(self, r)
+
     def test_inventor_twice_is_one_move(self):
         ch = chamfered()
         once = mf.apply(ch, [top(ch)], 2, "inventor")
