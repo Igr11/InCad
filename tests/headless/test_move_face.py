@@ -207,6 +207,14 @@ class MoveFaceFeatureTest(unittest.TestCase):
         import Part
         self.assertLess(self.body.Shape.distToShape(Part.Vertex(point))[0], 1e-6)  # x / y too: on the Solid as shown
 
+    def test_the_arrow_at_a_given_distance(self):
+        """The arrow drawn at another distance than the feature's (the last one that worked, after a refused one)."""
+        f = self.make(distance="5 mm")
+        self.assertAlmostEqual(move_face.arrow(f)[0].z, 15, 6)
+        point, normal = move_face.arrow(f, 2)
+        self.assertAlmostEqual(point.z, 12, 6)
+        self.assertAlmostEqual(normal.z, 1, 9)
+
     def test_face_on_a_second_solid(self):
         """A second Solid (as tests/headless/test_make_assembly.py makes one); Move Face on its top goes into it."""
         other = document.new_solid(self.doc)

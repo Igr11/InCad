@@ -222,9 +222,10 @@ def param_names(f):
     return {"distance": name} if name else {}
 
 
-def arrow(f):
-    """The drag arrow's place: the first face's centre and outward normal, in global coordinates (after the move).
-    None while the step has no shape, its face is gone or its To target gives no gap."""
+def arrow(f, distance=None):
+    """The drag arrow's place: the first face's centre and outward normal, in global coordinates (after the move;
+    `distance`: moved by that instead, the last distance that worked after a refused one). None while the step has
+    no shape, its face is gone or its To target gives no gap."""
     sigs = _load_json(getattr(f, "Signatures", ""), [])
     base = f.BaseFeature
     if not sigs or f.Shape.isNull() or base is None or base.Shape.isNull():
@@ -233,8 +234,8 @@ def arrow(f):
     if face is None:
         return None
     n = App.Vector(*sigs[0]["n"])
-    d = f.Distance.Value
-    if f.Extent == "to":
+    d = f.Distance.Value if distance is None else distance
+    if f.Extent == "to" and distance is None:
         try:
             d = mf.gap_to([face], _target(f))
         except ValueError:

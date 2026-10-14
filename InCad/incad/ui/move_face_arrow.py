@@ -106,9 +106,11 @@ class FaceArrow:
         self.root, self._drag, self._label = None, None, ""
         self._geom, self._view, self._nodes = None, None, None
         self._built = 0.0   # the feature's distance the arrow was drawn at
+        self._good = None   # the last distance a preview worked with (a refused one leaves the arrow there)
         self._offset = 0.0  # mm along the normal it is shown moved by (the drag ahead of the preview)
         self.lit = False    # the pointer is over it (or it is dragged)
         self._cursor = None  # viewport we set a hand cursor on
+        self._other = None   # the DOF gizmo, while a press in another view is its drag
         self.refresh()
 
     def _active_view(self):
@@ -116,10 +118,10 @@ class FaceArrow:
         gdoc = Gui.getDocument(self.session.doc_name)
         return gdoc.ActiveView if gdoc is not None else None
 
-    def _place(self):
+    def _place(self, distance=None):
         from incad.features import move_face
         f = self.session.feature
-        return move_face.arrow(f) if f is not None else None
+        return move_face.arrow(f, distance) if f is not None else None
 
     def _values(self):
         dialog = self.session.dialog
@@ -129,14 +131,17 @@ class FaceArrow:
         return self._label
 
     def dragging(self):
-        return self._drag is not None
+        return self._drag is not None or self._other is not None and self._other.dragging()
 
-    def _label_for(self, f):
-        """The Distance as typed; a formula as its value; nothing with Extent = To."""
+    def _label_for(self, f, refused=False):
+        """The Distance as typed; a formula as its value; nothing with Extent = To; after a refused preview the
+        distance the arrow stays at."""
         values = self._values()
         if values.get("extent", "distance") != "distance":
             return ""
         text = values.get("distance", "")
+        if refused:
+            return _shown("%g mm" % round(self._built, 4))
         if _mm(text) is not None:
             return _shown(text)
         return _shown("%g mm" % round(f.Distance.Value, 4))
@@ -145,16 +150,19 @@ class FaceArrow:
         """Redraw at the feature's current place (after every preview, a theme switch) with the dialog's distance."""
         self._remove_node()
         f = self.session.feature
-        place, view = self._place(), self._active_view()
+        refused = f is not None and "Invalid" in f.State and self._good is not None
+        if f is not None and not refused:
+            self._good = f.Distance.Value
+        place, view = self._place(self._good if refused else None), self._active_view()
         if place is None or view is None:
             return
         point, normal = place
         base = getattr(f, "BaseFeature", None)
         shape = base.Shape if base is not None and not base.Shape.isNull() else f.Shape
         size = dof.glyph_size(shape.BoundBox.DiagonalLength)
-        self._built = f.Distance.Value
+        self._built = self._good if refused else f.Distance.Value
         if self._drag is None:
-            self._label = self._label_for(f)
+            self._label = self._label_for(f, refused)
             self._offset = 0.0
         else:
             self._offset = self._drag[4] - self._built  # a preview landed mid-drag: the arrow stays at the pointer
@@ -202,6 +210,18 @@ class FaceArrow:
             return None
         return a, b
 
+    def _own(self, viewport):
+        """The viewport the arrow is (or would be) drawn in: the dialog's document's view."""
+        view = self._view or self._active_view()
+        try:
+            return view is not None and view.graphicsView().viewport() == viewport
+        except Exception:
+            return False
+
+    def _gizmo(self):
+        """The shell's DOF gizmo hook, which gets what happens in other views (an assembly in another tab)."""
+        return getattr(self.shell, "dof_handles", None)
+
     def _set_lit(self, lit):
         if lit != self.lit:
             self.lit = lit
@@ -209,14 +229,24 @@ class FaceArrow:
                 _light(self._nodes, lit, self.shell.theme)
 
     def hover(self, view, viewport, x, y):
-        if self._drag is not None:
+        if self._drag is not None or self._other is not None:
             return False
+        if not self._own(viewport):
+            self._set_lit(False)
+            gizmo = self._gizmo()
+            return gizmo.hover(view, viewport, x, y) if gizmo is not None else False
         on = self._hit(viewport, x, y) is not None
         self._set_lit(on)
         self._set_cursor(viewport if on else None)
         return False
 
     def press(self, view, viewport, x, y):
+        if not self._own(viewport):
+            gizmo = self._gizmo()
+            if gizmo is None or not gizmo.press(view, viewport, x, y):
+                return False
+            self._other = gizmo  # its moves and release go there too
+            return True
         ends = self._hit(viewport, x, y)
         if ends is None:
             return False
@@ -233,6 +263,9 @@ class FaceArrow:
         return True
 
     def move(self, x, y):
+        if self._other is not None:
+            self._other.move(x, y)
+            return
         drag = self._drag
         if drag is None:
             return
@@ -263,7 +296,10 @@ class FaceArrow:
 
     def release(self):
         """The press's release. Never handed to FreeCAD as a click, even without a drag: a click there would pick
-        the face under the arrow into the Faces field."""
+        the face under the arrow into the Faces field. A press in another view: the gizmo's release."""
+        if self._other is not None:
+            gizmo, self._other = self._other, None
+            return gizmo.release()
         self._end()
         return False
 
@@ -274,10 +310,13 @@ class FaceArrow:
 
     def finish(self, moved_ok=True, closing=False):
         """A command, another tab or a closing document ends the drag: the distance stays where it got to."""
+        if self._other is not None:
+            gizmo, self._other = self._other, None
+            gizmo.finish(moved_ok, closing)
         self._end()
 
     def remove(self):
-        self._end()
+        self.finish()
         self._remove_node()
 
     def _set_cursor(self, viewport, closed=False):

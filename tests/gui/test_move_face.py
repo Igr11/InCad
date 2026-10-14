@@ -1,6 +1,7 @@
 """Move Face in the real window: the dialog from a selected top face, a typed distance, the drag arrow on the face
 (screen-space press on its head, move, release) with the distance shown at it, one undo step on OK, the edit (a
-re-pick lands on the base shape) and a command that ends a drag."""
+re-pick lands on the base shape), a command that ends a drag, a refused distance (the arrow stays at the last good
+one) and another tab's view (its presses go to the DOF gizmo)."""
 import os
 import sys
 import time
@@ -311,6 +312,92 @@ def test_5_a_command_ends_the_drag():
     assert s()._overlay is None
 
 
+def test_6_a_refused_distance_leaves_the_arrow_at_the_last_good_one():
+    z0 = body().Shape.BoundBox.ZMax
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    set_distance("5 mm")
+    harness.pump(1500)
+    arrow = s()._overlay
+    assert abs(arrow._geom[0].z - (z0 + 5)) < 1e-6, (arrow._geom, z0)
+    set_distance("-40 mm")  # through the part: refused
+    harness.pump(1500)
+    assert dialog().error_text(), dialog().values()
+    arrow.refresh()  # as a theme switch redraws it
+    assert abs(arrow._geom[0].z - (z0 + 5)) < 1e-6, (arrow._geom, z0)
+    assert arrow.label_text() == "5 mm", arrow.label_text()
+    set_distance("5 mm")
+    harness.pump(1500)
+
+
+class HandlesLog:
+    """A stand-in for the shell's DOF gizmo hook: what the arrow handed it."""
+    def __init__(self):
+        self.calls, self.drag = [], False
+
+    def hover(self, view, viewport, x, y):
+        self.calls.append(("hover", viewport))
+        return False
+
+    def press(self, view, viewport, x, y):
+        self.calls.append(("press", viewport))
+        self.drag = True
+        return True
+
+    def move(self, x, y):
+        self.calls.append(("move",))
+
+    def release(self):
+        self.calls.append(("release",))
+        self.drag = False
+        return False
+
+    def dragging(self):
+        return self.drag
+
+    def finish(self, moved_ok=True, closing=False):
+        self.drag = False
+
+
+def test_7_other_views_go_to_the_dof_gizmo():
+    """While the dialog is open in this tab the gizmo of an assembly in another tab still gets its hovers and
+    presses (the arrow is the navigator's handle hook)."""
+    arrow = s()._overlay
+    assert arrow is not None and s().navigator.handle_hook is arrow
+    other = App.newDocument("MoveFaceOther")
+    harness.pump(800)
+    vp2 = Gui.getDocument(other.Name).ActiveView.graphicsView().viewport()
+    real, log_ = s().dof_handles, HandlesLog()
+    s().dof_handles = log_
+    try:
+        at = QtCore.QPointF(vp2.width() / 2.0, vp2.height() / 2.0)
+        glob = QtCore.QPointF(vp2.mapToGlobal(at.toPoint()))
+        ev = lambda kind, b, bs: QtWidgets.QApplication.sendEvent(
+            vp2, QtGui.QMouseEvent(kind, at, glob, b, bs, QtCore.Qt.NoModifier))
+        ev(QtCore.QEvent.MouseMove, N, N)
+        harness.pump(150)
+        ev(QtCore.QEvent.MouseButtonPress, L, L)
+        harness.pump(100)
+        assert arrow.dragging(), log_.calls  # the gizmo's drag is the hook's drag
+        at = QtCore.QPointF(at.x() + 30, at.y())
+        ev(QtCore.QEvent.MouseMove, N, L)
+        harness.pump(100)
+        ev(QtCore.QEvent.MouseButtonRelease, L, N)
+        harness.pump(300)
+        kinds = [c[0] for c in log_.calls]
+        assert kinds[:2] == ["hover", "press"] and "move" in kinds and kinds[-1] == "release", log_.calls
+        assert all(c[1] is vp2 for c in log_.calls if len(c) > 1), log_.calls
+        assert not arrow.dragging() and not arrow.lit
+    finally:
+        s().dof_handles = real
+        App.closeDocument(other.Name)
+        harness.pump(800)
+    s().feature_session.cancel()
+    harness.pump(900)
+    assert s()._overlay is None
+
+
 def test_9_cleanup():
     App.closeDocument(ST["doc"])
     harness.pump(500)
@@ -318,4 +405,5 @@ def test_9_cleanup():
 
 harness.run([test_0_setup, test_1_dialog_and_typed_distance, test_2_drag_the_arrow_changes_the_distance_and_shows_it,
              test_3_ok_is_one_undo_step_and_the_arrow_goes, test_4_edit_reopens_with_the_values_and_modes_switch,
-             test_5_a_command_ends_the_drag, test_9_cleanup])
+             test_5_a_command_ends_the_drag, test_6_a_refused_distance_leaves_the_arrow_at_the_last_good_one,
+             test_7_other_views_go_to_the_dof_gizmo, test_9_cleanup])
