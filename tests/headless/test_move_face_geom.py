@@ -109,6 +109,12 @@ class ChamferTest(unittest.TestCase):
             nn, p = nb.normalAt(0, 0), nb.CenterOfMass
             self.assertTrue(any(m.dot(nn) > 1 - 1e-9 and abs((c - p).dot(nn)) < 1e-6 for m, c in planes), nn)
         exact_edges(self, r)
+        for d in (-1, -2):  # inward the corner chamfer (touching the top at its corner only) clips the corner
+            r = mf.apply(s, [top(s)], d, "inventor")
+            expected = built(10 + d)
+            self.assertTrue(r.isValid(), d)
+            self.assertAlmostEqual(r.cut(expected).Volume + expected.cut(r).Volume, 0, 6, d)
+            exact_edges(self, r)
 
     def test_inventor_twice_is_one_move(self):
         ch = chamfered()
@@ -174,6 +180,106 @@ class FrustumTest(unittest.TestCase):
             with self.assertRaises(ValueError) as e:
                 mf.apply(fr, [top(fr)], d, "inventor")
             self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, d)
+
+
+def blended(kind, edges):
+    """The 40 x 30 x 10 box with 2 mm fillets / chamfers made in ONE makeFillet / makeChamfer call on all its edges
+    ("all") or on the top and vertical edges ("top+vertical"): at each top corner OCC leaves a patch (a sphere, a
+    flat triangle) that touches the top face at its corner vertex only."""
+    box = Part.makeBox(40, 30, 10)
+    if edges == "all":
+        chosen = box.Edges
+    else:
+        chosen = [e for e in box.Edges if abs(e.CenterOfMass.z - 10) < 1e-9 or abs(e.CenterOfMass.z - 5) < 1e-9]
+    return box.makeFillet(2, chosen) if kind == "fillet" else box.makeChamfer(2, chosen)
+
+
+# the box's section between the blends: 40 x 30 less the four rounded / cut vertical corners
+SECTION = {"fillet": 1200 - 4 * (4 - 3.141592653589793), "chamfer": 1192}
+BLENDED = [(k, e) for k in ("fillet", "chamfer") for e in ("all", "top+vertical")]
+
+
+def below(shape, z):
+    """The half-space model: the part cut down to z."""
+    return shape.common(Part.makeBox(100, 100, z + 50, V(-50, -50, -50)))
+
+
+class AllEdgesTest(unittest.TestCase):
+    """Parts blended on every edge in one feature, the most common real part (single-edge fixtures hid the corners)."""
+
+    def test_together_moves_the_blended_top_both_ways(self):
+        for kind, edges in BLENDED:
+            s = blended(kind, edges)
+            for d in (-1, -3, 2, 3):
+                r = mf.apply(s, [top(s)], d, "together")
+                self.assertTrue(r.isValid(), (kind, edges, d))
+                self.assertEqual(len(r.Solids), 1, (kind, edges, d))
+                self.assertAlmostEqual(r.Volume - s.Volume, SECTION[kind] * d, 6, (kind, edges, d))
+                self.assertAlmostEqual(r.BoundBox.ZMax, 10 + d, 6, (kind, edges, d))
+
+    def test_together_twice_is_one_move(self):
+        for kind, edges in BLENDED:
+            s = blended(kind, edges)
+            once = mf.apply(s, [top(s)], 2, "together")
+            twice = mf.apply(once, [top(once)], 1, "together")
+            self.assertAlmostEqual(twice.Volume - s.Volume, SECTION[kind] * 3, 6, (kind, edges))
+            down = mf.apply(once, [top(once)], -3, "together")
+            self.assertAlmostEqual(down.Volume - s.Volume, -SECTION[kind], 6, (kind, edges))
+
+    def test_together_past_the_walls_is_refused(self):
+        for kind, edges in BLENDED:
+            s = blended(kind, edges)
+            with self.assertRaises(ValueError) as e:
+                mf.apply(s, [top(s)], -9, "together")  # the walls under the top blends are 6 / 8 mm
+            self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, (kind, edges))
+
+    def test_inventor_inward_at_chamfered_corners(self):
+        """The top moved down d is the chamfered part cut at z 10 + d: the top chamfers keep their planes, the corner
+        triangles clip the top's corners."""
+        for edges in ("all", "top+vertical"):
+            s = blended("chamfer", edges)
+            for d in (-0.5, -1, -1.5, -1.99):
+                r = mf.apply(s, [top(s)], d, "inventor")
+                expected = below(s, 10 + d)
+                self.assertTrue(r.isValid(), (edges, d))
+                self.assertEqual(len(r.Solids), 1, (edges, d))
+                self.assertAlmostEqual(r.Volume, expected.Volume, 6, (edges, d))
+                self.assertAlmostEqual(r.cut(expected).Volume + expected.cut(r).Volume, 0, 6, (edges, d))
+                exact_edges(self, r)
+            once = mf.apply(s, [top(s)], -0.5, "inventor")
+            twice = mf.apply(once, [top(once)], -0.5, "inventor")
+            expected = below(s, 9)
+            self.assertAlmostEqual(twice.cut(expected).Volume + expected.cut(twice).Volume, 0, 6, edges)
+
+    def test_inventor_too_far_inward_at_chamfered_corners_is_refused(self):
+        for edges in ("all", "top+vertical"):
+            s = blended("chamfer", edges)
+            with self.assertRaises(ValueError) as e:
+                mf.apply(s, [top(s)], -2.5, "inventor")  # past the 2 mm top chamfers
+            self.assertEqual(str(e.exception), mf.TOO_LARGE_MSG, edges)
+
+    def test_inventor_outward_at_chamfered_corners_unchanged(self):
+        for edges in ("all", "top+vertical"):
+            s = blended("chamfer", edges)
+            r = mf.apply(s, [top(s)], 2, "inventor")  # the 36 x 26 top shrinks 2 mm a side per mm up
+            self.assertAlmostEqual(r.Volume - s.Volume, 936 * 2 - 62 * 4 + 4 * 8 / 3, 6, edges)
+            self.assertAlmostEqual(top(r).Area, 32 * 22, 6, edges)
+
+    def test_inventor_says_round_on_filleted_corners(self):
+        for edges in ("all", "top+vertical"):
+            s = blended("fillet", edges)
+            for d in (-1, 2):
+                with self.assertRaises(ValueError) as e:
+                    mf.apply(s, [top(s)], d, "inventor")
+                self.assertEqual(str(e.exception), mf.ROUND_MSG, (edges, d))
+
+    def test_step_pushes_the_top_only(self):
+        for kind, edges in BLENDED:
+            s = blended(kind, edges)
+            for d in (-2.5, -1, 3):
+                r = mf.apply(s, [top(s)], d, "step")
+                self.assertTrue(r.isValid(), (kind, edges, d))
+                self.assertAlmostEqual(r.Volume - s.Volume, 36 * 26 * d, 6, (kind, edges, d))
 
 
 class HoleSlotTest(unittest.TestCase):

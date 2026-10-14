@@ -128,6 +128,32 @@ def _neighbour(shape, face, edge):
     return None
 
 
+def _corner_patches(shape, face):
+    """The faces touching `face` at a corner vertex only, between its two neighbours there (OCC's corner patch where
+    blends made in one feature meet: a sphere for fillets, a flat triangle for chamfers), each with those neighbours."""
+    out = []
+    for v in face.Vertexes:
+        nbs = []
+        for e in face.Edges:
+            nb = _neighbour(shape, face, e) if any(x.isSame(v) for x in e.Vertexes) else None
+            if nb is not None and not any(_same(nb, g) for g in nbs):
+                nbs.append(nb)
+        for g in shape.ancestorsOfType(v, Part.Face):
+            if _same(g, face) or any(_same(g, f) for f in nbs) or any(_same(g, p) for p, _ in out):
+                continue
+            touching = [f for f in nbs if any(_same(e, x) for e in g.Edges for x in f.Edges)]
+            if len(touching) >= 2:
+                out.append((g, touching))
+    return out
+
+
+def _material_side(face, size):
+    """A block on the material side of a flat face's plane, `size` beyond it every way."""
+    n = _normal(face)
+    sheet = Part.Plane(face.CenterOfMass, n).toShape(-size, size, -size, size)
+    return sheet.extrude(n * -size)
+
+
 def _side_dir(shape, face, vertex, n):
     """The line a vertex of `face` moves along (inventor), on both neighbours of the vertex (the faces across the two
     edges of `face` meeting there): their common edge, pointing at the vertex, with its length; else (a chamfered
@@ -222,6 +248,15 @@ def _inventor_slab(shape, face, n, d):
         slab.reverse()
     if not slab.isValid() or not slab.Shells[0].isClosed() or slab.Volume < _TOL:
         raise ValueError(TOO_LARGE_MSG)
+    if d < 0:  # a corner patch (touching the face at a vertex only) cuts the corner off: the slab stops at its plane
+        size = shape.BoundBox.DiagonalLength + abs(d)
+        for patch, _ in _corner_patches(shape, face):
+            if not _is_plane(patch):
+                raise ValueError(ROUND_MSG)
+            slab = slab.common(_material_side(patch, size))
+        if len(slab.Solids) != 1:
+            raise ValueError(TOO_LARGE_MSG)
+        slab = slab.Solids[0]
     return slab
 
 
@@ -232,19 +267,24 @@ def _together_slab(shape, face, n, d):
     for f in moved:
         if not any(_same(f, g) for g in group):
             group.append(f)
+    # the corner patches between two moved blends (a sphere, a triangle where they meet) move with them
+    group += [p for p, nbs in _corner_patches(shape, face)
+              if not _along(p, n) and all(any(_same(f, g) for g in group) for f in nbs)]
     count = {}
     for f in group:
         for e in f.Edges:
             key = e.hashCode()
             count[key] = (count.get(key, (0, e))[0] + 1, e)
-    rim = [e for c, e in count.values() if c == 1]
+    rim = [e for c, e in count.values() if c == 1 and not e.Degenerated]  # a sphere's pole is no edge
     for e in rim:
         wall = next((f for f in shape.ancestorsOfType(e, Part.Face) if not any(_same(f, g) for g in group)), None)
         if wall is not None and not _along(wall, n):
             raise ValueError(WALLS_MSG)
     caps = [f.copy() for f in group] + [f.translated(n * d) for f in group]
     strips = [e.extrude(n * d).Faces[0] for e in rim]
-    return Part.Solid(Part.Shell(caps + strips))
+    shell = Part.Shell(caps + strips)
+    shell.sewShape()
+    return Part.Solid(shell)
 
 
 _SLABS = {"step": lambda shape, f, n, d: f.extrude(n * d), "together": _together_slab, "inventor": _inventor_slab}
