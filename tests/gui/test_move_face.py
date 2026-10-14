@@ -193,7 +193,9 @@ def test_1_dialog_and_typed_distance():
     assert arrow.label_text() == "3 mm" and abs(arrow._geom[0].z - 13) < 1e-6, (arrow.label_text(), arrow._geom)
     set_distance("-3 mm")
     harness.pump(1500)
-    assert arrow.label_text() == "\u22123 mm" and dialog().values()["distance"] == "-3 mm", arrow.label_text()
+    # a plain "-": the view's text drops the typographic minus (U+2212), and −3 mm then showed as "3 mm"
+    assert arrow.label_text() == "-3 mm" and dialog().values()["distance"] == "-3 mm", arrow.label_text()
+    assert arrow.label_text().isascii(), arrow.label_text()
     assert abs(arrow._geom[0].z - 7) < 1e-6 and abs(body().Shape.BoundBox.ZMax - 7) < 1e-6, \
         (arrow._geom, body().Shape.BoundBox)
     set_distance("5 mm")

@@ -8,7 +8,6 @@ from incad.ui import dof_handles as dh
 from incad.ui import theme as themes
 
 NAME = "InCadMoveFaceArrow"
-MINUS = "−"  # the label's minus sign (the field keeps "-")
 
 
 def _rgb(hex_color):
@@ -30,9 +29,9 @@ def _mm(text):
 
 
 def _shown(text):
-    """A distance as the label shows it: a typographic minus ("−3 mm")."""
-    text = str(text or "").strip()
-    return MINUS + text[1:].lstrip() if text.startswith("-") else text
+    """A distance as the label shows it: a plain "-" (the view's text drops the typographic minus U+2212, so
+    −3 mm showed as "3 mm")."""
+    return str(text or "").strip()
 
 
 def _arrow_node(point, normal, size, text, theme, dpr=1.0):
