@@ -201,6 +201,14 @@ class FeatureDialog(QtWidgets.QFrame):
             w.returnPressed.connect(self.accepted.emit)
             w.installEventFilter(self)
             return w
+        if f.kind == "text":  # words (Text): two lines tall, Return starts a new line; previews as you type
+            w = QtWidgets.QPlainTextEdit(self)
+            w.setMinimumWidth(260)
+            w.setTabChangesFocus(True)
+            line = w.fontMetrics().lineSpacing()
+            w.setFixedHeight(int(line * 2.6 + 14))
+            w.textChanged.connect(self._typed)
+            return w
         if f.kind == "choice":
             w = ChoiceField(f.choices, self)
             w.changed.connect(self._emit)
@@ -380,6 +388,8 @@ class FeatureDialog(QtWidgets.QFrame):
             w = self._widgets[key]
             if f.kind in ("value_length", "value_angle"):
                 out[key] = w.text().strip()
+            elif f.kind == "text":
+                out[key] = w.toPlainText()
             elif f.kind == "choice":
                 out[key] = w.value()
             elif f.kind == "combo":
@@ -399,6 +409,9 @@ class FeatureDialog(QtWidgets.QFrame):
                     continue
                 if f.kind in ("value_length", "value_angle"):
                     w.setText(str(value))
+                elif f.kind == "text":
+                    if w.toPlainText() != str(value or ""):  # (setting it again would move the cursor home)
+                        w.setPlainText(str(value or ""))
                 elif f.kind == "choice":
                     w.set_value(value)
                 elif f.kind == "combo":

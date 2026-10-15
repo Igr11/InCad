@@ -6,7 +6,7 @@ LAYOUT = {
     "part": [
         ["3D Model", [["Sketch", ["sketch.start"]],
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole",
-                                  ["feature.sweep", "feature.loft", "feature.coil"]]],
+                                  ["feature.sweep", "feature.loft", "feature.coil"], "feature.emboss"]],
                       ["Modify", [["feature.fillet", "feature.chamfer"], ["feature.shell", "feature.draft"],
                                   "feature.thread", "feature.threads_toggle", "feature.combine", "feature.split",
                                   "feature.move_face"]],
@@ -34,7 +34,7 @@ LAYOUT = {
                                  "sketch.slot_arc_flat"],
                                 ["sketch.polygon", "sketch.triangle", "sketch.square", "sketch.pentagon",
                                  "sketch.octagon", "sketch.polygon_n"],
-                                "sketch.point"]],
+                                "sketch.point", "sketch.text"]],
                     ["Modify", [["sketch.fillet", "sketch.chamfer"], "sketch.trim", "sketch.extend", "sketch.offset"]],
                     ["Pattern", [["sketch.rect_pattern", "sketch.circ_pattern", "sketch.path_pattern"], "sketch.mirror"]],
                     ["Dimension", ["sketch.dimension"]],

@@ -5,6 +5,35 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.0
+-----
+Text and Emboss.
+
+New features
+- Sketch > Text: words in a sketch that Extrude raises (Join) or engraves (Cut). Press Text (the
+  cursor shows an orange Aa) and click two corners: a construction box is drawn and the text sits in
+  it - Horizontal Left / Centre / Right, Vertical Top / Middle / Bottom, Fit to the box (the letters
+  fill its width). Dimension or constrain the box and the text follows; a tilted box tilts the text.
+  Or select a line or a circle first: the text runs along it (Start / Centre / End, Shift, Distance,
+  Flip side). Font (the Mac's fonts), Bold, Italic, Size (the height of the capital letters), letter
+  spacing, several lines. Mirror reads the text from the plane's other side. The text stays one
+  object: double-click its row to change the words; it follows its box or curve at once while the
+  sketch is open.
+- 3D Model > Create > Emboss (Inventor's Emboss / Engrave): a Text or a sketch raised from or cut into
+  a face. On a cylinder or a cone it is wrapped round the face (the letters keep their size, the
+  height goes along the radius); on a flat face it goes straight. Around: As drawn, or Evenly round
+  (the letters spread once round the whole face). Engrave may cut right through a thin wall (a
+  stencil). It finds its face again when an earlier step changes.
+
+Improvements
+- Work planes, sketches and Texts made after the part's last feature show above End of Part (as in
+  Inventor), not greyed out below it.
+- The open sketch's Text is drawn as outlines on top (letters on a face no longer flicker into it).
+
+Bug fixes
+- A dialog that starts from its profile and still waits for a pick opens on that pick.
+
+
 0.4.0
 -----
 Sketching, Move Face on round walls, and many fixes from testing.

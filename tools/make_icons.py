@@ -109,6 +109,8 @@ ICONS = {
     "spline": ('<path d="M4 24 C10 4 18 30 28 8" fill="none" stroke="{S}" stroke-width="2.4"/>'
                '<circle cx="4" cy="24" r="2.2" fill="{A}"/><circle cx="16" cy="17" r="2.2" fill="{A}"/>'
                '<circle cx="28" cy="8" r="2.2" fill="{A}"/>'),
+    "text": ('<path d="M7 9 V6.5 H25 V9 M16 6.5 V25 M12.5 25 H19.5" fill="none" stroke="{S}" stroke-width="2.4" '
+             'stroke-linejoin="round"/><path d="M5 28 H27" stroke="{A}" stroke-width="2"/>'),
     "sk_point": '<path d="M16 8 V24 M8 16 H24" stroke="{N}" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="{A}"/>',
     "sk_fillet": ('<path d="M6 6 V18 A8 8 0 0 0 14 26 H26" fill="none" stroke="{S}" stroke-width="2.4"/>'
                   '<path d="M6 6 V26 H26" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
@@ -176,6 +178,9 @@ ICONS = {
                 '<path d="M6 12 L14 15 L26 11 M14 15 L14 25" fill="none" stroke="{S}" stroke-width="1.2"/>'
                 '<path d="M20 9 V2" stroke="{A}" stroke-width="2.2"/><path d="M17 5 L20 1 L23 5" fill="none" '
                 'stroke="{A}" stroke-width="2.2" stroke-linejoin="round"/>'),
+    "emboss": ('<path d="M4 25 H28 V29 H4 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+               '<path d="M8 25 L13 10 H15.5 L20.5 25 M10 19.5 H18.5 M22 25 V13 M22 17 C22 13.5 27 13 27 16.5 V25" '
+               'fill="none" stroke="{A}" stroke-width="2.4" stroke-linejoin="round"/>'),
     "revolve": ('<ellipse cx="16" cy="9" rx="10" ry="3.5" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<path d="M6 9 V23 A10 3.5 0 0 0 26 23 V9" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                 '<path d="M16 3 V29" stroke="{A}" stroke-width="1.6" stroke-dasharray="3 2"/>'),

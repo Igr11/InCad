@@ -575,6 +575,14 @@ def mirror_sketch():
     run_std("Sketcher_Symmetry")
 
 
+def _text_tool():
+    from incad.ui import shell
+    inst = shell.instance()
+    if inst is None:
+        raise ValueError("InCad is not active")
+    inst.start_text_tool()
+
+
 def _offset_tool():
     from incad.ui import shell
     inst = shell.instance()
@@ -982,6 +990,10 @@ def commands():
                 shortcut="E", contexts=frozenset({"part"}), tooltip="Extrude a sketch profile"),
         Command(id="feature.revolve", label="Revolve", icon="revolve", handler=lambda: start_feature("revolve"),
                 shortcut="R", contexts=frozenset({"part"}), tooltip="Revolve a sketch profile around an axis"),
+        Command(id="feature.emboss", label="Emboss", icon="emboss", handler=lambda: start_feature("emboss"),
+                contexts=frozenset({"part"}),
+                tooltip="Emboss or engrave a Text or a sketch on a face: wrapped round a cylinder, or straight on a "
+                        "flat face"),
         Command(id="feature.hole", label="Hole", icon="hole", handler=lambda: start_feature("hole"), shortcut="H",
                 contexts=frozenset({"part"})),
         Command(id="feature.fillet", label="Fillet", icon="fillet", handler=lambda: start_feature("fillet"),
@@ -1056,6 +1068,9 @@ def commands():
                         "With geometry selected: switches that geometry"),
         Command(id="sketch.mirror", label="Mirror", icon="mirror", handler=mirror_sketch, contexts=frozenset({"sketch"}),
                 tooltip="Pick the shapes (one click takes a whole outline), then the mirror line last"),
+        Command(id="sketch.text", label="Text", icon="text", handler=_text_tool, contexts=frozenset({"sketch"}),
+                tooltip="Text: click where it goes, or pick a point or a curve of the sketch first (the text runs "
+                        "along it); Extrude raises or engraves it"),
         Command(id="sketch.offset", label="Offset", icon="offset", handler=_offset_tool, contexts=frozenset({"sketch"}),
                 tooltip="Click a shape (its whole outline), move to the side, click; type the distance"),
         Command(id="sketch.slot_overall", label="Overall Slot", icon="slot_overall",

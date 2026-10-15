@@ -3,7 +3,7 @@
 An Inventor/Alibre-style workbench for FreeCAD 1.1.3 on macOS: ribbon, Model Browser with End of Part and
 Parameters, light/dark in one click, ⇄ back to FreeCAD in one click. Files stay normal `.FCStd`.
 
-Current version: 0.4.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
+Current version: 0.5.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
 
 ## Install
     scripts/install.sh        # symlinks InCad/ into FreeCAD's Mod folder; restart FreeCAD
@@ -40,6 +40,10 @@ Logs: ~/Library/Logs/InCad.log
   pointer, a click places it; sharp corners, a single line gives a parallel line, a circle or ellipse a ring; one
   dimension drives it. Mirror and the sketch patterns also take the whole shape from one side.
 - Concentric (Constrain, after Coincident): two circles, arcs or ellipses get one centre.
+- Text (Sketch ▸ Create): two clicks draw a construction box and the words sit in it (left / centre / right,
+  top / middle / bottom, Fit to the box; a tilted box tilts it), or select a curve first and the text runs
+  along it. Any installed font, Bold / Italic, Size = capital height, Mirror to read from the other side.
+  One editable object: it follows its box or curve; Extrude raises or engraves it.
 - Constraint List (Sketch ▸ Constrain ▸ List, or right-click): every constraint of the sketch, filtered by the
   picked line or point; check rows and Delete selected. Right-click a line or point to delete one of its
   constraints, or all. Pattern ties and dimensions used in a formula are kept.
@@ -70,6 +74,9 @@ Logs: ~/Library/Logs/InCad.log
   parallel to them or a point (also on another Solid); the neighbours follow as in Inventor, as a straight Step, or
   Together with their chamfers / fillets. A drag arrow on the face shows the distance live; Finish move is on top of
   the right-click menu.
+- Emboss (3D Model ▸ Create): a Text or sketch raised from or engraved into a face — wrapped round a
+  cylinder or a cone (height along the radius; As drawn or Evenly round), or straight on a flat face;
+  Engrave may cut through a thin wall like a stencil.
 - Tools ▸ Material sets the part material (PLA, PETG, ABS, ASA, TPU, Nylon, Resin, Aluminium, Steel): Mass
   Properties uses its density. View ▸ Section cuts the view open (toggle).
 - Delete (right-click in the browser) removes a feature with everything InCad made for it (Combine helpers, thread

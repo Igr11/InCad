@@ -8,7 +8,7 @@ from incad.core import safe
 class Field:
     key: str
     label: str
-    kind: str                # value_length | value_angle | choice | combo | bool | pick | picks
+    kind: str                # value_length | value_angle | choice | combo | bool | text | pick | picks
     choices: tuple = ()      # ((value, label), …) for choice
     default: object = None
     show_if: tuple = None    # (other key, (values…)) or a tuple of those (all must hold)
@@ -350,6 +350,9 @@ def accepts(kind, obj, sub):
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomLine"
+    if kind == "emboss_face":  # Emboss: a round (cylindrical) face to wrap onto, or a flat one
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId in ("Part::GeomCylinder",
+                                                                                     "Part::GeomCone", "Part::GeomPlane")
     if kind == "rot_axis":  # what a circular pattern turns around: an axis, a straight or circular edge, a round face
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")
@@ -401,6 +404,11 @@ def _accepts_sketch(kind, sk, sub):
         return pos != 0 or t == "Part::GeomLineSegment"
     if kind == "sketch_path":
         return geo >= 0 and pos == 0 and t in sp.PATH_TYPES
+    if kind == "sketch_box":  # Text's box: a line of four lines joined into a closed box (construction or not)
+        from incad.features.sketch_text import box_lines
+        return pos == 0 and geo >= 0 and box_lines(sk, geo) is not None
+    if kind == "sketch_curve":  # what Text runs along: any line or curve of the sketch, construction or projected
+        return pos == 0 and geo not in (-1, -2) and t not in ("Part::GeomPoint", None)
     return False
 
 
@@ -409,7 +417,9 @@ _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Cli
                "move_to": "Click a face, plane, edge or point…",
                "limit": "Click a face, edge or work plane…", "to_face": "Click a face or work plane…", "sketch_geometry": "Click the geometry to repeat…",
                "sketch_direction": "Click a line (or the X/Y axis)…", "sketch_point": "Click a point…",
-               "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…"}
+               "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…",
+               "sketch_curve": "Click a line, arc, circle or curve…",
+               "sketch_box": "Click a line of the box…"}
 _PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})
 _SKETCH_NAMES = {"H_Axis": "X axis", "V_Axis": "Y axis", "RootPoint": "Origin"}
 

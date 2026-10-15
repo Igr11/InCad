@@ -82,7 +82,8 @@ def _history(doc, primary):
 
     def row(b, obj):
         """The row of obj with its sketch and helpers under it, and those objects; None for a row not shown."""
-        if obj.TypeId == "Sketcher::SketchObject" and obj.Name in consumed:
+        if (obj.TypeId == "Sketcher::SketchObject" or getattr(obj, "InCadText", None) is not None) \
+                and obj.Name in consumed:  # a used sketch or Text shows under its feature
             return None, []
         if getattr(obj, "InCadHelperOf", None) or regions.is_profile(obj):
             return None, []
@@ -132,17 +133,25 @@ def _history(doc, primary):
         out.append(node)
         if latest is not None and (obj is latest or latest in under):
             out.append(Node("end_of_part", "End of Part"))
-    return _work_in_progress_above_end(out)
+    return _work_in_progress_above_end(out, doc)
 
 
-def _work_in_progress_above_end(nodes):
-    """Sketches right after End of Part that no feature uses yet are work in progress: Inventor shows them above
-    the marker (FreeCAD never makes a sketch the Tip)."""
+def _work_in_progress_above_end(nodes, doc=None):
+    """What follows End of Part and is no solid feature — sketches, work planes / axes / points, Text — is work in
+    progress: Inventor shows it above the marker (FreeCAD never makes any of them the Tip). Only the solid features
+    after it are rolled back. (A work plane between them stopped this, leaving a sketch and a Text below.)"""
     marker = next((i for i, n in enumerate(nodes) if n.kind == "end_of_part"), None)
     if marker is None:
         return nodes
+
+    def in_progress(n):
+        if n.kind == "sketch":
+            return True
+        obj = doc.getObject(n.name) if doc is not None and n.kind == "feature" and n.name else None
+        return obj is not None and not obj.isDerivedFrom("PartDesign::Feature")
+
     j = marker + 1
-    while j < len(nodes) and nodes[j].kind == "sketch" and nodes[j].state in ("", "rolled_back", "hidden"):
+    while j < len(nodes) and in_progress(nodes[j]) and nodes[j].state in ("", "rolled_back", "hidden"):
         if nodes[j].state == "rolled_back":
             nodes[j].state = ""
         j += 1

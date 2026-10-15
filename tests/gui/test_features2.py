@@ -102,8 +102,8 @@ def test_3_wrong_pick_kind_is_refused():
     harness.pump(800)
     tip = body().Tip
     assert tip.TypeId == "PartDesign::Hole", tip.TypeId  # an unfinished Chamfer must not linger as the Tip
-    top = [i + 1 for i, f in enumerate(tip.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
-    Gui.Selection.addSelection(doc().Name, tip.Name, "Face%d" % top)
+    # (a face is no wrong pick any more: it takes all its edges, as the user asked) a corner is
+    Gui.Selection.addSelection(doc().Name, tip.Name, "Vertex1")
     harness.pump(600)
     assert "Select edge" in dialog().error_text(), dialog().error_text()
     QTest.keyClick(dialog(), QtCore.Qt.Key_Escape)

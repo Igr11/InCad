@@ -196,6 +196,59 @@ class SketchSession:
         for done in [k for k in self._saved_vp if k != key]:
             self.restore(done)
         self._sync_dimmed(editing)
+        self._sync_text_lines(editing)
+
+    def _sync_text_lines(self, editing):
+        """The open sketch's Text drawn as outlines on top (like the sketch's own lines): letters written on a face
+        lie in it and flickered into it. Never pickable; gone when the sketch closes."""
+        old = getattr(self, "_text_lines", None)
+        if old is not None:
+            try:
+                old[0].getSceneGraph().removeChild(old[1])
+            except Exception:
+                pass
+            self._text_lines = None
+        if editing is None:
+            return
+        try:
+            import FreeCADGui as Gui
+            from pivy import coin
+            from incad.features import sketch_text
+            from incad.ui import theme
+            texts = [t for t in sketch_text.texts_of(editing) if not t.Shape.isNull()]
+            if not texts:
+                return
+            group = editing.getParentGeoFeatureGroup()
+            pl = group.getGlobalPlacement() if group is not None else None
+            lines = []
+            for t in texts:
+                for e in t.Shape.Edges:
+                    pts = e.discretize(Deflection=0.02) if len(e.Vertexes) else e.discretize(24)
+                    lines.append([pl.multVec(p) if pl is not None else p for p in pts])
+            if not lines:
+                return
+            node = coin.SoSeparator()
+            style = coin.SoPickStyle()
+            style.style = coin.SoPickStyle.UNPICKABLE
+            color = coin.SoBaseColor()
+            hex_color = theme.SKETCH_COLORS[theme.current()]["SketchEdgeColor"].lstrip("#")
+            color.rgb.setValue(*(int(hex_color[i:i + 2], 16) / 255.0 for i in (0, 2, 4)))
+            draw = coin.SoDrawStyle()
+            draw.lineWidth = 1.5
+            coords = coin.SoCoordinate3()
+            flat = [p for line in lines for p in line]
+            coords.point.setValues(0, len(flat), [(p.x, p.y, p.z) for p in flat])
+            lineset = coin.SoLineSet()
+            lineset.numVertices.setValues(0, len(lines), [len(line) for line in lines])
+            for n in (style, color, draw, coords, lineset):
+                node.addChild(n)
+            top = coin.SoAnnotation()
+            top.addChild(node)
+            view = Gui.getDocument(editing.Document.Name).ActiveView
+            view.getSceneGraph().addChild(top)
+            self._text_lines = (view, top)
+        except Exception:
+            log.logger().exception("text outlines while sketching")
 
     DIM = 0.62  # the part's colour while a sketch is open (dark theme): its lines and shapes stand out on it
 
@@ -258,6 +311,7 @@ class SketchSession:
         for key in list(self._saved_vp):
             self.restore(key)
         self._sync_dimmed(None)
+        self._sync_text_lines(None)
 
     def finish(self):
         import FreeCAD as App

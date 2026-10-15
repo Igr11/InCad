@@ -271,7 +271,8 @@ class _ProfilePicker:
         from incad.features.common import closed_profile
         obj = App.getDocument(doc_name).getObject(obj_name)
         from incad.core import regions
-        if sketch.is_sketch(obj) and (closed_profile(obj) or regions.needs_regions(obj)):
+        from incad.features import sketch_text
+        if sketch_text.is_text(obj) or sketch.is_sketch(obj) and (closed_profile(obj) or regions.needs_regions(obj)):
             shell, kind = self.shell, self.kind
             QtCore.QTimer.singleShot(0, lambda: (shell._cancel_profile_pick(), shell.start_feature(kind)))
 
@@ -1350,6 +1351,36 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
         return self.slot_tool
 
+    def start_text_tool(self):
+        """Sketch ▸ Text: on a box (a line of it) or a curve of the sketch picked before, the dialog opens on it;
+        otherwise two clicks draw the text box (made inside the dialog's undo step)."""
+        import FreeCADGui as Gui
+        from incad.features import common, sketch_text
+        from incad.ui.text_place import TextPlaceTool
+        sk = self.sketches.editing()
+        if sk is None:
+            raise ValueError("Open a sketch first")
+        if self.feature_session is not None:
+            raise self._dialog_first()
+        for sel in common.selection_ex(sk.Document.Name):
+            if sel.Object is sk and any(common.accepts("sketch_curve", sk, x) for x in sel.SubElementNames or ()):
+                self.start_feature(sketch_text.TEXT)
+                return
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")
+
+        def place(a, b):
+            sketch_text._pending_box = (a, b)
+            try:
+                self.start_feature(sketch_text.TEXT)
+            except Exception as e:
+                sketch_text._pending_box = None
+                log.report("warning", "Text: %s" % e)
+
+        self.slot_tool = TextPlaceTool(Gui.ActiveDocument.ActiveView, sk, place, on_finish=self._slot_tool_done)
+        self.slot_tool.start()
+        self.schedule_refresh()
+
     def stop_slot_tool(self):
         tool, self.slot_tool = getattr(self, "slot_tool", None), None
         if tool is not None:
@@ -1375,6 +1406,33 @@ class Shell(QtCore.QObject):
         if self.construction_mode:
             QtCore.QTimer.singleShot(0, lambda: self._make_construction(sk))
         QtCore.QTimer.singleShot(0, self.refresh_constraints_window)  # a delete, an undo: never stale rows
+        self._follow_texts(sk)
+
+    def _follow_texts(self, sk):
+        """The sketch's Text follows its box or curve as soon as they move (a drag, a dimension): FreeCAD rebuilds
+        the text only on the next full recompute — while the sketch is open, after Finish. Many changes in a row
+        (a drag) rebuild once."""
+        from incad.features import sketch_text
+        if not sketch_text.texts_of(sk):
+            return
+        due = self.__dict__.setdefault("_texts_due", set())
+        key = (sk.Document.Name, sk.Name)
+        if key in due:
+            return
+        due.add(key)
+
+        def rebuild():
+            due.discard(key)
+            if not _alive(sk) or getattr(sk.Document, "Restoring", False) or getattr(sk.Document, "Recomputing", False):
+                return
+            for t in sketch_text.texts_of(sk):
+                try:
+                    t.recompute()
+                except Exception:
+                    log.logger().exception("rebuild %s after its sketch changed", t.Name)
+            self.sketches._sync_text_lines(self.sketches.editing())
+
+        QtCore.QTimer.singleShot(30, rebuild)
 
     def toggle_construction(self):
         """Inventor's Construction button: with sketch geometry selected, switch it (and end the drawing mode if it
@@ -1862,20 +1920,33 @@ class Shell(QtCore.QObject):
     def _profile_for(self, doc, body):
         import FreeCADGui as Gui
         from incad.core import sketch
-        from incad.features.common import closed_profile, unconsumed_closed_sketches
+        from incad.features.common import closed_profile, consumers, unconsumed_closed_sketches
         from incad.core import regions
+        from incad.features import sketch_text
         for sel in Gui.Selection.getSelectionEx(doc.Name):
+            if sketch_text.is_text(sel.Object):  # a click on the letters
+                return sel.Object
             if sketch.is_sketch(sel.Object) and (closed_profile(sel.Object) or regions.needs_regions(sel.Object)):
                 return sel.Object
         editing = self.sketches.editing()
         if editing is not None and (closed_profile(editing) or regions.needs_regions(editing)):
             self.sketches.finish()
             return editing
+        if editing is not None:  # a sketch with only text in it: that text (one), or a click on the letters
+            texts = [t for t in sketch_text.texts_of(editing) if not consumers(t)]
+            if len(texts) == 1:
+                self.sketches.finish()
+                return texts[0]
         row = self._tree_row()  # the sketch the user clicked in the model tree (Inventor: browser pick)
         obj = doc.getObject(row) if row else None
+        if obj is not None and sketch_text.is_text(obj):
+            return obj
         if obj is not None and sketch.is_sketch(obj) and (closed_profile(obj) or regions.needs_regions(obj)):
             return obj
         candidates = unconsumed_closed_sketches(body)
+        texts = [o for o in (body.Group if body is not None else []) if sketch_text.is_text(o) and not consumers(o)]
+        if not candidates and len(texts) == 1:
+            return texts[0]
         return candidates[0] if len(candidates) == 1 else None
 
     def _tree_row(self):
@@ -2021,7 +2092,8 @@ class Shell(QtCore.QObject):
             return
         body = document.target_body(profile) or body  # a sketch on a face of a second Solid: the feature goes there
         from incad.core import regions
-        if regions.needs_regions(profile):
+        from incad.features import sketch_text
+        if not sketch_text.is_text(profile) and regions.needs_regions(profile):  # (letters are faces already)
             self._profile_from_areas(kind, doc, body, profile)
             return
         self._open_session(kind, doc, body, profile=profile)
@@ -2120,6 +2192,13 @@ class Shell(QtCore.QObject):
         if self.feature_session is not None:
             raise self._dialog_first()
         body = None if getattr(kind, "ASSEMBLY", False) else feature.getParentGeoFeatureGroup()
+        sk = getattr(feature, "Sketch", None) if getattr(kind, "IN_SKETCH", False) else None
+        if sk is not None:  # a Text: edited inside its sketch (its point and curve are picked there)
+            if self.sketches.editing() is not sk:
+                self.sketches.edit(sk)
+            self._leave_sketch_tools()
+            self._open_session(kind, feature.Document, body, profile=sk, feature=feature)
+            return
         self._open_session(kind, feature.Document, body, feature=feature)
 
     @staticmethod
@@ -2720,8 +2799,10 @@ class Shell(QtCore.QObject):
         temporary grounds of the other parts never reach the command. A waiting Offset ends too (it takes every
         plain click while it runs: Construction then found no line picked); view commands leave it."""
         from incad.ui.offset_tool import OffsetTool
+        from incad.ui.text_place import TextPlaceTool
         other = not str(cmd_id or "").startswith(("view.", "nav."))
-        if isinstance(getattr(self, "slot_tool", None), OffsetTool) and other:
+        if isinstance(getattr(self, "slot_tool", None), (OffsetTool, TextPlaceTool)) and other \
+                and cmd_id != "sketch.text":
             self.stop_slot_tool()
         if self._region_pick is not None and other:  # its shown "Area n" faces stayed and took a Chamfer's clicks
             self._cancel_region_pick()

@@ -141,6 +141,11 @@ class FeatureSession(QtCore.QObject):
                 self.dialog.set_active_pick(first_empty)
         else:
             self._check()
+            if self.creating and self.dialog is not None and self._waiting_picks():  # made from its profile
+                self._apply_preselection()  # (Emboss) and still waiting for a pick: a face selected first fills it,
+                waiting = self._waiting_picks()  # else that pick is active (Extrude, Revolve wait for none)
+                if waiting:
+                    self.dialog.set_active_pick(waiting[0])
         if self.dialog is not None:
             self.dialog.reset_history()  # seeding is not the user's change: Undo stops (and drops the dialog) here
         self._seen_waiting = self._waiting_picks() if self.dialog is not None else []
@@ -189,9 +194,10 @@ class FeatureSession(QtCore.QObject):
 
     # ----- picking from the 3D view -----
     _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "limit", "to_face",
-                 "direction")
+                 "direction", "emboss_face")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
+                   "emboss_face": "a round (cylinder or cone) or a flat face",
                    "move_to": "a face, plane, edge or point"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
@@ -1194,6 +1200,14 @@ class FeatureSession(QtCore.QObject):
         self._show_summary()
         self._sync_sketch_markers()
         self._sync_axis_line()
+        if getattr(self.kind, "IN_SKETCH", False):  # the sketch's Text outlines follow the words as they are typed
+            try:
+                from incad.ui import shell as shells
+                sh = shells.instance()
+                if sh is not None:
+                    sh.sketches._sync_text_lines(sh.sketches.editing())
+            except Exception:
+                log.logger().exception("text outlines after a preview")
         key = self.dialog.active_pick()
         if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
             self._show_base(False)
@@ -1442,7 +1456,8 @@ class FeatureSession(QtCore.QObject):
         if self.feature is None or not _feature_alive(self.feature):
             return
         for sk in self.doc.Objects:
-            if sk.TypeId != "Sketcher::SketchObject" or not sk.Visibility and \
+            text = getattr(sk, "InCadText", None) is not None  # a Text an Extrude used: its letters hidden too
+            if (sk.TypeId != "Sketcher::SketchObject" and not text) or not sk.Visibility and \
                     not getattr(sk, document.SHOWN_PROP, False):
                 continue
             try:

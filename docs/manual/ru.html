@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.4.0 — тестовая сборка<br>
+      Версия 0.5.0 — тестовая сборка<br>
       FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.4.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает InCad в сборке 0.5.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -135,11 +135,10 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>Эта сборка: 0.4.0, тестовая</h2>
-<p>0.4.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0. Новое в 0.4.0: собственный
-<b>Offset</b> в эскизе, зависимость <b>Concentric</b>, Move Face на <b>круглых стенках</b>, Fillet / Chamfer на всей
-<b>грани</b> или гладкой <b>цепочке</b> рёбер, любая <b>ось</b> (и две точки) для Circular Pattern, более ясный вид эскиза
-и много исправлений по итогам тестов — полный список в CHANGES_ru.txt.</p></div>
+<div class="keep"><h2>Эта сборка: 0.5.0, тестовая</h2>
+<p>0.5.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0.
+Новое в 0.5.0: <b>текст</b> в эскизах (в рамке или вдоль кривой, любой шрифт, Mirror) и <b>Emboss</b> (тиснение или
+гравировка, вокруг цилиндров и конусов, равномерно по окружности) — полный список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
 
@@ -612,6 +611,40 @@ Parameters, где его можно переименовать (<code>Width</co
   <tr><td>Flip</td><td class="wrap">Идти по пути в обратную сторону.</td></tr>
 </table></div>
 
+<div class="keep"><h2 id="text">5.10 Текст</h2>
+<p><span class="path">Sketch ▸ Create ▸ Text</span> пишет слова в эскизе; Extrude поднимает их (Join) или вырезает (Cut),
+Emboss оборачивает их вокруг цилиндра или конуса (6.16).</p></div>
+<ol>
+  <li>Нажмите <span class="ui">Text</span> — у курсора оранжевая <b>Aa</b> — и щёлкните два угла: рисуется вспомогательная
+      рамка (оранжевый пунктир, никогда не выдавливается), и диалог открывается на ней.</li>
+  <li>Введите слова (можно в несколько строк), выберите шрифт и размер и нажмите <span class="ui">OK</span>.</li>
+</ol>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Text</td><td class="wrap">Слова; Return начинает новую строку. Кириллица работает.</td></tr>
+  <tr><td>Font, Bold, Italic</td><td class="wrap">Шрифты, установленные на Mac; Bold / Italic берут собственные файлы
+      шрифта.</td></tr>
+  <tr><td>Mirror</td><td class="wrap">Зеркалит текст слева направо, чтобы он читался с другой стороны плоскости (эскиз на
+      нижней грани детали или на плоскости, повёрнутой в другую сторону).</td></tr>
+  <tr><td>Size</td><td class="wrap">Высота заглавных букв (5 мм), именованное значение, как любое другое (3.6).</td></tr>
+  <tr><td>Placement</td><td class="wrap"><b>In a box</b> (в рамке) или <b>Along a curve</b> (вдоль кривой).</td></tr>
+  <tr><td>Box</td><td class="wrap">Рамка, в которой стоит текст: нарисованная двумя щелчками или линия любого прямоугольника
+      эскиза. Задайте рамке размеры или зависимости (по центру грани, 3 мм от ребра) — текст следует; наклонная рамка
+      наклоняет текст.</td></tr>
+  <tr><td>Horizontal, Vertical</td><td class="wrap">Left / Centre / Right и Top / Middle / Bottom в рамке, по самим буквам.
+      Текст длиннее рамки выходит за неё.</td></tr>
+  <tr><td>Fit to the box</td><td class="wrap">Буквы масштабируются так, чтобы самая широкая строка заполнила ширину рамки
+      (но не выше рамки); Size тогда скрывается.</td></tr>
+  <tr><td>Curve, Position, Shift, Distance, Flip side</td><td class="wrap">Вдоль кривой: любая линия, дуга, окружность, эллипс
+      или сплайн эскиза (и вспомогательные). Выделите её до нажатия Text — текст пойдёт вдоль неё: каждая буква
+      повёрнута по ней, Centre — у верха замкнутой кривой, Shift сдвигает вдоль, Distance отодвигает от кривой, Flip side
+      ставит на другую сторону (внутри кольца текст тогда читается внизу, как на монете).</td></tr>
+  <tr><td>Letter spacing</td><td class="wrap">Дополнительный промежуток между буквами (0 мм).</td></tr>
+</table>
+<p>Текст — один объект (строка <span class="ui">Text</span> в браузере): двойной щелчок меняет слова или шрифт — открывается
+его эскиз вместе с диалогом. Пока эскиз открыт, текст сразу следует за рамкой или кривой, а его контур рисуется поверх.
+Текст, использованный Extrude или Emboss, скрывается и показан под этой операцией.</p>
+
 <!-- ============================================================ 6 -->
 <h1 class="chapter" id="features"><span class="num">6</span>Операции детали</h1>
 <p class="lead">Каждая операция открывает диалог с живым предпросмотром. Сначала — как устроены диалоги, затем каждая
@@ -928,6 +961,28 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 </table>
 <p>Где просят плоскость, подойдёт плоская грань, рабочая плоскость или плоскость Origin. Двойной щелчок по рабочей
 плоскости начинает на ней эскиз.</p>
+
+<div class="keep"><h2 id="emboss">6.16 Emboss — тиснение</h2>
+<p><span class="path">3D Model ▸ Create ▸ Emboss</span> (Emboss / Engrave из Inventor) поднимает Text или эскиз над гранью или
+вырезает его в ней. На <b>цилиндре или конусе</b> профиль оборачивается вокруг грани — буквы сохраняют размер и идут по
+окружности, высота — по радиусу; на <b>плоской грани</b> — прямо.</p></div>
+<ol>
+  <li>Поставьте Text (или эскиз) на плоскость, параллельную оси круглой грани: плоскость начала координат через ось или
+      плоскость, касающуюся грани. Он ляжет на ту сторону грани, что смотрит на эту плоскость.</li>
+  <li>Нажмите <span class="ui">Emboss</span>: Text берётся профилем, а поле <b>Face</b> ждёт — щёлкните круглую (или
+      плоскую) грань.</li>
+</ol>
+<table>
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Emboss</b> (поднять) или <b>Engrave</b> (вырезать). Engrave может прорезать тонкую
+      стенку насквозь, как трафарет: середины O, A, D выпадают.</td></tr>
+  <tr><td>Depth</td><td class="wrap">Высота или глубина (1 мм), на круглой грани — по радиусу.</td></tr>
+  <tr><td>Face</td><td class="wrap">Цилиндр, конус или плоская грань детали (плоская грань — параллельно профилю).</td></tr>
+  <tr><td>Around</td><td class="wrap"><b>As drawn</b> (интервалы как в Text) или <b>Evenly round</b> (буквы сохраняют ширину и
+      расходятся с равными промежутками по всей окружности, средняя — к эскизу).</td></tr>
+</table>
+<p>Emboss — шаг истории, как Move Face: он снова находит свою грань, если раньший шаг меняется (цилиндр стал больше).
+Буквы за краем грани не принимаются: <i>Some of the profile is off the face</i>.</p>
 
 <!-- ============================================================ 7 -->
 <h1 class="chapter" id="solids"><span class="num">7</span>Несколько тел в одной детали</h1>
@@ -1336,7 +1391,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 <table class="long">
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
-  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil</td></tr>
+  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Emboss</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
@@ -1357,7 +1412,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
       Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
       Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
       Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) ·
-      Point</td></tr>
+      Point · Text</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
   <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>

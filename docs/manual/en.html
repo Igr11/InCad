@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
-      Version 0.4.0 — test build<br>
+      Version 0.5.0 — test build<br>
       FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon
     </div>
   </div>
   <div class="foot">
-    This manual describes InCad as it is in build 0.4.0. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes InCad as it is in build 0.5.0. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -133,11 +133,10 @@ to come back.</p>
 and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>This build: 0.4.0, a test build</h2>
-<p>0.4.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0. New in 0.4.0: InCad's own sketch
-<b>Offset</b>, the <b>Concentric</b> constraint, Move Face on <b>round walls</b>, Fillet / Chamfer on a whole
-<b>face</b> or a smooth <b>chain</b>, any <b>axis</b> (also two points) for a Circular Pattern, a clearer sketch look
-and many fixes from testing — CHANGES.txt has the full list.</p></div>
+<div class="keep"><h2>This build: 0.5.0, a test build</h2>
+<p>0.5.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
+0.4.0. New in 0.5.0: <b>Text</b> in sketches (in a box or along a curve, any font, Mirror) and <b>Emboss</b> (raised or
+engraved, wrapped round cylinders and cones, evenly round) — CHANGES.txt has the full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
 
@@ -609,6 +608,40 @@ pattern is rebuilt the next time you edit it.</p>
   <tr><td>Flip</td><td class="wrap">Go along the path the other way.</td></tr>
 </table></div>
 
+<div class="keep"><h2 id="text">5.10 Text</h2>
+<p><span class="path">Sketch ▸ Create ▸ Text</span> writes words in the sketch; Extrude raises them (Join) or engraves
+them (Cut), Emboss wraps them round a cylinder or a cone (6.16).</p></div>
+<ol>
+  <li>Press <span class="ui">Text</span> — the cursor shows an orange <b>Aa</b> — and click two corners: a construction box
+      (orange, dashed, never extruded) is drawn and the dialog opens on it.</li>
+  <li>Type the words (several lines are fine), pick the font and the size, and press <span class="ui">OK</span>.</li>
+</ol>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Text</td><td class="wrap">The words; Return starts a new line. Cyrillic works.</td></tr>
+  <tr><td>Font, Bold, Italic</td><td class="wrap">The Mac's installed fonts; Bold / Italic use the font's own Bold and
+      Italic files.</td></tr>
+  <tr><td>Mirror</td><td class="wrap">Flips the text left-right, to read it from the plane's other side (a sketch on the
+      underside of a part, or on a plane turned the other way).</td></tr>
+  <tr><td>Size</td><td class="wrap">The height of the capital letters (5 mm), a named value like any other (3.6).</td></tr>
+  <tr><td>Placement</td><td class="wrap"><b>In a box</b> or <b>Along a curve</b>.</td></tr>
+  <tr><td>Box</td><td class="wrap">The box the text sits in: the one drawn by the two clicks, or a line of any rectangle of the
+      sketch. Dimension or constrain the box (centred on a face, 3 mm from an edge) and the text follows; a tilted box
+      tilts the text.</td></tr>
+  <tr><td>Horizontal, Vertical</td><td class="wrap">Left / Centre / Right and Top / Middle / Bottom in the box, by the
+      letters themselves. A text longer than the box runs past it.</td></tr>
+  <tr><td>Fit to the box</td><td class="wrap">The letters scaled so the widest line fills the box's width (never taller than
+      the box); Size then hides.</td></tr>
+  <tr><td>Curve, Position, Shift, Distance, Flip side</td><td class="wrap">Along a curve: any line, arc, circle, ellipse or
+      spline of the sketch (construction too). Select it before pressing Text and the text runs along it — each letter
+      turned with it, Centre at a closed curve's top, Shift moves it along, Distance lifts it off, Flip side puts it on the
+      other side (inside a ring it then reads at the bottom, as on a coin).</td></tr>
+  <tr><td>Letter spacing</td><td class="wrap">Extra space between letters (0 mm).</td></tr>
+</table>
+<p>The text is one object (a <span class="ui">Text</span> row in the browser): double-click it to change the words or the
+font — its sketch opens with the dialog. While the sketch is open the text follows its box or curve at once, and its
+outline is drawn on top. A Text that an Extrude or Emboss uses is hidden and shows under that feature.</p>
+
 <!-- ============================================================ 6 -->
 <h1 class="chapter" id="features"><span class="num">6</span>Part features</h1>
 <p class="lead">Every feature opens a dialog with a live preview. This chapter first explains how the dialogs work,
@@ -916,6 +949,29 @@ follow the geometry they were made from.</p></div>
   <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
 </table>
 <p>A "plane" pick takes a flat face or a work or origin plane. Double-click a work plane to start a sketch on it.</p>
+
+<div class="keep"><h2 id="emboss">6.16 Emboss</h2>
+<p><span class="path">3D Model ▸ Create ▸ Emboss</span> (Inventor's Emboss / Engrave) raises a Text or a sketch from a face
+or cuts it in. On a <b>cylinder or a cone</b> it is wrapped round the face — the letters keep their size and run round it,
+their height along the radius; on a <b>flat face</b> it goes straight.</p></div>
+<ol>
+  <li>Put the Text (or sketch) on a plane parallel to the round face's axis: the origin plane through the axis, or a
+      plane touching the face. It lands on the side of the face that looks at that plane.</li>
+  <li>Press <span class="ui">Emboss</span>: the Text is taken as the profile and the <b>Face</b> field waits — click the
+      round (or flat) face.</li>
+</ol>
+<table>
+  <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
+  <tr><td>Operation</td><td class="wrap"><b>Emboss</b> (raise) or <b>Engrave</b> (cut in). Engrave may cut right through a
+      thin wall, like a stencil: the loose middles of O, A, D fall out.</td></tr>
+  <tr><td>Depth</td><td class="wrap">The height or depth (1 mm), along the radius on a round face.</td></tr>
+  <tr><td>Face</td><td class="wrap">A cylinder, a cone or a flat face of the part (a flat face must be parallel to the
+      profile).</td></tr>
+  <tr><td>Around</td><td class="wrap"><b>As drawn</b> (the spacing of the Text) or <b>Evenly round</b> (the letters keep
+      their widths and spread with equal gaps once round the whole face, the middle one facing the sketch).</td></tr>
+</table>
+<p>Emboss is a step in the history like Move Face: it finds its face again when an earlier step changes (a bigger
+cylinder). Letters past the face's edge are refused: <i>Some of the profile is off the face</i>.</p>
 
 <!-- ============================================================ 7 -->
 <h1 class="chapter" id="solids"><span class="num">7</span>Several solids in one part</h1>
@@ -1318,7 +1374,7 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
 <table class="long">
   <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
-  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil</td></tr>
+  <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Emboss</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
@@ -1339,7 +1395,7 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
       Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
       Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
       Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) ·
-      Point</td></tr>
+      Point · Text</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
   <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
