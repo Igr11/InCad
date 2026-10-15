@@ -75,6 +75,20 @@ class SuppressTest(unittest.TestCase):
         self.assertFalse(any(o.Suppressed for t in (a, b) for o in [t] + thread.helpers_of(t)))
         self.assertTrue(c.Suppressed)  # it was off before: it stays off
 
+    def test_a_thread_made_while_the_others_are_off_turns_all_off_first(self):
+        """User: a new thread built while the others were off by Threads, then Threads: all off, next click all on."""
+        a = self.make(size="M3", length_mode="distance", length="5 mm")
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        b = self.make(size="M3", length_mode="distance", length="5 mm", flip=True)  # made with the others off
+        self.assertFalse(suppress.threads_off(self.doc), "mixed: the button says a click turns them off")
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")
+        self.doc.recompute()
+        self.assertTrue(a.Suppressed and b.Suppressed and suppress.threads_off(self.doc))
+        self.assertEqual(suppress.toggle_threads(self.doc), "on")
+        self.doc.recompute()
+        self.assertFalse(a.Suppressed or b.Suppressed)
+
     def test_no_threads_is_said(self):
         with self.assertRaises(ValueError) as ctx:
             suppress.toggle_threads(self.doc)
@@ -261,6 +275,10 @@ class UserFileAttachedAfterThreadsTest(unittest.TestCase):
     def test_threads_on_keeps_a_sketch_made_with_threads_off(self):
         sk = self.doc.getObject("Sketch003")
         before = App.Placement(sk.Placement)
+        self.assertFalse(suppress.threads_off(self.doc))  # mixed: Thread002 is on while the switch holds the others
+        self.assertEqual(suppress.toggle_threads(self.doc), "off")  # the user's rule: mixed -> all off first
+        self.doc.recompute()
+        self.assertTrue(before.isSame(sk.Placement, 1e-6), (before, sk.Placement))
         self.assertTrue(suppress.threads_off(self.doc))
         self.assertEqual(suppress.toggle_threads(self.doc), "on")
         self.doc.recompute()

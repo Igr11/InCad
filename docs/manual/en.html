@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
-      Version 0.2.0 — test build<br>
+      Version 0.4.0 — test build<br>
       FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon
     </div>
   </div>
   <div class="foot">
-    This manual describes InCad as it is in build 0.2.0. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes InCad as it is in build 0.4.0. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -133,10 +133,11 @@ to come back.</p>
 and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>This build: 0.2.0, a test build</h2>
-<p>0.2.0 is an early test build. Parts have been tested in the earlier builds; this is the first build in which
-<b>assemblies</b> are ready to test: placing parts, constraints and joints, dragging parts along their degrees of
-freedom, and Make Assembly from a part.</p></div>
+<div class="keep"><h2>This build: 0.4.0, a test build</h2>
+<p>0.4.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0. New in 0.4.0: InCad's own sketch
+<b>Offset</b>, the <b>Concentric</b> constraint, Move Face on <b>round walls</b>, Fillet / Chamfer on a whole
+<b>face</b> or a smooth <b>chain</b>, any <b>axis</b> (also two points) for a Circular Pattern, a clearer sketch look
+and many fixes from testing — CHANGES.txt has the full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
 
@@ -475,6 +476,7 @@ variants.</p></div>
   <tr><th>Button</th><th class="wrap">Variants</th><th>Key</th></tr>
   <tr><td>Line</td><td class="wrap">Line (a chain of lines; <kbd>M</kbd> while drawing switches between line and arc),
       Single Line</td><td><kbd>L</kbd></td></tr>
+  <tr><td>Spline</td><td class="wrap">Spline (through points), Control-Vertex Spline</td><td></td></tr>
   <tr><td>Circle</td><td class="wrap">Circle (centre, radius), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
   <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
   <tr><td>Rectangle</td><td class="wrap">Rectangle (corner, width, height), Center Rectangle, 3-Point Rectangle, 3-Point
@@ -482,12 +484,16 @@ variants.</p></div>
   <tr><td>Slot</td><td class="wrap">Center-to-Center Slot, Overall Slot (the two outer ends, then the width), Center Point
       Slot (the centre, one end's centre, then the width), Arc Slot, Flat-End Arc Slot</td><td></td></tr>
   <tr><td>Polygon</td><td class="wrap">Hexagon, Triangle, Square, Pentagon, Octagon, Polygon (N sides)</td><td></td></tr>
-  <tr><td>Spline</td><td class="wrap">Spline (through points), Control-Vertex Spline</td><td></td></tr>
   <tr><td>Point</td><td class="wrap">A sketch point (hole centres, for example)</td><td></td></tr>
 </table>
 <p><span class="path">Sketch ▸ Modify</span>: <span class="ui">Fillet</span> and <span class="ui">Chamfer</span> (sketch
 corners), <span class="ui">Trim</span> (<kbd>X</kbd>), <span class="ui">Extend</span>, <span class="ui">Offset</span>.
 <span class="path">Sketch ▸ Pattern</span> has the sketch patterns (5.9) and <span class="ui">Mirror</span>.</p>
+<p><b>Offset</b> (InCad's own): click a line — the whole shape it belongs to is taken (a rectangle, a polygon, a chain
+drawn line by line); <kbd>⌘</kbd>-click adds more shapes. The copy follows the pointer; a click places it. Corners stay
+sharp, a single line gives one parallel line, a circle or an ellipse gives a ring. One dimension drives the offset and the
+value box opens on it. Geometry selected before the command is taken at once. <span class="ui">Mirror</span> and the
+patterns also take the whole shape from a click on one side.</p>
 <p><b>Typing values while drawing.</b> While a tool draws, type the length, radius or angle directly; <kbd>Tab</kbd>
 moves to the next field. <kbd>Esc</kbd> or <span class="ui">Stop Tool</span> (marking menu) ends the tool.</p>
 <p><b>Delete</b> geometry or dimensions: select them and press <kbd>⌫</kbd> or <kbd>Del</kbd>.</p>
@@ -509,7 +515,8 @@ not a reference (driven) dimension of the same sketch.</p>
 or both (d3 = 40).</p>
 
 <div class="keep"><h2>5.4 Constraints</h2>
-<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Horizontal</span>,
+<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Concentric</span>
+(two circles, arcs or ellipses: their centres are tied), <span class="ui">Horizontal</span>,
 <span class="ui">Vertical</span>, <span class="ui">Parallel</span>, <span class="ui">Perpendicular</span>,
 <span class="ui">Tangent</span>, <span class="ui">Equal</span>, <span class="ui">Symmetric</span>,
 <span class="ui">Fix</span> and <span class="ui">List</span> (the Constraint List, 5.5). Select the geometry, then click
@@ -549,13 +556,16 @@ changes.</p></div>
   <li>with geometry selected (also projected edges), it switches that geometry between normal and construction;</li>
   <li>with nothing selected it is a mode: everything you draw is construction until you click it again.</li>
 </ul>
-<p>Construction geometry does not take part in profiles; use it for axes and helper lines.</p>
+<p>Construction geometry does not take part in profiles; use it for axes and helper lines. It is drawn
+<b>orange</b> and dashed, thinner than the normal lines — a projected edge switched to construction too.</p>
 
 <div class="keep"><h2>5.8 Seeing the sketch</h2>
 <ul>
   <li><span class="ui">Slice Graphics</span> (<kbd>F7</kbd>, <span class="path">Sketch ▸ Format</span>) cuts away the part
       in front of the sketch plane, so you can see a sketch inside the part.</li>
   <li><span class="ui">Look At</span> (marking menu) turns the view straight onto the sketch.</li>
+  <li>In the dark theme the part is drawn darker while a sketch is open, so the sketch's lines stand out (the part's
+      own colour does not change).</li>
   <li>After <span class="ui">Finish Sketch</span>, a sketch that no feature uses and that is an <b>open contour</b> (a path
       for a Sweep, say) stays visible in the model; a closed sketch, and any sketch a feature uses, is hidden.
       <span class="ui">Hide / Show</span> overrides this for any sketch.</li>
@@ -715,7 +725,9 @@ Chamfer).</p></div>
       Distance 2) or <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> swaps the sides for the last two types.
       Distances start at 1 mm.</td></tr>
 </table>
-<p>The edges must be on the current shape of the part.</p>
+<p>The edges must be on the current shape of the part. A click on an edge takes its whole smooth chain (a slot's
+lines and arcs, a ring in pieces); a click on a <b>face</b> takes all its edges, and a second click on it takes them off.
+While you pick, the part shows as it is and the result is drawn over it as orange outlines.</p>
 
 <div class="keep"><h2>6.6 Shell</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Shell</span> hollows the part.</p></div>
@@ -746,8 +758,9 @@ of the view does the same as OK.</p></div>
 <table>
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
   <tr><td>Faces</td><td class="wrap">One or more flat faces. Several faces must face the same way (a boss top and the floor
-      of a pocket, for example); they all move together. Round faces, or faces looking in different directions, are
-      refused: <i>The faces must be flat and face the same way</i>.</td></tr>
+      of a pocket, for example); they all move together. Faces looking in different directions are refused: <i>The faces
+      must be flat and face the same way</i>. A <b>round wall</b> (a cylinder, an extruded ellipse or spline) moves
+      outward or inward by a Distance (To is greyed out for it); one click takes the whole wall.</td></tr>
   <tr><td>Extent</td><td class="wrap"><b>Distance</b> (a number) or <b>To</b> (up to a face or plane).</td></tr>
   <tr><td>Distance</td><td class="wrap">The move along the face's outward direction: positive grows the part, negative cuts
       into it, 0 changes nothing. Units, parameters and formulas work as everywhere (3.6). It starts at 0 mm: type a value or drag the arrow.</td></tr>
@@ -845,7 +858,7 @@ suppressed yourself stays off. It also turns off the modeled thread of tapped ho
 <div class="keep"><h2 id="boolean">6.12 Boolean</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (Inventor's Combine) joins, cuts or intersects solids of the
 part. Select the base solid, then the tool solid(s), then click Boolean — or pick them in the dialog: click anywhere on
-a solid to pick it.</p></div>
+a solid to pick it. As in Inventor, the first click is the base (the solid that stays), the next ones are the tools.</p></div>
 <table class="long">
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
   <tr><td>Base</td><td class="wrap">The solid that is changed.</td></tr>
@@ -883,8 +896,10 @@ their faces. Picking a fillet, a chamfer or a thread stands for the feature it m
       axis —, <b>Count</b> 2, <b>Spacing</b> 10 mm) or <b>Equal spacing</b> (Count copies spread between <b>From</b> and
       <b>To</b>: a flat face, an edge or a work plane); <b>Flip direction</b>; <b>Two directions</b> (Direction 2,
       Count 2, Spacing 2).</td></tr>
-  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>, <b>Count</b> (4),
-      <b>Angle</b> (360°).</td></tr>
+  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>: <b>Axis or edge</b>
+      (an origin or work axis, a sketch line, a straight or circular edge, a round face — the origin's X, Y and Z show while
+      you pick) or <b>Two points</b> (click two points on the part: a hidden work axis through them, drawn as an orange
+      dashed line while the dialog is open), <b>Count</b> (4), <b>Angle</b> (360°).</td></tr>
   <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (a flat face or a plane).</td></tr>
 </table>
 
@@ -1239,12 +1254,13 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
 <div class="keep"><h2>Known limits of this build</h2>
 <ul>
   <li>macOS on Apple Silicon only; FreeCAD 1.1 (tested with 1.1.3).</li>
-  <li>An early test build: assemblies are new in 0.2.0. Save often and work on copies.</li>
+  <li>A test build. Save often and work on copies.</li>
   <li>The interface is in English.</li>
   <li>FreeCAD cannot shell a part that already has a modeled thread (InCad offers to shell before the thread).</li>
   <li>Some offsets (clearances) fail on threads and other complex shapes; the dialog says so.</li>
-  <li>Move Face moves flat faces only, along their own direction. In Inventor mode it cannot follow a neighbour that is
-      round across the move yet (use Step or Together).</li>
+  <li>Move Face moves flat faces along their own direction and straight round walls outward / inward. In Inventor
+      mode it cannot follow a neighbour that is round across the move yet (use Step or Together); Together inward next
+      to fillets or chamfers on a round wall is refused for now.</li>
 </ul></div>
 
 <!-- ============================================================ A -->
@@ -1319,15 +1335,15 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
 <h2>Sketch</h2>
 <table class="long">
   <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
-  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Circle | 3-Point Circle | Ellipse | 3-Point
+  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Spline | Control-Vertex Spline · Circle | 3-Point Circle | Ellipse | 3-Point
       Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
       Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
-      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) · Spline | Control-Vertex Spline ·
+      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) ·
       Point</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
   <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
-  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Concentric · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
   <tr><td></td><td>Insert</td><td class="wrap">Project (Project Geometry)</td></tr>
   <tr><td></td><td>Format</td><td class="wrap">Construction · Constraints (Show / Hide Constraints) · Free DOF (Show Free Geometry) · Slice (Slice Graphics)</td></tr>
   <tr><td></td><td>Exit</td><td class="wrap">Finish Sketch</td></tr>

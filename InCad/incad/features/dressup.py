@@ -53,6 +53,8 @@ FILLET = SimpleNamespace(
     __name__="incad.features.fillet", TITLE="Fillet", ICON="fillet", TYPES=("PartDesign::Fillet",),
     NEEDS_PROFILE=False, PROPS={"radius": "Radius"}, PRESELECT={"edges": "edge"}, SOLID_PICKS=True,
     PREVIEW_WHILE_PICKING=True,  # the rounded part shows while edges are picked; a click on it means the part's edge
+    TANGENT_CHAIN=True,  # a click takes the edge's smooth chain (Inventor / Fusion)
+    FACE_EDGES=True,  # a click on a face takes all its edges
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
             Field("radius", "Radius", "value_length", default="1 mm")),
     defaults=lambda doc, body, profile: {"edges": "", "radius": "1 mm"},
@@ -97,7 +99,7 @@ def _chamfer_update(doc, f, values):
 CHAMFER = SimpleNamespace(
     __name__="incad.features.chamfer", TITLE="Chamfer", ICON="chamfer", TYPES=("PartDesign::Chamfer",),
     NEEDS_PROFILE=False, PROPS={"size": "Size", "size2": "Size2", "angle": "Angle"}, PRESELECT={"edges": "edge"},
-    SOLID_PICKS=True, PREVIEW_WHILE_PICKING=True,
+    SOLID_PICKS=True, PREVIEW_WHILE_PICKING=True, TANGENT_CHAIN=True, FACE_EDGES=True,
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
             Field("type", "Type", "choice", (("equal", "Distance"), ("two", "Two distances"),
                                              ("angle", "Distance + angle")), "equal"),

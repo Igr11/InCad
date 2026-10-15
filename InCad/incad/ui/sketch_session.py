@@ -195,6 +195,58 @@ class SketchSession:
         key = (editing.Document.Name, editing.Name) if editing is not None else None
         for done in [k for k in self._saved_vp if k != key]:
             self.restore(done)
+        self._sync_dimmed(editing)
+
+    DIM = 0.62  # the part's colour while a sketch is open (dark theme): its lines and shapes stand out on it
+
+    def _sync_dimmed(self, editing):
+        """While a sketch is open (dark theme) the shown solids are drawn darker — an override material on top of
+        each one's scene, never the object's own colour (nothing saved, nothing to undo); off again after."""
+        dimmed = getattr(self, "_dimmed", None)
+        if dimmed is None:
+            dimmed = self._dimmed = {}
+        want = {}
+        try:
+            from incad.ui import theme
+            if editing is not None and theme.current() == "dark":
+                for o in editing.Document.Objects:
+                    vo = getattr(o, "ViewObject", None)
+                    if o is editing or vo is None or not o.Visibility or not hasattr(o, "Shape") \
+                            or o.TypeId.startswith(("Sketcher::", "App::", "PartDesign::Plane", "PartDesign::Line",
+                                                    "PartDesign::Point", "PartDesign::Body")):
+                        continue
+                    try:
+                        if o.Shape.isNull() or not o.Shape.Faces:
+                            continue
+                    except Exception:
+                        continue
+                    want[(o.Document.Name, o.Name)] = o
+        except Exception:
+            log.logger().exception("dim the part while sketching")
+        for k in [k for k in dimmed if k not in want]:
+            root, node = dimmed.pop(k)
+            try:
+                root.removeChild(node)
+            except Exception:
+                pass
+        if not want:
+            return
+        from pivy import coin
+        for k, o in want.items():
+            if k in dimmed:
+                continue
+            try:
+                vo = o.ViewObject
+                c = tuple(vo.ShapeAppearance[0].DiffuseColor[:3]) if hasattr(vo, "ShapeAppearance") \
+                    else tuple(vo.ShapeColor[:3])
+                mat = coin.SoMaterial()
+                mat.diffuseColor.setValue(*(x * self.DIM for x in c))
+                mat.setOverride(True)
+                root = vo.RootNode
+                root.insertChild(mat, 0)
+                dimmed[k] = (root, mat)
+            except Exception:
+                log.logger().exception("dim %s while sketching", o.Name)
 
     def close_all(self):
         """Leaving InCad: finish any sketch edit and restore every sketch's settings."""
@@ -205,6 +257,7 @@ class SketchSession:
             close_edit(gdoc)
         for key in list(self._saved_vp):
             self.restore(key)
+        self._sync_dimmed(None)
 
     def finish(self):
         import FreeCAD as App

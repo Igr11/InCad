@@ -1,5 +1,6 @@
 """Section view plane from a selection: three points, a flat face or a work/origin plane (XZ when nothing)."""
 import FreeCAD as App
+from incad.core import safe
 
 
 def _rotation_to(normal):
@@ -58,12 +59,12 @@ def snap_points(shape, limit=300):
     def add(kind, p):
         if len(out) < limit and not any((p - q).Length < 1e-6 for _, q in out):
             out.append((kind, App.Vector(p)))
-    edges = [e for e in shape.Edges if e.Curve.TypeId in ("Part::GeomLine", "Part::GeomCircle") and e.Length > small]
+    edges = [e for e in shape.Edges if safe.curve_type(e) in ("Part::GeomLine", "Part::GeomCircle") and e.Length > small]
     for e in edges:
         for v in e.Vertexes:
             add("corner", v.Point)
     for e in edges:
-        if e.Curve.TypeId == "Part::GeomCircle":
+        if safe.curve_type(e) == "Part::GeomCircle":
             add("centre", e.Curve.Center)
         try:
             add("middle", e.valueAt((e.FirstParameter + e.LastParameter) / 2.0))

@@ -1,5 +1,6 @@
 """Inspect (Inventor): Measure and Mass Properties. Read-only."""
 import math
+from incad.core import safe
 
 
 def _num(value, unit, digits=3):
@@ -50,7 +51,7 @@ def measure(pairs, what="auto"):
         if sh.ShapeType == "Face":
             return [("Area", _num(sh.Area, "mm²"))]
         if sh.ShapeType == "Edge":
-            if sh.Curve.TypeId == "Part::GeomCircle":
+            if safe.curve_type(sh) == "Part::GeomCircle":
                 r = sh.Curve.Radius
                 return [("Radius", _num(r, "mm")), ("Diameter", _num(2 * r, "mm"))]
             return [("Length", _num(sh.Length, "mm"))]
@@ -75,7 +76,7 @@ def _measure_mode(pairs, what):
         rows = [("Length", _num(sum(e.Length for e in edges), "mm"))]
         if len(edges) > 1:
             rows.append(("Edges", str(len(edges))))
-        elif edges[0].Curve.TypeId == "Part::GeomCircle":
+        elif safe.curve_type(edges[0]) == "Part::GeomCircle":
             r = edges[0].Curve.Radius
             rows += [("Radius", _num(r, "mm")), ("Diameter", _num(2 * r, "mm"))]
         return rows
@@ -106,7 +107,7 @@ def _measure_mode(pairs, what):
 def _direction(shape):
     if shape.ShapeType == "Face" and shape.Surface.TypeId == "Part::GeomPlane":
         return shape.normalAt(0, 0)
-    if shape.ShapeType == "Edge" and shape.Curve.TypeId == "Part::GeomLine":
+    if shape.ShapeType == "Edge" and safe.curve_type(shape) == "Part::GeomLine":
         return shape.Curve.Direction
     return None
 

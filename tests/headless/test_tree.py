@@ -232,7 +232,7 @@ class UsedUpToolTreeTest(unittest.TestCase):
         self.tool.Tip = pin
         self.doc.recompute()
         self.f = combine.create(self.doc, self.part, None, dict(combine.defaults(self.doc, self.part),
-                                                                tools=self.tool.Name, operation="cut",
+                                                                base=self.part.Name, tools=self.tool.Name, operation="cut",
                                                                 clearance="0 mm"))
         self.doc.recompute()
 
@@ -275,10 +275,10 @@ class NestedUsedUpToolTreeTest(unittest.TestCase):
         a = document.new_solid(doc)
         a.Tip = a.newObject("PartDesign::AdditiveCylinder", "PinA")
         doc.recompute()
-        cut_b = combine.create(doc, b, None, dict(combine.defaults(doc, b), tools=a.Name, operation="cut",
+        cut_b = combine.create(doc, b, None, dict(combine.defaults(doc, b), base=b.Name, tools=a.Name, operation="cut",
                                                   clearance="0 mm"))
         doc.recompute()
-        cut_part = combine.create(doc, part, None, dict(combine.defaults(doc, part), tools=b.Name, operation="cut",
+        cut_part = combine.create(doc, part, None, dict(combine.defaults(doc, part), base=part.Name, tools=b.Name, operation="cut",
                                                         clearance="0 mm"))
         doc.recompute()
 

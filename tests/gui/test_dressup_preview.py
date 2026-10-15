@@ -63,14 +63,14 @@ def test_1_a_clicked_edge_shows_the_fillet():
     f = fs().feature
     assert f is not None and "Invalid" not in f.State, fs().dialog.error_text()
     shown = {"Pad": pad.ViewObject.Visibility, "Fillet": f.ViewObject.Visibility}
-    assert shown["Fillet"] and not shown["Pad"], ("the rounded part shows", shown, fs().dialog.active_pick())
-    # a second edge clicked on the preview (the top back edge, untouched by the fillet) stands for the part's edge
-    Gui.Selection.addSelection(doc().Name, f.Name, edge_at(f, 10, 10, 10))
+    assert shown["Pad"] and not shown["Fillet"], ("the part shows while edges are picked", shown)
+    assert fs()._ghost is not None, "the round is drawn over it as outlines"
+    Gui.Selection.addSelection(doc().Name, pad.Name, edge_at(pad, 10, 10, 10))  # a second edge on the part
     harness.pump(1500)
     picked = set(fs().dialog.values()["edges"].replace(" ", "").split(","))
     assert picked == {"%s:%s" % (pad.Name, edge_at(pad, 10, 0, 10)), "%s:%s" % (pad.Name, edge_at(pad, 10, 10, 10))}, (
         picked, fs().dialog.error_text())
-    assert f.ViewObject.Visibility and not pad.ViewObject.Visibility, "still the preview"
+    assert pad.ViewObject.Visibility and fs()._ghost is not None, "the part with the outlines"
     QTest.mouseClick(fs().dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(1200)
     assert fs() is None and document.primary_body(doc()).Tip.TypeId == "PartDesign::Fillet"
@@ -145,8 +145,7 @@ def test_5_fillet_on_the_top_ring_shows_the_round():
     edges = fs().dialog.values()["edges"]
     assert edges == "%s:%s" % (pad.Name, ring(pad, 10)), (edges, ring(pad, 10), ring(pad, 0), fs().dialog.error_text())
     f = fs().feature
-    assert f is not None and "Invalid" not in f.State and f.ViewObject.Visibility and not pad.ViewObject.Visibility, (
-        f and f.State, fs().dialog.error_text())
+    assert f is not None and "Invalid" not in f.State and fs()._ghost is not None, (f and f.State, fs().dialog.error_text())
     QTest.mouseClick(fs().dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(1200)
     tip = document.primary_body(doc()).Tip
@@ -163,7 +162,7 @@ def test_6_chamfer_starts_empty_and_takes_the_ring_clicked():
     edges = fs().dialog.values()["edges"]
     assert edges == "%s:%s" % (fillet.Name, ring(fillet, 0)), (edges, ring(fillet, 0), fs().dialog.error_text())
     f = fs().feature
-    assert f is not None and "Invalid" not in f.State and f.ViewObject.Visibility, (f and f.State, fs().dialog.error_text())
+    assert f is not None and "Invalid" not in f.State and fs()._ghost is not None, (f and f.State, fs().dialog.error_text())
     QTest.mouseClick(fs().dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(1200)
     tip = document.primary_body(doc()).Tip

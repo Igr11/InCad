@@ -24,11 +24,11 @@ SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
     "sketch.chamfer": ("Chamfer", "sk_chamfer", "Sketcher_CreateChamfer", ""),
     "sketch.trim": ("Trim", "trim", "Sketcher_Trimming", "X"),
     "sketch.extend": ("Extend", "extend", "Sketcher_Extend", ""),
-    "sketch.offset": ("Offset", "offset", "Sketcher_Offset", ""),
     "sketch.project": ("Project Geometry", "project", "Sketcher_Projection", ""),
-    "sketch.mirror": ("Mirror", "mirror", "Sketcher_Symmetry", ""),
     "sketch.dimension": ("Dimension", "dimension", "Sketcher_Dimension", "D"),
     "sketch.coincident": ("Coincident", "coincident", "Sketcher_ConstrainCoincidentUnified", ""),
+    "sketch.concentric": ("Concentric", "concentric", "Sketcher_ConstrainCoincident", ""),  # two circles / arcs /
+    # ellipses: their centres tied (FreeCAD's coincident tool on conics; Coincident did it too, unknown to anyone)
     "sketch.horizontal": ("Horizontal", "horizontal", "Sketcher_ConstrainHorizontal", ""),
     "sketch.vertical": ("Vertical", "vertical", "Sketcher_ConstrainVertical", ""),
     "sketch.parallel": ("Parallel", "parallel", "Sketcher_ConstrainParallel", ""),
@@ -296,9 +296,32 @@ def origin_visibility(flag):
     body = document.primary_body(App.ActiveDocument) if App.ActiveDocument is not None else None
     if body is None:
         raise ValueError("Open a part first")
-    items = document.origin_items(body)
+    # every Solid's origin (a part with Solid1 and Solid2: only the first one's ever changed)
+    items = [f for o in App.ActiveDocument.Objects if o.TypeId == "App::Origin" for f in o.OriginFeatures]
     _visibility_step("Show All Origin" if flag else "Hide All Origin", items,
                      lambda: document.set_visibility(items, flag))
+    if flag:
+        _bring_into_view(items)
+
+
+def _bring_into_view(items):
+    """The origin is at 0,0,0 however far the part was drawn from it: when it is off screen (the view on the part),
+    the view zooms out to show both — Show All looked like it did nothing."""
+    try:
+        Gui = _gui()
+        view = Gui.ActiveDocument.ActiveView
+        vp = view.graphicsView().viewport()
+        w, h = vp.width() * vp.devicePixelRatioF(), vp.height() * vp.devicePixelRatioF()
+        for o in items:
+            if o.Role != "Origin":
+                continue
+            x, y = view.getPointOnViewport(o.getGlobalPlacement().Base)
+            if not (0 <= x <= w and 0 <= y <= h):
+                Gui.SendMsgToActiveView("ViewFit")
+                return
+    except Exception:
+        from incad.core import log
+        log.logger().exception("bring the origin into view")
 
 
 def _ask_name(current):
@@ -523,6 +546,41 @@ def _construction_on():
     from incad.ui import shell
     inst = shell.instance()
     return bool(inst is not None and getattr(inst, "construction_mode", False))
+
+
+def mirror_sketch():
+    """FreeCAD's Mirror (Sketcher_Symmetry: the picked geometry about the last pick), every picked line standing for
+    its whole outline (a polygon from one click on a side); the last pick stays the mirror line."""
+    import FreeCADGui as Gui
+    from incad.core import sketch_offset as so
+    gdoc = Gui.ActiveDocument
+    edit = gdoc.getInEdit() if gdoc is not None else None
+    sk = getattr(edit, "Object", None)
+    if sk is not None and sk.TypeId == "Sketcher::SketchObject":
+        subs = [s for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
+                for s in sel.SubElementNames]
+        if len(subs) >= 2:
+            axis, items, names = subs[-1], subs[:-1], []
+            for s in items:
+                whole = [s]
+                if s.startswith("Edge"):
+                    try:
+                        whole = ["Edge%d" % (g + 1) for g in so.outline(sk, int(s[4:]) - 1)[0]]
+                    except (ValueError, IndexError):
+                        pass
+                names += [n for n in whole if n not in names and n != axis]
+            Gui.Selection.clearSelection()
+            for n in names + [axis]:
+                Gui.Selection.addSelection(sk.Document.Name, sk.Name, n)
+    run_std("Sketcher_Symmetry")
+
+
+def _offset_tool():
+    from incad.ui import shell
+    inst = shell.instance()
+    if inst is None:
+        raise ValueError("InCad is not active")
+    inst.start_offset_tool()
 
 
 def _slot(mode):
@@ -844,14 +902,13 @@ def _undo_redo(redo):
         doc.redo() if redo else doc.undo()
         _linked_steps(doc, step, redo)
     doc.recompute()
-    from incad.core import document
+    from incad.core import document, log
     try:
         document.apply_visibility(doc)  # Hide / Show choices restored by the step show again (Visibility is not recorded)
     except Exception as e:
         log.logger().warning("Visibility after undo/redo: %s", e)
     from incad.core import model
     repaired = model.relink(doc)  # objects brought back by undo lose their formula links (FreeCAD quirk)
-    from incad.core import log
     log.logger().info("undo/redo relinked %s", repaired)
 
 
@@ -997,6 +1054,10 @@ def commands():
                 is_checked=lambda: _construction_on(),
                 tooltip="On: new geometry is construction; click again for normal geometry. "
                         "With geometry selected: switches that geometry"),
+        Command(id="sketch.mirror", label="Mirror", icon="mirror", handler=mirror_sketch, contexts=frozenset({"sketch"}),
+                tooltip="Pick the shapes (one click takes a whole outline), then the mirror line last"),
+        Command(id="sketch.offset", label="Offset", icon="offset", handler=_offset_tool, contexts=frozenset({"sketch"}),
+                tooltip="Click a shape (its whole outline), move to the side, click; type the distance"),
         Command(id="sketch.slot_overall", label="Overall Slot", icon="slot_overall",
                 handler=lambda: _slot("overall"), contexts=frozenset({"sketch"}),
                 tooltip="Click the two outer ends, then the width"),

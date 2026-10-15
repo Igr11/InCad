@@ -111,23 +111,43 @@ def navicube_params(theme):
 
 SKETCH_ROOT = "User parameter:BaseApp/Preferences/Mod/Sketcher"
 SKETCH_TOOLS = "User parameter:BaseApp/Preferences/Mod/Sketcher/Tools"
+SKETCH_GENERAL = "User parameter:BaseApp/Preferences/Mod/Sketcher/General"
+SKETCH_VIEW = "User parameter:BaseApp/Preferences/Mod/Sketcher/View"
+# real lines 3 px; construction lines (and projected ones switched to construction, an ellipse's axes) 2 px with
+# long gaps (the user: thinner than the real lines yet well visible — 1 px was a hairline on a Retina screen;
+# FreeCAD: all 2 px, construction 6 on / 2 off) — a Coin 16-bit pattern, 8 px on, 8 px off
+DASHED_LINES = {"EdgeWidth": ("Int", 3), "ExternalDefiningWidth": ("Int", 3),
+                "ConstructionWidth": ("Int", 2), "ExternalWidth": ("Int", 2), "InternalWidth": ("Int", 2),
+                "ConstructionPattern": ("Int", 0xFF00), "ExternalPattern": ("Int", 0xFF00),
+                "InternalPattern": ("Int", 0xFF00)}
+# FreeCAD's B-spline overlays (the green curvature comb, the degree, knots, weights): Inventor shows none — an offset
+# ellipse (a B-spline) was buried under its comb. The control polygon stays as the user has it
+BSPLINE_INFO = ("BSplineCombVisible", "BSplineDegreeVisible", "BSplineKnotMultiplicityVisible",
+                "BSplinePoleWeightVisible")
 DISPLAY_FORMAT = {"value": (False, "%V"), "name": (True, "%N"), "expression": (True, "%N = %V")}
 SKETCH_COLORS = {
-    # calm constraint colours (FreeCAD's red/orange was too loud): blue-grey symbols and dimensions
+    # calm constraint colours (FreeCAD's red/orange was too loud): blue-grey symbols and dimensions; construction
+    # geometry orange (the user: told apart from the real lines at a glance) — a projected line switched to
+    # construction too (ExternalColor; a normal projected one keeps FreeCAD's ExternalDefiningColor) — the line
+    # being drawn blue
     "light": dict(EditedEdgeColor="#1d1d1f", SketchEdgeColor="#1d1d1f", SketchVertexColor="#1d1d1f",
-                  FullyConstrainedColor="#1a8a2e", ConstructionColor="#0a64d6", ConstrainedDimColor="#35557f",
+                  FullyConstrainedColor="#1a8a2e", ConstructionColor="#e67e22", ConstrainedDimColor="#35557f",
+                  FullyConstraintConstructionElementColor="#e67e22", ExternalColor="#e67e22",
                   ExprBasedConstrDimColor="#6a5a9e", NonDrivingConstrDimColor="#7d8896", CursorTextColor="#1d1d1f",
-                  CreateLineColor="#e67e22", ConstrainedIcoColor="#5a7698", DeactivatedConstrDimColor="#9aa3ad"),
+                  CreateLineColor="#0a64d6", ConstrainedIcoColor="#5a7698", DeactivatedConstrDimColor="#9aa3ad"),
     "dark": dict(EditedEdgeColor="#f2f2f2", SketchEdgeColor="#f2f2f2", SketchVertexColor="#f2f2f2",
-                 FullyConstrainedColor="#5ad16b", ConstructionColor="#5aa2ff", ConstrainedDimColor="#9db8de",
+                 FullyConstrainedColor="#5ad16b", ConstructionColor="#f39c4a", ConstrainedDimColor="#9db8de",
+                 FullyConstraintConstructionElementColor="#f39c4a", ExternalColor="#f39c4a",
                  ExprBasedConstrDimColor="#b9a8e6", NonDrivingConstrDimColor="#8d99a8", CursorTextColor="#f2f2f2",
-                 CreateLineColor="#f39c4a", ConstrainedIcoColor="#7f9cc0", DeactivatedConstrDimColor="#6b7480"),
+                 CreateLineColor="#5aa2ff", ConstrainedIcoColor="#7f9cc0", DeactivatedConstrDimColor="#6b7480"),
 }
 SKETCH_KEYS = {
     SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": "Bool", "ShowDimensionalName": "Bool",
                   "DimensionalStringFormat": "String", "LeaveSketchWithEscape": "Bool"},
     SKETCH_TOOLS: {"OnViewParameterVisibility": "Int", "ContinuousCreationMode": "Bool"},
+    SKETCH_GENERAL: {k: "Bool" for k in BSPLINE_INFO},
     VIEW_GROUP: {k: "Unsigned" for k in SKETCH_COLORS["light"]},
+    SKETCH_VIEW: {k: kind for k, (kind, _) in DASHED_LINES.items()},
 }
 
 
@@ -140,5 +160,7 @@ def sketch_params(theme, display="value"):
         SKETCH_ROOT: {"ShowDialogOnDistanceConstraint": ("Bool", False), "ShowDimensionalName": ("Bool", show),
                       "DimensionalStringFormat": ("String", fmt), "LeaveSketchWithEscape": ("Bool", False)},
         SKETCH_TOOLS: {"OnViewParameterVisibility": ("Int", 0), "ContinuousCreationMode": ("Bool", True)},
+        SKETCH_GENERAL: {k: ("Bool", False) for k in BSPLINE_INFO},
         VIEW_GROUP: {k: ("Unsigned", _rgba(v)) for k, v in SKETCH_COLORS[theme].items()},
+        SKETCH_VIEW: dict(DASHED_LINES),
     }

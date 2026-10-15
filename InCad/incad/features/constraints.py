@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import FreeCAD as App
 
 from incad.features.common import Field, parse_picks, value_param
+from incad.core import safe
 
 _STORE = "InCadConstraint"
 _FLIP = "InCadFlip"
@@ -97,7 +98,7 @@ def _axis(link, el):
     if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane":
         n = _normal(link, el)
         return (sh.CenterOfMass, App.Vector(n).normalize()) if n is not None else None
-    if sh.ShapeType == "Edge" and sh.Curve.TypeId == "Part::GeomLine":
+    if sh.ShapeType == "Edge" and safe.curve_type(sh) == "Part::GeomLine":
         return sh.CenterOfMass, App.Vector(sh.Curve.Direction).normalize()
     return None
 
@@ -196,7 +197,7 @@ def _frame(link, el):
         return None
     if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane":
         return sh.CenterOfMass, App.Vector(_normal(link, el)).normalize()
-    if sh.ShapeType == "Edge" and sh.Curve.TypeId in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
+    if sh.ShapeType == "Edge" and safe.curve_type(sh) in ("Part::GeomCircle", "Part::GeomArcOfCircle"):
         return App.Vector(sh.Curve.Center), App.Vector(sh.Curve.Axis).normalize()
     return None
 

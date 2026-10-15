@@ -374,9 +374,33 @@ RECT = SimpleNamespace(
     create=_rect_create, read=_rect_read, update=_rect_update, summary=_summary, _pad_of=lambda f: f)
 
 
+def _rot_axis(doc, body, f, values):
+    """The circular pattern's axis: an origin / work axis, a sketch line, a straight or circular edge, a round face
+    (its circular edge: FreeCAD takes no face), or two points clicked on the part — a hidden Work Axis through
+    them, owned by the pattern (as Revolve's)."""
+    from incad.features import revolve
+    if (values.get("axis_mode") or "reference") == "two_points":
+        points = revolve.parse_points(values.get("axis_points"))
+        if len(points) != 2:
+            raise ValueError("Click two points for the axis")
+        return (revolve._place_helper(doc, f, points), [""])
+    revolve._drop_helper(doc, f)
+    obj, subs = _dir_link(doc, body, values.get("axis"), "Z_Axis")
+    sub = subs[0] if subs else ""
+    if sub.startswith("Face"):
+        face = obj.getSubObject(sub)
+        edge = next((e for e in face.Edges if e.Curve.TypeId == "Part::GeomCircle"), None) \
+            if face.Surface.TypeId == "Part::GeomCylinder" else None
+        if edge is None:
+            raise ValueError("Pick a round face, a circular or straight edge, or an axis")
+        n = next(i for i, e in enumerate(obj.Shape.Edges, 1) if e.isSame(edge))
+        sub = "Edge%d" % n
+    return (obj, [sub])
+
+
 def _circ_apply(doc, body, f, values):
     f.Originals = _features(doc, body, values.get("features"), f, bool(values.get("children")))
-    f.Axis = _dir_link(doc, body, values.get("axis"), "Z_Axis")
+    f.Axis = _rot_axis(doc, body, f, values)
     f.Mode = "Extent"
     _count(doc, f, "Occurrences", values.get("count"))
     value_param(doc, f, "Angle", values.get("angle") or "360 °", "angle")
@@ -391,8 +415,14 @@ def _circ_create(doc, body, profile, values):
 
 def _circ_read(doc, f):
     picks, children = _picks_and_children(f)
-    return {"features": picks, "children": children, "axis": _link_text(f.Axis),
-            "count": value_text(doc, f, "Occurrences") or "4", "angle": value_text(doc, f, "Angle") or "360°"}
+    from incad.features import revolve
+    out = {"features": picks, "children": children, "axis_mode": "reference", "axis": _link_text(f.Axis),
+           "axis_points": "", "count": value_text(doc, f, "Occurrences") or "4",
+           "angle": value_text(doc, f, "Angle") or "360°"}
+    obj = f.Axis[0] if f.Axis else None
+    if obj is not None and getattr(obj, revolve.HELPER, None) == f.Name:  # the axis through two points
+        out.update(axis_mode="two_points", axis="", axis_points=getattr(obj, revolve.POINTS, ""))
+    return out
 
 
 def _circ_update(doc, f, values):
@@ -406,10 +436,14 @@ CIRC = SimpleNamespace(
     PRESELECT={"features": "feature"},
     FIELDS=(Field("features", "Features", "picks", pick="feature"),
             Field("children", "Include dependent features", "bool", default=False),
-            Field("axis", "Axis", "pick", pick="axis"),
+            Field("axis_mode", "Axis", "choice", (("reference", "Axis or edge"), ("two_points", "Two points")),
+                  "reference"),
+            Field("axis", "Pick", "pick", pick="rot_axis", show_if=("axis_mode", ("reference",))),
+            Field("axis_points", "Points", "pick", pick="two_points", show_if=("axis_mode", ("two_points",))),
             Field("count", "Count", "value_length", default="4"),
             Field("angle", "Angle", "value_angle", default="360 °")),
-    defaults=lambda doc, body, profile: {"features": "", "children": False, "axis": _origin_name(body, "Z_Axis"), "count": "4",
+    defaults=lambda doc, body, profile: {"features": "", "children": False, "axis_mode": "reference",
+                                         "axis": _origin_name(body, "Z_Axis"), "axis_points": "", "count": "4",
                                          "angle": "360 °"},
     create=_circ_create, read=_circ_read, update=_circ_update, summary=_summary, _pad_of=lambda f: f)
 

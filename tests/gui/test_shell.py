@@ -95,17 +95,16 @@ def test_1c_a_face_clicked_in_the_dialog_shows_the_shell():
     Gui.Selection.addSelection(App.ActiveDocument.Name, pad.Name, "Face%d" % top)  # the click on the face
     harness.pump(1500)
     assert fs.feature is not None and "Invalid" not in fs.feature.State, fs.dialog.error_text()
-    shown = {o.Name: bool(o.ViewObject.Visibility) for o in (pad, fs.feature)}
-    assert shown[fs.feature.Name] and not shown["Pad"], (shown, fs.dialog.active_pick())
+    assert pad.ViewObject.Visibility and fs._ghost is not None, "the part, the shell drawn over it as outlines"
     front = [i + 1 for i, f in enumerate(fs.feature.Shape.Faces)
              if abs(f.CenterOfMass.y) < 1e-6 and abs(f.Area - 200) < 1e-6][0]  # the outer front wall
     pad_front = [i + 1 for i, f in enumerate(pad.Shape.Faces) if abs(f.CenterOfMass.y) < 1e-6][0]
-    Gui.Selection.addSelection(App.ActiveDocument.Name, fs.feature.Name, "Face%d" % front)  # a click on the preview
+    Gui.Selection.addSelection(App.ActiveDocument.Name, pad.Name, "Face%d" % pad_front)  # a click on the part
     harness.pump(1500)
     picked = fs.dialog.values()["faces"]
     assert picked == "Pad:Face%d, Pad:Face%d" % (top, pad_front) or set(picked.replace(" ", "").split(",")) == {
         "Pad:Face%d" % top, "Pad:Face%d" % pad_front}, (picked, fs.dialog.error_text())
-    assert fs.feature.ViewObject.Visibility and not pad.ViewObject.Visibility, "still the preview"
+    assert pad.ViewObject.Visibility and fs._ghost is not None, "still the part with the outlines"
     QTest.mouseClick(fs.dialog.cancel_button, QtCore.Qt.LeftButton)
     harness.pump(900)
 

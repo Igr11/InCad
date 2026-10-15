@@ -233,7 +233,7 @@ def test_9_editing_picks_shows_the_fillet_selects_the_edges_and_restores_visibil
     dialog().field("edges").click()
     harness.pump(600)
     base = fillet.BaseFeature
-    assert fillet.Visibility and not base.Visibility and not tip.Visibility, (base.Visibility, fillet.Visibility,
+    assert base.Visibility and not fillet.Visibility and not tip.Visibility, (base.Visibility, fillet.Visibility,
                                                                              tip.Visibility)
     picked = sum(len(x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name))
     assert picked == 4, picked

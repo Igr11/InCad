@@ -621,6 +621,7 @@ def apply_visibility(doc):
             continue
         if bool(o.Visibility) != want:
             o.Visibility = want
+    show_finished(doc)
     for name in origins:
         origin = doc.getObject(name)
         items = list(origin.OriginFeatures)
@@ -682,6 +683,29 @@ def _broken_shape(obj):
 def helpers_of(body, feature):
     """Objects InCad made for `feature` (a thread's chamfer), in body order."""
     return [o for o in body.Group if getattr(o, "InCadHelperOf", None) == feature.Name]
+
+
+def show_finished(doc, features=None):
+    """A feature shown on screen whose shape a helper step right after it finishes (Hole ▸ Chamfer, a thread's
+    chamfer) shows as that helper instead: both drawn at once put the unchamfered hole over the chamfer (the user's
+    "it is not chamfer"; flickering stripes where the two walls overlap)."""
+    for f in (features if features is not None else doc.Objects):
+        try:
+            if not f.TypeId.startswith("PartDesign::") or getattr(f, "InCadHelperOf", None) or not f.Visibility:
+                continue
+            body = f.getParentGeoFeatureGroup()
+            if body is None or body.TypeId != "PartDesign::Body":
+                continue
+            group = list(body.Group)
+            at = group.index(f)
+            after = [h for h in helpers_of(body, f) if _is_solid_feature(h) and group.index(h) > at]
+            if after:
+                last = after[-1]
+                f.Visibility = False
+                for h in after:
+                    h.Visibility = h is last
+        except Exception:
+            continue
 
 
 def _is_solid_feature(obj):

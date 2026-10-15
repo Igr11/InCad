@@ -5,6 +5,62 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.4.0
+-----
+Sketching, Move Face on round walls, and many fixes from testing.
+
+New features
+- Sketch > Offset is InCad's own now: one click on a line takes its whole shape (a rectangle, a
+  polygon, a chain drawn line by line), the copy follows the pointer, a click places it. Corners stay
+  sharp, a single line gives one parallel line (no more slot), a circle or ellipse gives a ring.
+  One dimension drives the offset (Cmd-click adds more shapes, all at that distance).
+- Sketch > Concentric (Constrain, after Coincident): click two circles, arcs or ellipses and their
+  centres are tied.
+- Move Face on round walls: a cylinder or an extruded ellipse / spline wall moves outward or inward
+  by a distance (Step, Inventor or Together). One click takes the whole wall.
+- Fillet / Chamfer: a click on a face takes all its edges (again: they come off); a click on an
+  edge takes its smooth chain (a slot's lines and arcs, a ring in pieces).
+- Circular Pattern: the axis can be any origin or work axis, a sketch line, a straight or circular
+  edge, a round face, or two points clicked on the part. An axis through two points is drawn as an
+  orange dashed line while the dialog is open (Revolve too).
+
+Improvements
+- While you pick, the dialog draws its result over the part as orange outlines: Fillet, Chamfer,
+  Shell, Move Face and the others that show the part for picking.
+- Sketch look: construction lines and shapes are orange, thinner and dashed with wider gaps;
+  normal lines are a little bolder; in the dark theme the part is drawn darker while a sketch is
+  open, so the sketch stands out. FreeCAD's green B-spline combs are hidden.
+- Sketch ribbon: Spline is right after Line.
+- Pattern along a path / Mirror in a sketch: a click on one side takes the whole shape.
+- Extrude: several closed regions of a sketch are extruded together.
+- Boolean: click order like Inventor - first the base (the solid that stays), then the tools.
+- Threads Off / On: if some threads are on and some off, the first click turns all off, the next
+  all on.
+- Show All / Hide All Origin: every Solid's origin; when the origin is off screen the view zooms out
+  to show it.
+- Hole > Chamfer: the chamfered hole is shown (the plain hole was drawn on top of it).
+- Move Face: a click near a corner picks the corner; Together follows curved walls; a chamfer or
+  fillet picked with its face moves Together.
+- Dimensions: a dead zone before FreeCAD's Dimension tool switches horizontal / vertical / aligned.
+- No part open: the ribbon's first button is Start 2D Sketch (it makes the part).
+
+Bug fixes
+- FreeCAD hung after a Fillet on a big part (the edge picks re-selected themselves forever).
+- Fillet / Chamfer: edges under a sketch's lines could not be picked; a sketch a feature uses is
+  hidden; a pick on a sketch line takes the part's edge under it.
+- A dialog whose window vanished (a Thread with a chamfer) blocked every command ("Finish the
+  Thread dialog first"); now the next command cancels it. A dialog never stays open with dead
+  buttons.
+- Threads Off / On, section, measure and others failed on a part with a modelled thread
+  ("undefined curve type").
+- Construction / normal did not work on lines; a projected line switched to construction kept its
+  colour.
+- Stale "Area" faces of a cancelled region pick covered the part's edges.
+- Closing a sketch while the Dimension tool ran crashed FreeCAD.
+- Move Face: Together on a wall already moved Together, and flat faces that came back as B-splines.
+- Hole > Chamfer on a modelled thread could come out invalid.
+
+
 0.3.1
 -----
 Improvements

@@ -244,8 +244,11 @@ def _together(shape, faces, a, d, wire, inside):
     for g in beyond:  # a guard: the chain takes every other kind of neighbour, so this holds by construction
         if not (mf._is_plane(g) or mf._along(g, a)):
             raise ValueError(mf.WALLS_MSG)
+    sheet = Part.Shell(group)
+    if any(type(g.Surface).__name__ == "OffsetSurface" for g in group):
+        sheet = sheet.toNurbs()  # OCC cannot offset an offset surface again (a band moved Together before)
     try:  # arc joins (OCC's intersection joins fail on blends); FreeCAD raises ValueError / CADKernelError
-        layer = Part.Shell(group).makeOffsetShape(d, 1e-6, join=0, fill=True)
+        layer = sheet.makeOffsetShape(d, 1e-6, join=0, fill=True)
     except Exception:
         raise ValueError(mf.TOO_LARGE_MSG)
     if layer.isNull() or not layer.isValid():

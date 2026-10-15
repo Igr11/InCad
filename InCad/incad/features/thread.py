@@ -11,6 +11,7 @@ import Part
 
 from incad.features.common import Field, parse_picks, resolve, value_param, value_text
 from incad.threads import profile, standards
+from incad.core import safe
 
 TITLE = "Thread"
 ICON = "thread"
@@ -143,7 +144,7 @@ def _geometry(obj, face, flip, start_plane=None):
     radial = (p - centre) - axis * (p - centre).dot(axis)
     internal = n.dot(radial) < 0
     radial.normalize()
-    circles = [e for e in face.Edges if e.Curve.TypeId == "Part::GeomCircle"]
+    circles = [e for e in face.Edges if safe.curve_type(e) == "Part::GeomCircle"]
     if len(circles) < 2:
         raise ValueError("The face needs two round ends to thread")
     circles.sort(key=lambda e: (e.Curve.Center - centre).dot(axis))

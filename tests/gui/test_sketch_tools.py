@@ -50,6 +50,93 @@ def test_1_every_variant_starts_with_its_method():
         harness.pump(300)
 
 
+def _click_sketch(sk, x, y):
+    """A real left click at sketch point (x, y)."""
+    from incad.qt import QtCore, QtGui
+    from incad.ui import dof_handles
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    pos = QtCore.QPointF(*dof_handles.screen(view, vp, sk.getGlobalPlacement().multVec(App.Vector(x, y, 0))))
+    L, N = QtCore.Qt.LeftButton, QtCore.Qt.NoButton
+    for kind, button, buttons, ms in ((QtCore.QEvent.MouseMove, N, N, 250), (QtCore.QEvent.MouseButtonPress, L, L, 60),
+                                      (QtCore.QEvent.MouseButtonRelease, L, N, 600)):
+        QtWidgets.QApplication.sendEvent(vp, QtGui.QMouseEvent(kind, pos, QtCore.QPointF(vp.mapToGlobal(pos.toPoint())),
+                                                                button, buttons, QtCore.Qt.NoModifier))
+        harness.pump(ms)
+
+
+def test_1b_offset_takes_the_whole_rectangle_and_keeps_sharp_corners():
+    """InCad's own Offset: one click on an edge takes the whole rectangle, a click outside places a copy with sharp
+    corners, the value box opens on its dimension; a lone line gives one parallel line (no slot)."""
+    import Part
+    import Sketcher
+    from PySide6.QtTest import QTest
+    from incad.qt import QtCore
+    sk = Gui.ActiveDocument.getInEdit().Object
+    pts = [App.Vector(40, 0, 0), App.Vector(60, 0, 0), App.Vector(60, 10, 0), App.Vector(40, 10, 0)]
+    first = sk.GeometryCount
+    ids = [sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4])) for i in range(4)]
+    for k in range(4):
+        sk.addConstraint(Sketcher.Constraint("Coincident", ids[k], 2, ids[(k + 1) % 4], 1))
+    for k, kind in enumerate(("Horizontal", "Vertical", "Horizontal", "Vertical")):  # as FreeCAD's rectangle tool
+        sk.addConstraint(Sketcher.Constraint(kind, ids[k]))
+    App.ActiveDocument.recompute()
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(600)
+    res = commands.REGISTRY.run("sketch.offset")
+    harness.pump(400)
+    assert res.ok, res.error
+    _click_sketch(sk, 50, 0)  # the bottom edge
+    tool = shell.instance().slot_tool
+    assert tool is not None and len(tool.chains) == 1, ("the outline is picked", tool, tool and tool.chains,
+                                                        tool and len(tool._callbacks),
+                                                        open(os.environ["INCAD_LOG"]).read()[-500:])
+    assert sorted(shell.instance().slot_tool.chains[0][0]) == sorted(ids)
+    _click_sketch(sk, 50, -2)  # 2 below it: the copy outside
+    harness.pump(600)
+    new = list(range(first + 4, sk.GeometryCount))
+    assert len(new) == 4 and all(type(sk.Geometry[g]).__name__ == "LineSegment" for g in new), \
+        [type(sk.Geometry[g]).__name__ for g in new]
+    corners = sorted({(round(p.x, 4), round(p.y, 4)) for g in new for p in (sk.Geometry[g].StartPoint,
+                                                                             sk.Geometry[g].EndPoint)})
+    want = [(38, -2), (38, 12), (62, -2), (62, 12)]  # sharp; a real click lands on a whole pixel: ~0.01 mm off
+    assert len(corners) == 4 and all(abs(a - c) < 0.05 and abs(b - e) < 0.05 for (a, b), (c, e) in zip(corners, want)), \
+        corners
+    box = shell.instance().value_box
+    assert box is not None, "the value box opens on the offset dimension"
+    QTest.keyClicks(box.edit, "3")
+    QTest.keyClick(box.edit, QtCore.Qt.Key_Return)
+    harness.pump(800)
+    corners = sorted({(round(p.x, 4), round(p.y, 4)) for g in new for p in (sk.Geometry[g].StartPoint,
+                                                                             sk.Geometry[g].EndPoint)})
+    xs = sorted({c[0] for c in corners})
+    orig = sorted({round(p.x, 4) for g in ids for p in (sk.Geometry[g].StartPoint, sk.Geometry[g].EndPoint)})
+    assert abs((xs[0] - orig[0]) + 3) < 1e-4 and abs((xs[1] - orig[1]) - 3) < 1e-4, (xs, orig)
+    # an ellipse: its offset is a B-spline, shown without FreeCAD's green curvature comb or degree label
+    general = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Sketcher/General")
+    shown = {p: general.GetBool(p, True) for p in ("BSplineCombVisible", "BSplineDegreeVisible")}
+    assert not any(shown.values()), shown
+    # a lone line: one parallel line on the pointer's side
+    line = sk.addGeometry(Part.LineSegment(App.Vector(40, 30, 0), App.Vector(60, 30, 0)))
+    App.ActiveDocument.recompute()
+    harness.pump(400)
+    count = sk.GeometryCount
+    commands.REGISTRY.run("sketch.offset")
+    harness.pump(400)
+    _click_sketch(sk, 50, 30)
+    _click_sketch(sk, 50, 33)
+    harness.pump(600)
+    added = list(range(count, sk.GeometryCount))
+    assert len(added) == 1 and abs(sk.Geometry[added[0]].StartPoint.y - 33) < 0.05, \
+        [(type(sk.Geometry[g]).__name__, sk.Geometry[g].StartPoint) for g in added]
+    if shell.instance().value_box is not None:
+        shell.instance().value_box.close()
+        harness.pump(300)
+    sk.delGeometries(list(range(first, sk.GeometryCount)))  # the later tests click where the sketch is empty
+    App.ActiveDocument.recompute()
+    harness.pump(300)
+
+
 def test_2_ribbon_split_button_remembers():
     rb = shell.instance().ribbon
     b = rb.button("sketch.rectangle")
@@ -92,12 +179,8 @@ def test_4_overall_slot_by_three_clicks():
     assert tool is not None
     view = Gui.ActiveDocument.ActiveView
     pl = sk.getGlobalPlacement()
-    for x, y in ((-30, 40), (0, 40), (-15, 44)):
-        sx, sy = view.getPointOnViewport(pl.multVec(App.Vector(x, y, 0)))
-        tool._event({"Type": "SoLocation2Event", "Position": (int(sx), int(sy))})
-        tool._event({"Type": "SoMouseButtonEvent", "Button": "BUTTON1", "State": "DOWN",
-                     "Position": (int(sx), int(sy))})
-        harness.pump(200)
+    for x, y in ((-30, 40), (0, 40), (-15, 44)):  # real clicks (the tool's handler was called directly before)
+        _click_sketch(sk, x, y)
     App.ActiveDocument.recompute()
     assert sk.GeometryCount == before + 4, (before, sk.GeometryCount)
     import Part
@@ -310,7 +393,7 @@ def test_12_right_click_without_a_tool_opens_the_marking_menu():
     harness.pump(200)
 
 
-harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_2_ribbon_split_button_remembers,
+harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_1b_offset_takes_the_whole_rectangle_and_keeps_sharp_corners, test_2_ribbon_split_button_remembers,
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
              test_5b_one_click_on_a_picked_construction_line_makes_it_normal_and_ends_the_mode,

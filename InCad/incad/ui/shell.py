@@ -3,6 +3,7 @@ title strip, ribbon, Model Browser and status bar are shown. Everything is resto
 a crash with InCad active: the snapshot stays in InCad's preferences until the restore has been done."""
 import json
 import os
+import re
 import traceback
 
 from incad.core import commands, log, prefs
@@ -284,6 +285,30 @@ def _overlays(mw):
 
 
 class Shell(QtCore.QObject):
+    @property
+    def feature_session(self):
+        """The open feature dialog's session — never a dead one (closed, or its dialog gone): that one is let go,
+        so no command is refused for a dialog nobody can see."""
+        fs = self.__dict__.get("_feature_session")
+        if fs is not None and not getattr(fs, "alive", True):
+            self.__dict__["_feature_session"] = None
+            log.logger().warning("A closed %s dialog was still held open: let go", fs.kind.TITLE)
+            if not getattr(fs, "_closed", True):
+                try:  # its window gone but never finished: Cancel rolls back its preview (the next dialog would
+                    fs._finish(commit=False)  # commit that half-made step otherwise)
+                except Exception:
+                    log.logger().exception("cancel the lost %s dialog", fs.kind.TITLE)
+            from incad.core import safe
+            if safe.busy() == fs.kind.TITLE:
+                safe.set_busy(None)
+            self.schedule_refresh()
+            return None
+        return fs
+
+    @feature_session.setter
+    def feature_session(self, fs):
+        self.__dict__["_feature_session"] = fs
+
     def __init__(self, mw, registry):
         super().__init__(mw)
         self.mw, self.registry = mw, registry
@@ -1300,6 +1325,31 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
         return self.slot_tool
 
+    def start_offset_tool(self):
+        """InCad's own Offset (incad.ui.offset_tool) in the slot tool's place: Esc, another command, leaving the
+        sketch end it the same way."""
+        import FreeCADGui as Gui
+        from incad.features import common
+        from incad.ui.offset_tool import OffsetTool
+        gdoc = Gui.ActiveDocument
+        edit = gdoc.getInEdit() if gdoc is not None else None
+        sk = getattr(edit, "Object", None)
+        if sk is None or sk.TypeId != "Sketcher::SketchObject":
+            raise ValueError("Open a sketch first")
+        picked = []
+        for sel in common.selection_ex(sk.Document.Name):
+            for sub in sel.SubElementNames or ():
+                if sel.Object is sk and sub.startswith("Edge"):
+                    picked.append(int(sub[4:]) - 1)
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")  # no FreeCAD tool fighting for the clicks
+        Gui.Selection.clearSelection()
+        self.slot_tool = OffsetTool(gdoc.ActiveView, sk, on_finish=self._slot_tool_done,
+                                    on_placed=lambda s, name: self.open_value_box(s, name))
+        self.slot_tool.start(picked)
+        self.schedule_refresh()
+        return self.slot_tool
+
     def stop_slot_tool(self):
         tool, self.slot_tool = getattr(self, "slot_tool", None), None
         if tool is not None:
@@ -1802,7 +1852,7 @@ class Shell(QtCore.QObject):
         self.feature_session = None
 
     def _session_closed(self, fs):
-        if self.feature_session is fs:
+        if self.__dict__.get("_feature_session") is fs:  # (raw: the property would call this normal close dead)
             self.feature_session = None
         if self._overlay is None or getattr(self._overlay, "session", fs) is fs:
             self._drop_overlay()
@@ -1846,8 +1896,8 @@ class Shell(QtCore.QObject):
         faces = regions.regions(source)
         if not faces:
             raise ValueError("%s has no closed area to %s" % (source.Label, kind.TITLE.lower()))
-        if len(faces) == 1:
-            prof = regions.make_profile(doc, body, source, faces[0])
+        if len(faces) == 1 or regions.islands(faces):  # one area, or separate shapes (a pattern of polygons): all
+            prof = regions.make_profile(doc, body, source, faces if len(faces) > 1 else faces[0])
             self._open_session(kind, doc, body, profile=prof)
             return
         self._cancel_region_pick()
@@ -1857,6 +1907,7 @@ class Shell(QtCore.QObject):
         for i, f in enumerate(faces):
             o = doc.addObject("Part::Feature", "Area%d" % (i + 1))
             o.Label = "Area %d" % (i + 1)
+            o.addProperty("App::PropertyBool", "InCadAreaPick", "InCad", "Shown while an area is picked")
             shape = f.copy()
             shape.Placement = pl
             o.Shape = shape
@@ -1876,6 +1927,28 @@ class Shell(QtCore.QObject):
         self.status.set_prompt("Click the area to %s (Esc cancels)" % kind.TITLE.lower())
         log.report("info", "%d areas: click the one to %s" % (len(faces), kind.TITLE.lower()))
         self.schedule_refresh()
+
+    def _purge_stale_areas(self, doc):
+        """The "Area n" faces shown while an area is picked are gone once it is over; a pick left open (another
+        command started) left them in the part, over its edges (Chamfer then picked them). Removed when no pick
+        runs: the marked ones, and older unmarked ones (a Part::Feature "Area n" outside every Solid, used by
+        nothing)."""
+        if doc is None or self._region_pick is not None:
+            return
+        stale = []
+        for o in doc.Objects:
+            if o.TypeId != "Part::Feature" or not re.match(r"^Area\d+$", o.Name):
+                continue
+            if "InCadAreaPick" in o.PropertiesList or (re.match(r"^Area \d+$", o.Label) and not o.InList
+                                                        and o.getParentGeoFeatureGroup() is None):
+                stale.append(o.Name)
+        for name in stale:
+            try:
+                doc.removeObject(name)
+            except Exception:
+                pass
+        if stale:
+            log.logger().info("Removed stale area faces %s", stale)
 
     def _cancel_region_pick(self):
         import FreeCAD as App
@@ -2355,6 +2428,8 @@ class Shell(QtCore.QObject):
         if fs is not None and fs.doc_name not in App.listDocuments():
             self._close_feature_session(cancel=True)  # its document was closed: nothing to roll back, free busy
         from incad.core import assembly as assemblies
+        if doc is not None and fs is None:
+            self._purge_stale_areas(doc)
         is_part = document.is_incad_part(doc)
         is_asm = assemblies.is_assembly(doc)
         editing = self.sketches.editing() if is_part else None
@@ -2640,9 +2715,16 @@ class Shell(QtCore.QObject):
             self.schedule_refresh()  # the rows read the new counts (cached now: no second count)
         self.dof_display_changed()
 
-    def _end_drag(self):
+    def _end_drag(self, cmd_id=None):
         """Before any command (Save, Undo, ...): a part drag still going ends first, so its open step and the
-        temporary grounds of the other parts never reach the command."""
+        temporary grounds of the other parts never reach the command. A waiting Offset ends too (it takes every
+        plain click while it runs: Construction then found no line picked); view commands leave it."""
+        from incad.ui.offset_tool import OffsetTool
+        other = not str(cmd_id or "").startswith(("view.", "nav."))
+        if isinstance(getattr(self, "slot_tool", None), OffsetTool) and other:
+            self.stop_slot_tool()
+        if self._region_pick is not None and other:  # its shown "Area n" faces stayed and took a Chamfer's clicks
+            self._cancel_region_pick()
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish()
         if self.dof_handles is not None and self.dof_handles.dragging():
@@ -3321,6 +3403,7 @@ def instance():
 def activate():
     global _shell
     import FreeCADGui as Gui
+    log.catch_uncaught()
     if _shell is None:
         _shell = Shell(Gui.getMainWindow(), commands.REGISTRY)
     return _shell.activate()

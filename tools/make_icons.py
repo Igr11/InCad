@@ -138,6 +138,9 @@ ICONS = {
                   'fill="{A}">40</text>'),
     "coincident": ('<path d="M4 26 L16 16 L28 22" fill="none" stroke="{S}" stroke-width="2.2"/>'
                    '<circle cx="16" cy="16" r="4" fill="{A}"/>'),
+    "concentric": ('<circle cx="16" cy="16" r="12" fill="none" stroke="{S}" stroke-width="2.2"/>'
+                   '<circle cx="16" cy="16" r="6.5" fill="none" stroke="{S}" stroke-width="2.2"/>'
+                   '<circle cx="16" cy="16" r="2.6" fill="{A}"/>'),
     "horizontal": ('<path d="M4 18 H28" stroke="{S}" stroke-width="2.6"/><text x="16" y="13" font-family="Helvetica" '
                    'font-size="10" font-weight="bold" text-anchor="middle" fill="{A}">H</text>'),
     "vertical": ('<path d="M14 4 V28" stroke="{S}" stroke-width="2.6"/><text x="19" y="19" font-family="Helvetica" '

@@ -3,7 +3,7 @@
 An Inventor/Alibre-style workbench for FreeCAD 1.1.3 on macOS: ribbon, Model Browser with End of Part and
 Parameters, light/dark in one click, ⇄ back to FreeCAD in one click. Files stay normal `.FCStd`.
 
-Current version: 0.2.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
+Current version: 0.4.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
 
 ## Install
     scripts/install.sh        # symlinks InCad/ into FreeCAD's Mod folder; restart FreeCAD
@@ -34,7 +34,12 @@ Logs: ~/Library/Logs/InCad.log
 - Every dimension gets a name (d0, d1 …) shown under Parameters; rename it there. In a value box, click another
   dimension or a parameter to use its name in a formula (d0/2, Width - 2*d3).
 - Projected edges are normal lines (as in Inventor), ready to be part of a profile; Construction switches them
-  to construction and back.
+  to construction and back. Construction geometry is drawn orange and dashed, thinner than the normal lines; in the
+  dark theme the part is drawn darker while a sketch is open.
+- Offset (InCad's own): a click on one line takes its whole shape (Cmd-click adds more), the copy follows the
+  pointer, a click places it; sharp corners, a single line gives a parallel line, a circle or ellipse a ring; one
+  dimension drives it. Mirror and the sketch patterns also take the whole shape from one side.
+- Concentric (Constrain, after Coincident): two circles, arcs or ellipses get one centre.
 - Constraint List (Sketch ▸ Constrain ▸ List, or right-click): every constraint of the sketch, filtered by the
   picked line or point; check rows and Delete selected. Right-click a line or point to delete one of its
   constraints, or all. Pattern ties and dimensions used in a formula are kept.
@@ -53,12 +58,15 @@ Logs: ~/Library/Logs/InCad.log
 - H Hole (from sketch points/circles or concentric to a round edge; counterbore, countersink, through all),
   F Fillet, Chamfer, Shell (inside/outside), Rectangular / Circular Pattern, Mirror, Work Plane / Axis / Point.
 - Select edges or faces first, then the command, or pick them while the dialog is open (the highlighted
-  field takes the picks; while picking, the shape before the feature is shown).
+  field takes the picks; while picking, the shape before the feature is shown with the result drawn over it as
+  orange outlines). Fillet / Chamfer: a click on an edge takes its smooth chain, a click on a face all its edges.
+- Circular Pattern axis: any origin or work axis, a sketch line, a straight or circular edge, a round face, or two
+  points clicked on the part (a hidden work axis, drawn dashed while the dialog is open).
 - Inspect: Measure (a face, an edge, or two items) and Mass Properties (PLA density).
 - Unused values of deleted features can be removed with − in the Parameters panel.
 - Sweep (profile + path sketch), Loft (two or more sections in order), Coil (springs: profile + axis, pitch,
   height), Draft (tilt faces by an angle).
-- Move Face (direct editing): push or pull flat faces by a distance, or To a parallel face / plane, an edge running
+- Move Face (direct editing): push or pull flat faces (or offset a straight round wall) by a distance, or To a parallel face / plane, an edge running
   parallel to them or a point (also on another Solid); the neighbours follow as in Inventor, as a straight Step, or
   Together with their chamfers / fillets. A drag arrow on the face shows the distance live; Finish move is on top of
   the right-click menu.

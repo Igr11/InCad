@@ -15,7 +15,10 @@ def _signature(el):
     if el.ShapeType == "Vertex":
         return ("Vertex", "", el.Point, None)
     if el.ShapeType == "Edge":
-        c = el.Curve
+        try:
+            c = el.Curve
+        except Exception:  # "undefined curve type" (a thread's helical edges): found again by its centre only
+            return ("Edge", "", el.CenterOfMass, None)
         geom = (App.Vector(c.Center), App.Vector(c.Axis), c.Radius) if hasattr(c, "Radius") and hasattr(c, "Axis") \
             else (App.Vector(el.Vertexes[0].Point), (el.Vertexes[-1].Point - el.Vertexes[0].Point).normalize()) \
             if c.TypeId in ("Part::GeomLine", "Part::GeomLineSegment") else None
@@ -160,10 +163,17 @@ def tapped_holes(doc):
     return [o for o in doc.Objects if o.TypeId == "PartDesign::Hole" and getattr(o, "Threaded", False)]
 
 
+def _thread_on(t, holes):
+    return (t.ModelThread and not getattr(t, "Suppressed", False)) if t in holes else not t.Suppressed
+
+
 def threads_off(doc):
-    """True while the 'all threads off' switch holds threads off."""
-    return any(getattr(t, OFF_MARK, False) and t.Suppressed for t in threads(doc)) or \
-        any(getattr(h, OFF_MARK, False) and not h.ModelThread for h in tapped_holes(doc))
+    """True while the 'all threads off' switch holds threads off and none is on (a thread made or turned on since
+    makes it a mixed state: the next click turns everything off)."""
+    ts, holes = threads(doc), tapped_holes(doc)
+    if any(_thread_on(t, holes) for t in ts + holes):
+        return False
+    return any(getattr(t, OFF_MARK, False) for t in ts + holes)
 
 
 def _mark(t, on):
@@ -183,14 +193,16 @@ def toggle_threads(doc):
         raise ValueError("This part has no threads")
     _repair(doc)
     for t in ts + holes:  # turned back on by hand meanwhile (an edited hole, an unsuppressed thread): not ours
-        if getattr(t, OFF_MARK, False) and (t.ModelThread if t in holes else not t.Suppressed):
+        if getattr(t, OFF_MARK, False) and _thread_on(t, holes):
             _mark(t, False)
     return _keeping_attachments(doc, lambda: _switch_threads(ts, holes))
 
 
 def _switch_threads(ts, holes):
+    """Any thread on (some on and some off is mixed: a new thread made while the others were off) -> all off;
+    all off -> the ones the switch turned off come back."""
     marked = [t for t in ts + holes if getattr(t, OFF_MARK, False)]
-    if marked:
+    if marked and not any(_thread_on(t, holes) for t in ts + holes):
         for t in marked:
             if t in holes:
                 t.ModelThread = True

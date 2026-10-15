@@ -9,6 +9,15 @@ _depth = 0
 _busy = None
 
 
+def curve_type(edge):
+    """An edge's curve TypeId, or "" when FreeCAD has no Python type for it ("undefined curve type": a modelled
+    thread's helical edges). Reading .Curve on those raised in every tool that looked at all of a part's edges."""
+    try:
+        return edge.Curve.TypeId
+    except Exception:
+        return ""
+
+
 @dataclass
 class SafeResult:
     ok: bool

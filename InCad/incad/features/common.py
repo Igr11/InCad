@@ -1,5 +1,6 @@
 """Helpers shared by feature kinds."""
 from dataclasses import dataclass
+from incad.core import safe
 
 
 
@@ -325,13 +326,13 @@ def accepts(kind, obj, sub):
     if kind == "edge":
         return sub.startswith("Edge") and el is not None
     if kind == "circular_edge":
-        return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle"
+        return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
     if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face or a straight edge
         if sub.startswith("Face") and el is not None:
             return el.Surface.TypeId == "Part::GeomPlane"
-        return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomLine"
+        return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomLine"
     if kind == "component":
         return tid == "App::Link"
     if kind == "piece":  # a face of one of the feature's own pieces (Split ▸ Keep picked)
@@ -348,7 +349,13 @@ def accepts(kind, obj, sub):
     if kind == "axis":
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")
-        return sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomLine"
+        return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomLine"
+    if kind == "rot_axis":  # what a circular pattern turns around: an axis, a straight or circular edge, a round face
+        if not sub:
+            return tid in ("App::Line", "PartDesign::Line")
+        if sub.startswith("Edge"):
+            return el is not None and safe.curve_type(el) in ("Part::GeomLine", "Part::GeomCircle")
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomCylinder"
     if kind == "limit":  # where a spaced pattern starts or ends: a flat face, an edge, or a work plane
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")

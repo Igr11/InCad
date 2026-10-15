@@ -49,8 +49,8 @@ def body_of(obj, sub=""):
 def defaults(doc, body, profile=None):
     from incad.core import prefs
     values = {f.key: f.default for f in FIELDS}
-    values.update(base=body.Name if body is not None else "", tools="",
-                  clearance="%g mm" % prefs.thread_clearance())
+    # Inventor's order: nothing preset — the first solid clicked is the base, every next one a tool
+    values.update(base="", tools="", clearance="%g mm" % prefs.thread_clearance())
     return values
 
 
@@ -271,9 +271,9 @@ def _check_helpers(doc, helpers, tools):
 
 def create(doc, body, profile, values):
     bases = _bodies(doc, values.get("base"))
-    base = bases[0] if bases else body
+    base = bases[0] if bases else None
     if base is None:
-        raise ValueError("Pick the base solid")
+        raise ValueError("Click the base solid (the one that stays), then the tools")
     tools = _bodies(doc, values.get("tools"))
     if not tools:
         raise ValueError("Pick at least one other solid as a tool")

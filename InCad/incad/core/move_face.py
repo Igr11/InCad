@@ -20,7 +20,15 @@ _ANG = 1e-6
 
 
 def _is_plane(face):
-    return face.Surface.__class__.__name__ == "Plane"
+    """A flat face, whatever its surface: OCC's offsets and booleans give flat faces back as B-splines too."""
+    if face.Surface.__class__.__name__ == "Plane":
+        return True
+    if face.Surface.__class__.__name__ in ("Cylinder", "Cone", "Sphere", "Toroid", "SurfaceOfExtrusion"):
+        return False
+    try:
+        return face.findPlane() is not None
+    except Exception:
+        return False
 
 
 def _normal(face):
@@ -132,14 +140,18 @@ def gap_to(faces, target):
 
 def _along(face, n):
     """A face the move runs along: a plane containing n, a cylinder whose axis is n, a curve extruded along n (the
-    walls of an extruded ellipse or spline), or any other surface square to n everywhere (a B-spline wall)."""
-    kind = face.Surface.__class__.__name__
+    walls of an extruded ellipse or spline), or any other surface square to n everywhere (a B-spline wall). An offset
+    of one of those (a wall moved Together before) runs the same way."""
+    surface = face.Surface
+    while surface.__class__.__name__ == "OffsetSurface":
+        surface = surface.BasisSurface
+    kind = surface.__class__.__name__
     if kind == "Plane":
         return abs(_normal(face).dot(n)) < _ANG
     if kind == "Cylinder":
-        return abs(abs(face.Surface.Axis.normalize().dot(n)) - 1) < _ANG
+        return abs(abs(App.Vector(surface.Axis).normalize().dot(n)) - 1) < _ANG
     if kind == "SurfaceOfExtrusion":
-        return abs(abs(App.Vector(face.Surface.Direction).normalize().dot(n)) - 1) < _ANG
+        return abs(abs(App.Vector(surface.Direction).normalize().dot(n)) - 1) < _ANG
     if kind not in ("BSplineSurface", "BezierSurface"):
         return False  # a cone, sphere or torus never runs along a straight move
     u0, u1, v0, v1 = face.ParameterRange
@@ -150,7 +162,10 @@ def _along(face, n):
 def _straight(edge):
     """A straight edge: a line, or a B-spline / Bezier as long as its chord (FreeCAD's refine — removeSplitter —
     makes one of the seam of a hole wall it merges)."""
-    kind = edge.Curve.__class__.__name__
+    try:
+        kind = edge.Curve.__class__.__name__
+    except Exception:  # "undefined curve type" (a thread's helix)
+        return False
     if kind == "Line":
         return True
     if kind not in ("BSplineCurve", "BezierCurve") or edge.isClosed():

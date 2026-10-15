@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.2.0 — тестовая сборка<br>
+      Версия 0.4.0 — тестовая сборка<br>
       FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.2.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает InCad в сборке 0.4.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -135,10 +135,11 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>Эта сборка: 0.2.0, тестовая</h2>
-<p>0.2.0 — ранняя тестовая сборка. Детали проверялись уже в прошлых сборках; в этой впервые можно тестировать
-<b>сборки</b>: вставку деталей, связи и соединения, перетаскивание деталей по их степеням свободы и Make Assembly из
-детали.</p></div>
+<div class="keep"><h2>Эта сборка: 0.4.0, тестовая</h2>
+<p>0.4.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0. Новое в 0.4.0: собственный
+<b>Offset</b> в эскизе, зависимость <b>Concentric</b>, Move Face на <b>круглых стенках</b>, Fillet / Chamfer на всей
+<b>грани</b> или гладкой <b>цепочке</b> рёбер, любая <b>ось</b> (и две точки) для Circular Pattern, более ясный вид эскиза
+и много исправлений по итогам тестов — полный список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
 
@@ -476,6 +477,7 @@ features</b>).</p></div>
   <tr><th>Кнопка</th><th class="wrap">Варианты</th><th>Клавиша</th></tr>
   <tr><td>Line</td><td class="wrap">Line (цепочка линий; <kbd>M</kbd> во время рисования переключает линию и дугу),
       Single Line</td><td><kbd>L</kbd></td></tr>
+  <tr><td>Spline</td><td class="wrap">Spline (через точки), Control-Vertex Spline</td><td></td></tr>
   <tr><td>Circle</td><td class="wrap">Circle (центр и радиус), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
   <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
   <tr><td>Rectangle</td><td class="wrap">Rectangle (угол, ширина, высота), Center Rectangle, 3-Point Rectangle, 3-Point
@@ -483,12 +485,16 @@ features</b>).</p></div>
   <tr><td>Slot</td><td class="wrap">Center-to-Center Slot, Overall Slot (два крайних конца, затем ширина), Center Point
       Slot (центр, центр одного конца, затем ширина), Arc Slot, Flat-End Arc Slot</td><td></td></tr>
   <tr><td>Polygon</td><td class="wrap">Hexagon, Triangle, Square, Pentagon, Octagon, Polygon (N sides)</td><td></td></tr>
-  <tr><td>Spline</td><td class="wrap">Spline (через точки), Control-Vertex Spline</td><td></td></tr>
   <tr><td>Point</td><td class="wrap">Точка эскиза (например, центр отверстия)</td><td></td></tr>
 </table>
 <p><span class="path">Sketch ▸ Modify</span>: <span class="ui">Fillet</span> и <span class="ui">Chamfer</span> (скругление и
 фаска углов эскиза), <span class="ui">Trim</span> (<kbd>X</kbd>), <span class="ui">Extend</span>, <span class="ui">Offset</span>.
 В <span class="path">Sketch ▸ Pattern</span> — массивы в эскизе (5.9) и <span class="ui">Mirror</span>.</p>
+<p><b>Offset</b> (собственный InCad): щёлкните линию — берётся вся фигура, в которую она входит (прямоугольник,
+многоугольник, цепочка из отдельных линий); <kbd>⌘</kbd>-клик добавляет фигуры. Копия идёт за курсором, клик ставит её.
+Углы остаются острыми, одна линия даёт одну параллельную линию, окружность или эллипс — кольцо. Смещение задаёт один
+размер, на нём открывается поле значения. Геометрия, выделенная до команды, берётся сразу. <span class="ui">Mirror</span>
+и массивы тоже берут всю фигуру по клику на одну сторону.</p>
 <p><b>Ввод значений при рисовании.</b> Пока инструмент рисует, вводите длину, радиус или угол прямо с клавиатуры;
 <kbd>Tab</kbd> переходит к следующему полю. <kbd>Esc</kbd> или <span class="ui">Stop Tool</span> (меню-жест) завершает
 инструмент.</p>
@@ -511,7 +517,8 @@ Parameters, где его можно переименовать (<code>Width</co
 (d3 = 40).</p>
 
 <div class="keep"><h2>5.4 Зависимости</h2>
-<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Horizontal</span>,
+<p><span class="path">Sketch ▸ Constrain</span>: <span class="ui">Coincident</span>, <span class="ui">Concentric</span>
+(две окружности, дуги или эллипса: их центры связываются), <span class="ui">Horizontal</span>,
 <span class="ui">Vertical</span>, <span class="ui">Parallel</span>, <span class="ui">Perpendicular</span>,
 <span class="ui">Tangent</span>, <span class="ui">Equal</span>, <span class="ui">Symmetric</span>,
 <span class="ui">Fix</span> и <span class="ui">List</span> (Constraint List, 5.5). Выделите геометрию и нажмите зависимость
@@ -552,13 +559,16 @@ Parameters, где его можно переименовать (<code>Width</co
   <li>если геометрия выделена (в том числе спроецированные рёбра), переключает её между обычной и вспомогательной;</li>
   <li>если ничего не выделено, включает режим: всё, что вы рисуете, будет вспомогательным, пока не щёлкнете кнопку ещё раз.</li>
 </ul>
-<p>Вспомогательная геометрия не входит в профили; используйте её для осей и построений.</p>
+<p>Вспомогательная геометрия не входит в профили; используйте её для осей и построений. Она рисуется
+<b>оранжевым</b> пунктиром, тоньше обычных линий — и спроецированное ребро, переведённое во вспомогательное, тоже.</p>
 
 <div class="keep"><h2>5.8 Как увидеть эскиз</h2>
 <ul>
   <li><span class="ui">Slice Graphics</span> (<kbd>F7</kbd>, <span class="path">Sketch ▸ Format</span>) срезает часть
       детали перед плоскостью эскиза, чтобы был виден эскиз внутри детали.</li>
   <li><span class="ui">Look At</span> (меню-жест) поворачивает вид прямо на эскиз.</li>
+  <li>В тёмной теме деталь рисуется темнее, пока открыт эскиз, чтобы линии эскиза были лучше видны (цвет самой
+      детали не меняется).</li>
   <li>После <span class="ui">Finish Sketch</span> эскиз, который не используется ни одной операцией и представляет собой
       <b>незамкнутый контур</b> (например, путь для Sweep), остаётся видимым в модели; замкнутый эскиз и любой эскиз,
       используемый операцией, скрываются. <span class="ui">Hide / Show</span> меняет это для любого эскиза.</li>
@@ -719,7 +729,9 @@ Parameters, где его можно переименовать (<code>Width</co
       Distance 2) или <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> меняет стороны для двух последних типов.
       Расстояния по умолчанию 1 мм.</td></tr>
 </table>
-<p>Рёбра должны принадлежать текущей форме детали.</p>
+<p>Рёбра должны принадлежать текущей форме детали. Клик по ребру берёт всю его гладкую цепочку (линии и дуги паза,
+кольцо из кусков); клик по <b>грани</b> берёт все её рёбра, повторный клик по ней снимает их. Пока вы выбираете, деталь
+показана как есть, а результат нарисован поверх оранжевыми контурами.</p>
 
 <div class="keep"><h2>6.6 Shell — оболочка</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Shell</span> делает деталь пустотелой.</p></div>
@@ -751,8 +763,9 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 <table>
   <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
   <tr><td>Faces</td><td class="wrap">Одна или несколько плоских граней. Несколько граней должны смотреть в одну сторону
-      (например, верх бобышки и дно кармана), двигаются они вместе. Круглые грани и грани, смотрящие в разные стороны,
-      не принимаются: <i>The faces must be flat and face the same way</i>.</td></tr>
+      (например, верх бобышки и дно кармана), двигаются они вместе. Грани, смотрящие в разные стороны, не принимаются:
+      <i>The faces must be flat and face the same way</i>. <b>Круглая стенка</b> (цилиндр, вытянутый эллипс или сплайн)
+      сдвигается наружу или внутрь на Distance (To для неё недоступен); один клик берёт всю стенку.</td></tr>
   <tr><td>Extent</td><td class="wrap"><b>Distance</b> (число) или <b>To</b> (до грани или плоскости).</td></tr>
   <tr><td>Distance</td><td class="wrap">Сдвиг по внешнему направлению грани: положительный наращивает деталь, отрицательный
       врезается в неё, 0 ничего не меняет. Единицы, параметры и формулы — как везде (3.6). Начинается с 0 мм: введите значение или потяните стрелку.</td></tr>
@@ -853,7 +866,8 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 <div class="keep"><h2 id="boolean">6.12 Boolean — булевы операции</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (в Inventor — Combine) объединяет, вычитает или пересекает тела
 детали. Выделите базовое тело, затем тело-инструмент (одно или несколько) и нажмите Boolean — или выберите их в диалоге:
-щелчок в любом месте тела выбирает всё тело.</p></div>
+щелчок в любом месте тела выбирает всё тело. Как в Inventor, первый клик — основа (тело, которое остаётся), следующие —
+инструменты.</p></div>
 <table class="long">
   <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
   <tr><td>Base</td><td class="wrap">Тело, которое меняется.</td></tr>
@@ -893,8 +907,10 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
       ребро или ось, <b>Count</b> 2, <b>Spacing</b> 10 мм) или <b>Equal spacing</b> (Count копий между <b>From</b> и
       <b>To</b>: плоская грань, ребро или рабочая плоскость); <b>Flip direction</b>; <b>Two directions</b> (Direction 2,
       Count 2, Spacing 2).</td></tr>
-  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>, <b>Count</b> (4),
-      <b>Angle</b> (360°).</td></tr>
+  <tr><td>Circular</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Axis</b>: <b>Axis or edge</b>
+      (ось начала координат или рабочая ось, линия эскиза, прямое или круглое ребро, круглая грань — оси X, Y и Z начала
+      координат видны, пока вы выбираете) или <b>Two points</b> (две точки на детали: скрытая рабочая ось через них, видна
+      оранжевым пунктиром, пока открыт диалог), <b>Count</b> (4), <b>Angle</b> (360°).</td></tr>
   <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (плоская грань или плоскость).</td></tr>
 </table>
 
@@ -1255,13 +1271,14 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 <div class="keep"><h2>Известные ограничения этой сборки</h2>
 <ul>
   <li>Только macOS на Apple Silicon; FreeCAD 1.1 (проверено на 1.1.3).</li>
-  <li>Ранняя тестовая сборка: сборки (Assembly) впервые появились в 0.2.0. Сохраняйтесь почаще и работайте с копиями.</li>
+  <li>Тестовая сборка. Сохраняйтесь почаще и работайте с копиями.</li>
   <li>Интерфейс InCad только на английском.</li>
   <li>FreeCAD не делает оболочку (Shell) детали, в которой уже есть моделированная резьба (InCad предлагает сделать Shell
       до резьбы).</li>
   <li>Некоторые смещения (зазоры) не строятся на резьбе и других сложных формах; диалог об этом скажет.</li>
-  <li>Move Face двигает только плоские грани и только вдоль их собственного направления. В режиме Inventor он пока не
-      следует за соседом, закруглённым поперёк сдвига (используйте Step или Together).</li>
+  <li>Move Face двигает плоские грани вдоль их собственного направления и прямые круглые стенки наружу / внутрь. В
+      режиме Inventor он пока не следует за соседом, закруглённым поперёк сдвига (используйте Step или Together); Together
+      внутрь рядом со скруглениями или фасками на круглой стенке пока не делается.</li>
 </ul></div>
 
 <!-- ============================================================ A -->
@@ -1336,15 +1353,15 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 <h2>Эскиз</h2>
 <table class="long">
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
-  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Circle | 3-Point Circle | Ellipse | 3-Point
+  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Spline | Control-Vertex Spline · Circle | 3-Point Circle | Ellipse | 3-Point
       Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
       Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
-      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) · Spline | Control-Vertex Spline ·
+      Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) ·
       Point</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
   <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
-  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
+  <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Concentric · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
   <tr><td></td><td>Insert</td><td class="wrap">Project (Project Geometry)</td></tr>
   <tr><td></td><td>Format</td><td class="wrap">Construction · Constraints (Show / Hide Constraints) · Free DOF (Show Free Geometry) · Slice (Slice Graphics)</td></tr>
   <tr><td></td><td>Exit</td><td class="wrap">Finish Sketch</td></tr>

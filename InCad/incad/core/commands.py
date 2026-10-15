@@ -6,7 +6,7 @@ from incad.core import log
 
 ANY = "any"
 
-_before_run = None  # callable() run before every command (the shell ends an active part drag there)
+_before_run = None  # callable(cmd_id) run before every command (the shell ends an active part drag there)
 
 
 def set_before_run_hook(fn):
@@ -68,7 +68,7 @@ class Registry:
             return SafeResult(False, error="unknown command %s" % cmd_id)
         if _before_run is not None:
             try:
-                _before_run()
+                _before_run(cmd_id)
             except Exception:
                 log.logger().exception("before %s", cmd_id)
         if cmd.transactional:

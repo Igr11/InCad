@@ -42,6 +42,28 @@ def report(level, message, detail=""):
             log.exception("reporter failed")
 
 
+def catch_uncaught():
+    """Python errors that escape into FreeCAD (a button's slot, a timer) go to FreeCAD's Report view only, which is
+    not saved: InCad's own are also written here (a dialog whose buttons all stopped working left no trace)."""
+    import sys
+    import traceback
+    previous = sys.excepthook
+    if getattr(previous, "_incad", False):
+        return
+
+    def hook(kind, value, tb):
+        try:
+            text = "".join(traceback.format_exception(kind, value, tb))
+            if "incad" in text:
+                logger().error("Uncaught error\n%s", text)
+        except Exception:
+            pass
+        previous(kind, value, tb)
+
+    hook._incad = True
+    sys.excepthook = hook
+
+
 def _reset_for_tests():
     global _logger, _reporter
     if _logger is not None:

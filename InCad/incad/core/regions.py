@@ -31,13 +31,57 @@ def needs_regions(sk):
         return True
 
 
+def _guides(sk):
+    """Geometry indexes that are guides, not profile lines: a sketch pattern's path (Inventor: it never splits an
+    area — a path through a row of polygons cut each one in pieces)."""
+    out = set()
+    try:
+        from incad.core import sketch_patterns as sp
+        for rec in sp.records(sk):
+            for gid in rec.get("path", []) or []:
+                i = sp.index_of(sk, gid)
+                if i is not None:
+                    out.add(i)
+    except Exception:
+        pass
+    return out
+
+
+def _profile_edges(sk):
+    """The sketch's normal geometry as edges in its own coordinates, guides left out."""
+    guides = _guides(sk)
+    if not guides:
+        return _local_shape(sk).Edges
+    edges = []
+    for i, g in enumerate(sk.Geometry):
+        if i in guides or sk.getConstruction(i) or type(g).__name__ == "Point":
+            continue
+        try:
+            edges.append(g.toShape())
+        except Exception:
+            pass
+    return edges
+
+
+def islands(faces):
+    """True when the areas are separate (none touches another): they can all be one profile, as FreeCAD's Pad
+    takes every closed shape of a plain sketch."""
+    for i, a in enumerate(faces):
+        for b in faces[i + 1:]:
+            try:
+                if a.distToShape(b)[0] < 1e-6:
+                    return False
+            except Exception:
+                return False
+    return len(faces) > 1
+
+
 def regions(sk):
     """The bounded areas of the sketch (faces in the sketch's own coordinates, z = 0), largest first."""
-    sh = _local_shape(sk)
-    edges = sh.Edges
+    edges = _profile_edges(sk)
     if not edges:
         return []
-    bb = sh.BoundBox
+    bb = Part.Compound(edges).BoundBox
     big = Part.makePlane(bb.XLength + 2 * MARGIN, bb.YLength + 2 * MARGIN,
                          App.Vector(bb.XMin - MARGIN, bb.YMin - MARGIN, 0))
     try:
@@ -118,20 +162,28 @@ def _attach_like(profile, source):
         profile.Placement = source.Placement
 
 
-def fill(profile, face):
+def fill(profile, faces):
     profile.deleteAllGeometry()
-    profile.addGeometry(outline(face))
+    geos = []
+    for face in (faces if isinstance(faces, (list, tuple)) else [faces]):
+        geos += outline(face)
+    profile.addGeometry(geos)
 
 
 def make_profile(doc, body, source, face):
-    """A hidden profile sketch for one area of `source`, kept in step with it (see update)."""
+    """A hidden profile sketch for one area of `source` (or several separate ones: a list), kept in step with it
+    (see update)."""
     sk = body.newObject("Sketcher::SketchObject", source.Name + "Area")
     sk.Label = source.Label + " area"
     _attach_like(sk, source)
     sk.addProperty("App::PropertyString", REGION, "InCad", "The sketch and area this profile is built from")
     sk.setPropertyStatus(REGION, "Hidden")
-    p = inner_point(face)
-    setattr(sk, REGION, json.dumps({"source": source.Name, "point": [p.x, p.y]}))
+    faces = face if isinstance(face, (list, tuple)) else [face]
+    pts = [inner_point(f) for f in faces]
+    data = {"source": source.Name, "point": [pts[0].x, pts[0].y]}
+    if len(pts) > 1:
+        data["points"] = [[p.x, p.y] for p in pts]
+    setattr(sk, REGION, json.dumps(data))
     fill(sk, face)
     sk.Visibility = False
     doc.recompute()
@@ -161,12 +213,14 @@ def update(profile):
     if source is None:
         return False
     data = json.loads(getattr(profile, REGION))
-    x, y = data["point"]
-    face = region_at(source, App.Vector(x, y, 0))
-    if face is None:
-        return False
+    faces = []
+    for x, y in data.get("points") or [data["point"]]:
+        face = region_at(source, App.Vector(x, y, 0))
+        if face is None:
+            return False
+        faces.append(face)
     _attach_like(profile, source)
-    fill(profile, face)
+    fill(profile, faces)
     return True
 
 

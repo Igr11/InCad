@@ -58,12 +58,12 @@ class RegistryTest(unittest.TestCase):
         from incad.core import commands
         order = []
         self.r.register(cmd("a", handler=lambda: order.append("command")))
-        commands.set_before_run_hook(lambda: order.append("hook"))
+        commands.set_before_run_hook(lambda *_: order.append("hook"))
         try:
             self.assertTrue(self.r.run("a").ok)
             self.assertEqual(order, ["hook", "command"], "an active drag ends before any command")
 
-            def boom():
+            def boom(*_):
                 raise RuntimeError("boom")
             commands.set_before_run_hook(boom)
             self.assertTrue(self.r.run("a").ok, "a failing hook does not stop the command")

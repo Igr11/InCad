@@ -9,15 +9,33 @@ from incad.ui.feature_dialog import FeatureDialog
 def _edge_under(shape, edge, tol=1e-6):
     """The number of `shape`'s edge that `edge` lies on (same kind of curve; its ends and middle on it), or None."""
     import Part
+
+    def kind_of(e):
+        try:
+            return type(e.Curve).__name__
+        except Exception:  # FreeCAD has no Python type for some OCC curves ("undefined curve type")
+            return None
+
     a, b = edge.FirstParameter, edge.LastParameter
     probes = [Part.Vertex(edge.valueAt(t)) for t in (a, (a + b) / 2, b)]
-    kind = type(edge.Curve).__name__
+    kind = kind_of(edge)
+    if kind is None:
+        return None
+    box = edge.BoundBox
     for i, e in enumerate(shape.Edges, 1):
-        if type(e.Curve).__name__ != kind or e.Length + tol < edge.Length:
+        near = e.BoundBox
+        near.enlarge(tol * 10)
+        if not near.intersect(box) or e.Length + tol < edge.Length or kind_of(e) != kind:
             continue
         if all(e.distToShape(v)[0] < tol for v in probes):
             return i
     return None
+
+
+def _edge_key(e):
+    """An edge by its length and centre of mass (rounded): equal for an edge a feature left as it was."""
+    c = e.CenterOfMass
+    return (round(e.Length, 4), round(c.x, 4), round(c.y, 4), round(c.z, 4))
 
 
 def _feature_alive(obj):
@@ -38,6 +56,7 @@ class FeatureSession(QtCore.QObject):
         self.creating = feature is None
         self._theme, self._parent, self._on_close = theme, parent, on_close
         self.dialog = None
+        self._started = False  # the dialog was made: from then on a session without one is dead (alive)
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(250)
@@ -52,7 +71,7 @@ class FeatureSession(QtCore.QObject):
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
         self._extra = []  # other documents this dialog changes (assembly cuts): one undo step in each
         self._observing = False
-        self._seeding = False
+        self._seeding = 0  # selection writes of InCad's own still to come back as events (one per reselect)
         self._saved_visibility = []
         self._markers = None       # key points of the sketches picked for Sweep/Loft, on the view
         self._saved_sketches = []  # picked sketches shown for the dialog, hidden again when it closes
@@ -86,6 +105,7 @@ class FeatureSession(QtCore.QObject):
             self._finish(commit=False)
             return False
         self.dialog = FeatureDialog(self.kind.TITLE, self.kind.ICON, self.kind.FIELDS, values, self._theme, self._parent)
+        self._started = True
         self._applied = self.dialog.values()
         if not self.creating:
             for value in getattr(self.kind, "STRUCTURAL", ("intersect", "new_solid")):
@@ -126,14 +146,23 @@ class FeatureSession(QtCore.QObject):
         self._seen_waiting = self._waiting_picks() if self.dialog is not None else []
         self._observe(True)
         self._sync_sketch_markers()  # an edited Sweep/Loft shows its sketches' points from the start
+        self._sync_axis_line()  # an edited pattern / revolve on two points shows its axis from the start
         return True
 
     def _shown(self, field):
         from incad.features.common import shown
         return shown(field, self.dialog.values())
 
+    @property
+    def alive(self):
+        """Open and with its dialog (before start: not yet made, still alive). The shell lets go of a dead one: a
+        Thread dialog vanished and every command after said 'Finish the Thread dialog first'."""
+        return not self._closed and (not self._started or self.dialog is not None)
+
     def _waiting_picks(self):
         """The pick fields still to fill, in dialog order: shown, empty and without a default (not optional)."""
+        if self.dialog is None:
+            return []
         values = self.dialog.values()
         return [f.key for f in self.kind.FIELDS if f.kind in ("pick", "picks") and not f.optional
                 and self._shown(f) and not values.get(f.key)]
@@ -159,8 +188,10 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "plane", "circular_edge", "limit", "to_face", "direction")
+    _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "limit", "to_face",
+                 "direction")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
+                   "rot_axis": "an axis, a straight or circular edge, or a round face",
                    "move_to": "a face, plane, edge or point"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
@@ -190,6 +221,12 @@ class FeatureSession(QtCore.QObject):
         if not wanted:
             return
         pairs = self._selection()
+        if getattr(self.kind, "SOLID_PICKS", False):
+            pairs = self._onto_solid(pairs)  # edges selected beforehand on a sketch / area: the part's own
+        if getattr(self.kind, "FACE_EDGES", False):
+            pairs = self._face_edges(pairs)
+        if getattr(self.kind, "TANGENT_CHAIN", False):
+            pairs = self._tangent_chains(pairs)
         for key, pick in wanted.items():
             ok = common.whole(pick, [p for p in self._as_picks(pick, pairs) if common.accepts(pick, *p)])
             if ok:
@@ -300,6 +337,112 @@ class FeatureSession(QtCore.QObject):
                 out.append((base, name))
         return out
 
+    @staticmethod
+    def _face_edges(pairs):
+        """A click on a face where edges are wanted takes all its edges (Fillet / Chamfer round the whole face, as in
+        Inventor); a cylinder's seam is no edge of the part's outline and stays out."""
+        import Part
+        out, seen = [], set()
+        for obj, el in pairs:
+            names = [el]
+            if el.startswith("Face") and not obj.Shape.isNull():
+                shape = obj.Shape
+                try:
+                    face = shape.getElement(el)
+                except Exception:
+                    face = None
+                if face is not None:
+                    number = {}
+                    for k, x in enumerate(shape.Edges, 1):
+                        number.setdefault(x.hashCode(), []).append((k, x))
+                    names = []
+                    for e in face.Edges:
+                        if e.Degenerated or len(shape.ancestorsOfType(e, Part.Face)) < 2:
+                            continue  # a seam: the face meets itself there
+                        i = next((k for k, x in number.get(e.hashCode(), ()) if x.isSame(e)), None)
+                        if i is not None:
+                            names.append("Edge%d" % i)
+            for name in names:
+                if (obj.Name, name) not in seen:
+                    seen.add((obj.Name, name))
+                    out.append((obj, name))
+        return out
+
+    @staticmethod
+    def _tangent_chains(pairs):
+        """A click on an edge takes the smooth chain it belongs to: the edges running on from it without a corner
+        (a slot's lines and arcs, a ring in pieces), as Inventor / Fusion pick for a fillet or chamfer."""
+        import Part
+        out, seen = [], set()
+        for obj, el in pairs:
+            chain = [el]
+            if el.startswith("Edge") and not obj.Shape.isNull():
+                shape = obj.Shape
+                try:
+                    start = shape.getElement(el)
+                except Exception:
+                    start = None
+                if start is not None:
+                    edges = shape.Edges  # once: each .Edges builds every edge of the part (hung on a big one)
+                    number = {}
+                    for k, x in enumerate(edges, 1):
+                        number.setdefault(x.hashCode(), []).append((k, x))
+
+                    def known(x, seen_):
+                        return any(x.isSame(y) for y in seen_.get(x.hashCode(), ()))
+
+                    chain, todo, picked, seen_ = [], [start], [start], {start.hashCode(): [start]}
+                    while todo:
+                        e = todo.pop()
+                        for v in e.Vertexes:
+                            for nb in shape.ancestorsOfType(v, Part.Edge):
+                                if nb.Degenerated or known(nb, seen_):
+                                    continue
+                                try:
+                                    t1 = e.tangentAt(e.parameterAt(v))
+                                    t2 = nb.tangentAt(nb.parameterAt(v))
+                                except Exception:
+                                    continue
+                                if t1.Length > 1e-12 and t2.Length > 1e-12 and \
+                                        t1.normalize().cross(t2.normalize()).Length < 1e-6:
+                                    picked.append(nb)
+                                    seen_.setdefault(nb.hashCode(), []).append(nb)
+                                    todo.append(nb)
+                    for e in picked:
+                        i = next((k for k, x in number.get(e.hashCode(), ()) if x.isSame(e)), None)
+                        if i is not None:
+                            chain.append("Edge%d" % i)
+            for name in chain:
+                if (obj.Name, name) not in seen:
+                    seen.add((obj.Name, name))
+                    out.append((obj, name))
+        return out
+
+    @staticmethod
+    def _whole_outlines(pairs):
+        """A click on one line of a shape (a polygon, a rectangle, a chain drawn line by line) takes its whole
+        outline — the lines joined to it end to end (Inventor; one click per side before)."""
+        from incad.core import sketch_offset as so
+        out, seen = [], set()
+        for obj, el in pairs:
+            if obj.TypeId == "Sketcher::SketchObject" and el.startswith("Edge"):
+                try:
+                    chain, _ = so.outline(obj, int(el[4:]) - 1)
+                except (ValueError, IndexError):
+                    chain = None
+                if chain:
+                    for g in chain:
+                        key = (obj.Name, "Edge%d" % (g + 1))
+                        if key not in seen:
+                            seen.add(key)
+                            out.append((obj, key[1]))
+                    continue
+            key = (obj.Name, el)
+            if key not in seen:
+                seen.add(key)
+                out.append((obj, el))
+        return out
+
     def _onto_solid(self, pairs):
         """A click on a shown sketch's line or point lying on the part's edge or corner stands for that edge or
         corner (a fillet on the edge a profile line made); any other sketch element is no pick on the part."""
@@ -308,7 +451,8 @@ class FeatureSession(QtCore.QObject):
         shape = base.Shape if base is not None and not base.Shape.isNull() else None
         out = []
         for obj, el in pairs:
-            if obj.TypeId != "Sketcher::SketchObject":
+            # a sketch line, or an "Area n" face shown for a region pick, over the part's edge: that edge
+            if obj.TypeId.startswith("PartDesign::") or obj is base:
                 out.append((obj, el))
                 continue
             try:
@@ -321,17 +465,23 @@ class FeatureSession(QtCore.QObject):
                 match = next((i for i, v in enumerate(shape.Vertexes, 1) if (v.Point - mine.Point).Length < 1e-6), None)
                 name = "Vertex%d" % match if match else None
             else:
-                ends = (mine.Vertexes[0].Point, mine.Vertexes[-1].Point) if mine.Vertexes else ()
+                # the part's edge the line lies on: the same curve through the line's middle (the part may have it
+                # split or longer, where a pad meets a face — whole-length matches only missed those)
                 mid = mine.valueAt((mine.FirstParameter + mine.LastParameter) / 2)
+                quarter = mine.valueAt(mine.FirstParameter + (mine.LastParameter - mine.FirstParameter) * 0.3)
                 match = None
                 for i, e in enumerate(shape.Edges, 1):
-                    if abs(e.Length - mine.Length) > 1e-6 or not ends:
+                    try:
+                        near = e.BoundBox
+                        near.enlarge(1e-5)
+                        if not near.isInside(mid):
+                            continue
+                        if e.distToShape(Part.Vertex(mid))[0] < 1e-6 and \
+                                (e.distToShape(Part.Vertex(quarter))[0] < 1e-6 or e.Length < mine.Length):
+                            match = i
+                            break
+                    except Exception:
                         continue
-                    theirs = (e.Vertexes[0].Point, e.Vertexes[-1].Point)
-                    same_ends = all(min((p - q).Length for q in theirs) < 1e-6 for p in ends)
-                    if same_ends and e.distToShape(Part.Vertex(mid))[0] < 1e-6:
-                        match = i
-                        break
                 name = "Edge%d" % match if match else None
             if name is not None:
                 out.append((base, name))
@@ -458,6 +608,14 @@ class FeatureSession(QtCore.QObject):
             raw_pairs = self._onto_solid(raw_pairs)
         if self._previewing_picks(key):
             raw_pairs = self._onto_base_faces(raw_pairs)
+        outlines = f.pick in ("sketch_geometry", "sketch_path")
+        if outlines:
+            raw_pairs = self._whole_outlines(raw_pairs)
+        elif f.pick == "edge" and getattr(self.kind, "TANGENT_CHAIN", False):
+            if getattr(self.kind, "FACE_EDGES", False):
+                raw_pairs = self._face_edges(raw_pairs)
+            raw_pairs = self._tangent_chains(raw_pairs)
+            outlines = True  # the whole chain shows picked
         pairs = self._as_picks(f.pick, raw_pairs)
         if f.pick == "body":  # a solid already picked in another field (the base) is not a tool too
             taken = {o.Name for g in self.kind.FIELDS if g.pick == "body" and g.key != key
@@ -481,6 +639,8 @@ class FeatureSession(QtCore.QObject):
             return
         if f.kind == "picks":
             ok = self._collect_picks(key, ok)
+            if outlines:
+                self._reselect(ok)  # the whole outline shows picked, not just the line clicked
         elif f.pick in self._CORNER_PICKS and ok[-1][1].startswith("Vertex"):
             self._reselect(ok[-1:])  # a corner taken from an edge / face click: the corner shows selected
         self.dialog.set_pick(key, common.format_picks(ok[-1:] if f.kind == "pick" else ok))
@@ -502,10 +662,9 @@ class FeatureSession(QtCore.QObject):
             return
         if key and self.dialog.field_def(key).pick in self._ON_BASE and self.feature is not None:
             tip = self.body.Tip if self.body is not None else None
-            if not self._previewing_picks(key):
-                want = self._expected_base()
-            elif tip is not None and tip is not self.feature:
-                want = self.feature  # an edit down the tree: the feature itself, not the finished part, is picked on
+            # the part as it is: every edge can be picked and the picked ones show selected (on the preview they were
+            # hidden, cut away); Fillet / Chamfer / Shell draw their result over it as outlines (_sync_ghost)
+            want = self._expected_base()
         if want is not self._base_shown:
             self._show_base(False)
             if want is not None:
@@ -515,6 +674,10 @@ class FeatureSession(QtCore.QObject):
                 self._base_shown = want
                 for o in dict.fromkeys(shown):
                     self._set_visible(o, o is want)
+        # the result drawn over the part as outlines whenever the part is shown for a pick (Fillet / Chamfer's
+        # preview, and Move Face, Draft… whose result was not on screen at all while faces were picked)
+        self._sync_ghost(bool(key) and (self._previewing_picks(key) or self._base_shown is not None))
+        self._peek_axes(bool(key) and self.dialog.field_def(key).pick in ("axis", "rot_axis"))
         if seed and key:
             self._seed_selection(key)
         self._sync_point_pick(key)
@@ -524,6 +687,85 @@ class FeatureSession(QtCore.QObject):
             if bool(getattr(self.feature, "ShowAll", False)) != active:
                 hook(self.feature, active)
                 self.doc.recompute()
+
+    def _sync_axis_line(self, on=True):
+        """The hidden Work Axis InCad made through two clicked points (Revolve, Circular Pattern) drawn while the
+        dialog is open: a dashed line through the points, a little past them, and the two points; never pickable."""
+        try:
+            import FreeCADGui as Gui
+            from pivy import coin
+        except ImportError:
+            return
+        old = getattr(self, "_axis_line", None)
+        if old is not None:
+            try:
+                old[0].getSceneGraph().removeChild(old[1])
+            except Exception:
+                pass
+            self._axis_line = None
+        f = self.feature
+        if not on or self._closed or f is None or not _feature_alive(f):
+            return
+        body = f.getParentGeoFeatureGroup()
+        line = next((o for o in (body.Group if body is not None else []) if o.TypeId == "PartDesign::Line"
+                     and getattr(o, "InCadHelperOf", None) == f.Name and getattr(o, "InCadAxisPoints", "")), None)
+        if line is None:
+            return
+        try:
+            from incad.features import revolve
+            pts = revolve.parse_points(line.InCadAxisPoints)
+            if len(pts) != 2 or (pts[1] - pts[0]).Length < 1e-9:
+                return
+            pl = body.getGlobalPlacement()
+            a, b = pl.multVec(pts[0]), pl.multVec(pts[1])
+            u = b - a
+            reach = max(u.Length * 0.25, 5.0)
+            u.normalize()
+            ends = [a - u * reach, b + u * reach]
+            node = coin.SoSeparator()
+            style = coin.SoPickStyle()
+            style.style = coin.SoPickStyle.UNPICKABLE
+            color = coin.SoBaseColor()
+            color.rgb.setValue(0.95, 0.62, 0.29)
+            draw = coin.SoDrawStyle()
+            draw.lineWidth = 2
+            draw.linePattern = 0xF0F0  # dashed: an axis, not an edge of the part
+            draw.pointSize = 7
+            coords = coin.SoCoordinate3()
+            coords.point.setValues(0, 4, [(p.x, p.y, p.z) for p in ends + [a, b]])
+            lines = coin.SoLineSet()
+            lines.numVertices.setValues(0, 1, [2])
+            dots = coin.SoPointSet()
+            dots.startIndex = 2
+            dots.numPoints = 2
+            for n in (style, color, draw, coords, lines, dots):
+                node.addChild(n)
+            top = coin.SoAnnotation()
+            top.addChild(node)
+            view = Gui.getDocument(self.doc_name).ActiveView
+            view.getSceneGraph().addChild(top)
+            self._axis_line = (view, top)
+        except Exception:
+            log.logger().exception("%s axis line", self.kind.TITLE)
+
+    def _peek_axes(self, on):
+        """While an axis is picked, the origin's X, Y and Z axes show (the Z default was the only one to be had
+        with the origin hidden); put back exactly as they were afterwards. Not recorded: no choice is changed."""
+        saved = getattr(self, "_axes_shown", None)
+        if on and saved is None and self.body is not None:
+            origin = getattr(self.body, "Origin", None)
+            if origin is None:
+                return
+            items = list(origin.OriginFeatures)
+            self._axes_shown = [(o, bool(o.Visibility)) for o in [origin] + items]
+            for o in items:
+                self._set_visible(o, o.Role in ("X_Axis", "Y_Axis", "Z_Axis"))
+            self._set_visible(origin, True)
+        elif not on and saved is not None:
+            self._axes_shown = None
+            for o, visible in saved:
+                if _feature_alive(o):
+                    self._set_visible(o, visible)
 
     def _sync_point_pick(self, key):
         """A 'two points' field that becomes active shows the part's markers (corners, edge middles, circle
@@ -574,8 +816,68 @@ class FeatureSession(QtCore.QObject):
         if self.dialog.active_pick() == key:
             self.dialog.set_active_pick(None)
 
+    def _sync_ghost(self, on):
+        """The result drawn over the part while its edges / faces are picked: the feature's edges as outlines in
+        the accent colour, never pickable (clicks go to the part underneath)."""
+        try:
+            import FreeCADGui as Gui
+            from pivy import coin
+        except ImportError:
+            return
+        old = getattr(self, "_ghost", None)
+        if old is not None:
+            view, node = old
+            try:
+                view.getSceneGraph().removeChild(node)
+            except Exception:
+                pass
+            self._ghost = None
+        f = self.feature
+        if not on or f is None or not _feature_alive(f) or "Invalid" in f.State or f.Shape.isNull():
+            return
+        try:
+            view = Gui.getDocument(self.doc_name).ActiveView
+            group = f.getParentGeoFeatureGroup()
+            pl = group.getGlobalPlacement() if group is not None else None
+            base = self._expected_base()
+            same = base.Shape if base is not None and not base.Shape.isNull() else None
+            lines = []
+            kept = set()  # the base's edges by place and length: one pass each, not every edge against every edge
+            for e in (same.Edges if same is not None else ()):
+                kept.add(_edge_key(e))
+            for e in f.Shape.Edges:  # only what the feature changes (its rounds, chamfers, the trimmed edges)
+                if _edge_key(e) in kept:
+                    continue
+                try:
+                    straight = type(e.Curve).__name__ == "Line"
+                except Exception:  # "undefined curve type" (some OCC curves have no Python type)
+                    straight = False
+                pts = e.discretize(2 if straight else 24)
+                lines.append([pl.multVec(p) if pl is not None else p for p in pts])
+            node = coin.SoSeparator()
+            style = coin.SoPickStyle()
+            style.style = coin.SoPickStyle.UNPICKABLE
+            color = coin.SoBaseColor()
+            color.rgb.setValue(0.95, 0.62, 0.29)
+            draw = coin.SoDrawStyle()
+            draw.lineWidth = 2
+            coords = coin.SoCoordinate3()
+            flat = [p for line in lines for p in line]
+            coords.point.setValues(0, len(flat), [(p.x, p.y, p.z) for p in flat])
+            lineset = coin.SoLineSet()
+            lineset.numVertices.setValues(0, len(lines), [len(line) for line in lines])
+            for n in (style, color, draw, coords, lineset):
+                node.addChild(n)
+            top = coin.SoAnnotation()  # drawn over the part, not hidden inside it
+            top.addChild(node)
+            view.getSceneGraph().addChild(top)
+            self._ghost = (view, top)
+        except Exception:
+            log.logger().exception("%s preview outline", self.kind.TITLE)
+
     def _show_base(self, on):
         if not on:
+            self._sync_ghost(False)
             for o, visible in getattr(self, "_saved_visibility", []):
                 self._set_visible(o, visible)
             self._saved_visibility = []
@@ -636,16 +938,41 @@ class FeatureSession(QtCore.QObject):
             return False
         current = common.parse_picks(self.doc, self.dialog.values().get(key))
         mine = (getattr(under[0], "Name", None), under[1])
+        if mine[0] is not None and mine[1].startswith("Face") and self.dialog.field_def(key).pick == "edge" \
+                and getattr(self.kind, "FACE_EDGES", False):
+            gone = {(o.Name, s) for o, s in self._tangent_chains(self._face_edges([under]))}
+            if not gone or not gone <= {(o.Name, s) for o, s in current}:
+                return False  # not all picked yet: the click picks them (the selection event)
+            merged = [p for p in current if (p[0].Name, p[1]) not in gone]
+            self.dialog.set_pick(key, common.format_picks(merged))
+            self._reselect(merged)
+            return True
         if mine[0] is None or not mine[1] or mine not in {(o.Name, s) for o, s in current}:
             return False
-        merged = [p for p in current if (p[0].Name, p[1]) != mine]
+        gone = {mine}
+        if self.dialog.field_def(key).pick in ("sketch_geometry", "sketch_path"):  # the whole outline comes off
+            gone = {(o.Name, s) for o, s in self._whole_outlines([under])}
+        elif self.dialog.field_def(key).pick == "edge" and getattr(self.kind, "TANGENT_CHAIN", False):
+            gone = {(o.Name, s) for o, s in self._tangent_chains([under])}
+        merged = [p for p in current if (p[0].Name, p[1]) not in gone]
         self.dialog.set_pick(key, common.format_picks(merged))
         self._reselect(merged)
         return True
 
     def _reselect(self, pairs):
+        """The 3D selection set to `pairs`. Its events come back later (timers) and are no click: each reselect holds
+        the guard until its own events are through — two in one pass ended it early and the second's events picked
+        again, reselecting forever (a hang on a big part)."""
         import FreeCADGui as Gui
-        self._seeding = True
+        want = {(obj.Name, sub) for obj, sub in pairs}
+        try:
+            have = {(x.ObjectName, s) for x in Gui.Selection.getSelectionEx(self.doc_name)
+                    for s in (x.SubElementNames or ("",))}
+        except Exception:
+            have = None
+        if have == want:
+            return
+        self._seeding += 1
         try:
             Gui.Selection.clearSelection()
             for obj, sub in pairs:
@@ -660,7 +987,7 @@ class FeatureSession(QtCore.QObject):
         field = self.dialog.field_def(key)
         if field.kind != "picks":
             return
-        self._seeding = True
+        self._seeding += 1
         try:
             Gui.Selection.clearSelection()
             for obj, sub in common.parse_picks(self.doc, self.dialog.values().get(key)):
@@ -669,7 +996,7 @@ class FeatureSession(QtCore.QObject):
             QtCore.QTimer.singleShot(0, self._end_seeding)
 
     def _end_seeding(self):
-        self._seeding = False
+        self._seeding = max(0, self._seeding - 1)
 
     @staticmethod
     def _set_visible(obj, visible):
@@ -731,9 +1058,15 @@ class FeatureSession(QtCore.QObject):
 
     def _changed(self, values, throttle=False):
         """throttle: a value that keeps changing (a drag) is previewed every interval, not only once it rests."""
+        if self._closed or self.dialog is None:
+            return  # a change reported while (or after) the dialog closed: nothing to preview
         values = self._follow(values)
         self._sync_choices(values)
+        if self.dialog is None:
+            return
         self._activate_revealed_pick()
+        if self.dialog is None:
+            return
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
         self._pending = values
@@ -853,11 +1186,14 @@ class FeatureSession(QtCore.QObject):
             self.dialog.set_error(str(e), waiting=waiting)
             return
         self._check()
+        if self.feature is not None and _feature_alive(self.feature):
+            document.show_finished(self.doc, [self.feature])  # the hole's chamfer step shows, not the bare hole
         self._label_params()
         self._fill_empty_picks()
         self._show_adjusted()
         self._show_summary()
         self._sync_sketch_markers()
+        self._sync_axis_line()
         key = self.dialog.active_pick()
         if self._base_shown is not None:  # re-apply: the recompute (or a re-create) may have shown the preview
             self._show_base(False)
@@ -1106,11 +1442,13 @@ class FeatureSession(QtCore.QObject):
         if self.feature is None or not _feature_alive(self.feature):
             return
         for sk in self.doc.Objects:
-            if sk.TypeId != "Sketcher::SketchObject" or not getattr(sk, document.SHOWN_PROP, False):
+            if sk.TypeId != "Sketcher::SketchObject" or not sk.Visibility and \
+                    not getattr(sk, document.SHOWN_PROP, False):
                 continue
             try:
-                if self.feature in common.consumers(sk):
-                    setattr(sk, document.SHOWN_PROP, False)
+                if self.feature in common.consumers(sk):  # shown by hand or never chosen: hidden either way (its
+                    if getattr(sk, document.SHOWN_PROP, False):  # lines lay on the new edges and took the clicks)
+                        setattr(sk, document.SHOWN_PROP, False)
                     self._set_visible(sk, False)
             except Exception:
                 log.logger().exception("hide %s", sk.Name)
@@ -1119,7 +1457,26 @@ class FeatureSession(QtCore.QObject):
         if self._closed:
             return
         self._closed = True
+        try:
+            self._finish_steps(commit)
+        except Exception as e:  # whatever failed, the dialog goes: left open it ignored every button (closed)
+            log.report("warning", "%s: closing the dialog: %s" % (self.kind.TITLE, e), traceback.format_exc())
+        finally:
+            safe.set_busy(None)
+            if self.dialog is not None:
+                try:
+                    self.dialog.close()
+                    dispose(self.dialog)
+                except Exception:
+                    log.logger().exception("close the %s dialog", self.kind.TITLE)
+                self.dialog = None
+            if self._on_close is not None:
+                self._on_close(self)
+
+    def _finish_steps(self, commit):
         self._committed = commit
+        self._peek_axes(False)
+        self._sync_axis_line(False)
         self._timer.stop()  # a value edited during the last preview must not preview after the close
         self._observe(False)
         try:
@@ -1130,8 +1487,7 @@ class FeatureSession(QtCore.QObject):
             self._hide_used_sketches()
         for sk in self._picked_sketches() + self._saved_sketches:  # back to the part view's policy: a sketch
             if _feature_alive(sk):  # the feature took is hidden, an unused one follows its (or the user's) rule
-                try:
-                    from incad.core import document
+                try:  # (no local import of document here: it made the name local to the whole method)
                     self._set_visible(sk, document.sketch_shown(sk))
                 except Exception:
                     pass
@@ -1160,6 +1516,8 @@ class FeatureSession(QtCore.QObject):
                 and _feature_alive(self.feature):  # an edit cancelled while it was failing: the feature shows again
             self._set_visible(self.feature, True)
             self._set_visible(base, False)
+        if self.feature is not None and _feature_alive(self.feature):
+            document.show_finished(self.doc, [self.feature])
         if getattr(self.kind, "IN_SKETCH", False) and self.profile is not None and _feature_alive(self.profile):
             try:
                 self.profile.InCadEditing = ""  # the pattern is no longer open in a dialog
@@ -1176,10 +1534,3 @@ class FeatureSession(QtCore.QObject):
                 Gui.Selection.clearSelection(self.doc_name)
             except Exception:
                 pass
-        safe.set_busy(None)
-        if self.dialog is not None:
-            self.dialog.close()
-            dispose(self.dialog)
-            self.dialog = None
-        if self._on_close is not None:
-            self._on_close(self)

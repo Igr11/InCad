@@ -237,6 +237,36 @@ class Together(unittest.TestCase):
         self.assertTrue(twice.isValid())
         self.assertGreater(twice.Volume, once.Volume)
 
+    def test_together_twice(self):
+        """The user's part: a second Together on a band moved Together before — its flat faces came back as
+        B-splines and its fillet as an offset surface; refused 'too large' before."""
+        shape = user_like()
+        once = rw.offset(shape, [wall_of(shape, "SurfaceOfExtrusion")], 1.0, "together")
+        band = max((f for f in once.Faces if rw.is_round_wall(f)), key=lambda f: f.Area)
+        twice = rw.offset(once, [band], 1.0, "together")
+        self.assertTrue(twice.isValid())
+        box = twice.optimalBoundingBox()
+        self.assertAlmostEqual(box.ZMax, 10, 6)
+        self.assertAlmostEqual(box.ZMin, 0, 6)
+        self.assertGreater(twice.Volume, once.Volume + 1)
+
+    def test_the_users_part_after_a_together_moves_together_again(self):
+        """The user's own file as it was saved at 06:16 (three Move Face steps, the last a Together +2.6)."""
+        import os
+        path = os.path.join(os.environ["INCAD_REPO"], "tests", "gui", "data", "ellipse_band_after_together.FCStd")
+        doc = App.openDocument(path)
+        try:
+            doc.recompute()
+            from incad.core import document
+            shape = document.primary_body(doc).Tip.Shape
+            band = max((f for f in shape.Faces if rw.is_round_wall(f) and f.BoundBox.ZMax <= 8 + 1e-6),
+                       key=lambda f: f.Area)
+            moved = rw.offset(shape, [band], 0.4, "together")
+            self.assertTrue(moved.isValid())
+            self.assertGreater(moved.Volume, shape.Volume)
+        finally:
+            App.closeDocument(doc.Name)
+
     def test_a_feature_beyond_the_flat_top_stays(self):
         """A cone standing on the top face (beyond the fillet's flat neighbour) is no blend of the band: it stays."""
         shape = user_like().fuse(Part.makeCone(4, 1, 5, V(0, 0, 10))).removeSplitter()

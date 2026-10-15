@@ -36,11 +36,16 @@ def _runs(solid, p, d, reach):
     return sorted(out)
 
 
+_PAST = 0.05  # the cone runs on this far inside the drilled radius (into the hole's air): it crosses the wall or
+# a modelled thread's crests instead of ending exactly on them, which left the cut invalid on a tapped hole
+
+
 def _cone(at, d, r_drill, r_mouth, s):
     """45° from r_mouth + s at the surface down to the drilled radius (a tapped hole's mouth is its thread's
     diameter: the cone runs on to the drill, no flat ledge)."""
-    depth = s + (r_mouth - r_drill)
-    return Part.makeCone(r_drill + depth + _E, r_drill, depth + _E, at - d * _E, d)
+    end = max(r_drill - _PAST, r_drill * 0.5)
+    depth = s + (r_mouth - end)
+    return Part.makeCone(end + depth + _E, end, depth + _E, at - d * _E, d)
 
 
 def tools(hole, ends, size):
@@ -78,6 +83,29 @@ def tools(hole, ends, size):
     return Part.makeCompound(cones) if cones else None
 
 
+def _cut(shape, cut):
+    """shape − cut, valid: a plain cut, else a fuzzy one (a modelled thread's faces sit within a hair of the cones),
+    else the healed result."""
+    out = shape.cut(cut)
+    if out.isValid():
+        return out
+    for tol in (1e-5, 1e-4):
+        try:
+            fuzzy = shape.cut([cut], tol)
+        except Exception:
+            continue
+        if fuzzy.isValid():
+            return fuzzy
+    healed = out.copy()
+    try:
+        healed.fix(1e-7, 1e-7, 1e-4)
+    except Exception:
+        pass
+    if healed.isValid():
+        return healed
+    raise ValueError("The chamfer can't be cut into this thread. Try another chamfer size, or Chamfer: None")
+
+
 class HoleChamferFeature:
     """The proxy. FreeCAD saves its module path (incad.features.hole_chamfer) and class name in the file."""
     def __init__(self, obj):
@@ -94,7 +122,7 @@ class HoleChamferFeature:
         cut = tools(obj.Hole, obj.Ends, obj.Size.Value) if obj.Hole is not None else None
         shape = base.Shape.copy()
         if cut is not None:
-            shape = shape.cut(cut)
+            shape = _cut(shape, cut)
             if len(shape.Solids) == 1:
                 shape = shape.Solids[0]
         obj.Shape = shape

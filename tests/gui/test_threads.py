@@ -219,8 +219,40 @@ def test_4_threads_button_turns_every_thread_off_and_on():
     assert abs(body().Shape.Volume - with_threads) < 1e-3
 
 
+def test_5_a_vanished_dialog_never_blocks_the_next_command():
+    """User: during Chamfer on a thread the dialog disappeared, and every command after said 'Finish the Thread
+    dialog first'. A change reported after the close is ignored, and a dead session is let go."""
+    pad = doc().getObject(ST["pad"])
+    obj_sub = cyl_face(pad, 4).split(":")
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, obj_sub[0], obj_sub[1])
+    tip = body().Tip.Name  # the part before the dialog
+    commands.REGISTRY.run("feature.thread")
+    harness.pump(1500)
+    fs = s().feature_session
+    assert fs is not None and dialog() is not None
+    dialog().set_values({"chamfer": "start"})
+    harness.pump(1200)
+    dialog().set_values({"chamfer": "both"})
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    # the dead state from the user's log: the dialog gone, the session never handed back
+    fs.dialog.close()
+    fs.dialog = None
+    fs._changed({"chamfer": "none"})  # a late change: no crash
+    r = commands.REGISTRY.run("feature.thread")
+    harness.pump(1500)
+    assert r.ok, r.error
+    assert s().feature_session is not None and s().feature_session is not fs and dialog() is not None
+    assert body().Tip.Name == tip, ("the lost dialog's half-made thread was rolled back", tip, body().Tip.Name)
+    s().feature_session.cancel()
+    harness.pump(900)
+    assert s().feature_session is None and body().Tip.Name == tip
+
+
 harness.run([test_0_setup, test_1_thread_on_a_selected_shaft_face, test_2_edit_the_thread_size,
              test_2b_print_friendly_takes_0_3_mm_clearance,
              test_3_threaded_hole, test_4_threads_button_turns_every_thread_off_and_on,
              test_edit_changes_the_start_face_and_offset,
-             test_delete_from_a_3d_face_selection_removes_only_the_thread])
+             test_delete_from_a_3d_face_selection_removes_only_the_thread,
+             test_5_a_vanished_dialog_never_blocks_the_next_command])
