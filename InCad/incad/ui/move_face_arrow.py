@@ -1,4 +1,5 @@
-"""Move Face's drag arrow: drawn on the first face along its normal (the assembly gizmo's look and size), hit in
+"""Move Face's drag arrow: drawn on the first face along its normal (the assembly gizmo's look, ARROW_PX long on
+screen at any zoom — the user found the part-sized one huge — redrawn as the camera zooms), hit in
 screen space (dof_handles.HANDLE_PX), dragged by InCad itself through Navigator.handle_hook; a label at the tip
 shows the distance live (like Fusion). The dialog's Distance field follows the drag; a typed value moves it."""
 import math
@@ -8,6 +9,20 @@ from incad.ui import dof_handles as dh
 from incad.ui import theme as themes
 
 NAME = "InCadMoveFaceArrow"
+ARROW_PX = 70  # the arrow's length on screen (logical px), whatever the zoom or the part's size
+
+
+def _screen_size(view, viewport, point):
+    """The length in mm that ARROW_PX covers on screen at `point`, measured square to the view direction."""
+    import FreeCAD as App
+    d = App.Vector(*view.getViewDirection())
+    u = d.cross(App.Vector(0, 0, 1))
+    if u.Length < 1e-6:
+        u = d.cross(App.Vector(1, 0, 0))
+    u.normalize()
+    a, b = dh.screen(view, viewport, point), dh.screen(view, viewport, point + u)
+    per_mm = math.hypot(b[0] - a[0], b[1] - a[1])
+    return ARROW_PX / per_mm if per_mm > 1e-9 else None
 
 
 def _rgb(hex_color):
@@ -110,6 +125,7 @@ class FaceArrow:
         self.lit = False    # the pointer is over it (or it is dragged)
         self._cursor = None  # viewport we set a hand cursor on
         self._other = None   # the DOF gizmo, while a press in another view is its drag
+        self._sensor, self._camera, self._rescale_pending = None, None, False  # the zoom watcher
         self.refresh()
 
     def _active_view(self):
@@ -156,9 +172,16 @@ class FaceArrow:
         if place is None or view is None:
             return
         point, normal = place
-        base = getattr(f, "BaseFeature", None)
-        shape = base.Shape if base is not None and not base.Shape.isNull() else f.Shape
-        size = dof.glyph_size(shape.BoundBox.DiagonalLength)
+        size = None
+        try:
+            size = _screen_size(view, view.graphicsView().viewport(), point)
+        except Exception:
+            log.logger().exception("Move Face arrow size")
+        if size is None:
+            base = getattr(f, "BaseFeature", None)
+            shape = base.Shape if base is not None and not base.Shape.isNull() else f.Shape
+            size = dof.glyph_size(shape.BoundBox.DiagonalLength)
+        self._watch_zoom(view)
         self._built = self._good if refused else f.Distance.Value
         if self._drag is None:
             self._label = self._label_for(f, refused)
@@ -176,6 +199,46 @@ class FaceArrow:
         self._nodes["shift"].translation.setValue(off.x, off.y, off.z)
         view.getSceneGraph().addChild(self.root)
         self._geom, self._view = (point, normal, size), view
+
+    def _watch_zoom(self, view):
+        """A sensor on the camera: a zoom (or orbit) redraws the arrow at ARROW_PX once the event loop is free."""
+        try:
+            from pivy import coin
+            cam = view.getCameraNode()
+            if self._sensor is not None and self._camera is cam:
+                return
+            self._unwatch_zoom()
+            self._sensor = coin.SoNodeSensor(lambda *_: self._camera_moved(), None)
+            self._sensor.attach(cam)
+            self._camera = cam
+        except Exception:
+            log.logger().exception("Move Face arrow zoom watcher")
+
+    def _unwatch_zoom(self):
+        if self._sensor is not None:
+            try:
+                self._sensor.detach()
+            except Exception:
+                pass
+        self._sensor, self._camera = None, None
+
+    def _camera_moved(self):
+        if self._rescale_pending:
+            return
+        self._rescale_pending = True
+        from incad.qt import QtCore
+        QtCore.QTimer.singleShot(0, self._rescale)
+
+    def _rescale(self):
+        self._rescale_pending = False
+        if self._geom is None or self._view is None or self.dragging():
+            return  # a drag keeps the arrow as it began (the pointer's mm per px are set at the press)
+        try:
+            size = _screen_size(self._view, self._view.graphicsView().viewport(), self._geom[0])
+        except Exception:
+            return
+        if size is not None and abs(size - self._geom[2]) > 0.01 * self._geom[2]:
+            self.refresh()
 
     def _remove_node(self):
         if self.root is not None and self._view is not None:
@@ -316,6 +379,7 @@ class FaceArrow:
 
     def remove(self):
         self.finish()
+        self._unwatch_zoom()
         self._remove_node()
 
     def _set_cursor(self, viewport, closed=False):

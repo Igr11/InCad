@@ -385,7 +385,7 @@ def _draft_read(doc, f):
 
 DRAFT = SimpleNamespace(
     __name__="incad.features.draft", TITLE="Draft", ICON="draft", TYPES=("PartDesign::Draft",),
-    NEEDS_PROFILE=False, PROPS={"angle": "Angle"}, PRESELECT={"faces": "face"},
+    NEEDS_PROFILE=False, PROPS={"angle": "Angle"}, PRESELECT={"faces": "face"}, SOLID_PICKS=True,
     FIELDS=(Field("faces", "Faces", "picks", pick="face"), Field("neutral", "Neutral plane", "pick", pick="plane"),
             Field("angle", "Angle", "value_angle", default="1 °"), Field("reverse", "Reverse", "bool", default=False)),
     defaults=lambda doc, body, profile=None: {"faces": "", "neutral": "", "angle": "1 °", "reverse": False},

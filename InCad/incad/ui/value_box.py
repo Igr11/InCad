@@ -128,5 +128,15 @@ class ValueBox(QtWidgets.QFrame):
         return False
 
     def closeEvent(self, event):
+        # the keyboard goes back to the 3D view the box sits in: left to Qt it moves to the next widget in the
+        # window, which can be another document's tab — that tab's own workbench (SaveWBbyTab) then took over
+        # and FreeCAD crashed in the Dimension tool still running in this sketch
+        focus = QtWidgets.QApplication.focusWidget()
+        view = self.parentWidget()
+        if focus is not None and (focus is self or self.isAncestorOf(focus)) and view is not None:
+            target = view.parentWidget() if isinstance(view.parentWidget(), QtWidgets.QGraphicsView) else view
+            target.setFocus(QtCore.Qt.OtherFocusReason)
+            if QtWidgets.QApplication.focusWidget() is focus:
+                focus.clearFocus()
         self.closed.emit()
         super().closeEvent(event)

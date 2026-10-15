@@ -110,15 +110,16 @@ def _toggle_ask_on_new():
                else "New makes a %s without asking" % prefs.new_kind())
 
 
-def new_part(ask=None):
+def new_part(ask=None, part_only=False):
     """Create an InCad Part in a new document. ask() -> (kind, units, remember) | None (default: the New
-    dialog). With 'Remember my choice' on, nothing is asked and the saved units are used."""
+    dialog). With 'Remember my choice' on, nothing is asked and the saved units are used. part_only: a part even
+    when an Assembly is the remembered kind (Start 2D Sketch with no part open)."""
     import FreeCAD as App
     from incad.core import document
     kind = "part"
     if prefs.remember_new_choice():
         units = prefs.default_units()
-        kind = prefs.new_kind()  # Part or Assembly, as chosen with 'Remember my choice'
+        kind = "part" if part_only else prefs.new_kind()  # Part or Assembly, as chosen with 'Remember my choice'
     else:
         answer = (ask or ask_new)()
         if answer is None:
@@ -378,8 +379,13 @@ _PLANES = ("App::Plane", "PartDesign::Plane")
 def start_sketch():
     _refuse_while_busy()
     import FreeCAD as App
-    from incad.core import context
+    from incad.core import context, document
     from incad.ui import shell
+    if not document.is_incad_part(App.ActiveDocument):
+        made = new_part(part_only=True)  # nothing open (or a plain FreeCAD file in front): a new part first
+        if made is None or not document.is_incad_part(made):  # the New dialog was cancelled, or made an assembly
+            return None
+        return shell.sketch_session().start()
     name = context.target()
     target = App.ActiveDocument.getObject(name) if App.ActiveDocument is not None and name else None
     if target is not None and target.TypeId in _PLANES and not _gui().Selection.getSelection():
@@ -911,7 +917,8 @@ def commands():
         Command(id="nav.pan", label="Pan", icon="pan", handler=lambda: toggle_nav_mode("pan"),
                 checkable=True, is_checked=lambda: nav_mode_is("pan"), tooltip="Left-drag pans; click again to stop"),
         Command(id="sketch.start", label="Start 2D Sketch", icon="start_sketch", handler=start_sketch, shortcut="S",
-                contexts=frozenset({"part"}), tooltip="Pick a plane or a flat face to sketch on"),
+                contexts=frozenset({"part", "empty"}),
+                tooltip="Pick a plane or a flat face to sketch on (no part open: a new part first)"),
         Command(id="sketch.finish", label="Finish Sketch", icon="finish", handler=finish_sketch,
                 contexts=frozenset({"sketch"}), tooltip="Back to the 3D model (Esc)"),
         Command(id="feature.extrude", label="Extrude", icon="extrude", handler=lambda: start_feature("extrude"),

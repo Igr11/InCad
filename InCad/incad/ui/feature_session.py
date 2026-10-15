@@ -6,6 +6,20 @@ from incad.qt import dispose, QtCore, QtWidgets
 from incad.ui.feature_dialog import FeatureDialog
 
 
+def _edge_under(shape, edge, tol=1e-6):
+    """The number of `shape`'s edge that `edge` lies on (same kind of curve; its ends and middle on it), or None."""
+    import Part
+    a, b = edge.FirstParameter, edge.LastParameter
+    probes = [Part.Vertex(edge.valueAt(t)) for t in (a, (a + b) / 2, b)]
+    kind = type(edge.Curve).__name__
+    for i, e in enumerate(shape.Edges, 1):
+        if type(e.Curve).__name__ != kind or e.Length + tol < edge.Length:
+            continue
+        if all(e.distToShape(v)[0] < tol for v in probes):
+            return i
+    return None
+
+
 def _feature_alive(obj):
     try:
         obj.TypeId
@@ -151,6 +165,7 @@ class FeatureSession(QtCore.QObject):
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
     _ON_BASE = _GEOMETRY + ("two_points", "move_to")
+    _CORNER_PICKS = ("move_to", "vertex")  # picks that take a point: a click near a corner picks the corner
 
     def _observe(self, on):
         try:
@@ -215,14 +230,124 @@ class FeatureSession(QtCore.QObject):
                 return True
         return False
 
-    def _selection(self):
+    CORNER_PX = 8  # logical px: a click this near a corner of the clicked edge / face picks the corner
+
+    def _corner_near(self, sel, i, sub):
+        """The clicked element's corner the click landed near (on screen), as the sub name to use instead; else
+        `sub`. FreeCAD hands a vertex only to a click within about a pixel of it, the edge or face otherwise."""
+        import FreeCADGui as Gui
+        import Part
+        from incad.ui import dof_handles
+        if not sub.split(".")[-1].startswith(("Edge", "Face")):
+            return sub
+        try:
+            el, picked = sel.SubObjects[i], sel.PickedPoints[i]
+            view = Gui.getDocument(self.doc_name).ActiveView
+            viewport = view.graphicsView().viewport()
+            at = dof_handles.screen(view, viewport, picked)
+            best, best_d = None, self.CORNER_PX
+            for v in el.Vertexes:
+                x, y = dof_handles.screen(view, viewport, v.Point)
+                d = ((x - at[0]) ** 2 + (y - at[1]) ** 2) ** 0.5
+                if d <= best_d:
+                    best, best_d = v.Point, d
+            if best is None:
+                return sub
+            prefix = sub[:sub.rfind(".") + 1]  # 'Body.Pad.' in a path, '' for a plain 'Edge3'
+            whole = Part.getShape(sel.Object, prefix, needSubElement=bool(prefix), transform=True)
+            n = next((k for k, w in enumerate(whole.Vertexes, 1) if (w.Point - best).Length < 1e-6), None)
+        except Exception:
+            log.logger().exception("corner near a pick")
+            return sub
+        return sub if n is None else "%sVertex%d" % (prefix, n)
+
+    def _previewing_picks(self, key):
+        """Shell, Fillet and Chamfer keep their preview on screen while faces / edges are picked (the result is
+        what the user judges): a click on the preview stands for the part's face or edge it lies on
+        (_onto_base_faces)."""
+        if not key or not getattr(self.kind, "PREVIEW_WHILE_PICKING", False) or self.dialog is None:
+            return False
+        if self.dialog.field_def(key).pick not in ("face", "edge") or self.feature is None \
+                or not _feature_alive(self.feature):
+            return False
+        return "Invalid" not in self.feature.State
+
+    def _onto_base_faces(self, pairs):
+        """A face of the preview -> the face of the part it lies on (same plane or cylinder, overlapping); an edge
+        -> the part's edge it lies on (a fillet shortens its neighbours); what the feature made (an inner wall, a
+        round, a chamfer's edges) is no pick on the part."""
+        base = self._expected_base()
+        shape = base.Shape if base is not None and not base.Shape.isNull() else None
+        out = []
+        for obj, el in pairs:
+            if obj is not self.feature:
+                out.append((obj, el))
+                continue
+            try:
+                mine = obj.Shape.getElement(el) if el.startswith(("Face", "Edge")) else None
+            except Exception:
+                mine = None
+            if mine is None or shape is None:
+                continue
+            if el.startswith("Face"):
+                from incad.features import common
+                match = next((i for i, g in enumerate(shape.Faces, 1) if common._carries_face(g, mine)), None)
+                name = "Face%d" % match if match is not None else None
+            else:
+                match = _edge_under(shape, mine)
+                name = "Edge%d" % match if match is not None else None
+            if name is not None:
+                out.append((base, name))
+        return out
+
+    def _onto_solid(self, pairs):
+        """A click on a shown sketch's line or point lying on the part's edge or corner stands for that edge or
+        corner (a fillet on the edge a profile line made); any other sketch element is no pick on the part."""
+        import Part
+        base = self._expected_base()
+        shape = base.Shape if base is not None and not base.Shape.isNull() else None
+        out = []
+        for obj, el in pairs:
+            if obj.TypeId != "Sketcher::SketchObject":
+                out.append((obj, el))
+                continue
+            try:
+                mine = obj.Shape.getElement(el) if el.startswith(("Edge", "Vertex")) else None
+            except Exception:
+                mine = None
+            if mine is None or shape is None:
+                continue
+            if el.startswith("Vertex"):
+                match = next((i for i, v in enumerate(shape.Vertexes, 1) if (v.Point - mine.Point).Length < 1e-6), None)
+                name = "Vertex%d" % match if match else None
+            else:
+                ends = (mine.Vertexes[0].Point, mine.Vertexes[-1].Point) if mine.Vertexes else ()
+                mid = mine.valueAt((mine.FirstParameter + mine.LastParameter) / 2)
+                match = None
+                for i, e in enumerate(shape.Edges, 1):
+                    if abs(e.Length - mine.Length) > 1e-6 or not ends:
+                        continue
+                    theirs = (e.Vertexes[0].Point, e.Vertexes[-1].Point)
+                    same_ends = all(min((p - q).Length for q in theirs) < 1e-6 for p in ends)
+                    if same_ends and e.distToShape(Part.Vertex(mid))[0] < 1e-6:
+                        match = i
+                        break
+                name = "Edge%d" % match if match else None
+            if name is not None:
+                out.append((base, name))
+        return out
+
+    def _selection(self, corners=False):
         import FreeCADGui as Gui
         from incad.features import common
         pairs = []
         for sel in common.selection_ex(self.doc_name):  # in an assembly: the path through the component
-            for sub in (sel.SubElementNames or ("",)):
+            for i, sub in enumerate(sel.SubElementNames or ("",)):
+                if corners:
+                    sub = self._corner_near(sel, i, sub)
                 obj, el = common.resolve(sel.Object, sub)
-                own = self.dialog is not None and self.dialog.active_pick() in getattr(self.kind, "PICKS_ON_SELF", ())
+                own = self.dialog is not None and (self.dialog.active_pick() in getattr(self.kind, "PICKS_ON_SELF", ())
+                                                   or self._previewing_picks(self.dialog.active_pick()))
                 if obj is not None and (obj is not self.feature or own or getattr(self.kind, "IN_SKETCH", False)):
                     # the feature being made can't be its own input (a sketch pattern's picks ARE on the sketch)
                     pairs.append((obj, el))
@@ -328,7 +453,11 @@ class FeatureSession(QtCore.QObject):
         f = self.dialog.field_def(key)
         if f.pick == "two_points":
             return  # taken by clicks on the markers, not by the selection
-        raw_pairs = self._selection()
+        raw_pairs = self._selection(corners=f.pick in self._CORNER_PICKS)
+        if getattr(self.kind, "SOLID_PICKS", False) and f.pick in self._GEOMETRY + ("move_to",):
+            raw_pairs = self._onto_solid(raw_pairs)
+        if self._previewing_picks(key):
+            raw_pairs = self._onto_base_faces(raw_pairs)
         pairs = self._as_picks(f.pick, raw_pairs)
         if f.pick == "body":  # a solid already picked in another field (the base) is not a tool too
             taken = {o.Name for g in self.kind.FIELDS if g.pick == "body" and g.key != key
@@ -352,6 +481,8 @@ class FeatureSession(QtCore.QObject):
             return
         if f.kind == "picks":
             ok = self._collect_picks(key, ok)
+        elif f.pick in self._CORNER_PICKS and ok[-1][1].startswith("Vertex"):
+            self._reselect(ok[-1:])  # a corner taken from an edge / face click: the corner shows selected
         self.dialog.set_pick(key, common.format_picks(ok[-1:] if f.kind == "pick" else ok))
         if f.pick == "feature" and self._picked_a_thread(raw_pairs) and any(
                 g.key == "children" for g in self.kind.FIELDS) and not self.dialog.values().get("children"):
@@ -370,7 +501,11 @@ class FeatureSession(QtCore.QObject):
                 self._seed_selection(key)
             return
         if key and self.dialog.field_def(key).pick in self._ON_BASE and self.feature is not None:
-            want = self._expected_base()
+            tip = self.body.Tip if self.body is not None else None
+            if not self._previewing_picks(key):
+                want = self._expected_base()
+            elif tip is not None and tip is not self.feature:
+                want = self.feature  # an edit down the tree: the feature itself, not the finished part, is picked on
         if want is not self._base_shown:
             self._show_base(False)
             if want is not None:
@@ -720,6 +855,7 @@ class FeatureSession(QtCore.QObject):
         self._check()
         self._label_params()
         self._fill_empty_picks()
+        self._show_adjusted()
         self._show_summary()
         self._sync_sketch_markers()
         key = self.dialog.active_pick()
@@ -733,6 +869,20 @@ class FeatureSession(QtCore.QObject):
                 self.on_previewed()
             except Exception:
                 log.logger().exception("%s overlay", self.kind.TITLE)
+
+    def _show_adjusted(self):
+        """A kind may change a value itself (Move Face: a chamfer picked with its face means Together): the dialog
+        shows what the feature now uses."""
+        hook = getattr(self.kind, "adjusted", None)
+        if hook is None or self.feature is None or not _feature_alive(self.feature):
+            return
+        try:
+            current = self.dialog.values()
+            diff = {k: v for k, v in hook(self.doc, self.feature).items() if current.get(k) != v}
+            if diff:
+                self.dialog.set_values(diff)
+        except Exception:
+            log.logger().exception("adjusted values")
 
     def _show_summary(self):
         """A kind may describe what its pick fields now stand for (names, dependents) beyond the picks themselves."""
@@ -948,6 +1098,23 @@ class FeatureSession(QtCore.QObject):
         self._timer.stop()
         self._finish(commit=False)
 
+    def _hide_used_sketches(self):
+        """Inventor: a sketch the new feature uses is hidden, even one the user showed by hand before (they may
+        show it again afterwards). Inside the feature's undo step, so undo gives the shown sketch back."""
+        from incad.core import document
+        from incad.features import common
+        if self.feature is None or not _feature_alive(self.feature):
+            return
+        for sk in self.doc.Objects:
+            if sk.TypeId != "Sketcher::SketchObject" or not getattr(sk, document.SHOWN_PROP, False):
+                continue
+            try:
+                if self.feature in common.consumers(sk):
+                    setattr(sk, document.SHOWN_PROP, False)
+                    self._set_visible(sk, False)
+            except Exception:
+                log.logger().exception("hide %s", sk.Name)
+
     def _finish(self, commit):
         if self._closed:
             return
@@ -959,6 +1126,8 @@ class FeatureSession(QtCore.QObject):
             self._show_base(False)
         except Exception:
             pass
+        if commit and self.creating:
+            self._hide_used_sketches()
         for sk in self._picked_sketches() + self._saved_sketches:  # back to the part view's policy: a sketch
             if _feature_alive(sk):  # the feature took is hidden, an unused one follows its (or the user's) rule
                 try:
@@ -999,6 +1168,12 @@ class FeatureSession(QtCore.QObject):
             try:
                 import FreeCADGui as Gui
                 Gui.Selection.clearSelection()  # the copies were rebuilt: a selection by name would point past them
+            except Exception:
+                pass
+        elif not getattr(self.kind, "IN_SKETCH", False):
+            try:  # the dialog's picks were kept selected for it: the next command (a Chamfer after a Fillet) must
+                import FreeCADGui as Gui  # not start on them, named on the shape before this feature
+                Gui.Selection.clearSelection(self.doc_name)
             except Exception:
                 pass
         safe.set_busy(None)

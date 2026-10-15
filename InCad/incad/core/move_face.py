@@ -67,6 +67,33 @@ def find(shape, sig):
     return best
 
 
+def split_blends(shape, faces):
+    """(faces to move, blends picked with them): the flat faces facing the way of the first flat one move; any other
+    picked face must be a chamfer / fillet that touches one of them (or another picked blend) and does not run along
+    the move — it is carried with its face (Together). Anything else is no pick for Move Face."""
+    flat = [f for f in faces if _is_plane(f)]
+    if not flat:
+        raise ValueError(FACES_MSG)
+    n = _normal(flat[0])
+    main = [f for f in flat if _normal(f).dot(n) > 1 - _ANG]
+    rest = [f for f in faces if not any(_same(f, m) for m in main)]
+    if not rest:
+        return main, []
+    if shape is None:
+        raise ValueError(FACES_MSG)
+    touched, blends, todo = list(main), [], list(rest)
+    while todo:
+        nxt = next((f for f in todo if not _along(f, n) and any(
+            _neighbour(shape, t, e) is not None and _same(_neighbour(shape, t, e), f) for t in touched for e in t.Edges)),
+            None)
+        if nxt is None:
+            raise ValueError(FACES_MSG)
+        todo = [f for f in todo if not _same(f, nxt)]
+        blends.append(nxt)
+        touched.append(nxt)
+    return main, blends
+
+
 def check_faces(faces):
     if not faces or not all(_is_plane(f) for f in faces):
         raise ValueError(FACES_MSG)
@@ -104,13 +131,20 @@ def gap_to(faces, target):
 
 
 def _along(face, n):
-    """A face the move runs along: a plane containing n, or a cylinder whose axis is n."""
+    """A face the move runs along: a plane containing n, a cylinder whose axis is n, a curve extruded along n (the
+    walls of an extruded ellipse or spline), or any other surface square to n everywhere (a B-spline wall)."""
     kind = face.Surface.__class__.__name__
     if kind == "Plane":
         return abs(_normal(face).dot(n)) < _ANG
     if kind == "Cylinder":
         return abs(abs(face.Surface.Axis.normalize().dot(n)) - 1) < _ANG
-    return False
+    if kind == "SurfaceOfExtrusion":
+        return abs(abs(App.Vector(face.Surface.Direction).normalize().dot(n)) - 1) < _ANG
+    if kind not in ("BSplineSurface", "BezierSurface"):
+        return False  # a cone, sphere or torus never runs along a straight move
+    u0, u1, v0, v1 = face.ParameterRange
+    steps = [k / 4.0 for k in range(5)]
+    return all(abs(face.normalAt(u0 + (u1 - u0) * a, v0 + (v1 - v0) * b).dot(n)) < 1e-4 for a in steps for b in steps)
 
 
 def _straight(edge):
@@ -320,6 +354,9 @@ def apply(shape, faces, d, mode):
     """`d` one distance for every face, or a list of one per face (To: faces in different planes reach one plane)."""
     if mode not in _SLABS:
         raise ValueError("Unknown neighbours mode: %s" % mode)
+    faces, blends = split_blends(shape, faces)
+    if blends:
+        mode = "together"  # a chamfer / fillet picked with its face goes with it
     ds = list(d) if isinstance(d, (list, tuple)) else [d] * len(faces)
     if len(ds) != len(faces):
         raise ValueError("One distance per face: %d faces, %d distances" % (len(faces), len(ds)))
@@ -330,6 +367,19 @@ def apply(shape, faces, d, mode):
         return _moved(shape, faces, ds, n, mode)
     except Part.OCCError:  # a slab or a boolean OCC can't make: a refusal like the others, never a raw OCC error
         raise ValueError(TOO_LARGE_MSG)
+
+
+def combine(shape, adds, cuts):
+    """The moved part: the slabs fused on and cut away, the split faces merged; a broken or split part is refused."""
+    result = shape
+    if adds:
+        result = result.fuse(adds)
+    if cuts:
+        result = result.cut(cuts)
+    result = result.removeSplitter()
+    if not result.isValid() or len(result.Solids) != len(shape.Solids):
+        raise ValueError(TOO_LARGE_MSG)
+    return result
 
 
 def _moved(shape, faces, ds, n, mode):
@@ -344,12 +394,4 @@ def _moved(shape, faces, ds, n, mode):
             cuts.append(slab)
         else:
             adds.append(slab)
-    result = shape
-    if adds:
-        result = result.fuse(adds)
-    if cuts:
-        result = result.cut(cuts)
-    result = result.removeSplitter()
-    if not result.isValid() or len(result.Solids) != len(shape.Solids):
-        raise ValueError(TOO_LARGE_MSG)
-    return result
+    return combine(shape, adds, cuts)

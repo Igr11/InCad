@@ -18,6 +18,7 @@ TYPES = ("PartDesign::SubtractiveHelix",)
 NEEDS_PROFILE = False
 PROPS = {"length": "Height"}
 PRESELECT = {"face": "cylinder"}
+SOLID_PICKS = True  # its picks are on the part: a sketch line over an edge stands for that edge
 _STORE = "InCadThread"
 
 FIELDS = (

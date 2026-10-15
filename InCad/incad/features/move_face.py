@@ -7,6 +7,7 @@ import json
 import FreeCAD as App
 
 from incad.core import move_face as mf
+from incad.core import round_wall as rw
 from incad.features.common import Field, parse_picks, resolve, value_param, value_text
 
 TITLE = "Move Face"
@@ -18,6 +19,7 @@ STRUCTURAL = ()
 PROPS = {"distance": "Distance"}
 PRESELECT = {"faces": "face"}  # faces selected before the command fill the field (key: the pick kind, as Shell's)
 _STORE = "InCadMoveFace"
+SOLID_PICKS = True  # its edge / face picks are on the part: a sketch line over an edge stands for that edge
 OTHER_SOLID_MSG = "The faces must be on this Solid"
 
 FIELDS = (
@@ -54,6 +56,10 @@ class MoveFaceFeature:
         if base is None or base.Shape.isNull():
             return
         shape = base.Shape
+        walls = _walls(obj, shape)
+        if walls:
+            obj.Shape = rw.offset(shape, walls, obj.Distance.Value, obj.Mode or "inventor")
+            return
         faces = _faces(obj, shape)
         if obj.Extent == "to":
             d = mf.gaps_to(faces, _target(obj))
@@ -72,6 +78,8 @@ def _faces(obj, shape):
     """The faces to move, found again in `shape` (the part before this step) by their stored geometry."""
     faces = []
     for sig in _load_json(obj.Signatures, []):
+        if _is_wall_sig(sig):
+            continue
         f = mf.find(shape, sig)
         if f is None:
             raise ValueError(mf.GONE_MSG)
@@ -116,6 +124,44 @@ def _target(obj):
     return pl.Base, pl.Rotation.multVec(App.Vector(0, 0, 1))
 
 
+def _is_wall_sig(sig):
+    return isinstance(sig, dict) and sig.get("kind") == "wall"
+
+
+def _walls(obj, shape):
+    """The stored round walls found again in `shape` (one face of each)."""
+    out = []
+    for sig in _load_json(obj.Signatures, []):
+        if _is_wall_sig(sig):
+            f = rw.find(shape, sig)
+            if f is None:
+                raise ValueError(mf.GONE_MSG)
+            out.append(f)
+    return out
+
+
+def unavailable(values):
+    """'To' is greyed out while a round wall is picked (Distance only for round walls)."""
+    doc = App.ActiveDocument
+    if doc is None:
+        return {}
+    for obj, sub in parse_picks(doc, values.get("faces")):
+        obj, sub = resolve(obj, sub)
+        if obj is not None and sub.startswith("Face"):
+            try:
+                if rw.is_round_wall(obj.Shape.getElement(sub)):
+                    return {"extent": {"to"}}
+            except Exception:
+                pass
+    return {}
+
+
+def adjusted(doc, f):
+    """Values the dialog shows after a preview: Neighbours switches to Together when a chamfer / fillet was picked
+    with its face."""
+    return {"mode": f.Mode} if f.Mode else {}
+
+
 def claims(feature):
     return hasattr(feature, _STORE)
 
@@ -147,11 +193,45 @@ def _store(f, data):
     setattr(f, _STORE, json.dumps(data, sort_keys=True))
 
 
+def _picked_shape(doc, text):
+    """The shape the picked faces are elements of (their neighbours are looked up in it)."""
+    for obj, sub in parse_picks(doc, text):
+        obj, sub = resolve(obj, sub)
+        if obj is not None and sub.startswith("Face"):
+            return obj.Shape
+    return None
+
+
 def _build(doc, f, values):
-    faces = _picked_faces(doc, values.get("faces"), f.getParentGeoFeatureGroup())
+    picked = _picked_faces(doc, values.get("faces"), f.getParentGeoFeatureGroup())
+    shape = _picked_shape(doc, values.get("faces"))
+    walls = [x for x in picked if rw.is_round_wall(x)]
+    if walls:
+        if any(mf._is_plane(x) for x in picked):
+            raise ValueError(rw.MIXED_MSG)
+        if len(walls) != len(picked):
+            raise ValueError(rw.NOT_STRAIGHT_MSG)
+        sigs, seen = [], []
+        for w in walls:  # one signature per wall (two clicked pieces of one ring are one wall)
+            faces, _ = rw.pieces(shape, w)
+            if any(any(x.isSame(y) for y in seen) for x in faces):
+                continue
+            seen += faces
+            sigs.append(rw.signature(shape, w))
+        f.Signatures = json.dumps(sigs)
+        f.Mode = values.get("mode") or "inventor"
+        f.Extent = "distance"
+        f.Target = None
+        value_param(doc, f, "Distance", values.get("distance") or "0 mm", "length")
+        _store(f, {"faces": values.get("faces") or "", "to": ""})
+        return f
+    if picked and not any(mf._is_plane(x) for x in picked):
+        raise ValueError(rw.NOT_STRAIGHT_MSG)
+    faces, blends = mf.split_blends(shape, picked)
     mf.check_faces(faces)
     f.Signatures = json.dumps([mf.signature(face) for face in faces])
-    f.Mode = values.get("mode") or "inventor"
+    # a chamfer / fillet picked with its face goes with it: Together (it moves every blend around the face)
+    f.Mode = "together" if blends else (values.get("mode") or "inventor")
     f.Extent = values.get("extent") or "distance"
     if f.Extent == "to":
         picks = parse_picks(doc, values.get("to"))
@@ -197,6 +277,18 @@ def _current_picks(f):
     if base is None or base.Shape.isNull():
         return None
     try:
+        walls = _walls(f, base.Shape)
+    except ValueError:
+        return None
+    if walls:
+        names = []
+        for w in walls:
+            i = next((k for k, g in enumerate(base.Shape.Faces) if g.isSame(w)), None)
+            if i is None:
+                return None
+            names.append("%s:Face%d" % (base.Name, i + 1))
+        return ",".join(names)
+    try:
         faces = _faces(f, base.Shape)
     except ValueError:
         return None
@@ -241,6 +333,14 @@ def arrow(f, distance=None):
     base = f.BaseFeature
     if not sigs or f.Shape.isNull() or base is None or base.Shape.isNull():
         return None
+    if _is_wall_sig(sigs[0]):
+        face = rw.find(base.Shape, sigs[0])
+        if face is None:
+            return None
+        d = f.Distance.Value if distance is None else distance
+        point, n = rw.arrow(base.Shape, face, d)
+        to_global = _frame(f)
+        return to_global.multVec(point), to_global.Rotation.multVec(n)
     face = mf.find(base.Shape, sigs[0])  # where the face is now (an earlier feature may have moved it)
     if face is None:
         return None

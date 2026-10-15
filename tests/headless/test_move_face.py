@@ -1,4 +1,5 @@
 """Move Face as a feature: a step at the tip that finds its faces by geometry on every recompute."""
+import json
 import os
 import shutil
 import tempfile
@@ -286,3 +287,143 @@ class MoveFaceFeatureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChamferedEllipsePadTest(unittest.TestCase):
+    """The user's body: a 3-point-ellipse sketch padded 10, its top ring chamfered, the top moved up 2.1 Together —
+    refused with 'the walls … must run along the move' (the walls are an extruded ellipse)."""
+
+    def setUp(self):
+        import Part
+        self.doc = util.new_doc("MfEllipse")
+        self.body = document.make_part(self.doc)
+        sk = self.body.newObject("Sketcher::SketchObject", "Ellipse")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Ellipse(App.Vector(20, 0, 0), App.Vector(0, 10, 0), App.Vector(0, 0, 0)))
+        pad = util.add_pad(self.body, sk, 10)
+        self.doc.recompute()
+        ring = next(i for i, e in enumerate(pad.Shape.Edges, 1)
+                    if "Ellipse" in type(e.Curve).__name__ and abs(e.CenterOfMass.z - 10) < 1e-6)
+        ch = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        ch.Base = (pad, ["Edge%d" % ring])
+        ch.Size = 2
+        self.body.Tip = ch
+        self.doc.recompute()
+        self.chamfer = ch
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_together_moves_the_top_with_its_chamfer(self):
+        before = self.chamfer.Shape.Volume
+        values = dict(move_face.defaults(self.doc, self.body, None), faces=top_name(self.chamfer), distance="2.1 mm",
+                      mode="together")
+        f = move_face.create(self.doc, self.body, None, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 12.1, 6)
+        self.assertAlmostEqual(f.Shape.Volume - before, 3.141592653589793 * 20 * 10 * 2.1, 2)
+
+    def test_the_top_and_its_chamfer_picked_move_together(self):
+        """Picking the chamfer face with the top: the move goes Together, whatever mode was set."""
+        cham = next(i for i, g in enumerate(self.chamfer.Shape.Faces, 1)
+                    if g.Surface.__class__.__name__ != "Plane" and abs(g.normalAt(0, 0).z) > 0.1)
+        faces = "%s, %s:Face%d" % (top_name(self.chamfer), self.chamfer.Name, cham)
+        values = dict(move_face.defaults(self.doc, self.body, None), faces=faces, distance="2.1 mm", mode="inventor")
+        f = move_face.create(self.doc, self.body, None, values)
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        self.assertEqual(f.Mode, "together")
+        self.assertEqual(move_face.adjusted(self.doc, f), {"mode": "together"})
+        self.assertAlmostEqual(f.Shape.BoundBox.ZMax, 12.1, 6)
+
+
+class RoundWallFeatureTest(unittest.TestCase):
+    """Move Face on a round wall as a feature: the boss of a pad grows, stored by geometry, To unavailable."""
+
+    def setUp(self):
+        import Part
+        self.doc = util.new_doc("MfRound")
+        self.body, self.pad = util.padded_part(self.doc, 5, incad=True)  # 20 x 10 x 5
+        sk = self.body.newObject("Sketcher::SketchObject", "Circle")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 5), App.Rotation())
+        sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 3))
+        self.boss = util.add_pad(self.body, sk, 6, name="Boss")
+        self.body.Tip = self.boss
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def cyl(self, feature):
+        return "%s:Face%d" % (feature.Name, next(i for i, f in enumerate(feature.Shape.Faces, 1)
+                                                 if type(f.Surface).__name__ == "Cylinder"))
+
+    def make(self, **kw):
+        values = dict(move_face.defaults(self.doc, self.body, None), faces=self.cyl(self.boss), distance="1 mm")
+        values.update(kw)
+        f = move_face.create(self.doc, self.body, None, values)
+        self.doc.recompute()
+        return f
+
+    def test_the_boss_grows(self):
+        f = self.make()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        cyl = next(g for g in f.Shape.Faces if type(g.Surface).__name__ == "Cylinder")
+        self.assertAlmostEqual(cyl.Surface.Radius, 4, 6)
+        self.assertEqual(json.loads(f.Signatures)[0]["kind"], "wall")
+
+    def test_to_is_unavailable_for_a_round_wall(self):
+        self.assertEqual(move_face.unavailable({"faces": self.cyl(self.boss)}), {"extent": {"to"}})
+        self.assertEqual(move_face.unavailable({"faces": top_name(self.boss)}), {})
+
+    def test_a_flat_face_and_a_round_wall_are_refused(self):
+        from incad.core import round_wall as rw
+        with self.assertRaises(ValueError) as e:
+            self.make(faces="%s, %s" % (self.cyl(self.boss), top_name(self.boss)))
+        self.assertEqual(str(e.exception), rw.MIXED_MSG)
+
+    def test_a_cone_face_is_refused(self):
+        """A chamfer on the boss's top edge makes a cone: not a straight round wall."""
+        from incad.core import round_wall as rw
+        top_ring = next(i for i, e in enumerate(self.boss.Shape.Edges, 1)
+                        if type(e.Curve).__name__ == "Circle" and abs(e.CenterOfMass.z - 11) < 1e-6)
+        ch = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        ch.Base = (self.boss, ["Edge%d" % top_ring])
+        ch.Size = 1
+        self.body.Tip = ch
+        self.doc.recompute()
+        cone = next(i for i, g in enumerate(ch.Shape.Faces, 1) if type(g.Surface).__name__ == "Cone")
+        with self.assertRaises(ValueError) as e:
+            self.make(faces="%s:Face%d" % (ch.Name, cone))
+        self.assertEqual(str(e.exception), rw.NOT_STRAIGHT_MSG)
+
+    def test_found_again_after_the_block_under_it_changed(self):
+        f = self.make()
+        self.pad.Length = 8  # the block under the boss grows into it: the wall is shorter, still the same surface
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+
+    def test_read_and_save_reopen(self):
+        f = self.make(mode="step")
+        values = move_face.read(self.doc, f)
+        self.assertEqual((values["mode"], values["extent"], values["distance"]), ("step", "distance", "1 mm"))
+        self.assertTrue(values["faces"].startswith(self.boss.Name + ":Face"))
+        path = os.path.join(tempfile.mkdtemp(), "round.FCStd")
+        self.doc.saveAs(path)
+        feature = f.Name  # f is gone with its document
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(path)
+        self.doc.recompute()
+        f2 = self.doc.getObject(feature)
+        self.assertNotIn("Invalid", f2.State, f2.getStatusString())
+        shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+
+    def test_the_arrow_points_out_of_the_wall(self):
+        f = self.make()
+        point, normal = move_face.arrow(f)
+        self.assertAlmostEqual(normal.z, 0, 6)
+        self.assertAlmostEqual(App.Vector(point.x - 10, point.y - 5, 0).Length, 4, 4)  # on the grown wall

@@ -51,7 +51,8 @@ def _fillet_update(doc, f, values):
 
 FILLET = SimpleNamespace(
     __name__="incad.features.fillet", TITLE="Fillet", ICON="fillet", TYPES=("PartDesign::Fillet",),
-    NEEDS_PROFILE=False, PROPS={"radius": "Radius"}, PRESELECT={"edges": "edge"},
+    NEEDS_PROFILE=False, PROPS={"radius": "Radius"}, PRESELECT={"edges": "edge"}, SOLID_PICKS=True,
+    PREVIEW_WHILE_PICKING=True,  # the rounded part shows while edges are picked; a click on it means the part's edge
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
             Field("radius", "Radius", "value_length", default="1 mm")),
     defaults=lambda doc, body, profile: {"edges": "", "radius": "1 mm"},
@@ -96,6 +97,7 @@ def _chamfer_update(doc, f, values):
 CHAMFER = SimpleNamespace(
     __name__="incad.features.chamfer", TITLE="Chamfer", ICON="chamfer", TYPES=("PartDesign::Chamfer",),
     NEEDS_PROFILE=False, PROPS={"size": "Size", "size2": "Size2", "angle": "Angle"}, PRESELECT={"edges": "edge"},
+    SOLID_PICKS=True, PREVIEW_WHILE_PICKING=True,
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
             Field("type", "Type", "choice", (("equal", "Distance"), ("two", "Two distances"),
                                              ("angle", "Distance + angle")), "equal"),
@@ -271,7 +273,8 @@ def _shell_rescue(doc, body, values, error):
 SHELL = SimpleNamespace(
     __name__="incad.features.shell", TITLE="Shell", ICON="shell", TYPES=("PartDesign::Thickness",), rescue=_shell_rescue,
     claims=lambda f: not getattr(f, "InCadHelperOf", None),  # a Sweep's wall is edited from its Sweep
-    NEEDS_PROFILE=False, PROPS={"thickness": "Value"}, PRESELECT={"faces": "face"},
+    NEEDS_PROFILE=False, PROPS={"thickness": "Value"}, PRESELECT={"faces": "face"}, SOLID_PICKS=True,
+    PREVIEW_WHILE_PICKING=True,  # the hollow part shows while faces are picked; a click on it means the part's face
     FIELDS=(Field("faces", "Remove faces", "picks", pick="face"),
             Field("thickness", "Thickness", "value_length", default="1 mm"),
             Field("direction", "Direction", "choice", (("inside", "Inside"), ("outside", "Outside")), "inside")),

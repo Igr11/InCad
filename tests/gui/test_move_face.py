@@ -247,6 +247,31 @@ def test_2_drag_the_arrow_changes_the_distance_and_shows_it():
     ST["shown"] = shown
 
 
+def arrow_on_screen():
+    """The arrow's length on screen (logical px), measured square to the view (no foreshortening)."""
+    point, normal, size = s()._overlay._geom
+    d = App.Vector(*view().getViewDirection())
+    u = d.cross(App.Vector(0, 0, 1))
+    if u.Length < 1e-6:
+        u = d.cross(App.Vector(1, 0, 0))
+    u.normalize()
+    p0, p1 = screen_of(point), screen_of(point + u)
+    return size * ((p1.x() - p0.x()) ** 2 + (p1.y() - p0.y()) ** 2) ** 0.5
+
+
+def test_2b_the_arrow_keeps_its_size_on_screen_when_zooming():
+    """The user: the arrow was huge (28 % of the part, zooming with it). It is ARROW_PX on screen at any zoom."""
+    from incad.ui import move_face_arrow
+    before = arrow_on_screen()
+    view().zoomIn()
+    harness.pump(1200)
+    after = arrow_on_screen()
+    view().zoomOut()
+    harness.pump(1200)
+    assert abs(before - move_face_arrow.ARROW_PX) < 2, before
+    assert abs(after - move_face_arrow.ARROW_PX) < 2, after
+
+
 def test_3_ok_is_one_undo_step_and_the_arrow_goes():
     n = ST["undo"]
     root = s()._overlay.root
@@ -463,13 +488,100 @@ def test_8b_to_takes_an_edge_clicked_in_the_view():
     harness.pump(900)
 
 
+def test_8c_to_takes_a_vertex_clicked_in_the_view():
+    """The user: To lists a point too, but a click on a corner never filled it (FreeCAD hands a vertex only to a
+    click within about a pixel of it): a click a few pixels off the corner, on the top face, picks the corner."""
+    if s().feature_session is not None:
+        s().feature_session.cancel()
+        harness.pump(900)
+    zmax = body().Shape.BoundBox.ZMax
+    select_top()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1500)
+    dialog().set_values({"extent": "to"})
+    s().feature_session._changed(dialog().values())
+    harness.pump(800)
+    dialog().set_active_pick("to")
+    harness.pump(500)
+    clear_selection()
+    watch = SelectionLog()
+    Gui.Selection.addObserver(watch)
+    p = App.Vector(20, 0, zmax)  # the top front right corner
+    base = s().feature_session._base_shown
+    vo = base.ViewObject if base is not None else None
+    corner, inside = screen_of(p), screen_of(App.Vector(19, 1, zmax))
+    step = inside - corner
+    at = corner + step * (5.0 / (step.x() ** 2 + step.y() ** 2) ** 0.5)  # 5 px from the corner, over the top face
+    try:
+        click(at)
+        harness.pump(1500)
+    finally:
+        Gui.Selection.removeObserver(watch)
+    to = dialog().values()["to"]
+    info = view().getObjectInfo(to_coin(viewport(), at.x(), at.y()))
+    picked = [sub for sel in Gui.Selection.getSelectionEx(doc().Name) for sub in sel.SubElementNames]
+    assert picked and all(sub.startswith("Vertex") for sub in picked), (picked, info)
+    corner_v = next(i for i, v in enumerate(body().Tip.Shape.Vertexes, 1) if (v.Point - p).Length < 1e-6)
+    assert to.endswith(":Vertex%d" % corner_v), (to, corner_v)
+    shown = [(o.Name, o.Visibility) for o in body().Group if hasattr(o, "Shape")]
+    assert ":Vertex" in to, (to, dialog().error_text(), info, watch.events, base and base.Name,
+                             vo and (vo.PointSize, vo.DisplayMode), shown)
+    s().feature_session.cancel()
+    harness.pump(900)
+
+
+def test_8d_a_round_wall_offsets_from_a_click():
+    """Round walls: a click on a boss's wall picks the whole wall, the preview grows it, To is greyed out, the arrow
+    points out of the wall."""
+    import Part
+    if s().feature_session is not None:
+        s().feature_session.cancel()
+        harness.pump(900)
+    b = body()
+    sk = b.newObject("Sketcher::SketchObject", "BossCircle")
+    sk.AttachmentSupport = [(util.xy_plane(b), "")]
+    sk.MapMode = "FlatFace"
+    zmax = b.Shape.BoundBox.ZMax
+    sk.AttachmentOffset = App.Placement(App.Vector(0, 0, zmax), App.Rotation())
+    sk.addGeometry(Part.Circle(App.Vector(10, 5, 0), App.Vector(0, 0, 1), 3))
+    boss = util.add_pad(b, sk, 6, name="RoundBoss")
+    b.Tip = boss
+    doc().recompute()
+    harness.pump(800)
+    view().viewIsometric()
+    view().fitAll()
+    harness.pump(600)
+    clear_selection()
+    commands.REGISTRY.run("feature.move_face")
+    harness.pump(1200)
+    assert dialog() is not None and dialog().active_pick() == "faces", dialog() and dialog().active_pick()
+    click(screen_of(App.Vector(10, 2, zmax + 3)))  # the front of the boss's wall
+    harness.pump(1200)
+    faces = dialog().values()["faces"]
+    assert faces.startswith(boss.Name + ":Face"), (faces, dialog().error_text())
+    assert "to" in s().feature_session.kind.unavailable(dialog().values()).get("extent", set())
+    dialog().set_values({"distance": "1 mm"})
+    s().feature_session._changed(dialog().values())
+    harness.pump(1500)
+    f = s().feature_session.feature
+    assert f is not None and "Invalid" not in f.State, dialog().error_text()
+    cyl = next(g for g in f.Shape.Faces if type(g.Surface).__name__ == "Cylinder")
+    assert abs(cyl.Surface.Radius - 4) < 1e-6, cyl.Surface.Radius
+    point, normal = s().feature_session.kind.arrow(f)
+    assert abs(normal.z) < 1e-6, normal
+    s().feature_session.cancel()
+    harness.pump(900)
+
+
 def test_9_cleanup():
     App.closeDocument(ST["doc"])
     harness.pump(500)
 
 
 harness.run([test_0_setup, test_1_dialog_and_typed_distance, test_2_drag_the_arrow_changes_the_distance_and_shows_it,
+             test_2b_the_arrow_keeps_its_size_on_screen_when_zooming,
              test_3_ok_is_one_undo_step_and_the_arrow_goes, test_4_edit_reopens_with_the_values_and_modes_switch,
              test_5_a_command_ends_the_drag, test_6_a_refused_distance_leaves_the_arrow_at_the_last_good_one,
              test_7_other_views_go_to_the_dof_gizmo, test_8_finish_move_in_the_right_click_menu,
-             test_8b_to_takes_an_edge_clicked_in_the_view, test_9_cleanup])
+             test_8b_to_takes_an_edge_clicked_in_the_view, test_8c_to_takes_a_vertex_clicked_in_the_view,
+             test_8d_a_round_wall_offsets_from_a_click, test_9_cleanup])

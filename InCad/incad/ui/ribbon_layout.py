@@ -64,7 +64,8 @@ LAYOUT = {
                   ["Windows", ["view.parameters"]]]],
     ],
     "empty": [
-        ["Get Started", [["New", ["file.new", "file.new_assembly", "file.open"]]]],
+        # New is in the title bar: the first button starts the sketch (a new part comes with it)
+        ["Get Started", [["Start", ["sketch.start", "file.new_assembly", "file.open"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]]]],
     ],
 }

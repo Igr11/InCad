@@ -501,7 +501,8 @@ class Shell(QtCore.QObject):
         vp = gdoc.getInEdit() if gdoc is not None else None
         obj = getattr(vp, "Object", None)
         if sketch.is_sketch(obj) and not document.is_incad_part(obj.Document):
-            gdoc.resetEdit()
+            from incad.ui.sketch_session import close_edit
+            close_edit(gdoc)
 
     def _show_wait_notice(self):
         """Other FreeCAD tasks keep their OK/Cancel: say plainly why InCad's interface isn't there yet."""
@@ -670,6 +671,8 @@ class Shell(QtCore.QObject):
         from incad.ui.dof_handles import Handles
         self.dof_handles = Handles(self)
         self.navigator.handle_hook = self.dof_handles
+        from incad.ui.dimension_place import DeadZone
+        self.navigator.place_hook = DeadZone(self.sketches.editing)
         self._build_shortcuts()
 
     def _build_menus(self):
@@ -2412,6 +2415,8 @@ class Shell(QtCore.QObject):
             self.stop_slot_tool()
         if editing is None and self.construction_mode:
             self.construction_mode = False  # each sketch starts with normal geometry
+        if self.sketches.picking and self.sketches.pick_doc != getattr(doc, "Name", None):
+            self.sketches.cancel_pick()  # another tab in front: the plane pick was for the part left behind
         mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
         self.ribbon.set_mode(mode)
         if self.plane_panel is not None:

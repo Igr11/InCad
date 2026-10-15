@@ -435,3 +435,45 @@ class FindAndGapTest(unittest.TestCase):
             mf.gap_to([top(box)], Part.LineSegment(V(0, 40, 12), V(0, 40, 16)).toShape())  # tilted / upright
         self.assertEqual(str(e.exception), mf.PARALLEL_MSG)
         self.assertEqual(mf.PARALLEL_MSG, "Pick a face, plane, edge or point parallel to the faces")
+
+
+def chamfered_ellipse():
+    """The user's part: a 3-point ellipse (20 x 10) extruded 10, its top ring chamfered 2: the walls are an
+    extrusion of the ellipse (SurfaceOfExtrusion), neither a plane nor a cylinder."""
+    ring = Part.Ellipse(V(20, 0, 0), V(0, 10, 0), V(0, 0, 0)).toShape()
+    solid = Part.Face(Part.Wire(ring)).extrude(V(0, 0, 10))
+    top_ring = next(e for e in solid.Edges if abs(e.CenterOfMass.z - 10) < 1e-9)
+    return solid.makeChamfer(2, [top_ring])
+
+
+class CurvedWalls(unittest.TestCase):
+    def test_together_moves_the_top_and_its_chamfer_up_the_elliptic_walls(self):
+        shape = chamfered_ellipse()
+        moved = mf.apply(shape, [top(shape)], 2.1, "together")
+        self.assertTrue(moved.isValid())
+        self.assertAlmostEqual(moved.BoundBox.ZMax, 12.1, 6)
+        ellipse = 3.141592653589793 * 20 * 10
+        self.assertAlmostEqual(moved.Volume - shape.Volume, ellipse * 2.1, 3)  # the walls grew, the chamfer kept
+
+    def test_inventor_still_refuses_a_round_neighbour_it_cannot_follow(self):
+        shape = chamfered_ellipse()
+        with self.assertRaises(ValueError):
+            mf.apply(shape, [top(shape)], 2.1, "inventor")
+
+
+class PickedBlends(unittest.TestCase):
+    """The user: picking the top and its chamfer was refused ('must face the same way')."""
+
+    def test_top_and_its_chamfer_picked_move_together_in_any_mode(self):
+        shape = chamfered_ellipse()
+        cham = next(f for f in shape.Faces if not mf._is_plane(f) and not mf._along(f, UP))
+        for mode in ("inventor", "step", "together"):
+            moved = mf.apply(shape, [top(shape), cham], 2.1, mode)
+            self.assertTrue(moved.isValid(), mode)
+            self.assertAlmostEqual(moved.BoundBox.ZMax, 12.1, 6, mode)
+
+    def test_a_face_not_touching_the_moved_one_is_still_refused(self):
+        box = chamfered()
+        far = next(f for f in box.Faces if mf._is_plane(f) and f.normalAt(0, 0).x < -0.999)  # the far side
+        with self.assertRaises(ValueError):
+            mf.apply(box, [top(box), far], 2, "inventor")

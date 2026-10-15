@@ -222,7 +222,9 @@ def test_8_pattern_without_selection_starts_empty_and_asks_for_a_feature():
     harness.pump(600)
 
 
-def test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility():
+def test_9_editing_picks_shows_the_fillet_selects_the_edges_and_restores_visibility():
+    """While its edges are picked the fillet itself shows (the user: no preview otherwise); later features stay
+    hidden; everything is back as it was when the dialog closes."""
     fillet, tip = _fillet(), body().Tip
     assert tip is not fillet
     before = (fillet.Visibility, tip.Visibility)
@@ -231,7 +233,7 @@ def test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibilit
     dialog().field("edges").click()
     harness.pump(600)
     base = fillet.BaseFeature
-    assert base.Visibility and not fillet.Visibility and not tip.Visibility, (base.Visibility, fillet.Visibility,
+    assert fillet.Visibility and not base.Visibility and not tip.Visibility, (base.Visibility, fillet.Visibility,
                                                                              tip.Visibility)
     picked = sum(len(x.SubElementNames) for x in Gui.Selection.getSelectionEx(doc().Name))
     assert picked == 4, picked
@@ -501,7 +503,7 @@ harness.run([test_0_setup, test_1_fillet_takes_preselected_edges, test_2_hole_fr
              test_3_wrong_pick_kind_is_refused, test_4_rectangular_pattern_of_the_hole, test_5_measure_and_mass,
              test_6_extrude_to_face_pick_now_works, test_7_theme_switch_closes_the_old_info_panel,
              test_8_pattern_without_selection_starts_empty_and_asks_for_a_feature,
-             test_9_editing_picks_shows_the_base_selects_the_edges_and_restores_visibility,
+             test_9_editing_picks_shows_the_fillet_selects_the_edges_and_restores_visibility,
              test_10_plain_clicks_collect_edges_and_a_click_on_a_picked_one_removes_it,
              test_section_on_and_off_twice_never_crashes, test_section_by_three_marked_points,
              test_measure_edge_face_and_whole_part_by_clicking])

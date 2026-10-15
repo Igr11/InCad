@@ -58,6 +58,9 @@ class Navigator(QtCore.QObject):
         # lost one) to release(), all consumed — release() -> True: it was a click for FreeCAD, which gets it
         # replayed; hover(view, viewport, x, y) on every move with no button (the event still reaches FreeCAD)
         self.handle_hook = None
+        # the Dimension tool's dead zone (incad.ui.dimension_place): move(view, viewport, x, y) -> None or the
+        # (x, y) FreeCAD gets instead for a plain move; press() on every press
+        self.place_hook = None
         self._handle_viewport = None  # the viewport of a handle drag going on
         self._handle_press = None     # (x, y, modifiers) of its press
         self._swallow_release = False
@@ -116,6 +119,14 @@ class Navigator(QtCore.QObject):
             pos = event.position()
             if self._handle_viewport is not None and obj is self._handle_viewport:
                 return self._handle_event(kind, event, pos)
+            if self.place_hook is not None:
+                if kind == "press":
+                    self.place_hook.press()
+                elif kind == "move" and event.buttons() == QtCore.Qt.NoButton and machine.state == "idle":
+                    instead = self.place_hook.move(view, obj, pos.x(), pos.y())
+                    if instead is not None:
+                        self._move_instead(obj, instead, event.modifiers())
+                        return True
             if self.handle_hook is not None and self.mode is None and machine.state == "idle":
                 if kind in ("press", "dblclick") and event.button() == QtCore.Qt.LeftButton \
                         and event.buttons() == QtCore.Qt.LeftButton and not event.modifiers() & SELECT_MODIFIERS \
@@ -219,6 +230,17 @@ class Navigator(QtCore.QObject):
             return viewport.cursor().shape() == QtCore.Qt.BitmapCursor
         except RuntimeError:
             return False
+
+    def _move_instead(self, viewport, at, modifiers):
+        """FreeCAD gets a plain move to `at` (logical px) instead of the one the mouse made."""
+        local = QtCore.QPointF(at[0], at[1])
+        glob = QtCore.QPointF(viewport.mapToGlobal(local.toPoint()))
+        self._replaying = True
+        try:
+            QtWidgets.QApplication.sendEvent(viewport, QtGui.QMouseEvent(
+                QtCore.QEvent.MouseMove, local, glob, QtCore.Qt.NoButton, QtCore.Qt.NoButton, modifiers))
+        finally:
+            self._replaying = False
 
     def _replay(self, viewport, x, y, modifiers, button=QtCore.Qt.LeftButton, release=False):
         """Hand FreeCAD a press InCad held back (and its release, for a right click a Sketcher tool finishes on)."""

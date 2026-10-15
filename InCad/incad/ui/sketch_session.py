@@ -3,9 +3,24 @@ from incad.core import document, log, safe, sketch
 from incad.qt import QtCore
 
 
+def close_edit(gdoc):
+    """Leave the sketch (or other edit) open in `gdoc`. A Sketcher tool still running is stopped first: a resetEdit
+    under FreeCAD's Dimension tool crashed FreeCAD every time (DrawSketchHandlerDimension::deactivated solves the
+    sketch and ViewProviderSketch::slotSolverUpdate reads a view that is gone)."""
+    import FreeCADGui as Gui
+    vp = gdoc.getInEdit()
+    if sketch.is_sketch(getattr(vp, "Object", None)):
+        try:
+            Gui.runCommand("Sketcher_StopOperation")  # ends the running tool; the sketch stays open
+        except Exception as e:
+            log.logger().warning("Could not stop the Sketcher tool: %s", e)
+    gdoc.resetEdit()
+
+
 class SketchSession:
     def __init__(self, on_change=None, on_edit=None):
         self.picking = False
+        self.pick_doc = None
         self._on_change = on_change
         self._on_edit = on_edit      # called with the sketch when editing starts (baseline for the value-box rule)
         self._saved_vp = {}          # (doc, sketch) -> view-provider settings InCad changed, restored when done
@@ -65,6 +80,7 @@ class SketchSession:
             _show_fresh(vos, view)
             QtCore.QTimer.singleShot(300, lambda: self.picking and _show_fresh(vos[1:], view))
         self.picking = True
+        self.pick_doc = doc.Name  # another document in front ends the pick (shell.refresh)
         Gui.Selection.clearSelection()
         Gui.Selection.addObserver(self)
         log.report("info", "Pick a plane or a flat face for the new sketch (Esc cancels)")
@@ -186,7 +202,7 @@ class SketchSession:
         self.cancel_pick()
         gdoc = Gui.ActiveDocument
         if self.editing() is not None and gdoc is not None:
-            gdoc.resetEdit()
+            close_edit(gdoc)
         for key in list(self._saved_vp):
             self.restore(key)
 
@@ -200,7 +216,7 @@ class SketchSession:
             fs.cancel()  # the pattern dialog cannot outlive its sketch
         gdoc = Gui.ActiveDocument
         if gdoc is not None and gdoc.getInEdit() is not None:
-            gdoc.resetEdit()
+            close_edit(gdoc)
         if App.ActiveDocument is not None:
             App.ActiveDocument.recompute()
         self._changed()
