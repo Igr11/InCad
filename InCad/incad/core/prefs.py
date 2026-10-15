@@ -160,3 +160,23 @@ def set_thread_clearance(value):
     if not 0 <= value <= 2:
         raise ValueError("Thread clearance must be between 0 and 2 mm")
     _s().set("str", "ThreadClearance", "%g" % value)
+
+
+EXPORT_TYPES = ("step", "stl_normal", "stl_fine")
+
+
+def export_folder():
+    """The folder File ▸ Export wrote to last ('' before the first export)."""
+    return _s().get("str", "ExportFolder", "")
+
+
+def set_export_folder(path):
+    _s().set("str", "ExportFolder", path)
+
+
+def export_type():
+    return _choice("ExportType", EXPORT_TYPES, "step")
+
+
+def set_export_type(value):
+    _set_choice("ExportType", EXPORT_TYPES, value)

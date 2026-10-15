@@ -29,7 +29,7 @@ MENU_PREFIX = "InCadMenu_"
 TOOLBAR_GROUP = "User parameter:BaseApp/MainWindow/Toolbars"
 NAV_KEYS = {"NavigationStyle": "String", "ZoomAtCursor": "Bool"}
 NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtCursor": ("Bool", True)}
-MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", "file.close", None, "file.quit"]),
+MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", None, "file.export", None, "file.close", None, "file.quit"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
                    "view.style_wireframe", "view.assembly_context", "view.parameters", None, "view.freecad"])]
@@ -40,7 +40,7 @@ _shell = None
 # FreeCAD commands whose shortcuts InCad's own menus take over while active: FreeCAD's actions sit in its hidden
 # menus, where they no longer answer keys (probed: ⌘Z did nothing), so InCad owns the keys and gives them back.
 TAKEN_SHORTCUTS = ("Std_New", "Std_Open", "Std_Save", "Std_SaveAs", "Std_CloseActiveWindow", "Std_Undo", "Std_Redo",
-                   "Std_Quit")
+                   "Std_Quit", "Std_Export")
 
 
 def _std_actions(name):

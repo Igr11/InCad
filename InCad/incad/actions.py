@@ -615,6 +615,111 @@ def quit_freecad():
     run_std("Std_Quit")
 
 
+EXPORT_FILTERS = (("step", "STEP (*.step *.stp)"), ("stl_normal", "STL, Normal (*.stl)"),
+                  ("stl_fine", "STL, Fine (*.stl)"))
+EXPORT_ASK = None  # tests: callable(doc) -> (path, export type) or (None, None)
+THREADS_ASK = None  # tests: callable() -> "on", "without" or "cancel"
+
+
+def _ask_export_path(doc):
+    """The Save dialog: the file type (STEP, STL Normal / Fine) picks the format; the last folder and type again."""
+    import os
+    import FreeCADGui as Gui
+    from incad.qt import QtWidgets
+    kind = prefs.export_type()
+    folder = prefs.export_folder()
+    if not os.path.isdir(folder):
+        folder = os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~")
+    filters = dict(EXPORT_FILTERS)
+    path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+        Gui.getMainWindow(), "Export %s" % doc.Label,
+        os.path.join(folder, doc.Label + (".step" if kind == "step" else ".stl")),
+        ";;".join(f for _, f in EXPORT_FILTERS), filters[kind])
+    if not path:
+        return None, None
+    kind = next((k for k, f in EXPORT_FILTERS if f == chosen), kind)
+    if not os.path.splitext(path)[1]:
+        path += ".step" if kind == "step" else ".stl"
+    return path, kind
+
+
+def _ask_threads():
+    import FreeCADGui as Gui
+    from incad.qt import QtWidgets
+    box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Question, "Export",
+                                "Threads Off is holding the threads off. Turn them on for the export? "
+                                "(They go back off afterwards.)", QtWidgets.QMessageBox.NoButton, Gui.getMainWindow())
+    on = box.addButton("Turn On for Export", QtWidgets.QMessageBox.AcceptRole)
+    without = box.addButton("Export Without Threads", QtWidgets.QMessageBox.ActionRole)
+    box.addButton(QtWidgets.QMessageBox.Cancel)
+    box.setDefaultButton(on)
+    box.exec()
+    return "on" if box.clickedButton() is on else "without" if box.clickedButton() is without else "cancel"
+
+
+def export_file():
+    """File ▸ Export: the part (every visible Solid) or the assembly (its visible components) to STEP or STL."""
+    import os
+    import FreeCAD as App
+    from incad.core import export, log
+    _refuse_while_busy()
+    doc = App.ActiveDocument
+    if doc is None:
+        raise ValueError("Open a part first")
+    export.shapes(doc)  # nothing to export: said before any dialog
+    threads = "without"
+    if export.threads_held_off(doc):
+        threads = (THREADS_ASK or _ask_threads)()
+        if threads == "cancel":
+            return None
+    path, kind = (EXPORT_ASK or _ask_export_path)(doc)
+    if not path:
+        return None
+    if export.file_format(path) == "step":
+        fineness = "normal"
+    else:
+        fineness = "fine" if kind == "stl_fine" else "normal"
+    prefs.set_export_folder(os.path.dirname(path))
+    prefs.set_export_type(kind if kind in prefs.EXPORT_TYPES else "step")
+    with _waiting():
+        if threads != "on":
+            facets = export.export(doc, path, fineness)
+        else:
+            facets = _with_threads_on(doc, lambda: export.export(doc, path, fineness))
+    log.report("info", "Exported %s to %s%s" % (doc.Label, path, " (%d triangles)" % facets if facets else ""))
+    return path
+
+
+def _with_threads_on(doc, fn):
+    """fn() with the threads Threads Off holds off turned on, then off again: the files end unchanged."""
+    import FreeCADGui as Gui
+    from incad.core import export
+    docs = export.changed_documents(doc)
+    modified = {d.Name: Gui.getDocument(d.Name).Modified for d in docs if Gui.getDocument(d.Name) is not None}
+    export.toggle_threads(doc)
+    try:
+        return fn()
+    finally:
+        export.toggle_threads(doc)
+        for d in docs:
+            gdoc = Gui.getDocument(d.Name)
+            if gdoc is not None and d.Name in modified:
+                gdoc.Modified = modified[d.Name]
+        from incad.ui import shell
+        if shell.instance() is not None:
+            shell.instance().refresh()
+
+
+class _waiting:
+    def __enter__(self):
+        from incad.qt import QtCore, QtGui, QtWidgets
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
+
+    def __exit__(self, *exc):
+        from incad.qt import QtWidgets
+        QtWidgets.QApplication.restoreOverrideCursor()
+
+
 def delete_target():
     """Delete with one undo step in every document it changes (opened before anything changes)."""
     from incad.core import delete, safe
@@ -927,6 +1032,8 @@ def commands():
         _std("file.open", "Open", "open", "Ctrl+O"),
         _std("file.save", "Save", "save", "Ctrl+S"),
         _std("file.save_as", "Save As", "save", "Ctrl+Shift+S"),
+        Command(id="file.export", label="Export", icon="export", handler=export_file, shortcut="Ctrl+E",
+                tooltip="Export the part or assembly to STEP (other CAD) or STL (3D printing)"),
         Command(id="file.close", label="Close", icon="close", handler=close_document, shortcut="Ctrl+W",
                 tooltip="Close this file (asks to save changes)"),
         Command(id="file.quit", label="Quit", icon="close", handler=lambda: quit_freecad(), shortcut="Ctrl+Q",

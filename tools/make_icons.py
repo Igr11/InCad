@@ -36,6 +36,11 @@ ICONS = {
     "save": ('<rect x="5" y="5" width="22" height="22" rx="2" fill="none" stroke="{S}" stroke-width="1.8"/>'
              '<rect x="10" y="5" width="12" height="8" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
              '<rect x="9" y="18" width="14" height="9" fill="{S}" fill-opacity=".3"/>'),
+    "export": ('<path d="M8 3 H19 L25 9 V29 H8 Z" fill="none" stroke="{N}" stroke-width="1.6"/>'
+               '<path d="M19 3 V9 H25" fill="none" stroke="{N}" stroke-width="1.6"/>'
+               '<path d="M12 21 L16.5 16.5 L21 21 V26 H12 Z" fill="{F}" stroke="{S}" stroke-width="1.3"/>'
+               '<path d="M16.5 14 V6.5 M13 10 L16.5 6.5 L20 10" fill="none" stroke="{A}" stroke-width="2.2" '
+               'stroke-linecap="round" stroke-linejoin="round"/>'),
     "undo": ('<path d="M12 8 L5 14 L12 20" fill="none" stroke="{S}" stroke-width="2.4" stroke-linecap="round" '
              'stroke-linejoin="round"/><path d="M5 14 H19 A7 7 0 0 1 19 28 H14" fill="none" stroke="{S}" '
              'stroke-width="2.4" stroke-linecap="round"/>'),
