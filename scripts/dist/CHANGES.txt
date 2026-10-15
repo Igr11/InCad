@@ -5,6 +5,12 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.1
+-----
+New features
+- File > Export... (Cmd-E): the part as STEP (.step / .stp) or STL (.stl, Normal / Fine).
+
+
 0.5.0
 -----
 Text and Emboss.

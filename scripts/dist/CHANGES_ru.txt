@@ -5,6 +5,12 @@ InCad для FreeCAD - что изменилось
 Новые сборки сверху. Имя сборки - это имя zip-файла.
 
 
+0.5.1
+-----
+Новое
+- File > Export... (Cmd-E): деталь в STEP (.step / .stp) или STL (.stl, Normal / Fine).
+
+
 0.5.0
 -----
 Текст и Emboss.
