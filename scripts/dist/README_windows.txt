@@ -3,13 +3,14 @@ InCad for FreeCAD - Windows test build (UNTESTED)
 
 Build: VERSION
 
-THIS BUILD HAS NEVER BEEN RUN ON WINDOWS. InCad is developed and tested on macOS;
-this is its first Windows build, made so that it can be tried. Expect problems, work
-only on copies of files, and send the log (see "Reporting a problem").
+InCad is developed and tested on macOS; on Windows it has been tried on one PC only.
+Expect problems, work only on copies of files, and send the log (see "Reporting a problem").
 
-New in this build (as on the Mac): big parts work much faster, and a slot can be dimensioned
-by its overall length (Sketch > Dimension > Overall Dimension, or Centers / Overall / Gap in
-a dimension's value box).
+New in this build (as on the Mac): Emboss and Engrave on a sphere (a Text or any closed
+sketch), and Settings (the gear) > Display Quality - Normal is the default on Windows; Fine
+draws round faces smoother but takes more drawing time on built-in graphics.
+Earlier: big parts work much faster, and a slot can be dimensioned by its overall length
+(Sketch > Dimension > Overall Dimension, or Centers / Overall / Gap in a dimension's value box).
 
 What changed: CHANGES.txt. How to use every feature: InCad-manual.pdf (the user manual).
 A short tour: InCad-presentation.pdf

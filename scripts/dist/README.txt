@@ -13,10 +13,11 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
-New in 0.5.2 and 0.5.3: big parts work much faster (recomputing, editing a feature, clicking a
-face, Text and patterns in a sketch, the first change after opening a file), and a slot can be
-dimensioned by its overall length - Sketch > Dimension > Overall Dimension, or the Centers /
-Overall / Gap buttons in a dimension's value box.
+New in 0.5.4: Emboss and Engrave on a sphere (a Text or any closed sketch, projected along the
+sketch's normal), and Settings (the gear) > Display Quality - Fine draws round faces smoother.
+New in 0.5.2 and 0.5.3: big parts work much faster, and a slot can be dimensioned by its overall
+length - Sketch > Dimension > Overall Dimension, or the Centers / Overall / Gap buttons in a
+dimension's value box.
 Work on copies of files that matter to you.
 
 

@@ -5,6 +5,33 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.4
+-----
+Emboss on a sphere, a Display Quality setting, and Revolve cut / Emboss fixes.
+
+New features
+- Emboss and Engrave on a sphere: the profile (a Text or any closed sketch, such as a star) is
+  projected onto the sphere along the sketch's normal, on the side the sketch faces, and raised or
+  cut along the radius. "Evenly round" is greyed out on a sphere. A profile that reaches past the
+  sphere's outline, or past the edge of a cut-off sphere, is refused with a message.
+- Settings (the gear at the top right) > Display Quality: Normal (faster) or Fine (smoother
+  curves). Fine draws round faces with finer triangles, so a highlight on a ball or a fillet no
+  longer shows facets. Default: Fine on a Mac, Normal on Windows. It changes only how the part is
+  drawn: an open file is not marked as changed.
+
+Bug fixes
+- Emboss with a sketch that sits in another Solid (for example a star whose own Extrude was
+  deleted) was made in that Solid, with nothing under it, so nothing appeared. It now goes on the
+  Solid of the face you click, and the sketch moves there with it.
+- A Revolve (or another feature) cancelled on a sketch area left a hidden copy of the area
+  behind. That copy kept the sketch's projected edges construction, so a closed profile made from
+  them could not be revolved or cut. The copy is now removed on Cancel (and on opening a file).
+- Projected edges stayed construction when projecting took more than 6 seconds (several edges
+  picked one by one); they now become normal geometry however long it takes.
+- Construction on a projected edge now says what the edge is afterwards ("now normal: part of the
+  profile" or "construction"): a projected edge looks the same either way.
+
+
 0.5.3
 -----
 More speed, and a cleaner fillet preview.
