@@ -190,7 +190,7 @@ def dimension_parameters(doc):
     return rows
 
 
-def set_dimension(doc, name, text):
+def set_dimension(doc, name, text, everything=True):
     """Set a named dimension to a value ('40 mm', '12') or a formula ('d3*2', 'Width/2').
     Call inside safe.run_safely: a failing formula raises and must be rolled back."""
     sk, index = find_dimension(doc, name)
@@ -200,6 +200,17 @@ def set_dimension(doc, name, text):
     if not text:
         raise ValueError("%s needs a value" % name)
     path = "Constraints." + name
+    from incad.core import overall_dims
+    held = overall_dims.hold_radii(sk, index)  # an overall length: the slot gets longer, not wider
+    try:
+        _set_value(doc, sk, index, name, path, text, everything and not held)  # the part once, below
+    finally:
+        overall_dims.release(sk, held)
+    if held:
+        doc.recompute() if everything else doc.recompute([sk])
+
+
+def _set_value(doc, sk, index, name, path, text, everything):
     try:
         quantity = App.Units.Quantity(text)
     except Exception:
@@ -221,7 +232,7 @@ def set_dimension(doc, name, text):
         except Exception as e:
             from incad.core import model
             raise ValueError("%s: %s" % (name, model.friendly(str(e))))
-    doc.recompute()
+    doc.recompute() if everything else doc.recompute([sk])  # the open sketch alone: the part follows on Finish
     if "Invalid" in sk.State or status(sk)["conflicting"]:
         from incad.core import model
         raise ValueError("%s = %s cannot be satisfied: %s" % (name, text, model.friendly(sk.getStatusString())))

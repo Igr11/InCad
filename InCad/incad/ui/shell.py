@@ -6,7 +6,8 @@ import os
 import re
 import traceback
 
-from incad.core import commands, log, prefs
+from incad import host
+from incad.core import commands, log, perf, prefs
 from incad.qt import dispose, QAction, QtCore, QtGui, QtWidgets
 from incad.ui import ribbon_layout
 from incad.ui import theme as themes
@@ -223,6 +224,7 @@ class _SelectionWatch:
             self._due = True
             QtCore.QTimer.singleShot(0, self._fire)
 
+    @perf.timed("selection changed")
     def _fire(self):
         self._due = False
         try:
@@ -822,7 +824,7 @@ class Shell(QtCore.QObject):
     def _settings_menu(self, parent):
         menu = QtWidgets.QMenu(parent)
         themes_menu = menu.addMenu("Theme")
-        for value, label in (("auto", "Match macOS"), ("light", "Light"), ("dark", "Dark")):
+        for value, label in (("auto", "Match " + host.OS_NAME), ("light", "Light"), ("dark", "Dark")):
             act = themes_menu.addAction(label)
             act.setCheckable(True)
             act.setChecked(prefs.theme() == value)
@@ -1351,6 +1353,27 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
         return self.slot_tool
 
+    def start_overall_dim_tool(self):
+        """Sketch ▸ Overall Dimension (incad.ui.overall_dim_tool) in the slot tool's place."""
+        import FreeCADGui as Gui
+        from incad.features import common
+        from incad.ui.overall_dim_tool import OverallDimTool
+        gdoc = Gui.ActiveDocument
+        edit = gdoc.getInEdit() if gdoc is not None else None
+        sk = getattr(edit, "Object", None)
+        if sk is None or sk.TypeId != "Sketcher::SketchObject":
+            raise ValueError("Open a sketch first")
+        picked = [int(sub[4:]) - 1 for sel in common.selection_ex(sk.Document.Name) if sel.Object is sk
+                  for sub in (sel.SubElementNames or ()) if sub.startswith("Edge")]
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")  # no FreeCAD tool fighting for the clicks
+        Gui.Selection.clearSelection()
+        self.slot_tool = OverallDimTool(gdoc.ActiveView, sk, on_finish=self._slot_tool_done,
+                                        on_placed=lambda s, name: self.open_value_box(s, name))
+        self.slot_tool.start(picked)
+        self.schedule_refresh()
+        return self.slot_tool
+
     def start_text_tool(self):
         """Sketch ▸ Text: on a box (a line of it) or a curve of the sketch picked before, the dialog opens on it;
         otherwise two clicks draw the text box (made inside the dialog's undo step)."""
@@ -1394,6 +1417,7 @@ class Shell(QtCore.QObject):
     def shortcut_action(self, cmd_id):
         return self._shortcuts.get(cmd_id)
 
+    @perf.timed("sketch changed")
     def _sketch_changed(self, sk):
         """New dimensions get dN names; one added by the Dimension tool (no new geometry) opens the value box."""
         if getattr(sk.Document, "Restoring", False):
@@ -1482,6 +1506,7 @@ class Shell(QtCore.QObject):
         from incad.core import safe
         return bool(safe.busy() or doc.HasPendingTransaction or getattr(doc, "Recomputing", False))
 
+    @perf.timed("projection changed")
     def _projection_changed(self, sk):
         """An edge projected (or its projection undone / redone): it becomes normal geometry right away."""
         if getattr(sk.Document, "Restoring", False):
@@ -1623,6 +1648,7 @@ class Shell(QtCore.QObject):
         if self.value_box is not None:
             self.value_box.restart_tool = "sketch.dimension"  # the tool stops when the value is applied
 
+    @perf.timed("after undo")
     def _after_undo(self, doc):
         """Undo/redo can bring objects back without their formula links (FreeCAD quirk): repair them."""
         def repair():
@@ -1654,6 +1680,15 @@ class Shell(QtCore.QObject):
         """Features built on an area of this sketch follow its edits (the area holding the remembered point)."""
         from incad.core import regions
         if not _alive(sk) or regions.is_profile(sk):
+            return
+        if getattr(sk.Document, "Recomputing", False):
+            # a recompute's progress bar runs this mid-way: a recompute from here ran the rest of the document
+            # again (a big part took twice as long). Once, when it is over.
+            due = self.__dict__.setdefault("_areas_due", set())
+            key = (sk.Document.Name, sk.Name)
+            if key not in due:
+                due.add(key)
+                QtCore.QTimer.singleShot(150, lambda: (due.discard(key), self._update_area_profiles(sk)))
             return
         try:
             if not regions.profiles_of(sk):
@@ -1700,7 +1735,9 @@ class Shell(QtCore.QObject):
                 sketches.reconcile_replaced(sk, self._dim_known[key])  # replaced by the placing click just now
             except Exception as e:
                 log.report("warning", "Could not find %s again: %s" % (name, e))
-        r = safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text), doc)
+        open_sketch = sk is not None and self.sketches.editing() is sk  # its part follows on Finish Sketch
+        r = safe.run_safely("Set %s" % name, lambda: sketches.set_dimension(doc, name, text, not open_sketch), doc,
+                            only=[sk] if open_sketch else None)
         if r.ok and sk is not None:
             self._dim_known[key] = sketches.dimension_snapshot(sk)
         self.schedule_refresh()
@@ -1721,7 +1758,30 @@ class Shell(QtCore.QObject):
         if not self._box_focus_hooked:
             app.focusChanged.connect(self._keep_box_keyboard)
             self._box_focus_hooked = True
+        from incad.core import overall_dims
+        index = next((i for i, c in enumerate(sk.Constraints) if c.Name == name), -1)
+        kind = overall_dims.kind_of(sk, index)
+        if kind is not None:  # two arcs / circles: centre to centre, outer edges (a slot's overall length) or gap
+            box.set_kinds(overall_dims.KINDS, kind[0], lambda k: self._switch_dimension_kind(sk, name, k))
         box.show_near(QtGui.QCursor.pos())
+
+    def _switch_dimension_kind(self, sk, name, kind):
+        """The value box's Centers / Overall / Gap: the dimension measures the two arcs that way (same name, its
+        current size), and the box opens again on it."""
+        from incad.core import overall_dims, safe
+        doc = sk.Document
+
+        def go():
+            index = next(i for i, c in enumerate(sk.Constraints) if c.Name == name)
+            overall_dims.set_kind(sk, index, kind)
+
+        r = safe.run_safely("Dimension Type", go, doc, only=[sk])
+        if not r.ok:
+            if self.value_box is not None:
+                self.value_box.set_error(r.error)
+            return
+        self._close_value_box(apply_if_typed=False)  # a value typed was for the other kind
+        self.open_value_box(sk, name)
 
     def _close_value_box(self, apply_if_typed=False):
         """apply_if_typed: the user moved on (next dimension, Finish Sketch, another tab) — what was typed is
@@ -2343,6 +2403,7 @@ class Shell(QtCore.QObject):
         except (RuntimeError, TypeError):
             pass
 
+    @perf.timed("window events")
     def eventFilter(self, obj, event):
         try:
             etype = event.type()
@@ -2476,6 +2537,7 @@ class Shell(QtCore.QObject):
         self._refresh_pending = True
         QtCore.QTimer.singleShot(0, self.refresh)
 
+    @perf.timed("panel refresh")
     def refresh(self):
         self._refresh_pending = False
         if self.ribbon is None:
@@ -2485,6 +2547,10 @@ class Shell(QtCore.QObject):
             # a file is still loading: FreeCAD pumps events for its progress bar, and a refresh now would
             # recompute a half-restored document (the Sketcher crashed on a projected edge not yet linked)
             QtCore.QTimer.singleShot(300, self.schedule_refresh)
+            return
+        if any(getattr(App.getDocument(n), "Recomputing", False) for n in App.listDocuments()):
+            # the same progress bar during a recompute: the panels would show a half-recomputed part, many times
+            QtCore.QTimer.singleShot(150, self.schedule_refresh)
             return
         try:
             self._refresh()
@@ -2554,6 +2620,11 @@ class Shell(QtCore.QObject):
                     doc.recompute()
             except Exception as e:
                 log.logger().warning("Orphan area copies on open: %s", e)
+            try:  # suppressed tapped holes computed their thread on every recompute (3.6 s each)
+                from incad.core import suppress
+                suppress.quiet_suppressed_holes(doc)
+            except Exception as e:
+                log.logger().warning("Suppressed holes on open: %s", e)
             self._adopt_all_projections(doc.Name)  # after the purge: an orphan area copy uses nothing
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):

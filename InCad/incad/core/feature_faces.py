@@ -7,7 +7,8 @@ feature whose new element it lies on."""
 import Part
 
 TOL = 1e-5
-_cache = {}  # (feature name, shape hash, base hash, kind) -> the elements the feature brought in
+_index = {}  # (shape hash, kind) -> [(enlarged box, element)] of a shape's elements
+_points = {}  # (shape hash, kind) -> [(geometry type, a point inside)] of a shape's elements
 
 
 def _elements(shape, kind):
@@ -53,28 +54,55 @@ def _on(point, el):
     return el.distToShape(Part.Vertex(point))[0] < TOL
 
 
-def _new(feature, kind):
+def _cached(store, shape, kind, make):
+    key = (shape.hashCode(), kind)
+    if key not in store:
+        if len(store) > 64:  # shapes of earlier recomputes
+            store.clear()
+        store[key] = make()
+    return store[key]
+
+
+def _boxes(shape, kind):
+    def make():
+        out = []
+        for o in _elements(shape, kind):
+            bb = o.BoundBox
+            bb.enlarge(TOL * 10)
+            out.append((bb, o))
+        return out
+    return _cached(_index, shape, kind, make)
+
+
+def _inner_points(shape, kind):
+    return _cached(_points, shape, kind, lambda: [(_geom_type(e, kind), _point(e, kind)) for e in _elements(shape, kind)])
+
+
+def _on_any(point, t, shape, kind, among=None):
+    """The point lies on an element of `shape` (or of `among`, indexes into it) with geometry type t. Boxes first,
+    type and distance only for the few elements whose box holds the point."""
+    boxes = _boxes(shape, kind)
+    for i in (range(len(boxes)) if among is None else among):
+        bb, o = boxes[i]
+        if bb.isInside(point) and _geom_type(o, kind) == t and o.distToShape(Part.Vertex(point))[0] < TOL:
+            return True
+    return False
+
+
+def _brought(feature, point, t, kind):
+    """The feature brought in the element at `point` (type t): its shape has one there, its base has none (one
+    point tested against each shape: comparing every element with every element of the base took 60-80 s on the
+    first click on a 600-face part)."""
     shape = _shape(feature)
-    if shape is None:
-        return []
+    if shape is None or not _on_any(point, t, shape, kind):
+        return False
     base = getattr(feature, "BaseFeature", None)
     base_shape = _shape(base) if base is not None else None
-    key = (feature.Name, shape.hashCode(), base_shape.hashCode() if base_shape is not None else 0, kind)
-    if key not in _cache:
-        old = list(_elements(base_shape, kind)) if base_shape is not None else []
-        out = []
-        for el in _elements(shape, kind):
-            t, p = _geom_type(el, kind), _point(el, kind)
-            # trimmed by this feature but on the same face (or edge) as before: still the older feature's
-            if not any(_geom_type(o, kind) == t and _on(p, o) for o in old):
-                out.append(el)
-        _cache[key] = out
-    return _cache[key]
+    return base_shape is None or not _on_any(point, t, base_shape, kind)
 
 
 def _made_by(feature, el, kind):
-    t, p = _geom_type(el, kind), _point(el, kind)
-    return any(_geom_type(n, kind) == t and _on(p, n) for n in _new(feature, kind))
+    return _brought(feature, _point(el, kind), _geom_type(el, kind), kind)
 
 
 def _applied(feature):
@@ -94,7 +122,9 @@ def on_tip(feature, kind="Face"):
     shape = _shape(tip) if tip is not None else None
     if shape is None:
         return []
-    return ["%s%d" % (kind, i + 1) for i, e in enumerate(_elements(shape, kind)) if _made_by(feature, e, kind)]
+    # the same rule as creator(): the solid's element whose inner point the feature brought in
+    return ["%s%d" % (kind, i + 1) for i, (t, p) in enumerate(_inner_points(shape, kind))
+            if _brought(feature, p, t, kind)]
 
 
 def creator(tip, sub):
@@ -110,8 +140,9 @@ def creator(tip, sub):
         return tip
     group = list(body.Group)
     upto = group.index(tip) if tip in group else len(group) - 1
+    t, p = _geom_type(el, kind), _point(el, kind)
     for f in reversed(group[:upto + 1]):
         if f.isDerivedFrom("PartDesign::Feature") and f.TypeId not in (
-                "PartDesign::Plane", "PartDesign::Line", "PartDesign::Point") and _made_by(f, el, kind):
+                "PartDesign::Plane", "PartDesign::Line", "PartDesign::Point") and _brought(f, p, t, kind):
             return f
     return tip

@@ -124,7 +124,7 @@ def _clearance_param(doc, data, text):
     name = data.get("clearance_param")
     if name and name in [p[0] for p in model.feature_parameters(doc)]:
         if model.parameter_text(doc, name) != text:
-            model.set_model_parameter(doc, name, text)
+            model.set_model_parameter(doc, name, text, everything=False)
         return name
     return model.new_feature_parameter(doc, text, "length")
 

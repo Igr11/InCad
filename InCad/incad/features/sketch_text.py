@@ -281,7 +281,7 @@ def _apply(doc, f, sk, values):
         raise ValueError("Click a line, arc, circle or curve of the sketch for the text to run along")
     family = values.get("font") or st.DEFAULT_FAMILY
     if family not in st.fonts():
-        raise ValueError("The font %s is not installed on this Mac" % family)
+        raise ValueError("The font %s is not installed on this computer" % family)
     s.update(text=values.get("text") or "", font=family, bold=bool(values.get("bold")),
              italic=bool(values.get("italic")), mirror=bool(values.get("mirror")), mode=mode,
              halign=values.get("halign") or "center",

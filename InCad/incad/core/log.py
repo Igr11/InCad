@@ -2,12 +2,14 @@
 import logging
 import os
 
+from incad import host
+
 _logger = None
 _reporter = None
 
 
 def log_path():
-    return os.environ.get("INCAD_LOG") or os.path.expanduser("~/Library/Logs/InCad.log")
+    return os.environ.get("INCAD_LOG") or host.log_path()
 
 
 def logger():

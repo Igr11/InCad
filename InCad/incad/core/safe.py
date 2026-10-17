@@ -200,8 +200,9 @@ def _relink(doc):
         log.report("warning", "Could not repair formula links: %s" % e, traceback.format_exc())
 
 
-def run_safely(label, fn, doc=None):
-    """Run fn() as one undo step named `label`. Never raises at the outermost level."""
+def run_safely(label, fn, doc=None, only=None):
+    """Run fn() as one undo step named `label`. Never raises at the outermost level. only: the objects to recompute
+    (an open sketch: the part follows on Finish Sketch), else the whole document."""
     global _depth
     if _depth > 0:
         return SafeResult(True, fn())  # nested: the outer guard owns the transaction and catches errors
@@ -235,8 +236,8 @@ def run_safely(label, fn, doc=None):
     try:
         value = fn()
         touched = {o.Name for o in doc.Objects if "Touched" in o.State or o.Name not in names_before}
-        doc.recompute()
-        found = problems(doc, broken_before, touched)
+        doc.recompute(only) if only else doc.recompute()
+        found = problems(doc, broken_before, {o.Name for o in only} if only else touched)
         if found:
             raise _InvalidResult("; ".join(found))
     except Exception as e:

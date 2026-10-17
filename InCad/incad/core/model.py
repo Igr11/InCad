@@ -286,11 +286,13 @@ def parameter_text(doc, name):
     raise ValueError("No parameter named %r" % name)
 
 
-def set_model_parameter(doc, name, text):
-    """Set a dimension or a feature value. Call inside safe.run_safely or a feature session's transaction."""
+def set_model_parameter(doc, name, text, everything=True):
+    """Set a dimension or a feature value. Call inside safe.run_safely or a feature session's transaction.
+    everything=False: only the parameter itself is computed (to check it) — a feature dialog computes the rest
+    itself, and a whole recompute here recomputed a big part for every value of the dialog (Hole: up to nine)."""
     from incad.core import sketch
     if sketch.find_dimension(doc, name)[0] is not None:
-        return sketch.set_dimension(doc, name, text)
+        return sketch.set_dimension(doc, name, text, everything)
     obj = _model_obj(doc)
     if obj is None or name not in _feature_names(doc):
         raise ValueError("No parameter named %r" % name)
@@ -302,7 +304,7 @@ def set_model_parameter(doc, name, text):
         obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, kind), kind)))
     except Exception as e:
         raise ValueError("%s: %s" % (name, friendly(str(e))))
-    doc.recompute()
+    doc.recompute() if everything else doc.recompute([obj])
     if "Invalid" in obj.State or "Error" in obj.State:
         raise ValueError("%s: %s" % (name, friendly(obj.getStatusString())))
     from incad.features import constraints  # an assembly Angle may change FreeCAD joint type with its value

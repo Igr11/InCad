@@ -61,6 +61,11 @@ class Registry:
 
     def run(self, cmd_id):
         """Run a command. Never raises; returns safe.SafeResult."""
+        from incad.core import perf
+        with perf.measure("command " + cmd_id):
+            return self._run(cmd_id)
+
+    def _run(self, cmd_id):
         from incad.core.safe import SafeResult
         cmd = self._cmds.get(cmd_id)
         if cmd is None:

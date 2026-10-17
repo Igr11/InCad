@@ -97,7 +97,7 @@ def value_param(doc, feature, prop, text, unit_kind, base=None):
         name = model.new_feature_parameter(doc, text, unit_kind, base)
         model.bind(feature, prop, name)
     elif model.parameter_text(doc, name) != text:
-        model.set_model_parameter(doc, name, text)
+        model.set_model_parameter(doc, name, text, everything=False)  # the dialog computes the feature itself
     return name
 
 

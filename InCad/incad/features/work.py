@@ -81,7 +81,7 @@ def _offset_param(doc, f, text):
         pname = model.new_feature_parameter(doc, text or "10 mm", "length")
         f.setExpression(".AttachmentOffset.Base.z", "%s.%s" % (model.MODEL_NAME, pname))
     elif model.parameter_text(doc, pname) != text:
-        model.set_model_parameter(doc, pname, text)
+        model.set_model_parameter(doc, pname, text, everything=False)
 
 
 def _deg(text):

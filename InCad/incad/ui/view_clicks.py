@@ -3,6 +3,7 @@ and of InCad's navigation: in sketch edit FreeCAD's sketch handles the mouse its
 saw a real click (the tools' tests had called their handlers directly). A plain left press is the tool's (consumed,
 with its release); other buttons, drags with the middle / right button and modifiers other than Cmd/Ctrl/Shift
 stay FreeCAD's / InCad's (zoom, orbit, pan, the marking menu)."""
+from incad.core import perf
 from incad.qt import QtCore
 
 
@@ -34,6 +35,7 @@ class ViewClicks(QtCore.QObject):
         p = event.position()
         return to_coin(self._viewport, p.x(), p.y())
 
+    @perf.timed("view clicks")
     def eventFilter(self, obj, event):
         if obj is not self._viewport:
             return False

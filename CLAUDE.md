@@ -40,3 +40,11 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   (`HANDLE_PX`), dragged by InCad itself through `Navigator.handle_hook` (never reaches FreeCAD, no setEdit): other free
   parts temporarily grounded, solve per move, one "Move part" step; a far turn axis has its arc drawn at the part's
   centre (`Handle.pivot` keeps the real axis).
+- Speed (0.5.2): a recompute's progress bar runs deferred handlers mid-recompute too — a handler that recomputes or
+  writes must wait for `doc.Recomputing` to end; write sketch properties only when they differ (an equal write still
+  touches and recomputes everything after). Feature dialogs preview with `doc.recompute([feature + helpers])` (part
+  rolled back to the edited feature, the rest once on OK) and check only the shapes that preview computed;
+  `set_model_parameter(..., everything=False)` inside dialogs. `incad.core.perf` logs `Slow:` calls and event-loop stalls.
+- Overall dimensions (`incad.core.overall_dims`): a construction axis through two arc centres + a point where it leaves
+  each arc; the value box offers Centers / Overall / Gap for any distance between two arcs (FreeCAD's own is the gap).
+- Windows (untested build, `scripts/make_dist_windows.sh`): what differs per system lives in `incad.host`.

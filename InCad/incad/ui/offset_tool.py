@@ -4,10 +4,11 @@ opens on the offset dimension. Edges selected before the command are taken at on
 import FreeCAD as App
 import Part
 
+from incad import host
 from incad.core import log, safe, sketch_offset as so
 
 PICK_PX = 8  # logical px around the pointer that count as a click on an edge
-PROMPT_PICK = "Click a shape to offset (Cmd-click adds another; Esc cancels)"
+PROMPT_PICK = "Click a shape to offset (%s-click adds another; Esc cancels)" % host.ADD_KEY
 PROMPT_PLACE = "Move to the side and click to place the offset (Esc cancels)"
 
 

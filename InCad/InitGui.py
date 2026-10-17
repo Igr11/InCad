@@ -45,6 +45,12 @@ def _incad_startup():
         QtCore.QTimer.singleShot(1500, shell.recover_after_crash)
         # tear InCad down while Python still runs: Qt deleting InCad's objects after Python is gone crashed FreeCAD
         QtCore.QCoreApplication.instance().aboutToQuit.connect(shell.shutdown)
+        from incad.core import perf
+        perf.watch_ui()  # slow calls and stalls go to the log (a slow Windows PC)
+        QtCore.QCoreApplication.instance().aboutToQuit.connect(perf.stop)
+        from incad import host
+        from incad.core import log
+        QtCore.QTimer.singleShot(3000, lambda: log.logger().info("Started: %s", host.describe()))
     except Exception as e:
         import FreeCAD
         FreeCAD.Console.PrintWarning("InCad startup hooks failed: %s\n" % e)

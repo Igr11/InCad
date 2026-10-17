@@ -133,7 +133,7 @@ def _length_from(doc, f, length_prop, count_prop, spacing_text, spacing_key):
     if spacing_name is None:
         spacing_name = model.new_feature_parameter(doc, spacing_text or "10 mm", "length")
     elif model.parameter_text(doc, spacing_name) != spacing_text and spacing_text:
-        model.set_model_parameter(doc, spacing_name, spacing_text)
+        model.set_model_parameter(doc, spacing_name, spacing_text, everything=False)
     count_name = model.bound_parameter(f, count_prop)
     f.setExpression(length_prop, "%s.%s * (%s.%s - 1)" % (model.MODEL_NAME, spacing_name, model.MODEL_NAME,
                                                            count_name))

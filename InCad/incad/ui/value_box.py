@@ -46,6 +46,9 @@ class ValueBox(QtWidgets.QFrame):
             b.setFocusPolicy(QtCore.Qt.NoFocus)  # a click must not take the keyboard from the field
             b.setCursor(QtCore.Qt.PointingHandCursor)
             row.addWidget(b)
+        self._kinds = QtWidgets.QHBoxLayout()  # set_kinds(): how a distance between two arcs measures
+        col.addLayout(self._kinds)
+        self.kind_buttons = {}
         self._error = QtWidgets.QLabel("")
         self._error.setObjectName("InCadValueError")
         self._error.hide()
@@ -54,9 +57,26 @@ class ValueBox(QtWidgets.QFrame):
         self.setStyleSheet(
             "QFrame#InCadValueBox {{ background: {panel}; border: 1px solid {accent}; border-radius: 8px; }}"
             " QLabel {{ color: {text}; }} QLabel#InCadValueError {{ color: {error}; }} QToolButton {{ color: {text}; background: {panel_alt}; border: 1px solid {border}; border-radius: 4px;"
-            " min-width: 22px; min-height: 20px; font-size: 13px; }} QToolButton:hover {{ background: {accent}; color: {selection_text}; }}"
+            " min-width: 22px; min-height: 20px; font-size: 13px; padding: 0 6px; }} QToolButton:hover {{ background: {accent}; color: {selection_text}; }}"
+            " QToolButton:checked {{ background: {accent}; color: {selection_text}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
             " padding: 2px 4px; }}".format(**p))
+
+    def set_kinds(self, kinds, current, on_pick):
+        """A row of buttons (key, label) choosing what the dimension measures; on_pick(key) for another one."""
+        for key, label in kinds:
+            b = QtWidgets.QToolButton()
+            b.setText(label)
+            b.setCheckable(True)
+            b.setChecked(key == current)
+            b.setObjectName("InCadValueKind")
+            b.setFocusPolicy(QtCore.Qt.NoFocus)
+            b.setCursor(QtCore.Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, k=key, btn=b: (btn.setChecked(k == current), k != current and on_pick(k)))
+            self._kinds.addWidget(b)
+            self.kind_buttons[key] = b
+        self._kinds.addStretch(1)
+        self.adjustSize()
 
     def show_near(self, global_pos):
         self.adjustSize()

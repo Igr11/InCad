@@ -591,6 +591,14 @@ def _offset_tool():
     inst.start_offset_tool()
 
 
+def _overall_dim_tool():
+    from incad.ui import shell
+    inst = shell.instance()
+    if inst is None:
+        raise ValueError("InCad is not active")
+    inst.start_overall_dim_tool()
+
+
 def _slot(mode):
     from incad.ui import shell
     shell.start_slot_tool(mode)
@@ -1178,6 +1186,10 @@ def commands():
         Command(id="sketch.text", label="Text", icon="text", handler=_text_tool, contexts=frozenset({"sketch"}),
                 tooltip="Text: click where it goes, or pick a point or a curve of the sketch first (the text runs "
                         "along it); Extrude raises or engraves it"),
+        Command(id="sketch.dimension_overall", label="Overall Dimension", icon="dimension_overall",
+                handler=_overall_dim_tool, contexts=frozenset({"sketch"}),
+                tooltip="Between the outer edges of two arcs or circles: click a slot (its overall length), or two "
+                        "arcs or circles; type the value"),
         Command(id="sketch.offset", label="Offset", icon="offset", handler=_offset_tool, contexts=frozenset({"sketch"}),
                 tooltip="Click a shape (its whole outline), move to the side, click; type the distance"),
         Command(id="sketch.slot_overall", label="Overall Slot", icon="slot_overall",

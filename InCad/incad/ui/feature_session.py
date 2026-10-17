@@ -1,7 +1,7 @@
 """One feature dialog: one undo transaction around create/edit + live previews; OK commits, Cancel aborts."""
 import traceback
 
-from incad.core import document, log, model, safe
+from incad.core import document, log, model, perf, safe
 from incad.qt import dispose, QtCore, QtWidgets
 from incad.ui.feature_dialog import FeatureDialog
 
@@ -46,6 +46,19 @@ def _feature_alive(obj):
         return False
 
 
+class _Recomputed:
+    """Document observer: the names of the objects a recompute computed."""
+
+    def __init__(self):
+        self.names = set()
+
+    def slotRecomputedObject(self, obj):
+        try:
+            self.names.add(obj.Name)
+        except Exception:
+            pass
+
+
 class FeatureSession(QtCore.QObject):
     def __init__(self, kind, doc, body, profile=None, feature=None, theme="light", parent=None, on_close=None):
         super().__init__(parent)
@@ -73,6 +86,8 @@ class FeatureSession(QtCore.QObject):
         self._observing = False
         self._seeding = 0  # selection writes of InCad's own still to come back as events (one per reselect)
         self._saved_visibility = []
+        self._rolled = None  # while the part is rolled back to this feature: [(feature, was visible)]
+        self._recomputed = None  # names the last preview computed: only their shapes are checked
         self._markers = None       # key points of the sketches picked for Sweep/Loft, on the view
         self._saved_sketches = []  # picked sketches shown for the dialog, hidden again when it closes
         self.on_previewed = None  # callable() after each preview that worked (the shell's overlay follows)
@@ -1137,6 +1152,7 @@ class FeatureSession(QtCore.QObject):
         except Exception as e:
             log.logger().warning("Dialog markers: %s", e)
 
+    @perf.timed("feature preview")
     def _preview(self):
         if self._pending is None or self._closed:
             return
@@ -1180,7 +1196,7 @@ class FeatureSession(QtCore.QObject):
                 self._created_values = dict(values)
             else:
                 self.feature = self.kind.update(self.doc, self.feature, values)
-            self.doc.recompute()
+            self._recompute()
         except Exception as e:
             self._recover_deleted_feature()  # a type-swapping update() may have deleted it then failed
             if self.creating and self.feature is None:
@@ -1219,6 +1235,69 @@ class FeatureSession(QtCore.QObject):
                 self.on_previewed()
             except Exception:
                 log.logger().exception("%s overlay", self.kind.TITLE)
+
+    def _later(self):
+        """The solid features after this one in its body, its own helpers aside (a new feature at the end: none).
+        A sketch's own dialog and a change in an assembly's context compute everything as before."""
+        f, body = self.feature, self.body
+        if f is None or body is None or self._extra or getattr(self.kind, "IN_SKETCH", False):
+            return []
+        try:
+            group = list(body.Group)
+            if f not in group:
+                return []
+            mine = set(document.helpers_of(body, f))
+            return [o for o in group[group.index(f) + 1:] if o not in mine and o.isDerivedFrom("PartDesign::Feature")]
+        except Exception:
+            return []
+
+    def _recompute(self):
+        """The preview. Inventor rolls the part back to the feature being edited: only it (with its helpers and what
+        it is built on) is computed while its dialog is open, and the part is shown as of this feature; the features
+        after it are computed once, on OK (an early feature of a big part recomputed the whole part, 16 s, for every
+        value typed)."""
+        later = self._later()
+        own = self._own()
+        if later and self._rolled is None:
+            self._rolled = [(o, bool(o.Visibility)) for o in own + later]
+            for o in later:
+                if o.Visibility:
+                    self._set_visible(o, False)
+            self._set_visible(self.feature, True)  # show_finished then shows its last helper instead, if any
+        watch = _Recomputed()
+        import FreeCAD as App
+        App.addDocumentObserver(watch)
+        try:
+            self.doc.recompute(own) if later else self.doc.recompute()
+        finally:
+            App.removeDocumentObserver(watch)
+        if self._extra or getattr(self.kind, "IN_SKETCH", False):
+            self._recomputed = {o.Name for o in self.doc.Objects}  # as before: every shape checked
+        else:
+            self._recomputed = watch.names | {o.Name for o in own}
+
+    def _own(self):
+        """The feature with its helpers (a hole's chamfer, a thread's fill)."""
+        if self.feature is None or not _feature_alive(self.feature):
+            return []
+        return [self.feature] + (document.helpers_of(self.body, self.feature) if self.body is not None else [])
+
+    def _roll_forward(self, commit):
+        """The dialog closes: on OK the features after this one are computed (once), and whatever that broke is
+        said; the view is put back as it was."""
+        saved, self._rolled = self._rolled, None
+        if saved is None:
+            return
+        if commit:
+            self.doc.recompute()
+            # every feature's state, but only the finished part's geometry: checking each later shape took 11 s
+            tip = getattr(self.body, "Tip", None)
+            found = safe.problems(self.doc, self._broken, {tip.Name} if tip is not None else set())
+            if found:
+                log.report("warning", "After %s: %s" % (self.kind.TITLE, "; ".join(found)))
+        for o, visible in saved:
+            if _feature_alive(o):
+                self._set_visible(o, visible)
 
     def _show_adjusted(self):
         """A kind may change a value itself (Move Face: a chamfer picked with its face means Together): the dialog
@@ -1330,7 +1409,10 @@ class FeatureSession(QtCore.QObject):
         return before != after and (before in structural or after in structural)
 
     def _check(self):
-        found = safe.problems(self.doc, self._broken, {o.Name for o in self.doc.Objects})
+        """What is wrong now. Shapes are checked only where the last preview computed (the feature when the dialog
+        opens): every shape of a big part took 11 s, after every value typed."""
+        touched = self._recomputed if self._recomputed is not None else {o.Name for o in self._own()}
+        found = safe.problems(self.doc, self._broken, touched)
         text = "; ".join(found)
         rescue = None
         offer = getattr(self.kind, "rescue", None)
@@ -1512,6 +1594,7 @@ class FeatureSession(QtCore.QObject):
             self._markers = None
         try:
             if commit:
+                self._roll_forward(True)  # inside the step: the later features' new shapes are part of it
                 self.doc.commitTransaction()
                 for d in self._extra:
                     d.commitTransaction()
@@ -1524,6 +1607,7 @@ class FeatureSession(QtCore.QObject):
                 self.doc.recompute()
                 model.relink(self.doc)  # objects restored by the abort lose their formula links (FreeCAD quirk)
                 self._abort_extras(reopen=False)
+                self._roll_forward(False)
         except Exception as e:
             log.report("warning", "Could not close the %s step cleanly: %s" % (self.kind.TITLE, e))
         base, self._error_base = getattr(self, "_error_base", None), None

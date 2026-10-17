@@ -2,7 +2,7 @@
 point under the cursor, right-click opens the marking menu (or finishes the running Sketcher tool: FreeCAD's spline
 and polyline tools end on a right click), right-drag flicks it, left clicks still select.
 Middle-drag pan and wheel zoom stay FreeCAD's own (the shell sets the CAD style with zoom-at-cursor)."""
-from incad.core import camera, gestures, log
+from incad.core import camera, gestures, log, perf
 from incad.qt import QtCore, QtGui, QtWidgets
 
 QT_BUTTONS = ((QtCore.Qt.LeftButton, gestures.LEFT), (QtCore.Qt.RightButton, gestures.RIGHT),
@@ -105,6 +105,7 @@ class Navigator(QtCore.QObject):
         if self._on_mode_changed is not None:
             self._on_mode_changed(mode)
 
+    @perf.timed("view mouse")
     def eventFilter(self, obj, event):
         if self._replaying:
             return False

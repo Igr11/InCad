@@ -1,7 +1,7 @@
 """Text for sketches (Inventor's Text and Geometry Text): letter outlines as faces in sketch coordinates, either from an
 anchor point (lines, alignment, angle) or along a curve of the sketch (start / centre / end, a shift along it, a
 distance off it, flipped to the other side). Size is the height of a capital letter (FreeCAD's own height is a
-font unit that differs per font). Fonts are the Mac's installed .ttf / .otf / .ttc files, grouped by family with their
+font unit that differs per font). Fonts are the computer's installed .ttf / .otf / .ttc files, grouped by family with their
 Bold / Italic files."""
 import math
 import os
@@ -9,8 +9,9 @@ import os
 import FreeCAD as App
 import Part
 
-FONT_DIRS = ("/System/Library/Fonts/Supplemental", "/System/Library/Fonts", "/Library/Fonts",
-             os.path.expanduser("~/Library/Fonts"))
+from incad import host
+
+FONT_DIRS = host.font_dirs()
 STYLES = ("Regular", "Bold", "Italic", "Bold Italic")
 DEFAULT_FAMILY = "Arial"
 _fonts = None
@@ -23,6 +24,51 @@ def _style_of(stem, family):
     bold = "bold" in rest
     italic = "italic" in rest or "oblique" in rest
     return "Bold Italic" if bold and italic else "Bold" if bold else "Italic" if italic else "Regular"
+
+
+def _names_in_file(path):
+    """(family, style) from the font's own name table (its first font, for a .ttc), or None. The legacy family
+    (name 1) and subfamily (name 2) are the Regular / Bold / Italic / Bold Italic model InCad offers."""
+    import struct
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+            base = struct.unpack(">I", f.read(4))[0] if head[:4] == b"ttcf" else 0
+            f.seek(base + 4)
+            tables = struct.unpack(">H", f.read(2))[0]
+            f.seek(base + 12)
+            directory = f.read(16 * tables)
+            name_at = name_len = None
+            for i in range(tables):
+                tag, _, offset, length = struct.unpack_from(">4sIII", directory, 16 * i)
+                if tag == b"name":
+                    name_at, name_len = offset, length
+            if name_at is None:
+                return None
+            f.seek(name_at)
+            data = f.read(name_len)  # only the name table: Windows' Fonts folder holds hundreds of MB
+        _, count, strings = struct.unpack_from(">HHH", data, 0)
+        found = {}
+        for i in range(count):
+            platform, encoding, language, name_id, length, offset = struct.unpack_from(">6H", data, 6 + 12 * i)
+            if name_id not in (1, 2):
+                continue
+            raw = data[strings + offset:strings + offset + length]
+            if platform == 3 and encoding in (0, 1, 10):
+                rank, text = (0 if language == 0x409 else 1), raw.decode("utf-16-be", "replace")
+            elif platform == 1 and encoding == 0:
+                rank, text = 2, raw.decode("latin-1")
+            else:
+                continue
+            if name_id not in found or rank < found[name_id][0]:
+                found[name_id] = (rank, text.strip())
+        if 1 not in found:
+            return None
+        sub = found.get(2, (0, "Regular"))[1].lower()
+        bold, italic = "bold" in sub, "italic" in sub or "oblique" in sub
+        return found[1][1], "Bold Italic" if bold and italic else "Bold" if bold else "Italic" if italic else "Regular"
+    except (OSError, struct.error):
+        return None
 
 
 def fonts():
@@ -44,12 +90,16 @@ def fonts():
     stems = {stem for stem, _ in files}
     out = {}
     for stem, path in sorted(files):
-        family = stem
-        for word in (" Bold Italic", " Bold Oblique", " Bold", " Italic", " Oblique"):  # (Arial Black: a family)
-            if stem.endswith(word) and stem[:-len(word)] in stems:
-                family = stem[:-len(word)]
-                break
-        style = _style_of(stem, family) if family != stem else "Regular"
+        named = _names_in_file(path) if host.WINDOWS else None  # Windows' file names are 'arialbd.ttf'
+        if named is not None:
+            family, style = named
+        else:
+            family = stem
+            for word in (" Bold Italic", " Bold Oblique", " Bold", " Italic", " Oblique"):  # (Arial Black: a family)
+                if stem.endswith(word) and stem[:-len(word)] in stems:
+                    family = stem[:-len(word)]
+                    break
+            style = _style_of(stem, family) if family != stem else "Regular"
         out.setdefault(family, {}).setdefault(style, path)
     for family, styles in out.items():
         if "Regular" not in styles:
@@ -62,14 +112,14 @@ def font_path(family, bold=False, italic=False):
     """The font file for a family and style (the family's Regular when it has no such style)."""
     styles = fonts().get(family) or fonts().get(DEFAULT_FAMILY) or next(iter(fonts().values()), {})
     if not styles:
-        raise ValueError("No fonts found on this Mac")
+        raise ValueError("No fonts found on this computer")
     want = "Bold Italic" if bold and italic else "Bold" if bold else "Italic" if italic else "Regular"
     return styles.get(want) or styles["Regular"]
 
 
 def _wires(text, path, height):
     d, f = os.path.split(path)
-    return Part.makeWireString(text, d + "/", f, height, 0)
+    return Part.makeWireString(text, d + os.sep, f, height, 0)
 
 
 def _cap_height(path):

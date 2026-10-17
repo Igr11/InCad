@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import time
 
+from incad import host
+
 FEW, MANY = 2, 32        # risky: a section with FEW edges or less beside one with more than MANY
 LOFT_SECONDS = 10.0      # for the loft itself, once the copy is loaded
 LOAD_SECONDS = 120.0     # for opening the copy
@@ -47,8 +49,7 @@ def risky(counts):
 
 def _freecadcmd():
     import FreeCAD as App
-    path = os.path.join(App.getHomePath(), "bin", "freecadcmd")
-    return path if os.path.exists(path) else None
+    return host.freecadcmd(App.getHomePath())
 
 
 def trial(body, sections, ruled=False, closed=False):
@@ -69,7 +70,8 @@ def trial(body, sections, ruled=False, closed=False):
         env = dict(os.environ, INCAD_LOFT_TRIAL="|".join(
             [copy, loaded, body.Name, "1" if ruled else "0", "1" if closed else "0"] + [s.Name for s in sections]))
         p = subprocess.Popen([exe, "-u", os.path.join(tmp, "user.cfg"), script], stdout=subprocess.PIPE,
-                             stderr=subprocess.DEVNULL, text=True, env=env)  # its own settings, never the user's
+                             stderr=subprocess.DEVNULL, text=True, env=env,
+                             creationflags=host.quiet_process_flags())  # its own settings, never the user's
         start, started = time.time(), None
         while p.poll() is None:
             now = time.time()

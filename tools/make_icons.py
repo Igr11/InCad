@@ -143,6 +143,10 @@ ICONS = {
                   'stroke-width="1.6"/><path d="M9 19 L5 22 L9 25 M23 19 L27 22 L23 25" fill="none" stroke="{S}" '
                   'stroke-width="1.8"/><text x="16" y="15" font-family="Helvetica" font-size="10" text-anchor="middle" '
                   'fill="{A}">40</text>'),
+    "dimension_overall": ('<rect x="4" y="15" width="24" height="12" rx="6" fill="none" stroke="{S}" '
+                          'stroke-width="2.2"/><path d="M4 5 V13 M28 5 V13 M4 9 H28" stroke="{A}" stroke-width="1.6"/>'
+                          '<path d="M8 6.5 L4 9 L8 11.5 M24 6.5 L28 9 L24 11.5" fill="none" stroke="{A}" '
+                          'stroke-width="1.6"/>'),
     "coincident": ('<path d="M4 26 L16 16 L28 22" fill="none" stroke="{S}" stroke-width="2.2"/>'
                    '<circle cx="16" cy="16" r="4" fill="{A}"/>'),
     "concentric": ('<circle cx="16" cy="16" r="12" fill="none" stroke="{S}" stroke-width="2.2"/>'

@@ -155,18 +155,41 @@ def outline(face):
 
 
 def _attach_like(profile, source):
-    profile.AttachmentSupport = source.AttachmentSupport
-    profile.MapMode = source.MapMode
-    profile.AttachmentOffset = source.AttachmentOffset
-    if source.MapMode == "Deactivated":
+    """Only what differs is written: writing the same value still touches the profile, and every feature after it
+    recomputed a second time (a source sketch changes on every recompute: a big part took twice as long)."""
+    if profile.MapMode == "Deactivated" and source.MapMode != "Deactivated":
+        # FreeCAD does not keep this attachment (the copy is in another body than the support: a sketch's area used
+        # by a second body) and switches it off again: writing it on every change only recomputed every feature
+        # after the copy. The copy keeps the sketch's position instead.
+        if not profile.Placement.isSame(source.Placement, 1e-9):
+            profile.Placement = source.Placement
+        return
+    if list(profile.AttachmentSupport) != list(source.AttachmentSupport):
+        profile.AttachmentSupport = source.AttachmentSupport
+    if profile.MapMode != source.MapMode:
+        profile.MapMode = source.MapMode
+    if not profile.AttachmentOffset.isSame(source.AttachmentOffset, 1e-9):
+        profile.AttachmentOffset = source.AttachmentOffset
+    if source.MapMode == "Deactivated" and not profile.Placement.isSame(source.Placement, 1e-9):
         profile.Placement = source.Placement
 
 
+def _same_geometry(profile, geos):
+    old = profile.Geometry
+    try:
+        return len(old) == len(geos) and all(a.isSame(b, 1e-9, 1e-12) for a, b in zip(old, geos))
+    except Exception:
+        return False
+
+
 def fill(profile, faces):
-    profile.deleteAllGeometry()
+    """The profile's geometry: the outlines of these faces (left alone when it already is, see _attach_like)."""
     geos = []
     for face in (faces if isinstance(faces, (list, tuple)) else [faces]):
         geos += outline(face)
+    if _same_geometry(profile, geos):
+        return
+    profile.deleteAllGeometry()
     profile.addGeometry(geos)
 
 

@@ -37,7 +37,7 @@ LAYOUT = {
                                 "sketch.point", "sketch.text"]],
                     ["Modify", [["sketch.fillet", "sketch.chamfer"], "sketch.trim", "sketch.extend", "sketch.offset"]],
                     ["Pattern", [["sketch.rect_pattern", "sketch.circ_pattern", "sketch.path_pattern"], "sketch.mirror"]],
-                    ["Dimension", ["sketch.dimension"]],
+                    ["Dimension", ["sketch.dimension", "sketch.dimension_overall"]],
                     ["Constrain", ["sketch.coincident", "sketch.concentric", "sketch.horizontal", "sketch.vertical", "sketch.parallel",
                                    "sketch.perpendicular", "sketch.tangent", "sketch.equal", "sketch.symmetric",
                                    "sketch.fix", "sketch.constraints_window"], "stacked"],

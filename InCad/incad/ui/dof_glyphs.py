@@ -2,6 +2,7 @@
 arc per axis it can turn about; the handle under the pointer (ui/dof_handles) lit. Never picked (an UNPICKABLE pick style first under the SoAnnotation, outside the
 document): a click or a drag on a glyph reaches the part under it. HoverWatch tells which assembly
 part the pointer rests on (FreeCAD's preselection), for the tip."""
+from incad.core import perf
 from incad.ui import theme as themes
 
 
@@ -107,6 +108,7 @@ class HoverWatch:
         link = component_in_hits(doc, view.getObjectsInfo((int(x), int(y))))
         return link.Name if link is not None else None
 
+    @perf.timed("assembly hover")
     def setPreselection(self, doc, obj, sub):
         import FreeCAD as App
         import FreeCADGui as Gui

@@ -7,6 +7,7 @@ import FreeCAD as App
 from incad.core import document
 
 OFF_MARK = "InCadThreadsOff"  # on a thread the 'all threads off' switch turned off
+QUIET_MARK = "InCadSuppressedThread"  # on a suppressed tapped Hole: its modeled thread is off until it is back on
 
 
 def _signature(el):
@@ -136,7 +137,39 @@ def set_suppressed(feature, on):
     pieces = document.helpers_of(body, feature) if body is not None else []
     for o in [feature] + pieces:
         if "Suppressed" in o.PropertiesList and o.Suppressed != on:
+            if on:
+                _quiet_thread(o, True)
             o.Suppressed = on
+            if not on:
+                _quiet_thread(o, False)
+
+
+def _quiet_thread(hole, on):
+    """FreeCAD still computes a suppressed feature in full (only to throw it away): a suppressed Hole with a modeled
+    thread took 3.6 s on every recompute, 0.06 s without the thread. So its thread is off while it is suppressed,
+    and back with it (the hole keeps Tapped: its dialog reads Threaded)."""
+    if hole.TypeId != "PartDesign::Hole":
+        return
+    if on and hole.ModelThread:
+        hole.ModelThread = False
+        _set_mark(hole, QUIET_MARK, True)
+    elif not on and getattr(hole, QUIET_MARK, False):
+        hole.ModelThread = True
+        _set_mark(hole, QUIET_MARK, False)
+
+
+def quiet_suppressed_holes(doc):
+    """On open: tapped Holes suppressed before InCad did this (see _quiet_thread) get their thread off too. Their
+    shape (the part before them) does not change, so nothing needs a recompute for it."""
+    done = []
+    for h in doc.Objects:
+        if h.TypeId == "PartDesign::Hole" and getattr(h, "Suppressed", False) and h.ModelThread:
+            was_touched = "Touched" in h.State
+            _quiet_thread(h, True)
+            if not was_touched:
+                h.purgeTouched()
+            done.append(h)
+    return done
 
 
 def _repair(doc):
@@ -177,12 +210,17 @@ def threads_off(doc):
 
 
 def _mark(t, on):
-    if OFF_MARK not in t.PropertiesList:
+    _set_mark(t, OFF_MARK, on)
+
+
+def _set_mark(t, name, on):
+    if name not in t.PropertiesList:
         if not on:
             return
-        t.addProperty("App::PropertyBool", OFF_MARK, "InCad", "Turned off by Threads Off")
-        t.setPropertyStatus(OFF_MARK, "Hidden")
-    setattr(t, OFF_MARK, on)
+        t.addProperty("App::PropertyBool", name, "InCad",
+                      "Turned off by Threads Off" if name == OFF_MARK else "Modeled thread off while suppressed")
+        t.setPropertyStatus(name, "Hidden")
+    setattr(t, name, on)
 
 
 def toggle_threads(doc):
@@ -204,7 +242,9 @@ def _switch_threads(ts, holes):
     marked = [t for t in ts + holes if getattr(t, OFF_MARK, False)]
     if marked and not any(_thread_on(t, holes) for t in ts + holes):
         for t in marked:
-            if t in holes:
+            if t in holes and getattr(t, "Suppressed", False):
+                _set_mark(t, QUIET_MARK, True)  # suppressed meanwhile: its thread comes back with it
+            elif t in holes:
                 t.ModelThread = True
             elif t.Suppressed:
                 set_suppressed(t, False)

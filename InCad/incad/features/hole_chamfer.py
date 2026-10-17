@@ -83,26 +83,41 @@ def tools(hole, ends, size):
     return Part.makeCompound(cones) if cones else None
 
 
-def _cut(shape, cut):
-    """shape − cut, valid: a plain cut, else a fuzzy one (a modelled thread's faces sit within a hair of the cones),
-    else the healed result."""
-    out = shape.cut(cut)
-    if out.isValid():
-        return out
-    for tol in (1e-5, 1e-4):
+_WAYS = ("plain", 1e-5, 1e-4, "healed")
+_last_way = {}  # (document, feature) -> the way that gave a valid cut last time: tried first on the next recompute
+
+
+def _cut_by(shape, cut, way, plain):
+    """One way of cutting; plain: [the plain cut], made once and kept for the healed way."""
+    if way in ("plain", "healed") and not plain:
+        plain.append(shape.cut(cut))
+    if way == "plain":
+        return plain[0]
+    if way == "healed":
+        healed = plain[0].copy()
         try:
-            fuzzy = shape.cut([cut], tol)
+            healed.fix(1e-7, 1e-7, 1e-4)
+        except Exception:
+            pass
+        return healed
+    return shape.cut([cut], way)
+
+
+def _cut(shape, cut, key=None):
+    """shape − cut, valid: a plain cut, else a fuzzy one (a modelled thread's faces sit within a hair of the cones),
+    else the healed result. The way that worked is tried first next time: on a modelled thread every recompute
+    made the three failing cuts again before the healed one (2 s per hole)."""
+    first = _last_way.get(key)
+    plain = []
+    for way in ((first,) if first in _WAYS else ()) + tuple(w for w in _WAYS if w != first):
+        try:
+            out = _cut_by(shape, cut, way, plain)
         except Exception:
             continue
-        if fuzzy.isValid():
-            return fuzzy
-    healed = out.copy()
-    try:
-        healed.fix(1e-7, 1e-7, 1e-4)
-    except Exception:
-        pass
-    if healed.isValid():
-        return healed
+        if out.isValid():
+            if key is not None:
+                _last_way[key] = way
+            return out
     raise ValueError("The chamfer can't be cut into this thread. Try another chamfer size, or Chamfer: None")
 
 
@@ -122,7 +137,7 @@ class HoleChamferFeature:
         cut = tools(obj.Hole, obj.Ends, obj.Size.Value) if obj.Hole is not None else None
         shape = base.Shape.copy()
         if cut is not None:
-            shape = _cut(shape, cut)
+            shape = _cut(shape, cut, (obj.Document.Name, obj.Name))
             if len(shape.Solids) == 1:
                 shape = shape.Solids[0]
         obj.Shape = shape
