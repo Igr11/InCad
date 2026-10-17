@@ -113,6 +113,16 @@ def on_ring(z, t=-0.7):
     return App.Vector(20 * math.cos(t), 10 * math.sin(t), z)
 
 
+def ghost_z():
+    """(lowest z, highest z, lines) of the preview outline drawn over the part."""
+    top = fs()._ghost[1]
+    node = top.getChild(0)
+    coords = [node.getChild(i) for i in range(node.getNumChildren()) if node.getChild(i).getTypeId().getName() == "Coordinate3"][0]
+    zs = [p[2] for p in coords.point.getValues()]
+    lines = [node.getChild(i) for i in range(node.getNumChildren()) if node.getChild(i).getTypeId().getName() == "LineSet"][0]
+    return min(zs), max(zs), lines.numVertices.getNum()
+
+
 def test_4_elliptic_pad():
     """The user's part: a sketch with a 3-point ellipse (major 20, minor 10), extruded 10."""
     d = App.newDocument("EllipsePad")
@@ -146,6 +156,8 @@ def test_5_fillet_on_the_top_ring_shows_the_round():
     assert edges == "%s:%s" % (pad.Name, ring(pad, 10)), (edges, ring(pad, 10), ring(pad, 0), fs().dialog.error_text())
     f = fs().feature
     assert f is not None and "Invalid" not in f.State and fs()._ghost is not None, (f and f.State, fs().dialog.error_text())
+    lo, hi, n = ghost_z()  # the round's two rings only: not the side face's seam, down to the bottom (the user saw it)
+    assert lo > 8.5 and hi < 10.1 and n == 2, (lo, hi, n)
     QTest.mouseClick(fs().dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(1200)
     tip = document.primary_body(doc()).Tip
@@ -163,6 +175,8 @@ def test_6_chamfer_starts_empty_and_takes_the_ring_clicked():
     assert edges == "%s:%s" % (fillet.Name, ring(fillet, 0)), (edges, ring(fillet, 0), fs().dialog.error_text())
     f = fs().feature
     assert f is not None and "Invalid" not in f.State and fs()._ghost is not None, (f and f.State, fs().dialog.error_text())
+    lo, hi, n = ghost_z()  # the chamfer's two rings at the bottom only
+    assert lo > -0.1 and hi < 1.5 and n == 2, (lo, hi, n)
     QTest.mouseClick(fs().dialog.ok_button, QtCore.Qt.LeftButton)
     harness.pump(1200)
     tip = document.primary_body(doc()).Tip

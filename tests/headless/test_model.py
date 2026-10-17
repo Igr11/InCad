@@ -237,3 +237,50 @@ class UnitsAfterReopenTest(unittest.TestCase):
         model.new_feature_parameter(self.doc, "12 mm", "length")
         self.reopen()
         self.assertFalse([o.Name for o in self.doc.Objects if "Touched" in o.State])
+
+
+class ChangingValuesTest(unittest.TestCase):
+    """A new or changed model value leaves touched only what uses it: FreeCAD touches every user of the holder,
+    which recomputed the whole part for one value (the user's Text: 65 s)."""
+
+    def setUp(self):
+        from incad.core import document
+        from headless import util
+        self.doc = util.new_doc("Cv")
+        body = document.make_part(self.doc)
+        s1 = util.add_rect_sketch(body, name="S1")
+        self.p1 = util.add_pad(body, s1, 5, "P1")
+        s2 = util.add_rect_sketch(body, name="S2")
+        self.p2 = util.add_pad(body, s2, 3, "P2")
+        self.p2.Type = "Length"
+        self.a = model.new_feature_parameter(self.doc, "5 mm")
+        self.b = model.new_feature_parameter(self.doc, "3 mm")
+        model.bind(self.p1, "Length", self.a)
+        model.bind(self.p2, "Length", self.b)
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def touched(self):
+        return {o.Name for o in self.doc.Objects if "Touched" in o.State}
+
+    def test_a_new_value_touches_nothing(self):
+        model.new_feature_parameter(self.doc, "7 mm")
+        self.assertEqual(self.touched(), set())
+
+    def test_a_changed_value_touches_only_its_user(self):
+        model.set_model_parameter(self.doc, self.a, "6 mm", everything=False)
+        self.assertIn("P1", self.touched())
+        self.assertNotIn("P2", self.touched())
+        self.doc.recompute()
+        self.assertAlmostEqual(self.p1.Length.Value, 6.0)
+        self.assertAlmostEqual(self.p2.Length.Value, 3.0)
+
+    def test_a_value_through_a_formula_touches_the_formula_s_user(self):
+        model.set_model_parameter(self.doc, self.b, "%s / 2" % self.a, everything=False)
+        self.doc.recompute()
+        model.set_model_parameter(self.doc, self.a, "8 mm", everything=False)
+        self.assertIn("P2", self.touched())  # b follows a: P2 uses b
+        self.doc.recompute()
+        self.assertAlmostEqual(self.p2.Length.Value, 4.0)

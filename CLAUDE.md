@@ -48,3 +48,8 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
 - Overall dimensions (`incad.core.overall_dims`): a construction axis through two arc centres + a point where it leaves
   each arc; the value box offers Centers / Overall / Gap for any distance between two arcs (FreeCAD's own is the gap).
 - Windows (untested build, `scripts/make_dist_windows.sh`): what differs per system lives in `incad.host`.
+- Model values live in one VarSet (InCadModel): FreeCAD touches every object using ANY value when one changes — wrap
+  value changes in `model.changing_values` (only users of a changed value stay touched); `bind` touches its feature.
+  A Solid's Visibility write, even unchanged, touches the Boolean using it: write visibility via
+  `document._set_visible` (only on change). In-sketch dialogs (Text, sketch patterns) recompute only the sketch and
+  the object.

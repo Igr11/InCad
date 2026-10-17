@@ -1,5 +1,5 @@
-"""Boolean: the second solid (the tool) is picked by clicking anywhere on it in the view, as in Inventor (user
-request). Real mouse events on the 3D view, not a programmatic selection."""
+"""Boolean: solids are picked by clicking anywhere on them in the view, in Inventor's order — the first one is the
+base, the next ones tools (user request). Real mouse events on the 3D view, not a programmatic selection."""
 import os
 import sys
 
@@ -78,13 +78,16 @@ def test_0_a_block_and_a_pin_beside_it():
     ST.update(base=base.Name, tool=tool.Name, pin=pin.Name)
 
 
-def test_1_a_click_anywhere_on_the_pin_makes_it_the_tool():
+def test_1_first_click_is_the_base_then_a_click_anywhere_on_the_pin_makes_it_the_tool():
+    """Inventor's order (since 0.4.0): nothing is preset; the first solid clicked is the base, the next a tool."""
     Gui.Selection.clearSelection()
     harness.pump(200)
     commands.REGISTRY.run("feature.combine")
     harness.pump(1000)
     assert dialog() is not None
-    assert dialog().values()["base"] == ST["base"], dialog().values()
+    assert dialog().values()["base"] == "", ("nothing preset", dialog().values())
+    click_on(ST["base"], [App.Vector(10, 10, 10), App.Vector(20, 15, 10), App.Vector(30, 20, 10)])
+    assert dialog().values()["base"] == ST["base"], (dialog().values(), dialog().error_text())
     click_on(ST["pin"], [App.Vector(60, 15, 20), App.Vector(60, 15, 10), App.Vector(63, 15, 15),
                          App.Vector(57, 12, 18)])
     assert dialog().values()["tools"] == ST["tool"], (dialog().values(), dialog().error_text())
@@ -94,9 +97,11 @@ def test_1_a_click_anywhere_on_the_pin_makes_it_the_tool():
 def test_2_a_click_on_the_base_does_not_make_it_a_tool():
     click_on(ST["base"], [App.Vector(10, 10, 10), App.Vector(20, 15, 10), App.Vector(30, 20, 10)])
     assert dialog().values()["tools"] == ST["tool"], dialog().values()
+    assert dialog().values()["base"] == ST["base"], dialog().values()
 
     shell.instance().feature_session.cancel()
     harness.pump(500)
 
-harness.run([test_0_a_block_and_a_pin_beside_it, test_1_a_click_anywhere_on_the_pin_makes_it_the_tool,
+
+harness.run([test_0_a_block_and_a_pin_beside_it, test_1_first_click_is_the_base_then_a_click_anywhere_on_the_pin_makes_it_the_tool,
              test_2_a_click_on_the_base_does_not_make_it_a_tool])

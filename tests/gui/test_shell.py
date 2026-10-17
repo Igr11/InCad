@@ -133,8 +133,10 @@ def test_2_the_real_part_offers_a_shell_before_the_thread():
     harness.pump(9000)
     assert "End of Part above the thread" in fs.dialog.error_text(), fs.dialog.error_text()
     assert fs.dialog.rescue_button.isVisible(), "the way around is offered"
-    assert fs.dialog.rescue_button.text() == "Shell before Hole", fs.dialog.rescue_button.text()  # the first
-    QTest.mouseClick(fs.dialog.rescue_button, QtCore.Qt.LeftButton)      # modeled thread here is the Hole's
+    # the first modeled thread in the part: the Thread (the Hole before it is suppressed, and a suppressed tapped
+    # hole keeps its thread off since 0.5.2)
+    assert fs.dialog.rescue_button.text() == "Shell before Thread", fs.dialog.rescue_button.text()
+    QTest.mouseClick(fs.dialog.rescue_button, QtCore.Qt.LeftButton)
     harness.pump(500)  # the rescue ran inside the click (three thread recomputes); the message is fresh
     assert sh.feature_session is None, "the dialog is gone"
     assert not [o for o in body.Group if o.TypeId == "PartDesign::Thickness"], "no wall works on this part"

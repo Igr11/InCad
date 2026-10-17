@@ -1,6 +1,7 @@
 """Model parameters, Inventor style: every sketch dimension and every feature value has a name (d0, d1, …) that
 formulas can use. Dimensions are named Sketcher constraints; feature values are properties of a hidden VarSet
 ("InCadModel") bound to the feature properties by FreeCAD expressions."""
+import contextlib
 import re
 
 import FreeCAD as App
@@ -196,23 +197,62 @@ def named_parameter(doc, base):
     return "%s%d" % (base, n)
 
 
+def _values(obj):
+    """The holder's values by name; a quantity by its number (its unit is not saved: it reads '90', not '90°', until
+    recomputed after a reopen, which is no change)."""
+    out = {}
+    for p in obj.PropertiesList:
+        try:
+            v = obj.getPropertyByName(p)
+            out[p] = round(v.Value, 12) if hasattr(v, "Value") else repr(v)
+        except Exception:
+            pass
+    return out
+
+
+@contextlib.contextmanager
+def changing_values(doc, obj):
+    """Around a change of the model's values (a new, changed or removed one): afterwards the values are recomputed
+    and only the objects whose formulas use a value that changed are left touched. FreeCAD touches every object that
+    uses ANY of its values the moment one of them changes: one new value recomputed the whole part afterwards
+    (35 features, 65 s for a Text on the user's part)."""
+    before = _values(obj) if obj is not None else {}
+    touched = {o.Name for o in doc.Objects if "Touched" in o.State}
+    yield
+    obj = _model_obj(doc)
+    if obj is None:
+        return
+    doc.recompute([obj])
+    after = _values(obj)
+    changed = {n for n, v in after.items() if before.get(n) != v} | (set(before) - set(after))
+    changed -= {"ExpressionEngine", "Label2", "Label"}
+    used = re.compile(r"(?<!\w)(%s)(?!\w)" % "|".join(re.escape(n) for n in sorted(changed))) if changed else None
+    for o in doc.Objects:
+        if o is obj or o.Name in touched or "Touched" not in o.State:
+            continue
+        exprs = [e for _, e in (getattr(o, "ExpressionEngine", []) or [])]
+        if not exprs or (used is not None and any(used.search(e) for e in exprs)):
+            continue  # touched for a reason of its own, or it reads a value that changed
+        o.purgeTouched()
+
+
 def new_feature_parameter(doc, text, unit_kind="length", base=None):
     obj = _model_obj(doc, create=True)
     name = named_parameter(doc, base) if base else claim_name(doc)
-    obj.addProperty("App::PropertyQuantity", name, _GROUP)
-    try:
-        obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, unit_kind), unit_kind)))
-    except Exception as e:
-        obj.removeProperty(name)
-        raise ValueError("Invalid value %r: %s" % (text, e))
-    doc.recompute()
+    with changing_values(doc, obj):  # a new value: nothing uses it yet, nothing else recomputes for it
+        obj.addProperty("App::PropertyQuantity", name, _GROUP)
+        try:
+            obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, unit_kind), unit_kind)))
+        except Exception as e:
+            obj.removeProperty(name)
+            raise ValueError("Invalid value %r: %s" % (text, e))
+        _remember_kind(obj, name, unit_kind)
     if "Invalid" in obj.State or "Error" in obj.State:
         message = friendly(obj.getStatusString())
-        obj.setExpression(name, None)
-        obj.removeProperty(name)
-        doc.recompute()
+        with changing_values(doc, obj):
+            obj.setExpression(name, None)
+            obj.removeProperty(name)
         raise ValueError("Invalid value %r: %s" % (text, message))
-    _remember_kind(obj, name, unit_kind)
     return name
 
 
@@ -242,9 +282,9 @@ def remove_model_parameter(doc, name):
     users = users_of(doc, name)
     if users:
         raise ValueError("%s is used by %s" % (name, ", ".join(users)))
-    obj.setExpression(name, None)
-    obj.removeProperty(name)
-    doc.recompute()
+    with changing_values(doc, obj):
+        obj.setExpression(name, None)
+        obj.removeProperty(name)
 
 
 def _remember_kind(obj, name, unit_kind):
@@ -260,6 +300,7 @@ def _unit_kind(obj, name):
 
 def bind(feature, prop, name):
     feature.setExpression(prop, "%s.%s" % (MODEL_NAME, name))
+    feature.touch()  # it must take the value on its next recompute (changing_values keeps what was touched before)
 
 
 def bound_parameter(feature, prop):
@@ -299,12 +340,14 @@ def set_model_parameter(doc, name, text, everything=True):
     text = (text or "").strip()
     if not text:
         raise ValueError("%s needs a value" % name)
-    try:
-        kind = _unit_kind(obj, name)
-        obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, kind), kind)))
-    except Exception as e:
-        raise ValueError("%s: %s" % (name, friendly(str(e))))
-    doc.recompute() if everything else doc.recompute([obj])
+    with changing_values(doc, obj):  # only what uses this value recomputes after it
+        try:
+            kind = _unit_kind(obj, name)
+            obj.setExpression(name, to_expression(doc, _formula_units(doc, _with_unit(doc, text, kind), kind)))
+        except Exception as e:
+            raise ValueError("%s: %s" % (name, friendly(str(e))))
+    if everything:
+        doc.recompute()
     if "Invalid" in obj.State or "Error" in obj.State:
         raise ValueError("%s: %s" % (name, friendly(obj.getStatusString())))
     from incad.features import constraints  # an assembly Angle may change FreeCAD joint type with its value

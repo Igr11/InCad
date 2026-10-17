@@ -120,7 +120,7 @@ def settle_support(sketch, body):
         ref.addProperty("App::PropertyString", FACE_REF_PROP, "InCad", "The sketch this face copy carries")
         ref.setPropertyStatus(FACE_REF_PROP, "Hidden")
         setattr(ref, FACE_REF_PROP, sketch.Name)
-        ref.Visibility = False
+        _set_visible(ref, False)
         doc.recompute()
         sketch.AttachmentSupport = [(ref, "Face1")]
     else:
@@ -490,26 +490,33 @@ def show_result(body):
     chosen = bool(getattr(body, SHOWN_PROP, True))
     base = getattr(body, "BaseFeature", None)
     if base is not None and getattr(base, "InCadSplitPiece", False) and base.Visibility:
-        base.Visibility = False  # a Split's piece is drawn by the Solid made on it, never on its own
+        _set_visible(base, False)  # a Split's piece is drawn by the Solid made on it, never on its own
     try:
         # a file saved while a sketch was being edited keeps the Body hidden (FreeCAD hides it in sketch edit mode):
         # shown features inside a hidden Body show nothing. A Solid hidden by Hide / Show stays hidden.
-        body.Visibility = chosen
+        _set_visible(body, chosen)
     except Exception:
         pass
     for o in feats:
         try:
-            o.Visibility = (o is shown) and chosen  # a Split piece's base draws even inside a hidden Body
+            _set_visible(o, (o is shown) and chosen)  # a Split piece's base draws even inside a hidden Body
         except Exception:
             pass
     for o in body.Group:  # profile sketches shouldn't linger in the model view after a tip move; an unused
         if o.TypeId == "Sketcher::SketchObject":  # sketch follows the user's choice, else its shape
             try:
-                o.Visibility = sketch_shown(o)
+                _set_visible(o, sketch_shown(o))
             except Exception:
                 pass
     return shown
 
+
+
+def _set_visible(obj, visible):
+    """Only a change is written: writing a Solid's Visibility, even unchanged, touched the Boolean that uses it as a
+    tool, and the next recompute rebuilt the part from there (16 s after deleting an unused sketch)."""
+    if bool(obj.Visibility) != bool(visible):
+        obj.Visibility = visible
 
 SHOWN_PROP = "InCadShown"  # a sketch the user hid or showed by hand (absent: the default of sketch_shown)
 ORIGIN_TYPES = ("App::Plane", "App::Line", "App::Point")
@@ -585,9 +592,9 @@ def set_visibility(objects, flag, record=True):
             origin = _origin_of(o)
             if origin is not None and not origin.Visibility:
                 for other in origin.OriginFeatures:
-                    other.Visibility = other in objects
-                origin.Visibility = True
-        o.Visibility = bool(flag)
+                    _set_visible(other, other in objects)
+                _set_visible(origin, True)
+        _set_visible(o, bool(flag))
         _tip_follows(o)
 
 
@@ -620,7 +627,7 @@ def apply_visibility(doc):
         else:
             continue
         if bool(o.Visibility) != want:
-            o.Visibility = want
+            _set_visible(o, want)
     show_finished(doc)
     for name in origins:
         origin = doc.getObject(name)
@@ -629,10 +636,10 @@ def apply_visibility(doc):
         if chosen_shown and not origin.Visibility:  # a chosen item wants to show: the group comes on, and the
             for i in items:                          # items nobody chose stay hidden (a new part keeps them
                 if SHOWN_PROP not in i.PropertiesList:  # 'visible' inside a hidden group)
-                    i.Visibility = False
-            origin.Visibility = True
+                    _set_visible(i, False)
+            _set_visible(origin, True)
         elif not chosen_shown and origin.Visibility and not any(bool(i.Visibility) for i in items):
-            origin.Visibility = False
+            _set_visible(origin, False)
 
 
 def _tip_follows(o, flag=None):
@@ -640,7 +647,7 @@ def _tip_follows(o, flag=None):
     tip = getattr(o, "Tip", None) if o.TypeId == "PartDesign::Body" else None
     if tip is not None:
         try:
-            tip.Visibility = bool(o.Visibility if flag is None else flag)
+            _set_visible(tip, bool(o.Visibility if flag is None else flag))
         except Exception:
             pass
 
@@ -701,9 +708,9 @@ def show_finished(doc, features=None):
             after = [h for h in helpers_of(body, f) if _is_solid_feature(h) and group.index(h) > at]
             if after:
                 last = after[-1]
-                f.Visibility = False
+                _set_visible(f, False)
                 for h in after:
-                    h.Visibility = h is last
+                    _set_visible(h, h is last)
         except Exception:
             continue
 

@@ -46,6 +46,7 @@ class PatternsTest(unittest.TestCase):
         k = patterns.CIRC  # a whole number is still fine
         f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), features=self.pad_pick,
                                                      count="5"))
+        self.doc.recompute()  # as the dialog does after create
         self.assertEqual(f.Occurrences, 5)
 
     def test_a_face_or_edge_clicked_in_3d_stands_for_the_feature_that_made_it(self):

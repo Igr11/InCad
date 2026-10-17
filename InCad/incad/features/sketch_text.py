@@ -313,13 +313,13 @@ def create(doc, body, sk, values):
         s["box"] = _make_box(sk, *corners)  # the two corners the user clicked: the text's box
         setattr(f, MARK, json.dumps(s))
     _apply(doc, f, sk, values)
-    doc.recompute()
+    doc.recompute([f])  # the text and its sketch: the part follows on Finish Sketch (a whole recompute took a minute)
     return f
 
 
 def update(doc, f, values):
     _apply(doc, f, f.Sketch, values)
-    doc.recompute()
+    doc.recompute([f])
     return f
 
 

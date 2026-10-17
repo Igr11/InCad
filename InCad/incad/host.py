@@ -43,6 +43,16 @@ def freecadcmd(home):
     return None
 
 
+def reveal(path):
+    """Show the file in Explorer / Finder, selected."""
+    if WINDOWS:
+        subprocess.Popen(["explorer", "/select,", os.path.normpath(path)], creationflags=quiet_process_flags())
+    elif MAC:
+        subprocess.Popen(["open", "-R", path])
+    else:
+        subprocess.Popen(["xdg-open", os.path.dirname(path)])
+
+
 def quiet_process_flags():
     """Popen creationflags: on Windows a console program started from FreeCAD would flash a console window."""
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if WINDOWS else 0

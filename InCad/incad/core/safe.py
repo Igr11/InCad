@@ -36,8 +36,9 @@ def _status(obj):
         return ""
 
 
-def _broken(obj, check_shape):
-    """Reason text if obj failed to compute or (check_shape) has invalid PartDesign geometry, else ''."""
+def _broken(obj, check_shape, deep=True):
+    """Reason text if obj failed to compute or (check_shape) has invalid PartDesign geometry, else ''. deep=False
+    leaves out the full geometry check (isValid: 0.6 s on a big threaded part, 2 s on a slow PC, every preview)."""
     state = getattr(obj, "State", [])
     if "Invalid" in state or "Error" in state:
         status = _status(obj)
@@ -64,7 +65,7 @@ def _broken(obj, check_shape):
         return "%s failed to compute" % obj.Label
     if check_shape and obj.TypeId.startswith("PartDesign::"):
         shape = getattr(obj, "Shape", None)
-        if shape is not None and not shape.isNull() and not shape.isValid():
+        if deep and shape is not None and not shape.isNull() and not shape.isValid():
             if obj.TypeId in ("PartDesign::Groove", "PartDesign::Revolution"):
                 return ("%s: the revolve couldn't form a valid shape — the axis must lie IN the profile's plane "
                         "and not cross or touch the profile (draw the profile on a plane through the axis)" % obj.Label)
@@ -186,9 +187,9 @@ def snapshot_broken(doc):
     return {o.Name for o in doc.Objects if _broken(o, False)}
 
 
-def problems(doc, broken_before, touched):
+def problems(doc, broken_before, touched, deep=True):
     """Reasons why objects that were fine (not in broken_before) are now broken; shapes checked for `touched`."""
-    found = [_broken(o, o.Name in touched) for o in doc.Objects if o.Name not in broken_before]
+    found = [_broken(o, o.Name in touched, deep) for o in doc.Objects if o.Name not in broken_before]
     return [p for p in found if p]
 
 

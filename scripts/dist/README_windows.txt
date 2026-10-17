@@ -74,8 +74,9 @@ Reporting a problem
 Please send:
 - what you did, step by step, and what you expected instead;
 - the build name (the name of the zip file);
-- the folder %LOCALAPPDATA%\InCad with InCad.log and install.log
-  (paste %LOCALAPPDATA%\InCad into the File Explorer address bar);
+- the folder %LOCALAPPDATA%\InCad with InCad.log and install.log: in InCad, the gear at the
+  top right > Show Log File opens it in the File Explorer with the log selected (Windows search
+  does not look into this hidden folder);
   InCad.log starts every session with a "Started:" line describing your system;
 - the text of FreeCAD's Report view if it shows errors (View > Panels > Report view,
   under "Return to FreeCAD");

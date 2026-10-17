@@ -38,6 +38,34 @@ def _edge_key(e):
     return (round(e.Length, 4), round(c.x, 4), round(c.y, 4), round(c.z, 4))
 
 
+def _new_faces(shape, base):
+    """The faces of `shape` that are not on a face of `base` (a point inside each tested): what a feature made."""
+    from incad.core import feature_faces as ff
+    if base is None:
+        return list(shape.Faces)
+    return [face for face, (t, p) in zip(shape.Faces, ff._inner_points(shape, "Face"))
+            if not ff._on_any(p, t, base, "Face")]
+
+
+def _is_seam(edge, face):
+    try:
+        return edge.isSeam(face)
+    except Exception:
+        return False
+
+
+def _lifted(face, pts, d):
+    """The points moved `d` out of `face` (along its normal there): lines drawn on a surface flicker into it."""
+    out = []
+    for p in pts:
+        try:
+            u, v = face.Surface.parameter(p)
+            out.append(p + face.normalAt(u, v) * d)
+        except Exception:
+            out.append(p)
+    return out
+
+
 def _feature_alive(obj):
     try:
         obj.TypeId
@@ -863,18 +891,27 @@ class FeatureSession(QtCore.QObject):
             base = self._expected_base()
             same = base.Shape if base is not None and not base.Shape.isNull() else None
             lines = []
-            kept = set()  # the base's edges by place and length: one pass each, not every edge against every edge
-            for e in (same.Edges if same is not None else ()):
-                kept.add(_edge_key(e))
-            for e in f.Shape.Edges:  # only what the feature changes (its rounds, chamfers, the trimmed edges)
-                if _edge_key(e) in kept:
-                    continue
-                try:
-                    straight = type(e.Curve).__name__ == "Line"
-                except Exception:  # "undefined curve type" (some OCC curves have no Python type)
-                    straight = False
-                pts = e.discretize(2 if straight else 24)
-                lines.append([pl.multVec(p) if pl is not None else p for p in pts])
+            seen = set()
+            lift = max(1e-3, f.Shape.BoundBox.DiagonalLength * 5e-4)  # off the surface it lies on: no dashes
+            for face in _new_faces(f.Shape, same):  # the round, the chamfer, the moved face — not the edges they
+                for e in face.Edges:                  # only trimmed (an ellipse's seam on its side face)
+                    key = _edge_key(e)
+                    if key in seen or _is_seam(e, face):  # a closed surface's own seam is no edge to show
+                        continue
+                    seen.add(key)
+                    try:
+                        straight = type(e.Curve).__name__ == "Line"
+                    except Exception:  # "undefined curve type" (some OCC curves have no Python type)
+                        straight = False
+                    try:
+                        pts = e.discretize(2 if straight else 48)
+                    except Exception:  # "Discretization of edge failed" (seen on Windows): its ends at least
+                        pts = [v.Point for v in e.Vertexes]
+                    if len(pts) > 1:
+                        pts = _lifted(face, pts, lift)
+                        lines.append([pl.multVec(p) if pl is not None else p for p in pts])
+            if not lines:
+                return
             node = coin.SoSeparator()
             style = coin.SoPickStyle()
             style.style = coin.SoPickStyle.UNPICKABLE
@@ -889,8 +926,8 @@ class FeatureSession(QtCore.QObject):
             lineset.numVertices.setValues(0, len(lines), [len(line) for line in lines])
             for n in (style, color, draw, coords, lineset):
                 node.addChild(n)
-            top = coin.SoAnnotation()  # drawn over the part, not hidden inside it
-            top.addChild(node)
+            top = coin.SoSeparator()  # depth-tested: the far side of a ring stays hidden behind the part (the
+            top.addChild(node)        # lines lie on its faces, which FreeCAD draws pushed back: the near side shows)
             view.getSceneGraph().addChild(top)
             self._ghost = (view, top)
         except Exception:
@@ -1256,6 +1293,22 @@ class FeatureSession(QtCore.QObject):
         it is built on) is computed while its dialog is open, and the part is shown as of this feature; the features
         after it are computed once, on OK (an early feature of a big part recomputed the whole part, 16 s, for every
         value typed)."""
+        if getattr(self.kind, "IN_SKETCH", False) and not self._extra:
+            # Text, sketch patterns: the sketch and the object only; the part follows on Finish Sketch (or on OK when
+            # the sketch is not open) — a whole recompute per value took 20-27 s on a slow PC
+            own = [o for o in (self.feature, self.profile) if o is not None and _feature_alive(o)]
+            if own:
+                if self._rolled is None:
+                    self._rolled = []
+                watch = _Recomputed()
+                import FreeCAD as App
+                App.addDocumentObserver(watch)
+                try:
+                    self.doc.recompute(own)
+                finally:
+                    App.removeDocumentObserver(watch)
+                self._recomputed = watch.names | {o.Name for o in own}
+                return
         later = self._later()
         own = self._own()
         if later and self._rolled is None:
@@ -1271,10 +1324,19 @@ class FeatureSession(QtCore.QObject):
             self.doc.recompute(own) if later else self.doc.recompute()
         finally:
             App.removeDocumentObserver(watch)
-        if self._extra or getattr(self.kind, "IN_SKETCH", False):
+        if self._extra:
             self._recomputed = {o.Name for o in self.doc.Objects}  # as before: every shape checked
         else:
             self._recomputed = watch.names | {o.Name for o in own}
+
+    def _sketch_open(self):
+        """The dialog's sketch is open for editing: its part follows on Finish Sketch."""
+        try:
+            import FreeCADGui as Gui
+            edit = Gui.ActiveDocument.getInEdit() if Gui.ActiveDocument is not None else None
+            return edit is not None and self.profile is not None and edit.Object is self.profile
+        except Exception:
+            return False
 
     def _own(self):
         """The feature with its helpers (a hole's chamfer, a thread's fill)."""
@@ -1288,7 +1350,7 @@ class FeatureSession(QtCore.QObject):
         saved, self._rolled = self._rolled, None
         if saved is None:
             return
-        if commit:
+        if commit and not self._sketch_open():
             self.doc.recompute()
             # every feature's state, but only the finished part's geometry: checking each later shape took 11 s
             tip = getattr(self.body, "Tip", None)
@@ -1412,7 +1474,7 @@ class FeatureSession(QtCore.QObject):
         """What is wrong now. Shapes are checked only where the last preview computed (the feature when the dialog
         opens): every shape of a big part took 11 s, after every value typed."""
         touched = self._recomputed if self._recomputed is not None else {o.Name for o in self._own()}
-        found = safe.problems(self.doc, self._broken, touched)
+        found = safe.problems(self.doc, self._broken, touched, deep=False)  # the full check once, on OK
         text = "; ".join(found)
         rescue = None
         offer = getattr(self.kind, "rescue", None)
@@ -1498,6 +1560,11 @@ class FeatureSession(QtCore.QObject):
             self.dialog.set_error("Nothing to create yet")
         if self.dialog is not None and self.dialog.error_text():
             return
+        if self._recomputed is not None and self.dialog is not None:  # the full geometry check the previews left out
+            found = safe.problems(self.doc, self._broken, self._recomputed)
+            if found:
+                self.dialog.set_error("; ".join(found))
+                return
         self._finish(commit=True)
 
     def apply(self):

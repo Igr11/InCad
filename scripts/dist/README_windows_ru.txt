@@ -76,8 +76,9 @@ FreeCAD установлен в необычное место? В командн
 Пришлите:
 - что вы делали по шагам и что ожидали вместо этого;
 - имя сборки (имя zip-файла);
-- папку %LOCALAPPDATA%\InCad с файлами InCad.log и install.log
-  (вставьте %LOCALAPPDATA%\InCad в адресную строку Проводника);
+- папку %LOCALAPPDATA%\InCad с файлами InCad.log и install.log: в InCad шестерёнка справа
+  вверху > Show Log File откроет её в Проводнике с выделенным журналом (поиск Windows в эту
+  скрытую папку не заглядывает);
   каждый сеанс в InCad.log начинается строкой "Started:" с описанием вашей системы;
 - текст Report view FreeCAD, если там есть ошибки (View > Panels > Report view,
   после "Return to FreeCAD");

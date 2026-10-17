@@ -843,11 +843,24 @@ class Shell(QtCore.QObject):
             act.setCheckable(True)
             act.setChecked(prefs.dimension_display() == value)
             act.triggered.connect(lambda _=False, v=value: (prefs.set_dimension_display(v), self.apply_theme()))
+        menu.addAction("Show Log File").triggered.connect(lambda _=False: self._show_log())
         nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
         nav_act.setCheckable(True)
         nav_act.setChecked(prefs.navigation_enabled())
         nav_act.triggered.connect(lambda checked: self.set_navigation(checked))
         return menu
+
+    @staticmethod
+    def _show_log():
+        """⚙ ▸ Show Log File: the file to send with a problem report, selected in Explorer / Finder (on Windows it sits
+        in the hidden AppData folder, which Windows search does not look into)."""
+        path = log.log_path()
+        try:
+            log.logger().info("Log shown: %s", path)  # the file exists (and has today's line) before it is shown
+            host.reveal(path)
+            log.report("info", "InCad's log: %s" % path)
+        except Exception as e:
+            log.report("warning", "Could not show the log (%s): %s" % (path, e))
 
     def _set_theme_pref(self, value):
         prefs.set_theme(value)
@@ -2625,6 +2638,14 @@ class Shell(QtCore.QObject):
                 suppress.quiet_suppressed_holes(doc)
             except Exception as e:
                 log.logger().warning("Suppressed holes on open: %s", e)
+            try:  # FreeCAD leaves every sketch Text touched after loading: the first edit anywhere recomputed it and
+                # everything after it (4.6 s on a Mac, 15 s on a slow PC); its saved shape is the computed one
+                from incad.features import sketch_text
+                for t in [o for o in doc.Objects if sketch_text.is_text(o)]:
+                    if "Touched" in t.State and not t.Shape.isNull() and "Invalid" not in t.State:
+                        t.purgeTouched()
+            except Exception as e:
+                log.logger().warning("Texts on open: %s", e)
             self._adopt_all_projections(doc.Name)  # after the purge: an orphan area copy uses nothing
         if self.value_box is not None and (editing is None or
                                            (editing.Document.Name, editing.Name) != self._box_owner):

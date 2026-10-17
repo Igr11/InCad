@@ -222,7 +222,7 @@ def _apply_params(doc, rec):
     from incad.core import model
     for name, text in (rec.pop("param_values", None) or {}).items():
         if model.parameter_text(doc, name) != text:
-            model.set_model_parameter(doc, name, text)
+            model.set_model_parameter(doc, name, text, everything=False)  # the sketch is computed after
 
 
 def _end(sk, rec):
