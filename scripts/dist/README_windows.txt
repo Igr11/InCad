@@ -11,8 +11,8 @@ New in this build (as on the Mac): big parts work much faster, and a slot can be
 by its overall length (Sketch > Dimension > Overall Dimension, or Centers / Overall / Gap in
 a dimension's value box).
 
-What changed: CHANGES.txt. How to use every feature: InCad-manual.pdf
-(the manual is written on a Mac: read Cmd as Ctrl and Option as Alt).
+What changed: CHANGES.txt. How to use every feature: InCad-manual.pdf (the user manual).
+A short tour: InCad-presentation.pdf
 
 
 Requirements

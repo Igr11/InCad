@@ -19,4 +19,11 @@ for lang in en ru; do
   PDF_TITLE="$title" swift "$P/tools/merge.swift" "$out" "$W/$lang.pdf" >/dev/null
   if [[ -n "$1" ]]; then swift "$P/tools/sheet.swift" "$out" "${1:r}_$lang.png" >/dev/null; fi
   echo "$out"
+  mkdir -p "$W/win_$lang"  # the Windows edition: the same slides through docs/manual/tools/windows.py
+  for f in "$P/$lang"/*.html; do python3 -B "$REPO/docs/manual/tools/windows.py" "$f" "$W/win_$lang/${f:t}"; done
+  cp "$P/img"/*.jpg "$W/win_$lang/"
+  out="$REPO/scripts/dist/InCad-presentation-windows$suffix.pdf"
+  swift "$P/tools/render.swift" "$W/win_$lang" "$W/win_$lang.pdf" | tail -1
+  PDF_TITLE="$title" swift "$P/tools/merge.swift" "$out" "$W/win_$lang.pdf" >/dev/null
+  echo "$out"
 done

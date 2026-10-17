@@ -24,9 +24,12 @@ sed "s/VERSION/$NAME/g" scripts/dist/README_windows.txt > "$D/README.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/README_windows_ru.txt > "$D/README_ru.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES.txt > "$D/CHANGES.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES_ru.txt > "$D/CHANGES_ru.txt"
-for f in InCad-manual.pdf InCad-manual_ru.pdf; do
-  [[ -f scripts/dist/$f ]] || { echo "ERROR: scripts/dist/$f is missing (scripts/print_manual.sh)"; exit 1; }
-  cp scripts/dist/$f "$D/"
+for f in manual presentation; do  # the Windows editions (Ctrl, install.bat, %LOCALAPPDATA%), under the usual names
+  for suffix in "" _ru; do
+    src=scripts/dist/InCad-$f-windows$suffix.pdf
+    [[ -f $src ]] || { echo "ERROR: $src is missing (scripts/print_manual.sh, scripts/make_presentation.sh)"; exit 1; }
+    cp $src "$D/InCad-$f$suffix.pdf"
+  done
 done
 for f in "$D"/*.bat "$D"/*.ps1 "$D"/*.txt; do perl -pi -e 's/\r?\n/\r\n/' "$f"; done
 perl -ne 'if (/[^\x00-\x7F]/) { print "$ARGV:$.: not ASCII\n"; $bad = 1 } END { exit $bad }' "$D"/*.bat "$D"/*.ps1 \

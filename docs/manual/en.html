@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
-      Version 0.5.0 — test build<br>
-      FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon
+      Version 0.5.3 — test build<br>
+      <!--mac-->FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (tested with 1.1.3) · Windows 10 / 11 (x64), first test build win-->
     </div>
   </div>
   <div class="foot">
-    This manual describes InCad as it is in build 0.5.0. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes InCad as it is in build 0.5.3. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -145,8 +145,9 @@ something looks wrong, tell us — chapter 11 says what to send.</div>
 
 <!-- ============================================================ 2 -->
 <h1 class="chapter" id="install"><span class="num">2</span>Installation</h1>
-<p class="lead">Install InCad once with FreeCAD's Addon Manager; updating is the same few steps.</p>
+<!--mac--><p class="lead">Install InCad once with FreeCAD's Addon Manager; updating is the same few steps.</p><!--/mac--><!--win <p class="lead">Install InCad with <b>install.bat</b> from the archive; a new build installs the same way, and <b>uninstall.bat</b> removes it.</p> win-->
 
+<!--mac-->
 <div class="keep"><h2>Requirements</h2>
 <ul>
   <li>A Mac with Apple Silicon (M1, M2, M3, M4 …).</li>
@@ -184,6 +185,43 @@ something looks wrong, tell us — chapter 11 says what to send.</div>
   <li>Start FreeCAD and choose <b>InCad</b> in the workbench selector.</li>
 </ol></div>
 
+<!--/mac-->
+<!--win
+<div class="keep"><h2>Requirements</h2>
+<ul>
+  <li>Windows 10 or Windows 11, 64-bit (x64).</li>
+  <li>FreeCAD 1.1 for Windows (InCad is made for FreeCAD 1.1.3), from <b>www.freecad.org/downloads.php</b>.</li>
+</ul></div>
+<div class="note"><b>A first test build.</b> InCad is developed on the Mac; this Windows build has been tried on one
+Windows 11 PC only. Expect problems, work on <b>copies</b> of your files and send the log with every report
+(chapter 11).</div>
+
+<div class="keep"><h2>Install</h2>
+<ol>
+  <li>Quit FreeCAD.</li>
+  <li>Unzip the archive (right-click ▸ <span class="ui">Extract All…</span>). Do not run anything from inside the
+      zip.</li>
+  <li>In the unzipped folder double-click <b>install.bat</b>. It finds FreeCAD, asks it where its add-ons go and copies
+      the <b>InCad</b> folder there. A previous InCad in that place is moved to <b>InCad-backups</b> first; nothing is
+      deleted. If Windows says "Windows protected your PC": <span class="ui">More info</span> ▸
+      <span class="ui">Run anyway</span>.</li>
+  <li>Start FreeCAD and choose <b>InCad</b> in the workbench selector.</li>
+</ol></div>
+<p>FreeCAD installed somewhere unusual? In a Command Prompt in the unzipped folder:
+<code>install.bat -FreeCAD "D:\Apps\FreeCAD 1.1"</code>, or name the add-on folder yourself:
+<code>install.bat -ModDir "%APPDATA%\FreeCAD\v1-1\Mod"</code>.</p>
+
+<div class="keep"><h2>Install by hand (if install.bat does not work)</h2>
+<ol>
+  <li>Quit FreeCAD.</li>
+  <li>Paste <code>%APPDATA%\FreeCAD\v1-1\Mod</code> into the File Explorer's address bar. If there is no
+      <b>Mod</b> folder, go to <code>…\FreeCAD\v1-1</code> and create a folder named <b>Mod</b> there.</li>
+  <li>Copy the <b>InCad</b> folder from the unzipped archive into that <b>Mod</b> folder. The result must be
+      <code>…\Mod\InCad\InitGui.py</code> — not <code>…\Mod\InCad\InCad\InitGui.py</code>.</li>
+  <li>Start FreeCAD and choose <b>InCad</b> in the workbench selector.</li>
+</ol></div>
+win-->
+
 <div class="keep"><h2>The first start</h2>
 <p>The first time, InCad asks what to make and in which units: <span class="ui">Part</span> (one part file) or
 <span class="ui">Assembly</span> (place and constrain part files), and <span class="ui">Millimeters</span> (mm, ISO
@@ -198,6 +236,7 @@ asking next time. Click <span class="ui">Create</span>.</p></div>
 Workbenches ▸ Startup ▸ Default workbench: InCad</span>. (In FreeCAD 1.1 this setting is under Workbenches, not under
 General.)</p></div>
 
+<!--mac-->
 <div class="keep"><h2>Update to a new build</h2>
 <ol>
   <li><span class="path">Tools ▸ Addon Manager</span> ▸ select <b>InCad</b> ▸ <span class="ui">Uninstall</span>. Quit FreeCAD.</li>
@@ -212,6 +251,18 @@ General.)</p></div>
 <p><span class="path">Tools ▸ Addon Manager</span> ▸ select <b>InCad</b> ▸ <span class="ui">Uninstall</span>, then restart
 FreeCAD. Installed by hand: quit FreeCAD and delete the <code>Mod/InCad</code> folder. You may also delete the log file
 <code>~/Library/Logs/InCad.log</code>. Your .FCStd files keep working in plain FreeCAD.</p></div>
+
+<!--/mac-->
+<!--win
+<div class="keep"><h2>Update to a new build</h2>
+<p>Quit FreeCAD, unzip the new build and double-click its <b>install.bat</b>. The InCad installed before is moved to
+<b>InCad-backups</b> (next to the Mod folder) first.</p></div>
+
+<div class="keep"><h2>Uninstall</h2>
+<p>Quit FreeCAD and double-click <b>uninstall.bat</b>: the InCad folder is moved to <b>InCad-backups</b>; delete that
+folder yourself when you no longer need it. InCad's log folder is <code>%LOCALAPPDATA%\InCad</code> (you may delete it
+too). Your .FCStd files keep working in plain FreeCAD.</p></div>
+win-->
 
 <!-- ============================================================ 3 -->
 <h1 class="chapter" id="window"><span class="num">3</span>The InCad window</h1>
@@ -632,7 +683,7 @@ them (Cut), Emboss wraps them round a cylinder or a cone (6.16).</p></div>
 <table class="long">
   <tr><th>Field</th><th class="wrap">Choices and meaning</th></tr>
   <tr><td>Text</td><td class="wrap">The words; Return starts a new line. Cyrillic works.</td></tr>
-  <tr><td>Font, Bold, Italic</td><td class="wrap">The Mac's installed fonts; Bold / Italic use the font's own Bold and
+  <tr><td>Font, Bold, Italic</td><td class="wrap"><!--mac-->The Mac's installed fonts;<!--/mac--><!--win The fonts installed in Windows; win--> Bold / Italic use the font's own Bold and
       Italic files.</td></tr>
   <tr><td>Mirror</td><td class="wrap">Flips the text left-right, to read it from the plane's other side (a sketch on the
       underside of a part, or on a plane turned the other way).</td></tr>
@@ -1318,17 +1369,25 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
 <ul>
   <li>what you did, step by step, and what you expected instead;</li>
   <li>the build name (the name of the zip file);</li>
+<!--mac-->
   <li>your macOS version and FreeCAD version (<span class="path">FreeCAD ▸ About FreeCAD</span>);</li>
   <li>the log file <code>~/Library/Logs/InCad.log</code> — <span class="path">⚙ ▸ Show Log File</span> shows it in the
       Finder;</li>
+<!--/mac-->
+<!--win
+  <li>your Windows version and FreeCAD version (<span class="path">Help ▸ About FreeCAD</span>);</li>
+  <li>the folder <code>%LOCALAPPDATA%\InCad</code> with InCad.log and install.log — <span class="path">⚙ ▸ Show Log
+      File</span> opens it in the File Explorer with the log selected (Windows search does not look into this hidden
+      folder);</li>
+win-->
   <li>if you can, the .FCStd file you were working on;</li>
   <li>a screenshot if something looks wrong.</li>
 </ul>
-<p>If FreeCAD crashed, macOS shows a crash report: please copy its text as well.</p>
+<!--mac--><p>If FreeCAD crashed, macOS shows a crash report: please copy its text as well.</p><!--/mac--><!--win <p>If FreeCAD crashed or froze, please say what you did just before; the log ends there.</p> win-->
 
 <div class="keep"><h2>Known limits of this build</h2>
 <ul>
-  <li>macOS on Apple Silicon only; FreeCAD 1.1 (tested with 1.1.3).</li>
+<!--mac-->  <li>macOS on Apple Silicon only; FreeCAD 1.1 (tested with 1.1.3).</li><!--/mac--><!--win   <li>Windows 10 / 11 (x64): a first test build, tried on one PC; FreeCAD 1.1 (made for 1.1.3).</li> win-->
   <li>A test build. Save often and work on copies.</li>
   <li>The interface is in English.</li>
   <li>FreeCAD cannot shell a part that already has a modeled thread (InCad offers to shell before the thread).</li>
@@ -1340,7 +1399,7 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
 
 <!-- ============================================================ A -->
 <h1 class="chapter" id="keys"><span class="num">A</span>Keyboard shortcuts</h1>
-<p class="lead">Single keys work in the mode named. On the Mac, InCad's Ctrl shortcuts are the ⌘ keys.</p>
+<p class="lead">Single keys work in the mode named.<!--mac--> On the Mac, InCad's Ctrl shortcuts are the ⌘ keys.<!--/mac--><!--win  win--></p>
 <div class="cols2">
 <table>
   <tr><th>Key</th><th class="wrap">Command</th></tr>
