@@ -6,7 +6,8 @@ Build: VERSION
 InCad is developed and tested on macOS; on Windows it has been tried on one PC only.
 Expect problems, work only on copies of files, and send the log (see "Reporting a problem").
 
-New in this build (as on the Mac): Emboss and Engrave on a sphere (a Text or any closed
+New in this build (as on the Mac): Construction switches only the selected sketch lines;
+Emboss and Engrave on a sphere (a Text or any closed
 sketch), and Settings (the gear) > Display Quality - Normal is the default on Windows; Fine
 draws round faces smoother but takes more drawing time on built-in graphics.
 Earlier: big parts work much faster, and a slot can be dimensioned by its overall length

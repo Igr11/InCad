@@ -13,6 +13,7 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
+New in 0.5.5: Construction switches only the selected sketch lines.
 New in 0.5.4: Emboss and Engrave on a sphere (a Text or any closed sketch, projected along the
 sketch's normal), and Settings (the gear) > Display Quality - Fine draws round faces smoother.
 New in 0.5.2 and 0.5.3: big parts work much faster, and a slot can be dimensioned by its overall

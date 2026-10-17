@@ -5,6 +5,15 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.5
+-----
+Construction switches only the selected lines.
+
+Bug fixes
+- Construction on a selected sketch line switched every line joined to it (the whole rectangle or
+  polygon). Now only the selected lines switch; select several to switch them together.
+
+
 0.5.4
 -----
 Emboss on a sphere, a Display Quality setting, and Revolve cut / Emboss fixes.
