@@ -112,7 +112,59 @@ def test_1_the_type_holds_until_the_cursor_is_clearly_past_the_side():
     assert last_type() == "DistanceX", last_type()
 
 
-def test_2_cleanup():
+def click(pos):
+    move(pos)
+    send(QtCore.QEvent.MouseButtonPress, pos, L, L)
+    harness.pump(80)
+    send(QtCore.QEvent.MouseButtonRelease, pos, L, N)
+    harness.pump(500)
+
+
+def test_2_a_second_line_picked_while_the_first_one_s_length_follows_makes_an_angle():
+    """The user (Windows and Mac): angles were hard to dimension. After the first line FreeCAD shows that line's
+    length following the cursor; the dead zone held the cursor FreeCAD sees, so the second line under the real
+    cursor was not picked. Near other geometry the cursor is never held."""
+    import math
+    import Sketcher
+    Gui.runCommand("Sketcher_StopOperation")
+    harness.pump(400)
+    if s().value_box is not None:
+        s().value_box.close()
+        harness.pump(300)
+    sk = sketch()
+    slanted = sk.addGeometry(Part.LineSegment(App.Vector(20, 0, 0), App.Vector(30, -8, 0)))  # from the corner
+    sk.addConstraint(Sketcher.Constraint("Coincident", 0, 2, slanted, 1))
+    doc().recompute()
+    harness.pump(400)
+    Gui.SendMsgToActiveView("ViewFit")
+    harness.pump(600)
+    for second, at, want, place in ((1, (20, 3), 90.0, (16, 3)), (slanted, (24, -3.2), 38.66, (24, -1))):
+        Gui.Selection.clearSelection()
+        count = len(sk.Constraints)
+        ST["at"] = screen(10, -6)
+        commands.REGISTRY.run("sketch.dimension")
+        harness.pump(600)
+        click(screen(10, 0))  # the bottom line: its length follows the cursor
+        move(screen(10, -4), steps=6)
+        move(screen(at[0] - 2, at[1] - 1), steps=8)
+        click(screen(*at))  # the other line from the same corner: on the side of the length's box
+        move(screen(*place), steps=6)
+        click(screen(*place))  # place the angle
+        harness.pump(600)
+        added = [(c.Type, c.First, c.Second) for c in sk.Constraints[count:]]
+        angles = [c for c in sk.Constraints[count:] if c.Type == "Angle"]
+        assert len(angles) == 1, (second, added)
+        deg = math.degrees(angles[0].Value) % 180
+        assert min(abs(deg - want), abs(deg - (180 - want))) < 0.05, (second, deg)
+        assert {angles[0].First, angles[0].Second} == {0, second}, (second, added)
+        Gui.runCommand("Sketcher_StopOperation")
+        harness.pump(400)
+        if s().value_box is not None:
+            s().value_box.close()
+            harness.pump(300)
+
+
+def test_3_cleanup():
     Gui.runCommand("Sketcher_StopOperation")
     harness.pump(400)
     if s().value_box is not None:
@@ -124,4 +176,5 @@ def test_2_cleanup():
     harness.pump(500)
 
 
-harness.run([test_0_setup, test_1_the_type_holds_until_the_cursor_is_clearly_past_the_side, test_2_cleanup])
+harness.run([test_0_setup, test_1_the_type_holds_until_the_cursor_is_clearly_past_the_side,
+             test_2_a_second_line_picked_while_the_first_one_s_length_follows_makes_an_angle, test_3_cleanup])

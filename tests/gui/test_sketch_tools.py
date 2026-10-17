@@ -236,7 +236,8 @@ def test_5b_one_click_on_a_picked_construction_line_makes_it_normal_and_ends_the
     assert not sk.getConstruction(g2), "new geometry is normal after the single click"
 
 
-def test_6_one_picked_side_switches_the_whole_polygon():
+def test_6_one_picked_side_switches_only_that_side():
+    """The user: making one line construction changed all the lines joined to it. Only the picked edge switches."""
     from ProfileLib import RegularPolygon
     sk = Gui.ActiveDocument.getInEdit().Object
     first = sk.GeometryCount
@@ -249,10 +250,10 @@ def test_6_one_picked_side_switches_the_whole_polygon():
     Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (sides[2] + 1))
     commands.REGISTRY.run("sketch.construction")
     harness.pump(500)
-    assert all(sk.getConstruction(i) for i in sides), [sk.getConstruction(i) for i in sides]
+    assert [sk.getConstruction(i) for i in sides] == [k == 2 for k in range(6)], [sk.getConstruction(i) for i in sides]
     assert not shell.instance().construction_mode  # a selection switches geometry, not the drawing mode
     Gui.Selection.clearSelection()
-    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (sides[4] + 1))
+    Gui.Selection.addSelection(App.ActiveDocument.Name, sk.Name, "Edge%d" % (sides[2] + 1))
     commands.REGISTRY.run("sketch.construction")
     harness.pump(500)
     assert not any(sk.getConstruction(i) for i in sides), [sk.getConstruction(i) for i in sides]
@@ -397,7 +398,7 @@ harness.run([test_0_sketch, test_1_every_variant_starts_with_its_method, test_1b
              test_3_hide_and_show_constraints_from_the_menu, test_4_overall_slot_by_three_clicks,
              test_5_construction_button_toggles_the_drawing_mode,
              test_5b_one_click_on_a_picked_construction_line_makes_it_normal_and_ends_the_mode,
-             test_6_one_picked_side_switches_the_whole_polygon,
+             test_6_one_picked_side_switches_only_that_side,
              test_7_a_polygon_drawn_on_the_origin_keeps_its_centre_there,
              test_8_double_click_with_a_deleted_preselection_is_ignored,
              test_9_sketch_handlers_ignore_a_sketch_deleted_meanwhile,

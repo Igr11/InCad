@@ -284,30 +284,9 @@ def _joined(c):
     return None
 
 
-def chain(sk, geo_ids):
-    """The edges joined end to end with the given ones (a polygon's sides, a slot's arcs and lines). Points on a
-    curve don't join, so a polygon's guide circle is not part of its sides."""
-    links = {}
-    for c in sk.Constraints:
-        pair = _joined(c)
-        if pair:
-            a, b = pair
-            links.setdefault(a, set()).add(b)
-            links.setdefault(b, set()).add(a)
-    found, todo = set(), list(geo_ids)
-    while todo:
-        g = todo.pop()
-        if g in found:
-            continue
-        found.add(g)
-        todo.extend(links.get(g, ()))
-    return found
-
-
 def toggle_construction(sk, geo_ids):
-    """Inventor's Construction on picked edges: their whole profiles become construction, or normal again. The
-    direction comes from the EDGES THE USER PICKED, not the expanded profile — so a construction line joined to
-    normal geometry still toggles back to normal (its chain is mixed, which used to read as 'make construction').
+    """Inventor's Construction on picked edges: those edges (only them: one side of a rectangle becomes an axis, the
+    user) become construction, or normal again when all of them already are construction.
     A projected (external) edge switches FreeCAD's own 'defining' flag; the choice of construction is remembered
     (CHOSEN_PROP) so adopt_projections leaves it. Returns the ids changed."""
     flags = _projected_flags(sk)
@@ -317,7 +296,7 @@ def toggle_construction(sk, geo_ids):
     if not states:
         return []
     make = not all(states)
-    ids = sorted(chain(sk, geo_ids)) if geo_ids else []
+    ids = sorted(set(geo_ids))
     for i in ids:
         if sk.getConstruction(i) != make:
             sk.setConstruction(i, make)

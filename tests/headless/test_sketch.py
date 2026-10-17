@@ -202,18 +202,23 @@ class ConstructionChainTest(unittest.TestCase):
     def tearDown(self):
         App.closeDocument(self.doc.Name)
 
-    def test_chain_follows_joined_ends_only(self):
-        self.assertEqual(sketch.chain(self.sk, [1]), {0, 1, 2})
-        self.assertEqual(sketch.chain(self.sk, [self.other]), {self.other})
-
-    def test_toggle_switches_the_whole_profile_and_back(self):
+    def test_toggle_switches_only_the_picked_edge_and_back(self):
+        """The user: making one line of a sketch construction changed all its lines (the whole joined profile)."""
         sketch.toggle_construction(self.sk, [2])
-        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [True] * 3)
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False, False, True])
         self.assertTrue(self.sk.getConstruction(self.circle))
         self.assertFalse(self.sk.getConstruction(self.other))
-        sketch.toggle_construction(self.sk, [0])
+        sketch.toggle_construction(self.sk, [2])
         self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)
         self.assertTrue(self.sk.getConstruction(self.circle))  # the polygon's guide circle stays construction
+
+    def test_several_picked_edges_switch_together(self):
+        sketch.toggle_construction(self.sk, [0, 1])
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [True, True, False])
+        sketch.toggle_construction(self.sk, [1, 2])  # mixed: construction
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [True, True, True])
+        sketch.toggle_construction(self.sk, [0, 1, 2])  # all construction: normal again
+        self.assertEqual([self.sk.getConstruction(i) for i in range(3)], [False] * 3)
 
     def test_a_construction_line_joined_to_normal_geometry_toggles_back_to_normal(self):
         """The direction comes from the picked edge, not its chain: a construction line joined to a normal profile
