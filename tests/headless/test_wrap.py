@@ -145,3 +145,69 @@ class EmbossFeatureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SphereTest(unittest.TestCase):
+    """A sphere cannot be unrolled: the profile is projected onto it along the sketch's normal (the half facing the
+    sketch), raised or engraved along the radius; letters past the sphere's outline or a dome's rim are refused."""
+    RS = 20.0
+
+    def setUp(self):
+        self.ball = Part.makeSphere(self.RS)
+        self.face = self.ball.Faces[0]
+        self.assertTrue(wrap.is_sphere(self.face))
+
+    def letters(self, words="HI", z=30.0, corners=None):
+        corners = corners or [App.Vector(-8, -4, 0), App.Vector(8, -4, 0), App.Vector(8, 4, 0), App.Vector(-8, 4, 0)]
+        return placed(text(words, corners), App.Placement(App.Vector(0, 0, z), App.Rotation()))  # facing +Z
+
+    def test_raised_on_the_top_of_the_ball(self):
+        out = wrap.apply(self.ball, self.letters(), self.face, 1.0, engrave=False)
+        self.assertTrue(out.isValid())
+        self.assertEqual(len(out.Solids), 1)
+        self.assertGreater(out.Volume, self.ball.Volume + 5)
+        rmax = max(v.Point.Length for v in out.Vertexes)
+        self.assertAlmostEqual(rmax, self.RS + 1.0, delta=1e-3)
+        self.assertGreater(min(v.Point.z for v in out.Vertexes if v.Point.Length > self.RS + 0.5), 0)  # on top
+
+    def test_engraved_into_the_ball(self):
+        out = wrap.apply(self.ball, self.letters(), self.face, 0.8, engrave=True)
+        self.assertTrue(out.isValid())
+        self.assertLess(out.Volume, self.ball.Volume - 3)
+        self.assertGreater(min(v.Point.Length for v in out.Vertexes), self.RS - 0.8 - 1e-3)
+
+    def test_a_sketch_below_the_ball_lands_on_its_bottom(self):
+        faces = self.letters(z=-30.0)
+        letters = wrap.tools(faces, self.face, 1.0)
+        self.assertLess(Part.makeCompound(letters).BoundBox.ZMax, 0)
+
+    def test_letters_past_the_outline_are_refused(self):
+        wide = [App.Vector(-30, -4, 0), App.Vector(30, -4, 0), App.Vector(30, 4, 0), App.Vector(-30, 4, 0)]
+        with self.assertRaises(ValueError) as cm:
+            wrap.tools(self.letters("WIDE WORD", corners=wide), self.face, 1.0)
+        self.assertIn("past the sphere's edge", str(cm.exception))
+
+    def test_evenly_round_says_why_not(self):
+        with self.assertRaises(ValueError) as cm:
+            wrap.tools(self.letters(), self.face, 1.0, spread=True)
+        self.assertIn("projected as drawn", str(cm.exception))
+
+    def test_a_dome_s_rim_is_its_edge(self):
+        dome = Part.makeSphere(self.RS, App.Vector(), App.Vector(0, 0, 1), 60, 90)  # only the cap above 60 degrees
+        cap = next(f for f in dome.Faces if wrap.is_sphere(f))
+        aside = [App.Vector(11, -4, 0), App.Vector(18, -4, 0), App.Vector(18, 4, 0), App.Vector(11, 4, 0)]
+        with self.assertRaises(ValueError) as cm:  # inside the sphere's outline (20), past the cap's rim (10)
+            wrap.tools(self.letters("H", corners=aside), cap, 1.0)
+        self.assertIn("off the face", str(cm.exception))
+
+
+class SphereSignatureTest(unittest.TestCase):
+    def test_the_emboss_finds_its_sphere_again(self):
+        from incad.features import emboss
+        ball = Part.makeSphere(15.0, App.Vector(1, 2, 3))
+        sig = emboss.signature(ball.Faces[0])
+        self.assertEqual(sig["kind"], "sphere")
+        bigger = Part.makeSphere(15.5, App.Vector(1, 2, 3)).fuse(Part.makeBox(5, 5, 5, App.Vector(30, 0, 0)))
+        found = emboss.find(bigger, sig)  # an earlier edit changed the radius: the nearest one, same centre
+        self.assertIsNotNone(found)
+        self.assertAlmostEqual(found.Surface.Radius, 15.5, places=6)

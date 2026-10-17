@@ -843,12 +843,26 @@ class Shell(QtCore.QObject):
             act.setCheckable(True)
             act.setChecked(prefs.dimension_display() == value)
             act.triggered.connect(lambda _=False, v=value: (prefs.set_dimension_display(v), self.apply_theme()))
+        quality_menu = menu.addMenu("Display Quality")
+        for value, label in (("normal", "Normal (faster)"), ("fine", "Fine (smoother curves)")):
+            act = quality_menu.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(prefs.display_quality() == value)
+            act.triggered.connect(lambda _=False, v=value: self.set_display_quality(v))
         menu.addAction("Show Log File").triggered.connect(lambda _=False: self._show_log())
         nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
         nav_act.setCheckable(True)
         nav_act.setChecked(prefs.navigation_enabled())
         nav_act.triggered.connect(lambda checked: self.set_navigation(checked))
         return menu
+
+    @staticmethod
+    def set_display_quality(value):
+        from incad.core import quality
+        prefs.set_display_quality(value)
+        quality.set_defaults()
+        quality.apply_all(force=True)
+        log.report("info", "Display quality: %s" % value.capitalize())
 
     @staticmethod
     def _show_log():
@@ -1487,8 +1501,15 @@ class Shell(QtCore.QObject):
             ids = [-int(sub[len("ExternalEdge"):]) - 2 if sub.startswith("ExternalEdge") else int(sub[4:]) - 1
                    for sub in picked]
             was_on, self.construction_mode = self.construction_mode, False  # the same click ends the drawing mode
-            safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document)
+            r = safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document)
             Gui.Selection.clearSelection()
+            projected = [i for i in (r.value or []) if i < 0] if r.ok else []
+            if projected:  # a projected edge looks the same either way: say what it is now
+                flags = sketch._projected_flags(sk)
+                normal = [i for i in projected if flags.get(i, (False,))[0]]
+                log.report("info", "%d projected edge%s now %s" % (
+                    len(projected), "" if len(projected) == 1 else "s",
+                    "normal: part of the profile" if len(normal) == len(projected) else "construction"))
             if was_on:
                 log.report("info", "Construction off: normal geometry")
             if self.ribbon is not None:
@@ -1519,6 +1540,16 @@ class Shell(QtCore.QObject):
         from incad.core import safe
         return bool(safe.busy() or doc.HasPendingTransaction or getattr(doc, "Recomputing", False))
 
+    @staticmethod
+    def _sketch_in_edit(sk):
+        try:
+            import FreeCADGui as Gui
+            gdoc = Gui.getDocument(sk.Document.Name)
+            edit = gdoc.getInEdit() if gdoc is not None else None
+            return edit is not None and edit.Object is sk
+        except Exception:
+            return False
+
     @perf.timed("projection changed")
     def _projection_changed(self, sk):
         """An edge projected (or its projection undone / redone): it becomes normal geometry right away."""
@@ -1538,8 +1569,9 @@ class Shell(QtCore.QObject):
             if not document.is_incad_part(doc) or getattr(doc, "Restoring", False) or not sketches.projected(sk):
                 return
             if self._adopt_waits(doc):
-                if tries < 40:
-                    QtCore.QTimer.singleShot(150, lambda: self._adopt_projections(sk, tries + 1))
+                if tries < 40 or self._sketch_in_edit(sk):  # a Sketcher tool still projecting: as long as it takes
+                    QtCore.QTimer.singleShot(150 if tries < 40 else 400,
+                                             lambda: self._adopt_projections(sk, tries + 1))
                 else:
                     log.logger().info("Projected edges of %s: still busy after 6 s, left to the next change", sk.Label)
                 return
@@ -1985,6 +2017,15 @@ class Shell(QtCore.QObject):
     def _session_closed(self, fs):
         if self.__dict__.get("_feature_session") is fs:  # (raw: the property would call this normal close dead)
             self.feature_session = None
+        if not getattr(fs, "_committed", False):  # the area copy made for it comes before its undo step: it stays
+            try:                                   # behind on Cancel unless it goes here
+                import FreeCAD as App
+                from incad.core import regions
+                doc = App.getDocument(fs.doc_name) if fs.doc_name in App.listDocuments() else None
+                if doc is not None and regions.purge_orphans(doc):
+                    doc.recompute()
+            except Exception as e:
+                log.logger().warning("Area copies after a cancelled dialog: %s", e)
         if self._overlay is None or getattr(self._overlay, "session", fs) is fs:
             self._drop_overlay()
         dispose(fs)
@@ -2596,6 +2637,11 @@ class Shell(QtCore.QObject):
             wire_style.refresh(doc, self.theme)  # objects made while Wireframe is on; a file saved in it
         except Exception as e:
             log.logger().warning("Wireframe lines: %s", e)
+        try:
+            from incad.core import quality
+            quality.apply_all()  # files opened or made since: drawn at ⚙ ▸ Display Quality (once each)
+        except Exception as e:
+            log.logger().warning("Display quality: %s", e)
         self.sketches.sync()
         if is_part and editing is None and fs is None and self._body_hidden(doc):
             document.show_result(document.primary_body(doc))  # a file saved during sketch editing opens blank

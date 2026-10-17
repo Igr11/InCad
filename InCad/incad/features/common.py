@@ -350,9 +350,9 @@ def accepts(kind, obj, sub):
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomLine"
-    if kind == "emboss_face":  # Emboss: a round (cylindrical) face to wrap onto, or a flat one
-        return sub.startswith("Face") and el is not None and el.Surface.TypeId in ("Part::GeomCylinder",
-                                                                                     "Part::GeomCone", "Part::GeomPlane")
+    if kind == "emboss_face":  # Emboss: a round face to wrap onto, a sphere to project onto, or a flat one
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId in (
+            "Part::GeomCylinder", "Part::GeomCone", "Part::GeomPlane", "Part::GeomSphere")
     if kind == "rot_axis":  # what a circular pattern turns around: an axis, a straight or circular edge, a round face
         if not sub:
             return tid in ("App::Line", "PartDesign::Line")

@@ -20,6 +20,11 @@ class InCadWorkbench(Gui.Workbench):
         from incad import actions
         from incad.ui import shell
         actions.register_all()
+        try:
+            from incad.core import quality
+            quality.set_defaults()  # ⚙ ▸ Display Quality for every shape made from now on
+        except Exception:
+            pass
         shell.activate()
 
     def Deactivated(self):

@@ -423,8 +423,9 @@ def _set_strings(sk, prop, refs, doc):
 def users(sk):
     """What is built on the sketch: the features that consume it (features.common.consumers: a Profile, a Sweep's
     path or a Loft's section, a Split's knife, the features on its areas), a revolve whose axis is one of its lines,
-    and its InCad area profiles (separate sketches that name their source only in their data). An expression
-    using one of its dimensions, a sketch attached to it or projecting from it does not make it used."""
+    and its InCad area profiles that a feature uses (separate sketches that name their source only in their data;
+    one left over from a cancelled dialog used nothing, yet kept the sketch's projected edges construction). An
+    expression using one of its dimensions, a sketch attached to it or projecting from it does not make it used."""
     from incad.core import regions
     from incad.features import common
     out = list(common.consumers(sk))
@@ -432,7 +433,7 @@ def users(sk):
         axis = getattr(o, "ReferenceAxis", None) if "ReferenceAxis" in getattr(o, "PropertiesList", ()) else None
         if axis and axis[0] is sk and o not in out:
             out.append(o)
-    return out + [p for p in regions.profiles_of(sk) if p not in out]
+    return out + [p for p in regions.profiles_of(sk) if p not in out and regions.users(p)]
 
 
 def pending_projections(sk):

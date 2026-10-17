@@ -3,7 +3,9 @@ regions) raised from or cut into a face of the part. On a cylinder or a cone the
 without stretching, so a letter's outline maps exactly onto it — across the profile goes round the axis (arc length
 = the flat distance), up it goes along the axis — and the letter is thickened along the radius. On a flat face it is
 a straight emboss along the face's normal. The profile's plane must be parallel to the cylinder's axis (a plane
-touching it, say); the profile lands on the side of the cylinder facing that plane."""
+touching it, say); the profile lands on the side of the cylinder facing that plane. A sphere cannot be unrolled: the
+profile is projected onto it along the sketch's normal (Inventor's emboss on a curved face), its walls along that
+direction, its height along the radius."""
 import math
 
 import FreeCAD as App
@@ -11,7 +13,10 @@ import Part
 
 ROUND_MSG = "Put the profile's sketch on a plane parallel to the cylinder's axis (a plane touching it, for example)"
 FLAT_MSG = "Pick a flat face parallel to the profile's sketch, or a round (cylindrical) face"
-FACE_MSG = "Pick a round (cylinder or cone) or a flat face of the part to emboss on"
+FACE_MSG = "Pick a round (cylinder, cone or sphere) or a flat face of the part to emboss on"
+SPHERE_EDGE_MSG = ("Some of the profile is past the sphere's edge as seen from the sketch: move it towards the sphere's "
+                   "centre or shrink it")
+SPHERE_SPREAD_MSG = "Evenly round works on a cylinder or a cone; on a sphere the profile is projected as drawn"
 OFF_MSG = "Some of the profile is off the face (letters past its edge, or too deep): move or shrink it"
 _TOL = 1e-7
 
@@ -31,6 +36,10 @@ def is_round(face):
 
 def is_flat(face):
     return face.Surface.TypeId == "Part::GeomPlane"
+
+
+def is_sphere(face):
+    return face.Surface.TypeId == "Part::GeomSphere"
 
 
 def _profile_normal(faces):
@@ -168,6 +177,42 @@ def _wrap_round(profile_faces, round_face, depth, spread=False, normal=None):
     return out
 
 
+def _project_sphere(profile_faces, sphere_face, depth, spread=False, normal=None):
+    """The profile projected onto the sphere along the sketch's normal, on the half that faces the sketch, and given
+    `depth` along the radius (out of the material > 0, into it < 0): each letter is its prism along the normal cut
+    by the spherical shell between the face and `depth` from it."""
+    if spread:
+        raise ValueError(SPHERE_SPREAD_MSG)
+    s = sphere_face.Surface
+    c, r = App.Vector(s.Center), s.Radius
+    n_sk = _unit(normal) if normal is not None else _profile_normal(profile_faces)
+    pc = App.Vector(Part.makeCompound(profile_faces).BoundBox.Center)
+    toward = n_sk if (pc - c).dot(n_sk) >= 0 else n_sk * -1  # from the centre towards the sketch's side
+    p0 = c + toward * r
+    u0, v0 = s.parameter(p0)[:2]
+    out_of_material = 1.0 if sphere_face.normalAt(u0, v0).dot(toward) > 0 else -1.0  # a ball: outward; a hollow: in
+    lo, hi = sorted((r, r + depth * out_of_material))
+    if lo <= 1e-6:
+        raise ValueError("Too deep for this sphere: make the depth smaller than its radius")
+    shell = Part.makeSphere(hi, c).cut(Part.makeSphere(lo, c))
+    full = Part.makeSphere(r, c).Faces[0]
+    reach = r + abs(depth) + 1.0
+    out = []
+    for f in profile_faces:
+        for v in f.Vertexes:  # the sphere's outline seen along the normal: a letter past it hangs off
+            q = v.Point - c
+            if (q - toward * q.dot(toward)).Length >= min(lo, r) * (1 - 1e-6):
+                raise ValueError(SPHERE_EDGE_MSG)
+        g = f.copy()
+        g.translate(toward * -((g.Vertexes[0].Point - c).dot(toward)))  # onto the plane through the centre
+        prism = g.extrude(toward * reach)
+        on = sphere_face.common(prism).Area
+        if on < full.common(prism).Area * (1 - 1e-4) - 1e-9:  # past the picked face's own edge (a dome's rim)
+            raise ValueError(OFF_MSG)
+        out.append(prism.common(shell))
+    return out
+
+
 def _straight(profile_faces, flat_face, depth):
     """The profile moved onto the flat face (along its normal) and extruded `depth` along it (out > 0, in < 0)."""
     n = _unit(flat_face.normalAt(*flat_face.Surface.parameter(flat_face.CenterOfMass)[:2]))
@@ -191,6 +236,8 @@ def tools(profile_faces, face, depth, spread=False, normal=None):
         return _wrap_round(profile_faces, face, depth, spread, normal)
     if is_flat(face):
         return _straight(profile_faces, face, depth)
+    if is_sphere(face):
+        return _project_sphere(profile_faces, face, depth, spread, normal)
     raise ValueError(FACE_MSG)
 
 

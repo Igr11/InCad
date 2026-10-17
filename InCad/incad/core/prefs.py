@@ -6,6 +6,7 @@ GROUP = "User parameter:BaseApp/Preferences/Mod/InCad"
 THEMES = ("auto", "light", "dark")
 RIBBON_SIZES = ("medium", "large")  # "small" was removed: too small to use
 UNITS = ("mm", "in")
+QUALITIES = ("normal", "fine")  # how finely curved faces are drawn (incad.core.quality)
 
 
 class _MemoryStore:
@@ -88,6 +89,16 @@ def default_units():
 
 def set_default_units(value):
     _set_choice("DefaultUnits", UNITS, value)
+
+
+def display_quality():
+    """Fine on a Mac (smooth highlights on small round faces), Normal elsewhere (a PC's built-in graphics)."""
+    import sys
+    return _choice("DisplayQuality", QUALITIES, "fine" if sys.platform == "darwin" else "normal")
+
+
+def set_display_quality(value):
+    _set_choice("DisplayQuality", QUALITIES, value)
 
 
 def remember_new_choice():

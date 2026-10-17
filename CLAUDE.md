@@ -53,3 +53,8 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   A Solid's Visibility write, even unchanged, touches the Boolean using it: write visibility via
   `document._set_visible` (only on change). In-sketch dialogs (Text, sketch patterns) recompute only the sketch and
   the object.
+- Emboss on a sphere (`wrap._project_sphere`): each closed profile face is a prism along the sketch normal (from the
+  plane through the centre) cut by the spherical shell; `BODY_FROM = "face"` makes a feature session re-create the
+  feature in the picked face's Solid (the profile sketch is adopted there). ⚙ ▸ Display Quality (`incad.core.quality`)
+  writes FreeCAD's Mod/Part MeshDeviation / MeshAngularDeflection and sets open files' view providers (keeps
+  `Gui.Document.Modified`).

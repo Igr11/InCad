@@ -240,7 +240,7 @@ class FeatureSession(QtCore.QObject):
                  "direction", "emboss_face")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
-                   "emboss_face": "a round (cylinder or cone) or a flat face",
+                   "emboss_face": "a round (cylinder, cone or sphere) or a flat face",
                    "move_to": "a face, plane, edge or point"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
@@ -1466,9 +1466,24 @@ class FeatureSession(QtCore.QObject):
         made = getattr(self, "_created_values", {})
         if any(values.get(k) != made.get(k) for k in getattr(self.kind, "RECREATE_ON", ())):
             return True
+        if self._pick_in_another_solid(values):
+            return True
         before, after = getattr(self, "_created_with", None), values.get("operation")
         structural = getattr(self.kind, "STRUCTURAL", ("new_solid", "intersect"))
         return before != after and (before in structural or after in structural)
+
+    def _pick_in_another_solid(self, values):
+        """The kind's feature belongs where its pick is (kind.BODY_FROM: Emboss on the picked face's Solid, its
+        profile coming along): made before that pick, in the profile's own Solid, it is made again there."""
+        from incad.features import common
+        key = getattr(self.kind, "BODY_FROM", None)
+        if not key or not values.get(key):
+            return False
+        for obj, _ in common.parse_picks(self.doc, values.get(key)):
+            owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+            if owner is not None and owner.TypeId == "PartDesign::Body":
+                return owner is not self.body
+        return False
 
     def _check(self):
         """What is wrong now. Shapes are checked only where the last preview computed (the feature when the dialog

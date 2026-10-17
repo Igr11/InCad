@@ -1,8 +1,9 @@
 """3D Model ▸ Create ▸ Emboss (Inventor's Emboss / Engrave, with Wrap to face): a profile — a Text or a sketch — raised
 from or cut into a face of the part. On a round face (a cylinder or a cone) the profile is wrapped round it, its height along
-the radius; on a flat face it goes straight. A step at the end of the part's history (a PartDesign::FeaturePython
-built on the part before it), with its profile under it in the browser like an Extrude's; it finds its face again by
-geometry (the same cylinder or plane), so editing earlier features keeps it working. Geometry: incad.core.wrap."""
+the radius; on a flat face it goes straight; on a sphere it is projected along the sketch's normal (Evenly round is
+greyed out there). A step at the end of the part's history (a PartDesign::FeaturePython built on the part before
+it), with its profile under it in the browser like an Extrude's; it finds its face again by geometry (the same
+cylinder, sphere or plane), so editing earlier features keeps it working. Geometry: incad.core.wrap."""
 import json
 
 import FreeCAD as App
@@ -21,6 +22,7 @@ FIELDS = (
     Field("around", "Around", "choice", (("drawn", "As drawn"), ("even", "Evenly round")), "drawn"),
 )
 PRESELECT = {"face": "emboss_face"}
+BODY_FROM = "face"  # it is made on the picked face's Solid; a profile sketched in another Solid comes along
 SOLID_PICKS = True  # a click on the profile's own lines over the part means the part's face under them
 
 
@@ -51,7 +53,9 @@ def signature(face):
     if wrap.is_flat(face):
         n = face.normalAt(*s.parameter(face.CenterOfMass)[:2])
         return {"kind": "flat", "normal": _vec(n), "point": _vec(face.CenterOfMass)}
-    raise ValueError("Pick a round (cylinder or cone) or a flat face of the part")
+    if wrap.is_sphere(face):
+        return {"kind": "sphere", "centre": _vec(s.Center), "radius": s.Radius}
+    raise ValueError("Pick a round (cylinder, cone or sphere) or a flat face of the part")
 
 
 def find(shape, sig):
@@ -72,6 +76,10 @@ def find(shape, sig):
                 if (off - a * off.dot(a)).Length > 1e-5:  # not on the same axis
                     continue
                 d = abs(s.Radius - sig["radius"]) + (abs(s.SemiAngle - sig["angle"]) if "angle" in sig else 0)
+            elif sig["kind"] == "sphere" and wrap.is_sphere(f):
+                if (App.Vector(f.Surface.Center) - App.Vector(*sig["centre"])).Length > 1e-5:
+                    continue
+                d = abs(f.Surface.Radius - sig["radius"])
             elif sig["kind"] == "flat" and wrap.is_flat(f):
                 n = f.normalAt(*f.Surface.parameter(f.CenterOfMass)[:2])
                 want = App.Vector(*sig["normal"])
@@ -86,6 +94,23 @@ def find(shape, sig):
         if best_d is None or d < best_d:
             best, best_d = f, d
     return best
+
+
+def unavailable(values):
+    """'Evenly round' is greyed out while a sphere is picked: a projection has no way round to spread along."""
+    from incad.core import wrap
+    doc = App.ActiveDocument
+    if doc is None:
+        return {}
+    for obj, sub in parse_picks(doc, values.get("face")):
+        obj, sub = resolve(obj, sub)
+        if obj is not None and sub.startswith("Face"):
+            try:
+                if wrap.is_sphere(obj.Shape.getElement(sub)):
+                    return {"around": {"even"}}
+            except Exception:
+                pass
+    return {}
 
 
 def _profile_faces(profile):
@@ -150,7 +175,7 @@ def _apply(doc, f, values):
         obj, sub = resolve(*picks[0])
         el = obj.getSubObject(sub) if sub else None
         if el is None or el.ShapeType != "Face":
-            raise ValueError("Pick a round (cylinder or cone) or a flat face of the part")
+            raise ValueError("Pick a round (cylinder, cone or sphere) or a flat face of the part")
         s["face"] = signature(el)
         s["face_pick"] = values.get("face")
     s["operation"] = values.get("operation") or "raise"
