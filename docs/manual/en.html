@@ -133,11 +133,13 @@ to come back.</p>
 and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>This build: 0.5.2, a test build</h2>
-<p>0.5.2 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
+<div class="keep"><h2>This build: 0.5.3, a test build</h2>
+<p>0.5.3 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
 0.4.0, <b>Text</b> and <b>Emboss</b> in 0.5.0, STEP and STL export in 0.5.1. New in 0.5.2: big parts work much faster
 (recomputing, editing an early feature, clicking a face), and a slot or two arcs can be dimensioned by their
-<b>outer edges</b> (5.3) — CHANGES.txt has the full list.</p></div>
+<b>outer edges</b> (5.3). 0.5.3 makes Text and sketch patterns, deleting, every new or changed value (only the
+features that use it are rebuilt), the first change after opening a file and every feature preview faster, and adds
+<span class="path">⚙ ▸ Show Log File</span> — CHANGES.txt has the full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
 
@@ -343,6 +345,8 @@ marking menu) switches the theme in one click. The <span class="ui">⚙</span> m
   <tr><td>Ribbon Size</td><td class="wrap">Small, Large</td></tr>
   <tr><td>Units for New Files</td><td class="wrap">Ask every time, Always millimeters, Always inches</td></tr>
   <tr><td>Dimension Display</td><td class="wrap">How sketch dimensions are labelled: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
+  <tr><td>Show Log File</td><td class="wrap">Shows InCad's log (InCad.log) selected in the Finder — the file to send
+      with a problem report (chapter 11)</td></tr>
   <tr><td>Mouse Navigation</td><td class="wrap">On: InCad's mouse (LMB+RMB orbit, right-click menu). Off: FreeCAD's own
       navigation style applies.</td></tr>
 </table>
@@ -669,7 +673,9 @@ then each feature with what to pick and what each option means.</p>
       shape as it was before the feature is shown, so you can reach every face.</li>
   <li><b>The profile.</b> Extrude and Revolve take the only finished sketch no feature uses yet automatically; if there
       are several, select one. If a sketch has crossing lines, InCad shows its areas: click the one to use.</li>
-  <li><b>Preview.</b> Every change shows on the model at once.</li>
+  <li><b>Preview.</b> Every change shows on the model at once. While you pick edges or faces, Fillet, Chamfer and Move
+      Face draw the result's new edges over the part in orange. The full check of the result's geometry runs on
+      <span class="ui">OK</span>; if it finds a problem, the dialog stays open and says what.</li>
   <li><b>Values.</b> Type numbers with or without units, names or formulas (3.6). The <span class="ui">▲</span>
       <span class="ui">▼</span> arrows next to a value — and the <kbd>↑</kbd> <kbd>↓</kbd> keys — change it by one unit
       (1 mm, 1°, 1/16 in); with <kbd>⇧</kbd> by ten. A formula cannot be stepped. The parameter's name is shown after
@@ -1313,7 +1319,8 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
   <li>what you did, step by step, and what you expected instead;</li>
   <li>the build name (the name of the zip file);</li>
   <li>your macOS version and FreeCAD version (<span class="path">FreeCAD ▸ About FreeCAD</span>);</li>
-  <li>the log file <code>~/Library/Logs/InCad.log</code> (Finder ▸ Go ▸ Go to Folder… ▸ <code>~/Library/Logs</code>);</li>
+  <li>the log file <code>~/Library/Logs/InCad.log</code> — <span class="path">⚙ ▸ Show Log File</span> shows it in the
+      Finder;</li>
   <li>if you can, the .FCStd file you were working on;</li>
   <li>a screenshot if something looks wrong.</li>
 </ul>

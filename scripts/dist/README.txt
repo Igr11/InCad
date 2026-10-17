@@ -13,9 +13,10 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
-New in this build: big parts work much faster (recomputing, editing an early feature,
-clicking a face), and a slot can be dimensioned by its overall length - Sketch > Dimension >
-Overall Dimension, or the Centers / Overall / Gap buttons in a dimension's value box.
+New in 0.5.2 and 0.5.3: big parts work much faster (recomputing, editing a feature, clicking a
+face, Text and patterns in a sketch, the first change after opening a file), and a slot can be
+dimensioned by its overall length - Sketch > Dimension > Overall Dimension, or the Centers /
+Overall / Gap buttons in a dimension's value box.
 Work on copies of files that matter to you.
 
 
@@ -87,7 +88,7 @@ Please send:
 - the build name (the name of the zip file, e.g. VERSION);
 - your macOS version and FreeCAD version (FreeCAD > About FreeCAD);
 - the log file: ~/Library/Logs/InCad.log
-  (Finder > Go > Go to Folder... > ~/Library/Logs);
+  (the gear at the top right > Show Log File shows it in the Finder);
 - if you can, the .FCStd file you were working on;
 - a screenshot if something looks wrong.
 If FreeCAD crashed, macOS shows a crash report: please copy its text as well.

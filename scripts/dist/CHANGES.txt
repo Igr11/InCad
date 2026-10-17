@@ -5,6 +5,34 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.3
+-----
+More speed, and a cleaner fillet preview.
+
+New features
+- Settings (the gear at the top right) > Show Log File: shows InCad.log, selected, in the Finder
+  (and in the Explorer on Windows, where it sits in a hidden folder). Send it with a problem report.
+
+Improvements
+- A new or changed value (in any dialog, the value box, the Parameters panel) recomputes only the
+  features that use it; it used to recompute the whole part. A Text on a part of 35 features took
+  over a minute to place on a Mac; now it is instant, and so is Finish Sketch after it.
+- Deleting a sketch or a feature no longer rebuilds the part from a Boolean onwards when nothing
+  needs it (an unused sketch took 16 s on a part with a Boolean; now an instant). The same goes
+  for everything that shows or hides features.
+- Text and sketch patterns in an open sketch recompute only the sketch while you type; the part
+  follows on Finish Sketch (each value took up to half a minute on a slow PC).
+- The first change after opening a file with a Text no longer recomputes the Text and everything
+  after it (FreeCAD marked every Text as changed on opening).
+- Feature previews leave out the full geometry check (about a third of each preview); it runs once,
+  on OK, and keeps the dialog open if something is wrong.
+- Fillet, Chamfer and Move Face draw only the edges they make over the part, and only where the
+  part does not hide them (an ellipse's seam and the far side of a ring showed through it).
+
+Bug fixes
+- A fillet preview outline that FreeCAD could not draw left an error in the log.
+
+
 0.5.2
 -----
 Speed, and a slot's overall length.
