@@ -5,6 +5,33 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.5.2
+-----
+Speed, and a slot's overall length.
+
+New features
+- Sketch > Dimension > Overall Dimension: click one edge of a slot (or two arcs or circles) and
+  type its overall length, outer edge to outer edge. A new value makes the slot longer, not wider.
+- The value box of a distance between two arcs or circles has three buttons: Centers, Overall and
+  Gap (inner edges - what FreeCAD's Dimension gives on two arcs). A click switches the dimension;
+  it keeps its name.
+
+Improvements
+- Big parts are much faster:
+  - a click on a face of the part took up to a minute on a part with hundreds of faces; now it
+    is instant, and so is the browser row lighting up the faces of its feature;
+  - a whole recompute takes half the time on a part with a sketch's areas used in two solids;
+  - editing an early feature: as in Inventor, the part is shown as of that feature while its
+    dialog is open, and only that feature is recomputed as you type; the rest is recomputed once,
+    on OK (each value typed used to recompute the whole part, and the dialog opened slowly);
+  - a dimension changed in an open sketch recomputes only the sketch; the part follows on Finish
+    Sketch;
+  - a suppressed tapped hole no longer computes its modeled thread (3.6 s on every recompute);
+  - Hole > Chamfer on a modeled thread is twice as fast.
+- InCad.log starts every session with a line describing the computer, and names any InCad step
+  slower than 0.1 s - send it with a report about slowness.
+
+
 0.5.1
 -----
 New features

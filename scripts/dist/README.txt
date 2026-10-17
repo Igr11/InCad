@@ -13,8 +13,9 @@ Your files stay ordinary FreeCAD files (.FCStd).
 This is an early test build. Please save your work often and report anything odd
 (see "Reporting a problem" below).
 
-This build is the first one with assemblies ready to test: placing parts, constraints
-and joints, dragging parts along their degrees of freedom, Make Assembly from a part.
+New in this build: big parts work much faster (recomputing, editing an early feature,
+clicking a face), and a slot can be dimensioned by its overall length - Sketch > Dimension >
+Overall Dimension, or the Centers / Overall / Gap buttons in a dimension's value box.
 Work on copies of files that matter to you.
 
 

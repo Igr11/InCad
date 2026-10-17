@@ -133,10 +133,11 @@ to come back.</p>
 and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>This build: 0.5.0, a test build</h2>
-<p>0.5.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
-0.4.0. New in 0.5.0: <b>Text</b> in sketches (in a box or along a curve, any font, Mirror) and <b>Emboss</b> (raised or
-engraved, wrapped round cylinders and cones, evenly round) — CHANGES.txt has the full list.</p></div>
+<div class="keep"><h2>This build: 0.5.2, a test build</h2>
+<p>0.5.2 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
+0.4.0, <b>Text</b> and <b>Emboss</b> in 0.5.0, STEP and STL export in 0.5.1. New in 0.5.2: big parts work much faster
+(recomputing, editing an early feature, clicking a face), and a slot or two arcs can be dimensioned by their
+<b>outer edges</b> (5.3) — CHANGES.txt has the full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
 
@@ -510,6 +511,14 @@ Parameters panel, where you can rename it (<code>Width</code>) — see 3.5.</p>
 <p><b>Formulas.</b> In the value box, click another dimension in the sketch or a parameter in the Parameters panel to
 insert its name: <code>d0/2</code>, <code>Width - 2*d3</code>. A formula may use other dimensions and parameters, but
 not a reference (driven) dimension of the same sketch.</p>
+<p><b>A slot's length, or the distance between two arcs or circles.</b> It can be measured three ways, and the value
+box of such a dimension shows three buttons to choose: <span class="ui">Centers</span> (centre to centre),
+<span class="ui">Overall</span> (outer edge to outer edge — a slot's overall length) and <span class="ui">Gap</span>
+(inner edge to inner edge — what FreeCAD's Dimension gives when you click two arcs). A click switches the dimension at
+once; it keeps its name and the box opens on its new value. <span class="path">Sketch ▸ Dimension ▸ Overall
+Dimension</span> makes the overall one directly: click one edge of a slot (or two arcs or circles) and type the value.
+A new overall value makes the slot longer, not wider. If the slot's length is already fixed by other dimensions, the
+new dimension is a reference (driven) one that follows. A dimension used in a formula keeps its kind.</p>
 <p><span class="path">⚙ ▸ Dimension Display</span> chooses how dimensions are labelled: the value (40), the name (d3)
 or both (d3 = 40).</p>
 
@@ -674,7 +683,9 @@ then each feature with what to pick and what each option means.</p>
   <li><b>Errors</b> appear in red at the bottom of the dialog, in plain words ("Pick the cylindrical face to thread").
       Sometimes the dialog offers a button with a way around the problem.</li>
   <li><b>Editing.</b> Double-click a feature in the browser (or right-click ▸ <span class="ui">Edit</span>) to open its
-      dialog again with its values.</li>
+      dialog again with its values. As in Inventor, while the dialog of an earlier feature is open the part is shown as
+      of that feature, and only that feature is recomputed as you change values; the features after it are recomputed
+      once, on <span class="ui">OK</span>. If one of them fails then, the status line says which.</li>
 </ul>
 
 <div class="keep"><h2>6.2 Extrude <kbd>E</kbd></h2>
@@ -886,7 +897,8 @@ thin fin is left on the crests.</p>
 <div class="keep"><h2>6.11 Threads Off / On</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Threads</span>. Modeled threads make redraws slow. Click
 <span class="ui">Threads</span> to suppress every thread while you work, and again to bring them back. A thread you
-suppressed yourself stays off. It also turns off the modeled thread of tapped holes (the holes stay).</p></div>
+suppressed yourself stays off. It also turns off the modeled thread of tapped holes (the holes stay). A suppressed
+tapped hole keeps its modeled thread off until it is unsuppressed, so it costs no time while it is off.</p></div>
 
 <div class="keep"><h2 id="boolean">6.12 Boolean</h2>
 <p><span class="path">3D Model ▸ Modify ▸ Boolean</span> (Inventor's Combine) joins, cuts or intersects solids of the
@@ -1398,7 +1410,7 @@ changed by Threads Off / On is a file of its own: save it as well (switch to its
       Point · Text</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Trim · Extend · Offset</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Along Path · Mirror</td></tr>
-  <tr><td></td><td>Dimension</td><td class="wrap">Dimension</td></tr>
+  <tr><td></td><td>Dimension</td><td class="wrap">Dimension | Overall Dimension</td></tr>
   <tr><td></td><td>Constrain</td><td class="wrap">Coincident · Concentric · Horizontal · Vertical · Parallel · Perpendicular · Tangent · Equal · Symmetric · Fix · List (Constraint List)</td></tr>
   <tr><td></td><td>Insert</td><td class="wrap">Project (Project Geometry)</td></tr>
   <tr><td></td><td>Format</td><td class="wrap">Construction · Constraints (Show / Hide Constraints) · Free DOF (Show Free Geometry) · Slice (Slice Graphics)</td></tr>
