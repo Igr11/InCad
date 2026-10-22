@@ -211,3 +211,75 @@ class SphereSignatureTest(unittest.TestCase):
         found = emboss.find(bigger, sig)  # an earlier edit changed the radius: the nearest one, same centre
         self.assertIsNotNone(found)
         self.assertAlmostEqual(found.Surface.Radius, 15.5, places=6)
+
+
+class RunOnTest(unittest.TestCase):
+    """A profile wider than the picked face runs on round onto the faces that go on smoothly from it (the user: text
+    on a slot-shaped part's flat side continues round its ends "as if on a cylinder")."""
+    L, RAD, HT = 10.0, 8.0, 10.0  # half the distance between the ends' centres, their radius, the part's height
+    FRONT = App.Placement(App.Vector(0, -8, 0), App.Rotation(App.Vector(1, 0, 0), App.Vector(0, 0, 1),
+                                                             App.Vector(0, -1, 0), "ZXY"))
+
+    def setUp(self):
+        L, R, H = self.L, self.RAD, self.HT
+        self.part = Part.makeBox(2 * L, 2 * R, H, App.Vector(-L, -R, 0)).fuse(
+            [Part.makeCylinder(R, H, App.Vector(-L, 0, 0)), Part.makeCylinder(R, H, App.Vector(L, 0, 0))]
+        ).removeSplitter()
+        self.front = next(f for f in self.part.Faces if wrap.is_flat(f) and f.normalAt(0, 0).y < -0.99)
+
+    def letters(self, width, words="RUN ON ROUND"):
+        corners = [App.Vector(-width / 2, 3, 0), App.Vector(width / 2, 3, 0), App.Vector(width / 2, 7, 0),
+                   App.Vector(-width / 2, 7, 0)]
+        return placed(text(words, corners, 4.0), self.FRONT)
+
+    def on_the_ends(self, tools, depth):
+        """Every point of the raised letters past the flat side lies between the end's radius and depth more."""
+        for solid in tools:
+            for v in solid.Vertexes:
+                p = v.Point
+                if abs(p.x) > self.L + 1e-6:
+                    r = math.hypot(abs(p.x) - self.L, p.y)
+                    self.assertGreater(r, self.RAD - 1e-4, p)
+                    self.assertLess(r, self.RAD + depth + 1e-4, p)
+
+    def test_wider_than_the_flat_side_runs_round_the_ends(self):
+        faces = self.letters(36)
+        with self.assertRaises(ValueError):  # a plain straight emboss is off the face
+            wrap._straight(faces, self.front, 1.0)
+        tools = wrap.tools(faces, self.front, 1.0, normal=App.Vector(0, -1, 0), solid=self.part)
+        self.on_the_ends(tools, 1.0)
+        self.assertGreater(max(v.Point.x for t in tools for v in t.Vertexes), self.L + 3)
+        result = wrap.apply(self.part, faces, self.front, 1.0, False, normal=App.Vector(0, -1, 0))
+        self.assertTrue(result.isValid())
+        self.assertEqual(len(result.Solids), 1)
+        self.assertGreater(result.Volume, self.part.Volume)
+
+    def test_engraved_round_the_end(self):
+        faces = self.letters(36)
+        result = wrap.apply(self.part, faces, self.front, 0.6, True, normal=App.Vector(0, -1, 0))
+        self.assertTrue(result.isValid())
+        self.assertLess(result.Volume, self.part.Volume)
+
+    def test_all_the_way_onto_the_back(self):
+        faces = self.letters(80, "AROUND THE WHOLE WALL")
+        tools = wrap.tools(faces, self.front, 1.0, normal=App.Vector(0, -1, 0), solid=self.part)
+        ys = [v.Point.y for t in tools for v in t.Vertexes]
+        self.assertGreater(max(ys), self.RAD - 1e-3)  # letters on the back side (y = +R) too
+        result = wrap.apply(self.part, faces, self.front, 1.0, False, normal=App.Vector(0, -1, 0))
+        self.assertTrue(result.isValid())
+
+    def test_past_the_top_is_still_refused(self):
+        corners = [App.Vector(-6, 7, 0), App.Vector(6, 7, 0), App.Vector(6, 13, 0), App.Vector(-6, 13, 0)]
+        faces = placed(text("TOP", corners, 5.0), self.FRONT)
+        with self.assertRaises(ValueError):
+            wrap.apply(self.part, faces, self.front, 1.0, False, normal=App.Vector(0, -1, 0))
+
+    def test_from_the_round_end_onto_the_flat_side(self):
+        end = next(f for f in self.part.Faces if wrap.is_round(f) and f.Surface.Center.x > 0)
+        side = App.Placement(App.Vector(self.L + self.RAD, 0, 0), App.Rotation(App.Vector(0, 1, 0), App.Vector(0, 0, 1),
+                                                                              App.Vector(1, 0, 0), "ZXY"))
+        corners = [App.Vector(-18, 3, 0), App.Vector(18, 3, 0), App.Vector(18, 7, 0), App.Vector(-18, 7, 0)]
+        faces = placed(text("ROUND END", corners, 4.0), side)
+        result = wrap.apply(self.part, faces, end, 1.0, False, normal=App.Vector(1, 0, 0))
+        self.assertTrue(result.isValid())
+        self.assertGreater(result.Volume, self.part.Volume)

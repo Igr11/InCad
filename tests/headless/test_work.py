@@ -37,6 +37,45 @@ class WorkTest(unittest.TestCase):
         v = self.pad.Shape.Vertexes[0].Point
         self.assertAlmostEqual((f.Placement.Base - v).Length, 0, places=6)
 
+    def test_three_marker_points_corners_follow_others_are_fixed(self):
+        """Work Plane ▸ Three points clicked on Section's markers: the part's corners become vertex picks (the plane
+        follows them), an edge middle or a circle centre a fixed point; the plane goes through all three."""
+        k = work.PLANE
+        vs = self.pad.Shape.Vertexes
+        e = self.pad.Shape.Edges[0]
+        middle = e.valueAt((e.FirstParameter + e.LastParameter) / 2)
+        corners = [v.Point for v in vs if (v.Point - e.Vertexes[0].Point).Length > 1e-6
+                   and (v.Point - e.Vertexes[-1].Point).Length > 1e-6]
+        a, b = corners[0], [c for c in corners if ((c - corners[0]).cross(middle - corners[0])).Length > 1e-3][0]
+        text = work.format_point_picks(self.body, self.pad, [a, middle, b])
+        items = text.split(",")
+        self.assertTrue(items[0].startswith(self.pad.Name + ":Vertex") and items[2].startswith(self.pad.Name + ":"))
+        self.assertTrue(items[1].startswith("@"), items)
+        for body_at in (App.Placement(), App.Placement(App.Vector(5, -7, 3), App.Rotation(App.Vector(0, 0, 1), 30))):
+            self.body.Placement = body_at
+            self.doc.recompute()
+            glob = [body_at.multVec(p) for p in (a, middle, b)]  # the markers are drawn where the part is
+            text = work.format_point_picks(self.body, self.pad, glob)
+            self.assertEqual(text.split(",")[0], items[0])
+            f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="three_points",
+                                                         points=text))
+            self.doc.recompute()
+            self.assertNotIn("Invalid", f.State)
+            n = f.Placement.Rotation.multVec(App.Vector(0, 0, 1))  # the plane in its body
+            for p in (a, middle, b):
+                self.assertAlmostEqual((p - f.Placement.Base).dot(n), 0, places=6)
+            r = k.read(self.doc, f)
+            self.assertEqual((r["mode"], r["points"]), ("three_points", text))
+            k.update(self.doc, f, r)
+            self.doc.recompute()
+            self.assertNotIn("Invalid", f.State)
+
+    def test_three_points_in_a_line_refused(self):
+        k = work.PLANE
+        with self.assertRaises(ValueError):
+            k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="three_points",
+                                                     points="@0 0 0,@1 1 1,@2 2 2"))
+
     def test_three_point_plane_and_two_point_axis_round_trip(self):
         pts = "%s:Vertex1,%s:Vertex2,%s:Vertex3" % ((self.pad.Name,) * 3)
         k = work.PLANE

@@ -14,7 +14,7 @@ FIELDS = (
                                                ("new_solid", "New Solid")), "join"),
     Field("extent", "Extents", "choice", (("distance", "Distance"), ("to_next", "To Next"),
                                           ("through_all", "Through All"), ("to", "To")), "distance"),
-    Field("to_face", "Face", "pick", show_if=("extent", ("to",)), pick="to_face"),
+    Field("to_face", "To", "pick", show_if=("extent", ("to",)), pick="to_face"),
     Field("distance", "Distance", "value_length", default="10 mm", show_if=("extent", ("distance",))),
     Field("direction", "Direction", "choice", (("default", "→"), ("flip", "←"), ("symmetric", "⇆"),
                                                ("two_sides", "⇄ 2")), "default"),
@@ -22,6 +22,9 @@ FIELDS = (
     Field("taper", "Taper", "value_angle", default="0 °"),
 )
 _TYPE = {"distance": "Length", "to_next": "UpToFirst", "to": "UpToFace"}
+UP_TO = "InCadUpTo"  # on an Extrude whose To target needs a helper: what was picked ('Obj:Sub')
+HELPER, ROLE = "InCadHelperOf", "InCadHelperRole"
+_POINTS = ("PartDesign::Point", "App::Point")
 
 
 def _normal(sk):
@@ -56,8 +59,9 @@ def _apply(doc, f, values):
     extent = values.get("extent", "distance")
     f.Type = ("ThroughAll" if cut else "UpToLast") if extent == "through_all" else _TYPE.get(extent, "Length")
     if extent == "to" and values.get("to_face"):
-        obj_name, _, face = values["to_face"].partition(":")
-        f.UpToFace = (doc.getObject(obj_name), [face])
+        f.UpToFace = _to_target(doc, f, values["to_face"])
+    else:
+        _drop_helpers(doc, f)
     direction = values.get("direction", "default")
     f.SideType = {"symmetric": "Symmetric", "two_sides": "Two sides"}.get(direction, "One side")
     f.Reversed = direction == "flip"
@@ -67,6 +71,99 @@ def _apply(doc, f, values):
     if direction == "two_sides":
         value_param(doc, f, "Length2", values.get("distance2") or "5 mm", "length")
     value_param(doc, f, "TaperAngle", values.get("taper") or "0 °", "angle")
+
+
+def _helper(doc, f, role, type_id, label):
+    """The hidden object InCad keeps right before `f` for its To target (made when missing)."""
+    body = f.getParentGeoFeatureGroup()
+    for o in body.Group:
+        if getattr(o, HELPER, None) == f.Name and getattr(o, ROLE, None) == role:
+            if o.TypeId == type_id:
+                return o
+            _remove(doc, o)
+            break
+    h = doc.addObject(type_id, "ExtrudeTo")
+    body.insertObject(h, f, False)  # before the extrude: a feature never references a later object
+    h.Label = label
+    for prop, doc_text in ((HELPER, "The extrude this belongs to"), (ROLE, "What it is for the extrude")):
+        h.addProperty("App::PropertyString", prop, "InCad", doc_text)
+        h.setPropertyStatus(prop, "Hidden")
+    setattr(h, HELPER, f.Name)
+    setattr(h, ROLE, role)
+    h.Visibility = False
+    return h
+
+
+def _remove(doc, o):
+    body = o.getParentGeoFeatureGroup()
+    if body is not None:
+        body.removeObject(o)
+    doc.removeObject(o.Name)
+
+
+def _drop_helpers(doc, f, keep=()):
+    body = f.getParentGeoFeatureGroup()
+    for o in list(body.Group if body is not None else []):
+        if getattr(o, HELPER, None) == f.Name and getattr(o, ROLE, "").startswith("to_") and o not in keep:
+            _remove(doc, o)
+    if not keep and hasattr(f, UP_TO):
+        setattr(f, UP_TO, "")
+
+
+def _bound(doc, f, obj, sub, role):
+    """`obj`'s element `sub` as seen from f's Solid: itself when it is in that Solid, else a binder of it (a face
+    of another Solid as it is placed: FreeCAD reads another Solid's feature in that Solid's own coordinates)."""
+    body = f.getParentGeoFeatureGroup()
+    owner = obj.getParentGeoFeatureGroup()
+    if owner is body:
+        return obj, sub, None
+    binder = _helper(doc, f, role, "PartDesign::SubShapeBinder", "Extrude To (binder)")
+    path = "%s.%s" % (obj.Name, sub) if sub else obj.Name + "."
+    support = [(owner, path)] if owner is not None else [(obj, sub)]
+    if list(binder.Support) != support:
+        binder.Support = support
+    binder.recompute()
+    element = "Vertex1" if sub.startswith("Vertex") or obj.TypeId in _POINTS else "Face1"
+    return binder, element, binder
+
+
+def _to_target(doc, f, pick):
+    """f.UpToFace for the picked To target: a face or plane of the extrude's own Solid as it is; any face of another
+    Solid (flat or curved) through a binder; a point (a corner, a sketch or work point) through a plane parallel to
+    the sketch, which follows the point."""
+    name, _, sub = pick.partition(":")
+    obj = doc.getObject(name)
+    if obj is None:
+        raise ValueError("Select a face, a plane or a point for To")
+    point = sub.startswith("Vertex") or (not sub and obj.TypeId in _POINTS)
+    keep = []
+    if point:
+        target, element, binder = _bound(doc, f, obj, sub, "to_binder")
+        keep += [binder] if binder is not None else []
+        sk = profile_of(f)
+        plane = _helper(doc, f, "to_plane", "PartDesign::Plane", "Extrude To (point)")
+        refs = [(sk, ""), (target, element)]
+        if list(plane.AttachmentSupport) != refs or plane.MapMode != "ParallelPlane":
+            plane.AttachmentSupport = refs
+            plane.MapMode = "ParallelPlane"
+        plane.recompute()
+        if "Invalid" in plane.State:
+            raise ValueError("To: no plane through that point (%s)" % plane.getStatusString())
+        keep.append(plane)
+        result = (plane, [""])
+    else:
+        target, element, binder = _bound(doc, f, obj, sub, "to_binder")
+        keep += [binder] if binder is not None else []
+        result = (target, [element] if element else [])
+    _drop_helpers(doc, f, keep)
+    if keep:
+        if not hasattr(f, UP_TO):
+            f.addProperty("App::PropertyString", UP_TO, "InCad", "What To was picked on")
+            f.setPropertyStatus(UP_TO, "Hidden")
+        setattr(f, UP_TO, pick)
+    elif hasattr(f, UP_TO):
+        setattr(f, UP_TO, "")
+    return result
 
 
 def _material_only_behind(f):
@@ -112,7 +209,8 @@ def create(doc, body, profile, values):
     if operation == "join" and before:
         doc.recompute()
         if _solids(f) > before:  # the new solid does not touch the part: a piece of its own, not a second
-            target.removeObject(f)  # lump in the part's body (nothing could be shelled or filleted there)
+            _drop_helpers(doc, f)   # lump in the part's body (nothing could be shelled or filleted there)
+            target.removeObject(f)
             doc.removeObject(f.Name)
             target = document.new_solid(doc)
             body.removeObject(profile)
@@ -154,7 +252,9 @@ def read(doc, feature):
               "UpToLast": "through_all"}.get(f.Type, "distance")
     direction = {"Symmetric": "symmetric", "Two sides": "two_sides"}.get(f.SideType, "flip" if f.Reversed else "default")
     to_face = ""
-    if f.UpToFace and f.UpToFace[0] is not None:
+    if getattr(f, UP_TO, ""):
+        to_face = getattr(f, UP_TO)  # through a helper: what was picked
+    elif f.UpToFace and f.UpToFace[0] is not None:
         sub = f.UpToFace[1][0] if f.UpToFace[1] else ""
         to_face = "%s:%s" % (f.UpToFace[0].Name, sub) if sub else f.UpToFace[0].Name
     return {"operation": operation, "extent": extent, "direction": direction, "to_face": to_face,
@@ -208,12 +308,20 @@ def _replace(doc, old, type_id):
     index = body.Group.index(old)
     after = body.Group[index - 1] if index > 0 else None
     label = old.Label
+    helpers = [o for o in body.Group if getattr(o, HELPER, None) == old.Name]
+    up_to = getattr(old, UP_TO, "")
     body.removeObject(old)
     doc.removeObject(old.Name)
     new = doc.addObject(type_id, "Extrude")
     body.insertObject(new, after, True) if after is not None else body.insertObject(new, body.Group[0] if body.Group else None, False)
     new.Label = label
     new.Profile = profile
+    for h in helpers:  # the To target's helpers follow the re-made feature
+        setattr(h, HELPER, new.Name)
+    if up_to:
+        new.addProperty("App::PropertyString", UP_TO, "InCad", "What To was picked on")
+        new.setPropertyStatus(UP_TO, "Hidden")
+        setattr(new, UP_TO, up_to)
     for path, expr in bindings.items():
         new.setExpression(path.lstrip("."), expr)
     if was_tip:

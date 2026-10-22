@@ -13,9 +13,14 @@ def _usable(obj, sub):
     return obj.TypeId in ("App::Plane", "PartDesign::Plane")
 
 
+def picked(pairs):
+    """The picks that can make a section plane: points, faces, work and origin planes (edges, whole solids… can't)."""
+    return [(o, s) for o, s in pairs if _usable(o, s)]
+
+
 def placement(pairs):
     """Placement whose Z is the section normal, from resolved (obj, sub) picks."""
-    pairs = [(o, s) for o, s in pairs if _usable(o, s)]  # edges, whole solids… can't define a plane: ignored
+    pairs = picked(pairs)
     if not pairs:
         return App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), -90))  # XZ through the origin
     shapes = [o.getSubObject(s) if s else getattr(o, "Shape", None) for o, s in pairs]
@@ -31,7 +36,9 @@ def placement(pairs):
         face = sh if sh is not None and sh.ShapeType == "Face" else \
             (sh.Faces[0] if sh is not None and sh.Faces and len(sh.Faces) == 1 else None)
         if face is not None and face.Surface.TypeId == "Part::GeomPlane":
-            return App.Placement(face.CenterOfMass, _rotation_to(face.normalAt(0, 0)))
+            # an origin plane is endless: its centre lies at -5e99 and the section went there (nothing was cut)
+            at = face.CenterOfMass if face.BoundBox.DiagonalLength < 1e9 else face.Surface.Position
+            return App.Placement(at, _rotation_to(face.normalAt(0, 0)))
     raise ValueError("For a section, select three points, a flat face or a plane (or nothing for XZ)")
 
 

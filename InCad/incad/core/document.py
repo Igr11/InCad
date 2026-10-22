@@ -458,7 +458,9 @@ def history(doc):
 
 def set_end_of_part_at(doc, feature):
     """The part's one End of Part, after `feature` in the history (None: before everything): every Solid rolls
-    back to its last object at or before that point, so a drop on another Solid's row means the same thing."""
+    back to its last object at or before that point, so a drop on another Solid's row means the same thing.
+    Sketches, Text and work features after that point roll back too (Inventor; FreeCAD's Tip is only ever a
+    solid feature, so End of Part dropped before them went back below them: the user)."""
     hist = history(doc)
     pos = next((i for i, (_, o) in enumerate(hist) if o is feature), -1) if feature is not None else -1
     if feature is not None and pos == -1:
@@ -469,6 +471,105 @@ def set_end_of_part_at(doc, feature):
             if b is body:
                 last = o
         set_end_of_part(body, last)
+    _mark_end(doc, feature, [o for _, o in hist[pos + 1:]])
+
+
+END_AFTER = "InCadEndAfter"    # on the main Solid: the object End of Part follows when sketches etc. lie below it
+END_ROLLED = "InCadEndRolled"  # the sketches, Texts, work features rolled back below it then (JSON names)
+END_HIDDEN = "InCadEndHidden"  # those of them InCad hid for it (shown again when they come back)
+_TOP = "^"  # End of Part before everything
+
+
+def _end_prop(body, name, value):
+    if name not in body.PropertiesList:
+        if not value:
+            return
+        body.addProperty("App::PropertyString", name, "InCad", "Where End of Part is (InCad)")
+        body.setPropertyStatus(name, "Hidden")
+    if getattr(body, name) != value:
+        setattr(body, name, value)
+
+
+def _names(body, prop):
+    import json
+    try:
+        return list(json.loads(getattr(body, prop, "") or "[]"))
+    except ValueError:
+        return []
+
+
+def _release_end(doc, body):
+    """The objects hidden for End of Part shown again; the mark cleared."""
+    for name in _names(body, END_HIDDEN):
+        o = doc.getObject(name)
+        if o is not None:
+            _set_visible(o, True)
+    for prop in (END_AFTER, END_ROLLED, END_HIDDEN):
+        _end_prop(body, prop, "")
+
+
+def _mark_end(doc, feature, after):
+    """Remember End of Part's place when sketches, Texts or work features lie below it, and hide them there."""
+    import json
+    body = primary_body(doc)
+    if body is None:
+        return
+    _release_end(doc, body)
+    rolled = [o for o in after if not _is_solid_feature(o) and not getattr(o, "InCadHelperOf", None)]
+    if not rolled:
+        return
+    hidden = [o.Name for o in rolled if o.Visibility]
+    for name in hidden:
+        _set_visible(doc.getObject(name), False)
+    _end_prop(body, END_AFTER, feature.Name if feature is not None else _TOP)
+    _end_prop(body, END_ROLLED, json.dumps([o.Name for o in rolled]))
+    _end_prop(body, END_HIDDEN, json.dumps(hidden))
+
+
+def end_marker(doc):
+    """(the object End of Part follows, or None for before everything; names rolled back below it) while End of
+    Part sits before sketches, Texts or work features; None when it is simply after the latest Tip, or when the
+    part changed since (a new feature moved a Tip on: the mark no longer holds)."""
+    body = primary_body(doc)
+    name = getattr(body, END_AFTER, "") if body is not None else ""
+    if not name:
+        return None
+    hist = history(doc)
+    if name == _TOP:
+        obj, pos = None, -1
+    else:
+        obj = doc.getObject(name)
+        pos = next((i for i, (_, o) in enumerate(hist) if o is obj), None) if obj is not None else None
+        if pos is None:
+            return None
+    for b in bodies(doc):
+        last = None
+        for bb, o in hist[:pos + 1]:
+            if bb is b and _is_solid_feature(o):
+                last = o
+        if b.Tip is not last:
+            return None
+    return obj, _names(body, END_ROLLED)
+
+
+def rolled_back_by_end(obj):
+    """Is obj a sketch, Text or work feature End of Part was put above (end_marker)?"""
+    try:
+        body = primary_body(obj.Document)
+    except Exception:
+        return False
+    if body is None or not getattr(body, END_AFTER, "") or obj.Name not in _names(body, END_ROLLED):
+        return False
+    return end_marker(obj.Document) is not None
+
+
+def settle_end_marker(doc):
+    """A mark the part no longer matches (a feature added moved the Tip on) is dropped, its hidden objects shown."""
+    body = primary_body(doc)
+    if body is None or not getattr(body, END_AFTER, "") or end_marker(doc) is not None:
+        return False
+    _release_end(doc, body)
+    return True
 
 
 def end_of_part(body):
@@ -532,6 +633,8 @@ def sketch_shown(sk):
     """Whether the part view shows this sketch: the user's InCadShown choice when there is one; else hidden when
     a feature uses it; else an open contour (a path) is shown and a closed sketch hidden."""
     from incad.core import sketch as sketches
+    if rolled_back_by_end(sk):
+        return False  # below End of Part: rolled back
     if SHOWN_PROP in sk.PropertiesList:
         return bool(getattr(sk, SHOWN_PROP))
     if not is_unused_sketch(sk):
@@ -616,7 +719,7 @@ def apply_visibility(doc):
         elif o.TypeId in DATUM_TYPES:
             if not chosen:
                 continue
-            want = bool(getattr(o, SHOWN_PROP))
+            want = bool(getattr(o, SHOWN_PROP)) and not rolled_back_by_end(o)
         elif o.TypeId == "Sketcher::SketchObject":
             if not chosen and is_unused_sketch(o):
                 continue

@@ -228,14 +228,241 @@ def _straight(profile_faces, flat_face, depth):
     return out
 
 
-def tools(profile_faces, face, depth, spread=False, normal=None):
-    """The solids an emboss (depth > 0) adds or an engrave (depth < 0) removes."""
+def _faces_of(solid, edge, but):
+    try:
+        found = solid.ancestorsOfType(edge, Part.Face)
+    except Exception:
+        found = [f for f in solid.Faces if any(e.isSame(edge) for e in f.Edges)]
+    return [f for f in found if not f.isSame(but)]
+
+
+def _normal_at(face, p):
+    u, v = face.Surface.parameter(p)[:2]
+    return _unit(face.normalAt(u, v))
+
+
+def _along(face, a):
+    """A face that runs straight along `a`: a plane containing it, or a cylinder round it."""
+    if is_flat(face):
+        return abs(_normal_at(face, face.CenterOfMass).dot(a)) < 1e-6
+    return face.Surface.TypeId == "Part::GeomCylinder" and abs(abs(_unit(face.Surface.Axis).dot(a)) - 1) < 1e-6
+
+
+def _straight_edges(face, a):
+    """The face's straight edges along `a`."""
+    out = []
+    for e in face.Edges:
+        if type(e.Curve).__name__ in ("Line", "LineSegment") and len(e.Vertexes) > 1 and \
+                abs(abs(_unit(e.Vertexes[-1].Point - e.Vertexes[0].Point).dot(a)) - 1) < 1e-6:
+            out.append(e)
+    return out
+
+
+def _smooth_axis(face, solid):
+    """The axis of a round face that runs on smoothly from the flat `face` (the end of a slot-shaped part), or None:
+    the direction along which a profile can run on round onto it."""
+    for e in face.Edges:
+        if type(e.Curve).__name__ not in ("Line", "LineSegment") or len(e.Vertexes) < 2:
+            continue
+        for g in _faces_of(solid, e, face):
+            if g.Surface.TypeId != "Part::GeomCylinder":
+                continue
+            a = _unit(g.Surface.Axis)
+            p = e.valueAt((e.FirstParameter + e.LastParameter) / 2)
+            if abs(abs(_unit(e.Vertexes[-1].Point - e.Vertexes[0].Point).dot(a)) - 1) < 1e-6 and \
+                    _normal_at(g, p).dot(_normal_at(face, p)) > 1 - 1e-6:
+                return a
+    return None
+
+
+def _chain(solid, start, place0, tangent0, a, base, w, s_lo, s_hi, want_lo, want_hi):
+    """The faces the profile runs onto past the start face, each way along `w`, while they go on smoothly (the same
+    normal at the shared edge) and run along `a`: [(lo, hi, face, place)] in arc length s from `base`, where
+    place(s, t) is the point at s and t along `a` from base's level. Stops where the profile ends or the way round
+    comes back to the start face."""
+    pieces = []
+    for sign, s_edge, want in ((1.0, s_hi, want_hi), (-1.0, s_lo, want_lo)):
+        cur, d = start, tangent0(s_edge) * sign  # exact: a chord's slant tilted the next flat piece
+        out_point = place0(s_edge, 0.0)
+        reach = sign * s_edge  # arc length covered this way, from base
+        while sign * want > reach + 1e-9:
+            # where the profile leaves this face: its edge along the axis at the point it reaches
+            edge = min(_straight_edges(cur, a), key=lambda e: e.distToShape(Part.Vertex(out_point))[0], default=None)
+            if edge is None or edge.distToShape(Part.Vertex(out_point))[0] > 1e-4:
+                break
+            mid = edge.valueAt((edge.FirstParameter + edge.LastParameter) / 2)
+            p0 = mid - a * (mid - base).dot(a)  # on the edge, at base's level
+            nxt = [g for g in _faces_of(solid, edge, cur)
+                   if _along(g, a) and _normal_at(g, mid).dot(_normal_at(cur, mid)) > 1 - 1e-6]
+            if not nxt or nxt[0].isSame(start):
+                break
+            g = nxt[0]
+            if is_flat(g):
+                width = max((v.Point - p0).dot(d) for v in g.Vertexes)
+                if width <= 1e-9:
+                    break
+
+                def place(s, t, p0=p0, d=d, s0=reach, k=sign):
+                    return p0 + d * (k * s - s0) + a * t
+                out_point = p0 + d * width
+            else:
+                cyl = g.Surface
+                c = App.Vector(cyl.Center)
+                c0 = c + a * (base - c).dot(a)
+                r = cyl.Radius
+                e1, e2 = _unit(p0 - c0), d
+                u1, u2 = g.ParameterRange[:2]
+                th = abs(u2 - u1)
+                width = th * r
+
+                def place(s, t, c0=c0, r=r, e1=e1, e2=e2, s0=reach, k=sign):
+                    q = (k * s - s0) / r
+                    return c0 + (e1 * math.cos(q) + e2 * math.sin(q)) * r + a * t
+                out_point = c0 + (e1 * math.cos(th) + e2 * math.sin(th)) * r
+                d = _unit(e2 * math.cos(th) - e1 * math.sin(th))
+            lo, hi = reach, reach + width
+            pieces.append((min(sign * lo, sign * hi), max(sign * lo, sign * hi), g, place))
+            reach = hi
+            cur = g
+    return pieces
+
+
+def _run_on(profile_faces, start, depth, normal=None, solid=None):
+    """A profile past the edge of the picked face runs on round onto the faces that go on smoothly from it (a
+    slot-shaped part's flat side and its round ends, or a round face and the flat sides after it), as if wrapped:
+    across the profile is the arc length along those faces, up it runs along their common axis. Each letter is cut
+    where the faces meet, each piece laid on its face without stretching and given `depth` along that face's normal
+    (out of the material > 0). None when no face goes on smoothly from the picked one."""
+    n_sk = _unit(normal) if normal is not None else _profile_normal(profile_faces)
+    if is_flat(start):
+        a = _smooth_axis(start, solid)
+        if a is None:
+            return None
+        n0 = _normal_at(start, start.CenterOfMass)
+        if abs(abs(n_sk.dot(n0)) - 1) > 1e-6:
+            raise ValueError(FLAT_MSG)
+        pc = App.Vector(Part.makeCompound(profile_faces).BoundBox.Center)
+        base = pc + n0 * (start.CenterOfMass - pc).dot(n0)
+        w = a.cross(n0)
+        spans = [(v.Point - base).dot(w) for v in start.Vertexes]
+        s_lo, s_hi = min(spans), max(spans)
+
+        def place0(s, t):
+            return base + w * s + a * t
+
+        def tangent0(s):
+            return w
+    else:
+        cyl = start.Surface
+        a, c, r = _unit(cyl.Axis), App.Vector(cyl.Center), cyl.Radius
+        if abs(n_sk.dot(a)) > 1e-6:
+            raise ValueError(ROUND_MSG)
+        pc = App.Vector(Part.makeCompound(profile_faces).BoundBox.Center)
+        c0 = c + a * (pc - c).dot(a)
+        n0 = n_sk if (pc - c0).dot(n_sk) >= 0 else n_sk * -1
+        base = c0 + n0 * r
+        w = a.cross(n0)
+        # the start face's own arc, measured from base: its edges along the axis, as angles round it
+        angles = []
+        for v in start.Vertexes:
+            q = v.Point - c0 - a * (v.Point - c0).dot(a)
+            angles.append(math.atan2(q.dot(w), q.dot(n0)) * r)
+        s_lo, s_hi = min(angles), max(angles)
+
+        def place0(s, t):
+            th = s / r
+            return c0 + (n0 * math.cos(th) + w * math.sin(th)) * r + a * t
+
+        def tangent0(s):
+            th = s / r
+            return w * math.cos(th) - n0 * math.sin(th)
+    s_all = [(v.Point - pc).dot(w) for f in profile_faces for v in f.Vertexes]
+    t_all = [(v.Point - pc).dot(a) for f in profile_faces for v in f.Vertexes]
+    want_lo, want_hi = min(s_all), max(s_all)
+    pieces = [(s_lo, s_hi, start, place0)] + _chain(solid, start, place0, tangent0, a, base, w, s_lo, s_hi, want_lo, want_hi)
+    covered_lo = min(lo for lo, _, _, _ in pieces)
+    covered_hi = max(hi for _, hi, _, _ in pieces)
+    if want_lo < covered_lo - 1e-6 or want_hi > covered_hi + 1e-6:
+        raise ValueError(OFF_MSG)
+    if len(pieces) == 1:
+        return None  # nothing to run on to: the plain emboss says what is wrong
+    t_reach = (max(t_all) - min(t_all)) + 1.0
+    out = []
+    for lo, hi, face, place in pieces:
+        corners = [pc + w * lo + a * (min(t_all) - t_reach), pc + w * hi + a * (min(t_all) - t_reach),
+                   pc + w * hi + a * (max(t_all) + t_reach), pc + w * lo + a * (max(t_all) + t_reach)]
+        slab = Part.Face(Part.makePolygon(corners + corners[:1]))
+        for f in profile_faces:
+            try:
+                part = f.common(slab)
+            except Part.OCCError:
+                continue
+            for piece in part.Faces:
+                if piece.Area < 1e-9:
+                    continue
+                out.append(_lay(piece, face, place, pc, w, a, depth, solid))
+    return out
+
+
+def _lay(piece, face, place, pc, w, a, depth, solid):
+    """One piece of a letter (flat, in the profile's plane) laid onto `face` through place(s, t) and thickened."""
+    def st(p):
+        q = p - pc
+        return q.dot(w), q.dot(a)
+    if is_flat(face):
+        o, x_to, y_to = place(0.0, 0.0), place(1.0, 0.0), place(0.0, 1.0)  # a plane: place is a rigid motion
+        frame_to = App.Matrix()
+        x, y = x_to - o, y_to - o
+        z = x.cross(y)
+        for i, v in enumerate((x, y, z)):
+            frame_to.setCol(i, v)
+        frame_to.setCol(3, o)
+        n_from = w.cross(a)
+        frame_from = App.Matrix()
+        for i, v in enumerate((w, a, n_from)):
+            frame_from.setCol(i, v)
+        frame_from.setCol(3, pc)
+        g = piece.copy()
+        g.transformShape(frame_to.multiply(frame_from.inverse()))
+        _on_the_face(g, face)
+        return g.extrude(_normal_at(face, g.CenterOfMass) * depth)
+    surface = face.Surface.copy()
+    p0 = place(0.0, 0.0)
+    u_ref, v_ref = surface.parameter(p0)[:2]
+    eps = 1e-3
+    du = (surface.value(u_ref + eps, v_ref) - surface.value(u_ref, v_ref)).dot(place(eps * surface.Radius, 0.0) - p0)
+    su = 1.0 if du > 0 else -1.0
+    sv = 1.0 if (surface.value(u_ref, v_ref + 1.0) - surface.value(u_ref, v_ref)).dot(a) > 0 else -1.0
+
+    def uv(p):
+        s, t = st(p)
+        return u_ref + su * s / surface.Radius, v_ref + sv * t
+    on = _face_on(surface, piece, uv)
+    _on_the_face(on, face)
+    c = on.CenterOfMass
+    uu, vv = on.Surface.parameter(c)[:2]
+    sign = 1.0 if on.normalAt(uu, vv).dot(_normal_at(face, on.Surface.value(uu, vv))) > 0 else -1.0
+    return on.makeOffsetShape(depth * sign, 1e-6, fill=True)
+
+
+def tools(profile_faces, face, depth, spread=False, normal=None, solid=None):
+    """The solids an emboss (depth > 0) adds or an engrave (depth < 0) removes. solid: the part, whose faces going on
+    smoothly from the picked one a profile past its edge runs onto."""
     if not profile_faces:
         raise ValueError("The profile has no closed shapes to emboss")
-    if is_round(face):
-        return _wrap_round(profile_faces, face, depth, spread, normal)
-    if is_flat(face):
-        return _straight(profile_faces, face, depth)
+    try:
+        if is_round(face):
+            return _wrap_round(profile_faces, face, depth, spread, normal)
+        if is_flat(face):
+            return _straight(profile_faces, face, depth)
+    except ValueError as e:  # past the face's edge: on round onto the faces that go on smoothly from it
+        if str(e) != OFF_MSG or spread or solid is None or face.Surface.TypeId not in ("Part::GeomPlane",
+                                                                                       "Part::GeomCylinder"):
+            raise
+        run = _run_on(profile_faces, face, depth, normal, solid)
+        if run is None:
+            raise
+        return run
     if is_sphere(face):
         return _project_sphere(profile_faces, face, depth, spread, normal)
     raise ValueError(FACE_MSG)
@@ -246,7 +473,7 @@ def apply(shape, profile_faces, face, depth, engrave, spread=False, normal=None)
     engrave may go right through a thin wall: the loose letter middles are dropped."""
     if depth <= 0:
         raise ValueError("Depth must be more than 0")
-    cut = tools(profile_faces, face, -depth if engrave else depth, spread, normal)
+    cut = tools(profile_faces, face, -depth if engrave else depth, spread, normal, shape)
     before = len(shape.Solids)
     result = shape.cut(cut) if engrave else shape.fuse(cut)
     result = result.removeSplitter()

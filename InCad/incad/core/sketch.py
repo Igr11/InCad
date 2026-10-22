@@ -238,6 +238,75 @@ def _set_value(doc, sk, index, name, path, text, everything):
         raise ValueError("%s = %s cannot be satisfied: %s" % (name, text, model.friendly(sk.getStatusString())))
 
 
+def drop_redundant(sk):
+    """Take off the constraints the sketch has twice (FreeCAD's own pick), until it solves; the status line says
+    which. Returns the types taken off."""
+    from incad.core import log
+    gone = []
+    for _ in range(4):
+        if sk.solve() != -2:
+            break
+        before = [c.Type for c in sk.Constraints]
+        sk.autoRemoveRedundants(True)
+        after = [c.Type for c in sk.Constraints]
+        if len(after) == len(before):
+            break
+        left = list(before)
+        for t in after:
+            left.remove(t)
+        gone += left
+    if gone:
+        log.report("info", "Took off what the sketch had already: %s" % ", ".join(gone))
+    return gone
+
+
+IMPLIED = ("Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal")  # ties a newer one may make redundant
+TIES = IMPLIED + ("Coincident", "PointOnObject", "Tangent", "Symmetric")  # what the constraint tools add
+
+
+def redundant(sk):
+    """0-based indexes of the constraints FreeCAD finds redundant (none when the sketch solves)."""
+    return [i - 1 for i in sk.RedundantConstraints] if sk.solve() == -2 else []
+
+
+def make_room(sk, new):
+    """The constraints `new` (indexes a tool just added, at the end) repeat what older ones tie already (a slot's arc
+    centres made symmetric about an axis while its line is Horizontal): the sketch stops solving, FreeCAD naming any
+    of the ties that repeat each other. The older ties of the IMPLIED kinds that the new ones cover go instead (the
+    named ones first, then newest first); when that is not enough, FreeCAD's own pick goes (drop_redundant).
+    Returns the types taken off."""
+    from incad.core import log
+    red = redundant(sk)
+    if not red:
+        return []
+    first = min(new)
+    added = [sk.Constraints[i].Type for i in new]
+    gone = []
+    while red:
+        older = [i for i in range(first) if sk.Constraints[i].Type in IMPLIED]
+        older.sort(key=lambda i: (i not in red, -i))
+        if not older:
+            break
+        i = older[0]
+        c = sk.Constraints[i]
+        sk.delConstraint(i)
+        new = [n - 1 for n in new]  # the tool's ties move down by one
+        first = min(new)
+        left = redundant(sk)
+        if len(left) < len(red):
+            gone.append(c.Type)
+            red = left
+        else:
+            sk.addConstraint(c)  # needed after all: back at the end, past the tool's (never tried again)
+            red = redundant(sk)
+    if gone:
+        log.report("info", "%s covers what %s tied: took %s off" % (
+            ", ".join(sorted(set(added))), ", ".join(gone), "it" if len(gone) == 1 else "them"))
+    if red:
+        gone += drop_redundant(sk)
+    return gone
+
+
 def rename_dimension(doc, old, new):
     sk, index = find_dimension(doc, old)
     if sk is None:

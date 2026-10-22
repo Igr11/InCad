@@ -152,6 +152,8 @@ def kind_of(sk, index):
     c = cons[index]
     if c.First < 0 or c.Second < 0 or geo[c.First].TypeId not in ROUND or geo[c.Second].TypeId not in ROUND:
         return None
+    if (App.Vector(geo[c.First].Center) - App.Vector(geo[c.Second].Center)).Length < 1e-7:
+        return None  # concentric (an Offset's copy): no centres to measure between, no overall length
     if c.FirstPos == 3 and c.SecondPos == 3:
         return "centers", c.First, c.Second
     if c.FirstPos == 0 and c.SecondPos == 0:

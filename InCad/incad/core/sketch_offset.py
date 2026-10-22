@@ -278,6 +278,16 @@ def _original_round(sk, chain, curve, d):
     return None
 
 
+def _smooth(sk, gi, gj, p):
+    """Do geometries gi and gj run on in one direction through their shared point p?"""
+    def direction(g):
+        geo = sk.Geometry[g]
+        t = geo.tangent(geo.parameter(p))[0]
+        return App.Vector(t.x, t.y, 0)
+    a, b = direction(gi), direction(gj)
+    return a.Length > _TOL and b.Length > _TOL and a.cross(b).Length / (a.Length * b.Length) < 1e-6
+
+
 def add(sk, chain, closed, pointer, distance=None):
     """Add the offset copy, its corners joined and tied to the original. Returns (new geometry indexes, the name of
     the offset dimension or None when nothing could be tied — an ellipse / spline outline)."""
@@ -288,43 +298,53 @@ def add(sk, chain, closed, pointer, distance=None):
     ids = sk.addGeometry(curves, False)
     if isinstance(ids, int):
         ids = [ids]
-    cons = []
-    for i, gi in enumerate(ids):  # sharp corners: consecutive copies share their end points
-        for gj in ids[i + 1:]:
+    joints = []
+    for i, gi in enumerate(ids):  # consecutive copies share their end points: Tangent where the outline runs on
+        for gj in ids[i + 1:]:    # smoothly (a slot's arcs and lines), Coincident at a sharp corner
             for pi in (1, 2):
                 for pj in (1, 2):
                     try:
-                        if _same(sk.getPoint(gi, pi), sk.getPoint(gj, pj)):
-                            cons.append(Sketcher.Constraint("Coincident", gi, pi, gj, pj))
+                        p = sk.getPoint(gi, pi)
+                        if _same(p, sk.getPoint(gj, pj)):
+                            kind = "Tangent" if _smooth(sk, gi, gj, p) else "Coincident"
+                            joints.append(Sketcher.Constraint(kind, gi, pi, gj, pj))
                     except Exception:
                         pass
-    ties = []  # (constraint index offset in cons, kind)
+    ties = []  # per copy: its ties to the original, the offset Distance last
     for gi, curve in zip(ids, curves):
         k = _kind(curve)
         if k == "LineSegment":
             o = _original_line(sk, chain, curve, d)
-            if o is None:
-                continue
-            cons.append(Sketcher.Constraint("Parallel", gi, o))
-            ties.append(len(cons))
-            cons.append(Sketcher.Constraint("Distance", gi, 1, o, d))
+            if o is not None:
+                ties.append([Sketcher.Constraint("Parallel", gi, o), Sketcher.Constraint("Distance", gi, 1, o, d)])
         elif k in ("Circle", "ArcOfCircle"):
             o = _original_round(sk, chain, curve, d)
-            if o is None:
-                continue
-            cons.append(Sketcher.Constraint("Coincident", gi, 3, o, 3))
-            ties.append(len(cons))
-            cons.append(Sketcher.Constraint("Distance", gi, o, d))  # circle to circle: their radii d apart
-    base = sk.ConstraintCount
-    if cons:
-        sk.addConstraint(cons)
+            if o is not None:  # circle to circle: their radii d apart
+                ties.append([Sketcher.Constraint("Coincident", gi, 3, o, 3), Sketcher.Constraint("Distance", gi, o, d)])
+    if joints:
+        sk.addConstraint(joints)
+    # one by one: a tie the others imply already (a slot's second line once its arcs are tied) makes the sketch
+    # redundant and stop solving, so it goes again at once. One line first (the offset dimension: between two
+    # lines, not two concentric arcs the value box can't measure), then the arcs and circles, then the other
+    # lines: all lines first, an arc's centre (two equations, one of them implied) went whole and the arc could slide
+    lines = [g for g in ties if g[0].Type == "Parallel"]
+    rounds = [g for g in ties if g[0].Type != "Parallel"]
+    ties = lines[:1] + rounds + lines[1:]
+    distances = []
+    already = len(sketches.redundant(sk))
+    for group in ties:
+        for c in group:
+            index = sk.addConstraint(c)
+            if len(sketches.redundant(sk)) > already:  # FreeCAD may name any of the ties repeating each other
+                sk.delConstraint(index)
+            elif c.Type == "Distance":
+                distances.append(index)
     dim = None
-    if ties:
+    if distances:
         sketches.name_new_dimensions(sk.Document)
-        first_index = base + ties[0]
-        dim = sk.Constraints[first_index].Name or None
-        for t in ties[1:]:
+        dim = sk.Constraints[distances[0]].Name or None
+        for t in distances[1:]:
             if dim:
-                sk.setExpression("Constraints[%d]" % (base + t), "Constraints.%s" % dim)
+                sk.setExpression("Constraints[%d]" % t, "Constraints.%s" % dim)
     sk.Document.recompute()
     return list(range(first, first + len(curves))), dim

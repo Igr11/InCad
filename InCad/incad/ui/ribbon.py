@@ -2,12 +2,15 @@
 from incad.qt import dispose, QtCore, QtGui, QtWidgets, Signal
 from incad.ui import theme as themes
 
-SIZES = ("medium", "large")
-SIZE_LABELS = {"medium": "Small", "large": "Large"}  # the old small size was removed; medium is now called Small
+SIZES = ("compact", "medium", "large")
+SIZE_LABELS = {"compact": "Compact", "medium": "Small", "large": "Large"}  # the old small size (tiny icons) was
+# removed; medium is now called Small. Compact (the user: the ribbon took too much room) keeps readable icons but
+# drops the names under them (in the tooltips): one line less, and lower stacked rows
 
 
 # icons of stacked groups (Constrain, Format): two rows as tall as one button with its label, readable at each size
-STACKED_PX = {"medium": 28, "large": 32}
+STACKED_PX = {"compact": 16, "medium": 28, "large": 32}
+ICON_ONLY = ("compact",)  # sizes whose buttons show no name under the icon
 
 
 class Ribbon(QtWidgets.QWidget):
@@ -142,8 +145,10 @@ class Ribbon(QtWidgets.QWidget):
         area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         area.setMinimumWidth(0)
-        # room for the sideways scrollbar under the page, so it never covers the group labels
-        area.setMinimumHeight(page.sizeHint().height() + area.horizontalScrollBar().sizeHint().height())
+        # room for the sideways scrollbar under the page, so it never covers the group labels (Compact gives that
+        # room up: the bar, only there in a narrow window, lies over the labels then)
+        bar = 0 if self._size in ICON_ONLY else area.horizontalScrollBar().sizeHint().height()
+        area.setMinimumHeight(page.sizeHint().height() + bar)
         area.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         area.setStyleSheet("QScrollArea#InCadRibbonPage { background: transparent; border: none; }")
         area.viewport().setAutoFillBackground(False)
@@ -166,6 +171,7 @@ class Ribbon(QtWidgets.QWidget):
             row = QtWidgets.QHBoxLayout()
             row.setSpacing(2)
             px = themes.ICON_PX[self._size]
+        under = QtCore.Qt.ToolButtonIconOnly if self._size in ICON_ONLY else QtCore.Qt.ToolButtonTextUnderIcon
         for n, cmd in enumerate(cmds):
             if isinstance(cmd, list):
                 w = self._split_button(frame, cmd, px)
@@ -179,7 +185,7 @@ class Ribbon(QtWidgets.QWidget):
             b.setIcon(themes.icon(cmd.icon, self._theme))
             b.setIconSize(QtCore.QSize(px, px))
             b.setText(cmd.short or cmd.label)
-            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if stacked else QtCore.Qt.ToolButtonTextUnderIcon)
+            b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if stacked else under)
             tip = cmd.label
             if cmd.shortcut:
                 tip += " (%s)" % QtGui.QKeySequence(cmd.shortcut).toString(QtGui.QKeySequence.NativeText)
@@ -212,7 +218,8 @@ class Ribbon(QtWidgets.QWidget):
         current = next((c for c in variants if c.id == chosen), variants[0])
         b = QtWidgets.QToolButton(parent)
         b.setIconSize(QtCore.QSize(px, px))
-        b.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        b.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if self._size in ICON_ONLY
+                             else QtCore.Qt.ToolButtonTextUnderIcon)
         b.setAutoRaise(True)
         b.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
         menu = QtWidgets.QMenu(b)

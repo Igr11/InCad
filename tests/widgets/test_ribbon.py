@@ -34,7 +34,8 @@ class RibbonTest(unittest.TestCase):
         self.assertIsNone(self.rb.button("missing"))
 
     def test_sizes(self):
-        cases = (("medium", 24, QtCore.Qt.ToolButtonTextUnderIcon),
+        cases = (("compact", 20, QtCore.Qt.ToolButtonIconOnly),
+                 ("medium", 24, QtCore.Qt.ToolButtonTextUnderIcon),
                  ("large", 32, QtCore.Qt.ToolButtonTextUnderIcon))
         for size, px, style in cases:
             self.rb.set_size(size)
@@ -42,6 +43,29 @@ class RibbonTest(unittest.TestCase):
             self.assertEqual(b.iconSize().width(), px, size)
             self.assertEqual(b.toolButtonStyle(), style, size)
             self.assertEqual(self.rb.current_size(), size)
+
+    def test_compact_is_much_lower(self):
+        """Compact (the user: the ribbon took too much room): no names under the icons, no room kept for the
+        scrollbar — the real layout at least a third lower than Large."""
+        from incad.ui import theme as themes
+        reg = Registry()
+
+        def ids(x):
+            if isinstance(x, str):
+                yield x
+            elif isinstance(x, (list, tuple)):
+                for y in x:
+                    yield from ids(y)
+        for i in set(ids(list(ribbon_layout.LAYOUT.values()))):
+            if "." in i:
+                reg.register(Command(id=i, label=i.split(".")[-1].title(), icon="incad", handler=lambda: None))
+        for mode in ("part", "sketch"):
+            heights = {}
+            for size in ("compact", "large"):
+                rb = Ribbon(reg, ribbon_layout.LAYOUT, mode=mode, size=size, theme="light")
+                rb.setStyleSheet(themes.stylesheet("light"))
+                heights[size] = rb.sizeHint().height()
+            self.assertLess(heights["compact"], heights["large"] * 2 / 3, (mode, heights))
 
     def test_size_signal_once_per_change(self):
         seen = []
@@ -70,10 +94,13 @@ class RibbonTest(unittest.TestCase):
     def test_size_menu(self):
         m = self.rb.size_menu(None)
         acts = m.actions()
-        self.assertEqual([a.text() for a in acts], ["Small", "Large"])
-        self.assertEqual([a.isChecked() for a in acts], [False, True])
-        acts[0].trigger()
+        self.assertEqual([a.text() for a in acts], ["Compact", "Small", "Large"])
+        self.assertEqual([a.isChecked() for a in acts], [False, False, True])
+        acts[1].trigger()
         self.assertEqual(self.rb.current_size(), "medium")
+        m2 = self.rb.size_menu(None)  # kept: the menu owns its actions
+        m2.actions()[0].trigger()
+        self.assertEqual(self.rb.current_size(), "compact")
 
     def test_checkable_reflects_state(self):
         self.assertFalse(self.rb.button("t").isChecked())

@@ -340,6 +340,7 @@ class Shell(QtCore.QObject):
         self.value_box = None
         self._shortcuts = {}
         self._geometry_counts = {}
+        self._constraints_seen = {}  # (document, sketch) -> (constraint count, geometry count) at the last change
         self.section_panel = None
         self.constraints_panel = None  # the sketch's Constraint List window
         self._constraints_owner = None
@@ -1452,6 +1453,7 @@ class Shell(QtCore.QObject):
             # these follow-ups on the half-restored document crashed the Sketcher (external geometry)
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._settle_constraints(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
         QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
         if self.construction_mode:
@@ -1627,6 +1629,33 @@ class Shell(QtCore.QObject):
                 sk.Document.recompute()
         except Exception as e:
             log.report("warning", "Could not make the new geometry construction: %s" % e)
+
+    def _settle_constraints(self, sk, tries=0):
+        """A constraint tool (Symmetric, Parallel, Equal...) that ties what older ties hold already: FreeCAD names the
+        new one redundant and the sketch stops solving (a slot made symmetric about an axis: its Horizontal). Once
+        the tool's step is closed, the older ties it covers go (sketches.make_room)."""
+        from incad.core import sketch as sketches
+        if not _alive(sk):
+            return
+        try:
+            doc, key = sk.Document, (sk.Document.Name, sk.Name)
+            if doc.HasPendingTransaction or getattr(doc, "Recomputing", False):
+                if tries < 100:
+                    QtCore.QTimer.singleShot(50, lambda: self._settle_constraints(sk, tries + 1))
+                return
+            count, geo = sk.ConstraintCount, sk.GeometryCount
+            before = self._constraints_seen.get(key) or (count - 1, geo)  # the first change seen: one tie added
+            self._constraints_seen[key] = (count, geo)
+            if count <= before[0] or geo != before[1] or self.sketches.editing() is not sk:
+                return  # nothing added, or drawn (_auto_dimension's)
+            steps = list(getattr(doc, "UndoNames", []) or [])
+            if not steps or not (steps[0].startswith("Add ") and steps[0].endswith(" constraint")):
+                return
+            new = [i for i in range(max(before[0], 0), count) if sk.Constraints[i].Type in sketches.TIES]
+            if new and sketches.make_room(sk, new):
+                self._constraints_seen[key] = (sk.ConstraintCount, sk.GeometryCount)
+        except Exception as e:
+            log.report("warning", "Could not settle the new constraint: %s" % e, traceback.format_exc())
 
     def _name_dimensions(self, sk):
         from incad.core import document
@@ -2720,6 +2749,12 @@ class Shell(QtCore.QObject):
             elif not self.sketches.picking:
                 self.plane_panel.hide()
         self.title.set_document_name(doc.Label if doc is not None else "")
+        if is_part and editing is None and not getattr(doc, "Restoring", False) \
+                and not getattr(doc, "Recomputing", False) and not doc.HasPendingTransaction:
+            try:
+                document.settle_end_marker(doc)  # End of Part above sketches, then a feature added after it
+            except Exception:
+                log.logger().exception("End of Part mark")
         self.browser.set_nodes(tree.build(doc))
         self._sync_sketch_markers(doc if is_part else None, editing)
         from incad.core import sketch as sketches

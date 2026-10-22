@@ -5,6 +5,49 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.7.0
+-----
+Extrude To anything, Emboss round the corners, End of Part above sketches, Full Round Fillet, Show / Hide All Sketches.
+
+Improvements
+- Extrude ▸ To reaches any face of any Solid (flat or curved — a cylinder, a sphere), a work or origin plane, or any
+  point (a corner, a sketch point, a work point: up to the plane through it parallel to the sketch). It follows the
+  target when that moves.
+- Emboss letters past the picked face run on round onto the faces that go on smoothly from it — the flat side and
+  the rounded ends of a slot-shaped part, all the way round if need be — laid on them without stretching.
+- End of Part can go above sketches, Texts and work planes too (it jumped back below them): they are greyed and
+  hidden while below it, and come back when it goes down past them.
+- Full Round Fillet (Fillet ▸ Full Round Fillet): pick the two parallel edges of a face — the end of a bar, a
+  plate's side — and the face becomes a half cylinder that runs on into both sides.
+- View ▸ Hide / Show ▸ Show All Sketches / Hide All Sketches: every sketch and Text of the part at once.
+- Sketching on a plane inside the part makes the part see-through while the sketch is open, so the sketch shows.
+
+
+0.6.0
+-----
+Compact ribbon, Work Plane on marked points, Section from a picked plane, slot Offset and Symmetric fixed.
+
+Improvements
+- Compact ribbon (View ▸ Ribbon Size ▸ Compact, also in ⚙): icons without names (the names are in the
+  tooltips) and lower rows of small icons — the ribbon takes about 40% less height than Large.
+- Work Plane ▸ Three points shows the same marked points as Section — corners, edge middles, circle centres on
+  every shown Solid and the points of shown sketches — and takes three clicks on them. A corner of the part keeps
+  the plane tied to it; an edge middle or circle centre places it there.
+- Section builds the section from the selected flat face or plane, the XY / XZ / YZ planes from the browser
+  too, with either face of the Section split button; a face or plane selected while sectioned moves the cut there.
+- A constraint that repeats one the sketch has (Symmetric on a slot that is already Horizontal, Parallel on two
+  Horizontal lines…) takes the older one off instead of breaking the sketch; the status line says which.
+
+Bug fixes
+- Offset of a slot (or any outline with smooth joins, like a rounded rectangle) gave "Sketch with redundant
+  constraints" and the sketch stopped solving. The copy is now tied without repeats, by one offset dimension
+  between two lines.
+- Symmetric of a slot about an axis made the sketch fail (its Horizontal repeated the new constraint).
+- Section on the XY, XZ or YZ plane cut nothing (the plane went far away). Section by 3 Points ignored a selected
+  face or plane and showed its markers instead.
+- The value box offered Centers / Overall / Gap for two concentric arcs or circles and failed when one was chosen.
+
+
 0.5.5
 -----
 Construction switches only the selected lines.

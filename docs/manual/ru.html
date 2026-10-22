@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.5.5 — тестовая сборка<br>
+      Версия 0.7.0 — тестовая сборка<br>
       <!--mac-->FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (проверено на 1.1.3) · Windows 10 / 11 (x64), тестовая сборка win-->
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.5.5. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает InCad в сборке 0.7.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -135,14 +135,14 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>Эта сборка: 0.5.5, тестовая</h2>
-<p>0.5.5 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
+<div class="keep"><h2>Эта сборка: 0.7.0, тестовая</h2>
+<p>0.7.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
 <b>текст</b> и <b>Emboss</b> — в 0.5.0, экспорт в STEP и STL — в 0.5.1. Новое в 0.5.2: большие детали работают намного
 быстрее (пересчёт, правка ранней операции, щелчок по грани), а паз или две дуги можно образмерить по <b>внешним
 краям</b> (5.3). В 0.5.3 быстрее текст и массивы эскиза, удаление, каждое новое или изменённое значение
 (перестраиваются только операции, которые его используют), первое изменение после открытия файла и каждый
 предпросмотр операции, и появился пункт <span class="path">⚙ ▸ Show Log File</span>. Новое в 0.5.4: <b>Emboss на
-сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7) — полный
+сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё — полный
 список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
@@ -302,7 +302,8 @@ Wireframe, Assembly Context, Parameters, Return to FreeCAD, Ribbon Size). Всё
 <p>Кнопка с маленькой стрелкой — это <b>кнопка с вариантами</b>: она выполняет показанную команду, а стрелка открывает
 список вариантов (например, Rectangle ▸ Center Rectangle, 3-Point Rectangle …). Наведите указатель на кнопку, чтобы
 увидеть полное название и подсказку. <span class="path">View ▸ Ribbon Size</span> (или <span class="path">⚙ ▸ Ribbon
-Size</span>) переключает размер ленты: <span class="ui">Small</span> или <span class="ui">Large</span>. Все команды всех
+Size</span>) переключает размер ленты: <span class="ui">Compact</span> (значки без подписей, названия — в подсказках; самая
+низкая лента), <span class="ui">Small</span> или <span class="ui">Large</span>. Все команды всех
 вкладок перечислены в приложении B.</p>
 
 <div class="keep"><h2>3.4 Дерево модели</h2>
@@ -314,7 +315,8 @@ Size</span>) переключает размер ленты: <span class="ui">Sm
   <li>Эскиз стоит под операцией, которая его использует. У строки эскиза написано <b>✓</b>, если он полностью
       определён, или сколько степеней свободы осталось (<b>2 DOF</b>).</li>
   <li><b>End of Part</b> отмечает, где заканчивается модель. Перетащите маркер вверх, чтобы увидеть деталь такой, какой
-      она была в этой точке истории, и работать там; операции ниже маркера становятся серыми и не вычисляются. То же
+      она была в этой точке истории, и работать там; операции ниже маркера становятся серыми и не вычисляются. Маркер можно поставить и выше эскизов, Text и рабочих
+      плоскостей: пока они ниже маркера, они серые и скрыты. То же
       самое делает правый клик по операции ▸ <span class="ui">Move End of Part Here</span>. Закончив, верните маркер в
       конец.</li>
   <li>Цвета строк: операция с ошибкой — <b>красная</b> (наведите указатель, чтобы узнать причину); подавленная — серая и
@@ -396,7 +398,7 @@ features</b>).</p></div>
 <table>
   <tr><th>Меню ⚙</th><th class="wrap">Варианты</th></tr>
   <tr><td>Theme</td><td class="wrap">Match macOS (как в системе), Light, Dark</td></tr>
-  <tr><td>Ribbon Size</td><td class="wrap">Small, Large</td></tr>
+  <tr><td>Ribbon Size</td><td class="wrap">Compact, Small, Large</td></tr>
   <tr><td>Units for New Files</td><td class="wrap">Ask every time (спрашивать), Always millimeters, Always inches</td></tr>
   <tr><td>Dimension Display</td><td class="wrap">Как подписаны размеры эскиза: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
   <tr><td>Display Quality</td><td class="wrap"><b>Normal</b> (быстрее) или <b>Fine</b> (более гладкие кривые): насколько
@@ -501,7 +503,8 @@ features</b>).</p></div>
   <tr><td>Section</td><td class="wrap">Разрезает вид (раздел 8.4). Повторный щелчок закрывает разрез.</td></tr>
   <tr><td>Section by 3 Points</td><td class="wrap">Плоскость разреза по трём отмеченным точкам.</td></tr>
   <tr><td>Hide / Show</td><td class="wrap">Скрывает или показывает выделенные тела, детали сборки, элементы Origin или эскизы.</td></tr>
-  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: все плоскости и оси Origin и центральная точка.</td></tr>
+  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: все плоскости и оси Origin и центральная точка.
+      Show All Sketches, Hide All Sketches: все эскизы и тексты детали, и использованные операциями.</td></tr>
   <tr><td>Assembly Context</td><td class="wrap">В детали, открытой из сборки: показать или скрыть остальные детали вокруг неё (9.9).</td></tr>
   <tr><td>Degrees of Freedom</td><td class="wrap">В сборке: значки степеней свободы на каждой свободной детали (9.7).</td></tr>
   <tr><td>Parameters</td><td class="wrap">Переводит фокус клавиатуры на панель Parameters.</td></tr>
@@ -763,8 +766,10 @@ Emboss оборачивает их вокруг цилиндра или кону
       (оставить только общее у выдавливания и детали), <b>New Solid</b> (отдельное тело, глава 7). Если эскиз лежит на
       материале или внутри него, сразу выбран Cut, иначе Join.</td></tr>
   <tr><td>Extents</td><td class="wrap"><b>Distance</b> (на расстояние); <b>To Next</b> (до следующей грани детали; если в
-      выбранную сторону ничего нет — в сторону детали); <b>Through All</b> (насквозь); <b>To</b> (до выбранной грани
-      <b>Face</b>, плоской или кривой, или рабочей плоскости).</td></tr>
+      выбранную сторону ничего нет — в сторону детали); <b>Through All</b> (насквозь); <b>To</b> (до того, что вы выберете: грани
+      любого тела, плоской или кривой, рабочей плоскости или плоскости Origin, или точки — угла, точки эскиза или рабочей
+      точки: выдавливание останавливается на плоскости через неё, параллельной эскизу, — и следует за целью, когда та
+      двигается).</td></tr>
   <tr><td>Distance</td><td class="wrap">Длина (10 мм).</td></tr>
   <tr><td>Direction</td><td class="wrap"><b>→</b> в сторону по умолчанию, <b>←</b> в другую сторону, <b>⇆</b> симметрично
       (по половине в каждую), <b>⇄ 2</b> в обе стороны на разную длину (<b>Distance 2</b>, 5 мм).</td></tr>
@@ -833,6 +838,8 @@ Emboss оборачивает их вокруг цилиндра или кону
 <table>
   <tr><th>Операция</th><th class="wrap">Поля</th></tr>
   <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 мм).</td></tr>
+  <tr><td>Full Round Fillet</td><td class="wrap">Выберите два параллельных ребра (<b>Edges</b>) плоской грани (торец бруска,
+      бок пластины): грань становится полуцилиндром, плавно переходящим в обе стороны, — два скругления сходятся на ней.</td></tr>
   <tr><td>Chamfer</td><td class="wrap"><b>Edges</b>; <b>Type</b>: <b>Distance</b>, <b>Two distances</b> (Distance,
       Distance 2) или <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> меняет стороны для двух последних типов.
       Расстояния по умолчанию 1 мм.</td></tr>
@@ -1030,7 +1037,8 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 <table class="long">
   <tr><th>Элемент</th><th class="wrap">Способы</th></tr>
   <tr><td>Work Plane</td><td class="wrap">Offset from plane (Offset 10 мм), Parallel through point, Midplane (между двумя
-      плоскостями), Angle around edge (Angle 90°), Three points, Normal to edge at point, Tangent to surface at point.</td></tr>
+      плоскостями), Angle around edge (Angle 90°), Three points (щёлкните отмеченные точки, как в разрезе: углы, середины
+      рёбер, центры окружностей), Normal to edge at point, Tangent to surface at point.</td></tr>
   <tr><td>Work Axis</td><td class="wrap">On edge, Two points, Intersection of two planes, Normal to plane through point,
       Axis of a cylinder, Parallel to edge through point.</td></tr>
   <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
@@ -1064,7 +1072,9 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
       расходятся с равными промежутками по всей окружности, средняя — к эскизу). На сфере недоступно.</td></tr>
 </table>
 <p>Emboss — шаг истории, как Move Face: он снова находит свою грань, если раньший шаг меняется (цилиндр стал больше).
-Буквы за краем грани не принимаются: <i>Some of the profile is off the face</i>; на сфере — и контур, выходящий
+Буквы за краем грани переходят на грани, которые плавно её продолжают (плоская сторона и скруглённые торцы детали
+в форме паза), и ложатся на них без растяжения; где плавного продолжения нет, они не принимаются: <i>Some of the
+profile is off the face</i>; на сфере — и контур, выходящий
 за очертание сферы, видимое со стороны эскиза.</p>
 
 <!-- ============================================================ 7 -->
@@ -1483,7 +1493,7 @@ win-->
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
   <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Emboss</td></tr>
-  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Full Round Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
   <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
@@ -1492,7 +1502,7 @@ win-->
   <tr><td></td><td>Options</td><td class="wrap">Return to FreeCAD · Ask on New</td></tr>
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
-  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin · Assembly Context</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin | Show All Sketches | Hide All Sketches · Assembly Context</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>
 

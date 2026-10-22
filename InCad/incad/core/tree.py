@@ -73,6 +73,9 @@ def _history(doc, primary):
     used = combine.used_up_names(doc)  # tools a Boolean used up: under it
     tip_positions = [i for i, (b, o) in enumerate(hist) if b.Tip is not None and o is b.Tip and b.Name not in used]
     latest = hist[max(tip_positions)][1] if tip_positions else None  # the marker goes right after it
+    marked = document.end_marker(doc)  # End of Part put before sketches / Texts / work features: right there
+    if marked is not None:
+        latest = marked[0]
     out = []
     if latest is None:
         out.append(Node("end_of_part", "End of Part"))
@@ -133,16 +136,36 @@ def _history(doc, primary):
         out.append(node)
         if latest is not None and (obj is latest or latest in under):
             out.append(Node("end_of_part", "End of Part"))
-    return _work_in_progress_above_end(out, doc)
+    return _work_in_progress_above_end(out, doc, set(marked[1]) if marked is not None else None)
 
 
-def _work_in_progress_above_end(nodes, doc=None):
+def _work_in_progress_above_end(nodes, doc=None, rolled=None):
     """What follows End of Part and is no solid feature — sketches, work planes / axes / points, Text — is work in
     progress: Inventor shows it above the marker (FreeCAD never makes any of them the Tip). Only the solid features
-    after it are rolled back. (A work plane between them stopped this, leaving a sketch and a Text below.)"""
+    after it are rolled back. (A work plane between them stopped this, leaving a sketch and a Text below.)
+    rolled: the names End of Part was put above on purpose (document.end_marker): they stay below it, rolled back;
+    only work made since goes above it."""
     marker = next((i for i, n in enumerate(nodes) if n.kind == "end_of_part"), None)
     if marker is None:
         return nodes
+    if rolled is not None:
+        for n in nodes[:marker]:  # above it: applied (a sketch after the Tip still counts as rolled back by it)
+            if n.state == "rolled_back":
+                n.state = ""
+        above, below = [], []
+        for n in nodes[marker + 1:]:
+            if n.name in rolled or n.kind not in ("sketch", "feature"):
+                if n.name in rolled and n.state in ("", "hidden"):
+                    n.state = "rolled_back"
+                below.append(n)
+            elif n.kind == "sketch" or (doc is not None and n.name and doc.getObject(n.name) is not None
+                                        and not doc.getObject(n.name).isDerivedFrom("PartDesign::Feature")):
+                if n.state == "rolled_back":
+                    n.state = ""
+                above.append(n)  # made since End of Part went up: work in progress, above it
+            else:
+                below.append(n)
+        return nodes[:marker] + above + [nodes[marker]] + below
 
     def in_progress(n):
         if n.kind == "sketch":

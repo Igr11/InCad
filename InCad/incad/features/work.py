@@ -142,10 +142,14 @@ def _plane_apply(doc, body, f, values):
             return App.Placement(l1, App.Rotation(axis, angle)) * App.Placement(-l1, App.Rotation())
         _attach(doc, f, [base], "FlatFace", turn)
     elif mode == "three_points":
-        pts = _all(doc, values.get("points"))
-        if len(pts) != 3:
+        items = [i.strip() for i in (values.get("points") or "").split(",") if i.strip()]
+        if len(items) != 3:
             raise ValueError("Pick three points")
-        _attach(doc, f, pts, "ThreePointsPlane")
+        if not any(i.startswith("@") for i in items):
+            _attach(doc, f, _all(doc, ",".join(items)), "ThreePointsPlane")  # corners: it follows them
+        else:
+            body = body or f.getParentGeoFeatureGroup()
+            _place_through(doc, body, f, [_point_of(doc, body, i) for i in items])
     elif mode == "normal_edge":
         _attach(doc, f, [_first(doc, values.get("edge"), "an edge"), _first(doc, values.get("point"), "a point")],
                 "NormalToEdge")
@@ -155,6 +159,58 @@ def _plane_apply(doc, body, f, values):
     else:
         raise ValueError("Unknown work plane method %r" % mode)
     _store(f, {k: values.get(k, "") for k in ("mode", "base", "base2", "point", "edge", "face", "angle", "points")})
+
+
+def _to_global(body):
+    return body.getGlobalPlacement() if body is not None else App.Placement()
+
+
+def format_point_picks(body, base, points):
+    """Three clicked marker points (global) as the Points field's text: a corner of the part's own shape as its
+    vertex (the plane follows it), anything else (an edge middle, a circle centre, another Solid's corner, a
+    sketch point) as '@x y z', global."""
+    out = []
+    shape = base.Shape if base is not None and not base.Shape.isNull() else None
+    g = _to_global(body)
+    for p in points:
+        item = None
+        if shape is not None:
+            for i, v in enumerate(shape.Vertexes):
+                if (g.multVec(v.Point) - p).Length < 1e-6:
+                    item = "%s:Vertex%d" % (base.Name, i + 1)
+                    break
+        out.append(item or "@%.9g %.9g %.9g" % (p.x, p.y, p.z))
+    return ",".join(out)
+
+
+def _point_of(doc, body, item):
+    """A Points item as a global point."""
+    if item.startswith("@"):
+        return App.Vector(*(float(v) for v in item[1:].split()))
+    el = _element(*_first(doc, item, "a point"))
+    if el is None or el.ShapeType != "Vertex":
+        raise ValueError("Pick three points")
+    return _to_global(body).multVec(el.Point)  # a feature's shape lies in its body
+
+
+def _place_through(doc, body, f, pts):
+    """A plane through three fixed points (global): no attachment, its placement in the body."""
+    a, b, c = pts
+    n = (b - a).cross(c - a)
+    if n.Length < 1e-9:
+        raise ValueError("Pick three different points that are not in a line")
+    x = b - a
+    x.normalize()
+    n.normalize()
+    rot = App.Rotation(x, n.cross(x), n, "ZXY")
+    plc = App.Placement(a, rot)
+    if body is not None:
+        plc = body.getGlobalPlacement().inverse().multiply(plc)
+    f.AttachmentSupport = []
+    f.MapMode = "Deactivated"
+    f.AttachmentOffset = App.Placement()
+    f.Placement = plc
+    doc.recompute()
 
 
 def _plane_create(doc, body, profile, values):
@@ -205,7 +261,7 @@ PLANE = SimpleNamespace(
             Field("face", "Surface", "pick", pick="face", show_if=_modes("tangent")),
             Field("point", "Point", "pick", pick="vertex",
                   show_if=_modes("parallel_point", "normal_edge", "tangent")),
-            Field("points", "Points", "picks", pick="vertex", show_if=_modes("three_points"))),
+            Field("points", "Points", "picks", pick="three_points", show_if=_modes("three_points"))),
     defaults=_plane_defaults, create=_plane_create, read=_plane_read, update=_plane_update, _pad_of=lambda f: f)
 
 

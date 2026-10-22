@@ -304,6 +304,25 @@ def origin_visibility(flag):
         _bring_into_view(items)
 
 
+def sketches_visibility(flag):
+    """Show All / Hide All Sketches: every sketch and Text of every Solid (not the ones InCad keeps for itself: a
+    Hole's centre, an area's copy, a Sweep wall's profile), the user's choice for each, one undo step."""
+    import FreeCAD as App
+    from incad.core import document, regions
+    from incad.features import sketch_text
+    doc = App.ActiveDocument
+    if doc is None or document.primary_body(doc) is None:
+        raise ValueError("Open a part first")
+    items = [o for o in doc.Objects
+             if (o.TypeId == "Sketcher::SketchObject" or sketch_text.is_text(o)) and document.body_of(o) is not None
+             and not getattr(o, "InCadHelperOf", None) and not regions.is_profile(o)
+             and not hasattr(o, "InCadPicks")]  # a Hole's centre sketch
+    if not items:
+        raise ValueError("The part has no sketches")
+    _visibility_step("Show All Sketches" if flag else "Hide All Sketches", items,
+                     lambda: document.set_visibility(items, flag))
+
+
 def _bring_into_view(items):
     """The origin is at 0,0,0 however far the part was drawn from it: when it is off screen (the view on the part),
     the view zooms out to show both — Show All looked like it did nothing."""
@@ -862,24 +881,36 @@ def choose_material(ask=None):
 def toggle_section():
     """Section view at the selection — three points, a flat face or a plane (XZ with nothing selected);
     clicking Section again switches it off."""
-    import FreeCAD as App
     from incad.core import section
-    from incad.features import common
     if _gui().ActiveDocument is None:
         raise ValueError("Open a part to see a section")
     from incad.ui import shell
-    if section_on():
+    pairs = _section_picks()
+    if section_on() and not pairs:  # a plane picked while sectioned: the section moves there
         shell.stop_section()
         return
-    pairs = [common.resolve(sel.Object, sub) for sel in _gui().Selection.getSelectionEx(App.ActiveDocument.Name)
-             for sub in (sel.SubElementNames or ("",))]
     base = section.placement(pairs)  # raises when the picks make no plane
     _gui().Selection.clearSelection()
     shell.start_section(base)
 
 
+def _section_picks():
+    """The selected points, flat faces and planes that can make a section plane."""
+    import FreeCAD as App
+    from incad.core import section
+    from incad.features import common
+    return section.picked([common.resolve(sel.Object, sub)
+                           for sel in _gui().Selection.getSelectionEx(App.ActiveDocument.Name)
+                           for sub in (sel.SubElementNames or ("",))])
+
+
 def _section_points():
+    """Section by 3 Points; with a face, a plane or three points selected it cuts there at once (the split button
+    shows "Section" for both: the user's picked plane was passed over for the markers)."""
     from incad.ui import shell
+    if _gui().ActiveDocument is not None and _section_picks():
+        toggle_section()
+        return
     shell.start_section_points()
 
 
@@ -1078,6 +1109,12 @@ def commands():
         Command(id="view.origin_hide_all", label="Hide All Origin", icon="hide_all",
                 handler=lambda: origin_visibility(False), contexts=frozenset({"part"}),
                 tooltip="Hide every origin plane, axis and the centre point"),
+        Command(id="view.sketches_show_all", label="Show All Sketches", icon="show_all",
+                handler=lambda: sketches_visibility(True), contexts=frozenset({"part"}),
+                tooltip="Show every sketch and Text of the part, the ones its features use too"),
+        Command(id="view.sketches_hide_all", label="Hide All Sketches", icon="hide_all",
+                handler=lambda: sketches_visibility(False), contexts=frozenset({"part"}),
+                tooltip="Hide every sketch and Text of the part"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
         Command(id="view.show_in_browser", label="Show in Browser", icon="zoom_selection", handler=show_in_browser,
                 tooltip="Open the model tree at what is selected (a face: the feature that made it)"),
@@ -1113,6 +1150,10 @@ def commands():
                 contexts=frozenset({"part"})),
         Command(id="feature.fillet", label="Fillet", icon="fillet", handler=lambda: start_feature("fillet"),
                 shortcut="F", contexts=frozenset({"part"})),
+        Command(id="feature.full_round", label="Full Round Fillet", icon="fillet",
+                handler=lambda: start_feature("full_round"), contexts=frozenset({"part"}),
+                tooltip="Pick two parallel edges of a face: it becomes one half cylinder, two fillets meeting on it "
+                        "(the end of a bar, a plate's side)"),
         Command(id="feature.chamfer", label="Chamfer", icon="chamfer", handler=lambda: start_feature("chamfer"),
                 contexts=frozenset({"part"})),
         Command(id="file.new_assembly", label="New Assembly", icon="assembly", handler=lambda: new_assembly(),
@@ -1286,7 +1327,7 @@ def commands():
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
 SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
-         "view.origin_hide_all": "Hide All", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
+         "view.origin_hide_all": "Hide All", "feature.full_round": "Full Round", "view.sketches_show_all": "Show Sketches", "view.sketches_hide_all": "Hide Sketches", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
          "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",

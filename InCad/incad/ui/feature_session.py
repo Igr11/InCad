@@ -239,13 +239,16 @@ class FeatureSession(QtCore.QObject):
     _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "limit", "to_face",
                  "direction", "emboss_face")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
+                   "to_face": "a face, a plane or a point",
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
                    "emboss_face": "a round (cylinder, cone or sphere) or a flat face",
                    "move_to": "a face, plane, edge or point"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
-    _ON_BASE = _GEOMETRY + ("two_points", "move_to")
+    _ON_BASE = _GEOMETRY + ("two_points", "three_points", "move_to")
+    _MARKER_PICKS = {"two_points": 2, "three_points": 3}  # clicks on the part's markers, not the selection
     _CORNER_PICKS = ("move_to", "vertex")  # picks that take a point: a click near a corner picks the corner
+    _ANYWHERE = ("to_face",)  # Extrude To: a face or point of any Solid, not only the one being built on
 
     def _observe(self, on):
         try:
@@ -650,7 +653,7 @@ class FeatureSession(QtCore.QObject):
         if key is None:
             return
         f = self.dialog.field_def(key)
-        if f.pick == "two_points":
+        if f.pick in self._MARKER_PICKS:
             return  # taken by clicks on the markers, not by the selection
         raw_pairs = self._selection(corners=f.pick in self._CORNER_PICKS)
         if getattr(self.kind, "SOLID_PICKS", False) and f.pick in self._GEOMETRY + ("move_to",):
@@ -671,7 +674,7 @@ class FeatureSession(QtCore.QObject):
                      for o, _ in common.parse_picks(self.doc, self.dialog.values().get(g.key))}
             pairs = [(o, el) for o, el in pairs if o.Name not in taken]
         pairs = self._retarget_body(pairs)
-        if f.pick in self._GEOMETRY and self._off_base(pairs):
+        if f.pick in self._GEOMETRY and f.pick not in self._ANYWHERE and self._off_base(pairs):
             self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
             return
         ok = common.whole(f.pick, [p for p in pairs if common.accepts(f.pick, *p)])
@@ -817,15 +820,15 @@ class FeatureSession(QtCore.QObject):
                     self._set_visible(o, visible)
 
     def _sync_point_pick(self, key):
-        """A 'two points' field that becomes active shows the part's markers (corners, edge middles, circle
-        centres, the profile's points too) and takes two clicks on them; any other active field, or none, ends
-        that pick."""
+        """A 'two points' / 'three points' field that becomes active shows the part's markers (corners, edge
+        middles, circle centres, the profile's points too) and takes two / three clicks on them; any other active
+        field, or none, ends that pick."""
         from incad.ui import shell as shells
         sh = shells.instance()
         if sh is None:
             return
         field = self.dialog.field_def(key) if key else None
-        if field is None or field.pick != "two_points":
+        if field is None or field.pick not in self._MARKER_PICKS:
             if getattr(self, "_point_key", None) is not None:
                 self._point_key = None
                 sh.cancel_point_pick(quiet=True)
@@ -833,29 +836,54 @@ class FeatureSession(QtCore.QObject):
         if getattr(self, "_point_key", None) == key and sh._point_pick is not None:
             return  # already showing the markers for this field
         self._point_key = key
-        from incad.core import section
-        base = self._expected_base()
-        points = []
-        for shape in ((base.Shape if base is not None else None), (self.profile.Shape if self.profile is not None else None)):
-            if shape is not None and not shape.isNull():
-                for kind, p in section.snap_points(shape):
-                    if not any((p - q).Length < 1e-6 for _, q in points):
-                        points.append((kind, p))
+        points = self._marker_points(field.pick)
         if not points:
             self.dialog.set_error("Nothing to click: draw the profile first")
             self._point_key = None
             self.dialog.set_active_pick(None)
             return
-        sh.start_point_pick(points, 2, "Axis: click 2 points — corners, edge middles, circle centres (Esc cancels)",
-                            on_done=lambda pts, k=key: self._points_picked(k, pts),
+        count = self._MARKER_PICKS[field.pick]
+        what = "Axis" if count == 2 else "Work plane"
+        sh.start_point_pick(points, count, "%s: click %d points — corners, edge middles, circle centres (Esc cancels)"
+                            % (what, count), on_done=lambda pts, k=key: self._points_picked(k, pts),
                             on_cancel=lambda k=key: self._points_cancelled(k))
+
+    def _marker_points(self, pick):
+        """[(kind, point)] to click: the base and the profile for an axis; for a work plane, as in Section, every
+        Solid of the part that is shown, and the shown sketches."""
+        from incad.core import document, section
+        base = self._expected_base()
+        if pick == "three_points" and self.body is not None:  # global, as the markers are drawn
+            shapes = [b.Shape for b in document.bodies(self.doc) if not b.Shape.isNull() and document.is_shown(b)]
+            for o in self.doc.Objects:
+                if o.TypeId == "Sketcher::SketchObject" and document.is_shown(o) and not o.Shape.isNull():
+                    group = o.getParentGeoFeatureGroup()
+                    sh = o.Shape.copy()
+                    if group is not None:
+                        sh.Placement = group.getGlobalPlacement().multiply(sh.Placement)
+                    shapes.append(sh)
+        else:
+            shapes = [base.Shape if base is not None else None,
+                      self.profile.Shape if self.profile is not None else None]
+        points = []
+        for shape in shapes:
+            if shape is not None and not shape.isNull():
+                for kind, p in section.snap_points(shape):
+                    if not any((p - q).Length < 1e-6 for _, q in points):
+                        points.append((kind, p))
+        return points
 
     def _points_picked(self, key, points):
         from incad.features import revolve
         self._point_key = None
         if self._closed or self.dialog is None:
             return
-        self.dialog.set_pick(key, revolve.format_points(points))  # emits changed: the preview follows
+        if self.dialog.field_def(key).pick == "three_points":
+            from incad.features import work
+            text = work.format_point_picks(self.body, self._expected_base(), points)
+        else:
+            text = revolve.format_points(points)
+        self.dialog.set_pick(key, text)  # emits changed: the preview follows
         self.dialog.set_active_pick(None)
 
     def _points_cancelled(self, key):
@@ -1137,7 +1165,7 @@ class FeatureSession(QtCore.QObject):
         active pick, so the next click fills it and not whatever was active before."""
         waiting = self._waiting_picks()
         revealed = [k for k in waiting if k not in getattr(self, "_seen_waiting", waiting)
-                    and self.dialog.field_def(k).pick != "two_points"]  # those show markers and refit the view
+                    and self.dialog.field_def(k).pick not in self._MARKER_PICKS]  # those show markers, refit the view
         self._seen_waiting = waiting
         if revealed and self.dialog.active_pick() not in waiting:
             self.dialog.set_active_pick(revealed[0])

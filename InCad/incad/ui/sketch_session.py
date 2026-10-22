@@ -251,17 +251,43 @@ class SketchSession:
             log.logger().exception("text outlines while sketching")
 
     DIM = 0.62  # the part's colour while a sketch is open (dark theme): its lines and shapes stand out on it
+    SEE_THROUGH = 0.7  # a solid the open sketch's plane cuts through: drawn see-through, the sketch inside visible
+
+    @staticmethod
+    def _cut_by(shape, editing):
+        """Does the open sketch's plane run through the solid (a work plane inside the part)?"""
+        import FreeCAD as App
+        group = editing.getParentGeoFeatureGroup()
+        pl = group.getGlobalPlacement().multiply(editing.Placement) if group is not None else editing.Placement
+        n = pl.Rotation.multVec(App.Vector(0, 0, 1))
+        d = pl.Base.dot(n)
+        bb = shape.BoundBox
+        sides = {(App.Vector(x, y, z).dot(n) - d) > 1e-6 for x in (bb.XMin, bb.XMax) for y in (bb.YMin, bb.YMax)
+                 for z in (bb.ZMin, bb.ZMax)}
+        if len(sides) < 2:
+            return False  # the box lies on one side: the plane misses it
+        try:
+            return bool(shape.slice(n, d))
+        except Exception:
+            return True
 
     def _sync_dimmed(self, editing):
-        """While a sketch is open (dark theme) the shown solids are drawn darker — an override material on top of
-        each one's scene, never the object's own colour (nothing saved, nothing to undo); off again after."""
+        """While a sketch is open the shown solids get an override material on top of each one's scene, never the
+        object's own colour (nothing saved, nothing to undo), off again after: darker in the dark theme, and
+        see-through where the sketch's plane runs through the solid (the user: a sketch on a work plane inside the
+        part was hidden by it)."""
         dimmed = getattr(self, "_dimmed", None)
         if dimmed is None:
             dimmed = self._dimmed = {}
+        cuts = getattr(self, "_cuts", None)
+        if cuts is None:
+            cuts = self._cuts = {}
         want = {}
         try:
             from incad.ui import theme
-            if editing is not None and theme.current() == "dark":
+            dark = theme.current() == "dark"
+            if editing is not None:
+                where = (editing.Document.Name, editing.Name, str(editing.Placement))
                 for o in editing.Document.Objects:
                     vo = getattr(o, "ViewObject", None)
                     if o is editing or vo is None or not o.Visibility or not hasattr(o, "Shape") \
@@ -273,11 +299,18 @@ class SketchSession:
                             continue
                     except Exception:
                         continue
-                    want[(o.Document.Name, o.Name)] = o
+                    ck = where + (o.Name,)
+                    if ck not in cuts:
+                        cuts.clear() if len(cuts) > 200 else None
+                        cuts[ck] = self._cut_by(o.Shape, editing)
+                    if dark or cuts[ck]:
+                        want[(o.Document.Name, o.Name)] = (o, dark, cuts[ck])
+            else:
+                cuts.clear()
         except Exception:
             log.logger().exception("dim the part while sketching")
-        for k in [k for k in dimmed if k not in want]:
-            root, node = dimmed.pop(k)
+        for k in [k for k in dimmed if k not in want or dimmed[k][2] != want[k][1:]]:
+            root, node, _ = dimmed.pop(k)
             try:
                 root.removeChild(node)
             except Exception:
@@ -285,7 +318,7 @@ class SketchSession:
         if not want:
             return
         from pivy import coin
-        for k, o in want.items():
+        for k, (o, dark, cut) in want.items():
             if k in dimmed:
                 continue
             try:
@@ -293,11 +326,13 @@ class SketchSession:
                 c = tuple(vo.ShapeAppearance[0].DiffuseColor[:3]) if hasattr(vo, "ShapeAppearance") \
                     else tuple(vo.ShapeColor[:3])
                 mat = coin.SoMaterial()
-                mat.diffuseColor.setValue(*(x * self.DIM for x in c))
+                mat.diffuseColor.setValue(*(x * (self.DIM if dark else 1.0) for x in c))
+                if cut:
+                    mat.transparency.setValue(self.SEE_THROUGH)
                 mat.setOverride(True)
                 root = vo.RootNode
                 root.insertChild(mat, 0)
-                dimmed[k] = (root, mat)
+                dimmed[k] = (root, mat, (dark, cut))
             except Exception:
                 log.logger().exception("dim %s while sketching", o.Name)
 

@@ -365,10 +365,10 @@ def accepts(kind, obj, sub):
         if sub.startswith("Edge"):
             return el is not None
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
-    if kind == "to_face":  # Extrude To: any face of the part (flat or curved), or a work plane
+    if kind == "to_face":  # Extrude To: any face of any Solid (flat or curved), a work / origin plane, any point
         if not sub:
-            return tid in ("App::Plane", "PartDesign::Plane")
-        return sub.startswith("Face") and el is not None
+            return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point", "App::Point")
+        return sub.startswith(("Face", "Vertex")) and el is not None
     if kind == "move_to":  # Move Face To: a flat face, a work / origin plane, any edge, a vertex or a work point
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point")
@@ -450,6 +450,9 @@ def pick_label(kind, text):
     if kind == "two_points":
         n = len([i for i in (text or "").split(";") if i.strip()])
         return "Select…" if not n else ("1 of 2 points" if n == 1 else "2 points")
+    if kind == "three_points":
+        n = len([i for i in (text or "").split(",") if i.strip()])
+        return "Select…" if not n else ("3 points" if n == 3 else "%d of 3 points" % n)
     items = [i for i in (text or "").split(",") if i.strip()]
     if not items:
         return _EMPTY_HINT.get(kind, "Select…")

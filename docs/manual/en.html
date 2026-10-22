@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
-      Version 0.5.5 — test build<br>
+      Version 0.7.0 — test build<br>
       <!--mac-->FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (tested with 1.1.3) · Windows 10 / 11 (x64), test build win-->
     </div>
   </div>
   <div class="foot">
-    This manual describes InCad as it is in build 0.5.5. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes InCad as it is in build 0.7.0. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -133,14 +133,14 @@ to come back.</p>
 and offers <span class="ui">Convert to InCad Part</span> (for a file with one solid) and <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>This build: 0.5.5, a test build</h2>
-<p>0.5.5 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
+<div class="keep"><h2>This build: 0.7.0, a test build</h2>
+<p>0.7.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
 0.4.0, <b>Text</b> and <b>Emboss</b> in 0.5.0, STEP and STL export in 0.5.1. New in 0.5.2: big parts work much faster
 (recomputing, editing an early feature, clicking a face), and a slot or two arcs can be dimensioned by their
 <b>outer edges</b> (5.3). 0.5.3 makes Text and sketch patterns, deleting, every new or changed value (only the
 features that use it are rebuilt), the first change after opening a file and every feature preview faster, and adds
 <span class="path">⚙ ▸ Show Log File</span>. New in 0.5.4: <b>Emboss on a sphere</b> (6.16) and
-<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7) — CHANGES.txt has the
+<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7). New in 0.6.0: a <b>Compact</b> ribbon (View ▸ Ribbon Size: icons without names, the lowest ribbon), Work Plane ▸ Three points clicked on marked points as in Section; fixed: Offset and Symmetric on slots, Section on the XY / XZ / YZ plane. New in 0.7.0: Extrude ▸ <b>To</b> any face of any Solid, a curved one too, or any point; Emboss letters past the face run on round onto the faces that go on smoothly from it; End of Part above sketches, Texts and work planes; <b>Full Round Fillet</b> (two edges); Show / Hide All Sketches; a part goes see-through while you sketch on a plane inside it — CHANGES.txt has the
 full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
@@ -304,7 +304,8 @@ marking menus.</p></div>
 <p>A button with a small arrow is a <b>split button</b>: it runs the command shown, and its arrow lists the variants
 (for example Rectangle ▸ Center Rectangle, 3-Point Rectangle …). Hover over a button for its full name and a tip.
 <span class="path">View ▸ Ribbon Size</span> (or <span class="path">⚙ ▸ Ribbon Size</span>) switches between
-<span class="ui">Small</span> and <span class="ui">Large</span>. Appendix B lists every command of every tab.</p>
+<span class="ui">Compact</span> (icons without names, which are in the tooltips: the lowest ribbon), <span class="ui">Small</span>
+and <span class="ui">Large</span>. Appendix B lists every command of every tab.</p>
 
 <div class="keep"><h2>3.4 The Model Browser</h2>
 <p>The <b>MODEL</b> panel on the left is the history of the part, as in Inventor:</p></div>
@@ -315,7 +316,8 @@ marking menus.</p></div>
   <li>A sketch sits under the feature that uses it. A sketch row shows <b>✓</b> when it is fully constrained, or how
       many degrees of freedom are left (<b>2 DOF</b>).</li>
   <li><b>End of Part</b> marks where the model ends. Drag it up to see (and work on) the part as it was at that point;
-      features below it are greyed and not computed. Right-click a feature ▸ <span class="ui">Move End of Part Here</span>
+      features below it are greyed and not computed. It can also go above sketches, Texts and work planes: they are
+      greyed and hidden while they are below it. Right-click a feature ▸ <span class="ui">Move End of Part Here</span>
       does the same. Drag it back down to the end when you are done.</li>
   <li>Row colours: a feature that failed is <b>red</b> (hover over it for the reason); a suppressed feature is greyed
       and <s>struck through</s>; a hidden item is dimmed.</li>
@@ -395,7 +397,7 @@ marking menu) switches the theme in one click. The <span class="ui">⚙</span> m
 <table>
   <tr><th>⚙ menu</th><th class="wrap">Choices</th></tr>
   <tr><td>Theme</td><td class="wrap">Match macOS, Light, Dark</td></tr>
-  <tr><td>Ribbon Size</td><td class="wrap">Small, Large</td></tr>
+  <tr><td>Ribbon Size</td><td class="wrap">Compact, Small, Large</td></tr>
   <tr><td>Units for New Files</td><td class="wrap">Ask every time, Always millimeters, Always inches</td></tr>
   <tr><td>Dimension Display</td><td class="wrap">How sketch dimensions are labelled: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
   <tr><td>Display Quality</td><td class="wrap"><b>Normal</b> (faster) or <b>Fine</b> (smoother curves): how finely
@@ -500,7 +502,8 @@ release — no need to wait for the menu.</p>
   <tr><td>Section</td><td class="wrap">Cut the view open (section 8.4). Click again to close.</td></tr>
   <tr><td>Section by 3 Points</td><td class="wrap">Click three marked points for the section plane.</td></tr>
   <tr><td>Hide / Show</td><td class="wrap">Hide or show the selected solids, assembly parts, origin items or sketches.</td></tr>
-  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: every origin plane, axis and the centre point.</td></tr>
+  <tr><td>Show All / Hide All</td><td class="wrap">Show All Origin, Hide All Origin: every origin plane, axis and the centre point.
+      Show All Sketches, Hide All Sketches: every sketch and Text of the part, the ones its features use too.</td></tr>
   <tr><td>Assembly Context</td><td class="wrap">In a part opened from an assembly: show or hide the other parts around it (9.9).</td></tr>
   <tr><td>Degrees of Freedom</td><td class="wrap">In an assembly: draw the DOF symbols on every free part (9.7).</td></tr>
   <tr><td>Parameters</td><td class="wrap">Move the keyboard focus to the Parameters panel.</td></tr>
@@ -760,8 +763,9 @@ then each feature with what to pick and what each option means.</p>
       what the extrusion and the part share), <b>New Solid</b> (a separate solid, chapter 7). Cut is chosen for you
       when the sketch lies on or inside the material, Join otherwise.</td></tr>
   <tr><td>Extents</td><td class="wrap"><b>Distance</b>; <b>To Next</b> (up to the next face of the part — if nothing is
-      in the chosen direction, it goes toward the part); <b>Through All</b>; <b>To</b> (up to a <b>Face</b> you pick, flat
-      or curved, or a work plane).</td></tr>
+      in the chosen direction, it goes toward the part); <b>Through All</b>; <b>To</b> (up to what you pick: a face of any Solid,
+      flat or curved, a work or origin plane, or a point — a corner, a sketch or work point: it stops on the plane through
+      it parallel to the sketch — and it follows when that moves).</td></tr>
   <tr><td>Distance</td><td class="wrap">The length (10 mm).</td></tr>
   <tr><td>Direction</td><td class="wrap"><b>→</b> the default side, <b>←</b> the other side, <b>⇆</b> symmetric (half
       each way), <b>⇄ 2</b> two sides with their own lengths (<b>Distance 2</b>, 5 mm).</td></tr>
@@ -829,6 +833,8 @@ Chamfer).</p></div>
 <table>
   <tr><th>Feature</th><th class="wrap">Fields</th></tr>
   <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 mm).</td></tr>
+  <tr><td>Full Round Fillet</td><td class="wrap">Pick the two parallel <b>Edges</b> of a flat face (the end of a bar, a plate's
+      side): the face becomes a half cylinder that runs on into both sides — two fillets meeting on it.</td></tr>
   <tr><td>Chamfer</td><td class="wrap"><b>Edges</b>; <b>Type</b>: <b>Distance</b>, <b>Two distances</b> (Distance,
       Distance 2) or <b>Distance + angle</b> (Distance, Angle 45°); <b>Flip</b> swaps the sides for the last two types.
       Distances start at 1 mm.</td></tr>
@@ -1019,7 +1025,8 @@ follow the geometry they were made from.</p></div>
 <table class="long">
   <tr><th>Work feature</th><th class="wrap">Methods</th></tr>
   <tr><td>Work Plane</td><td class="wrap">Offset from plane (Offset 10 mm), Parallel through point, Midplane (between two
-      planes), Angle around edge (Angle 90°), Three points, Normal to edge at point, Tangent to surface at point.</td></tr>
+      planes), Angle around edge (Angle 90°), Three points (click the marked points, as in Section: corners, edge middles,
+      circle centres), Normal to edge at point, Tangent to surface at point.</td></tr>
   <tr><td>Work Axis</td><td class="wrap">On edge, Two points, Intersection of two planes, Normal to plane through point,
       Axis of a cylinder, Parallel to edge through point.</td></tr>
   <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
@@ -1053,7 +1060,9 @@ the radius.</p></div>
       on a sphere.</td></tr>
 </table>
 <p>Emboss is a step in the history like Move Face: it finds its face again when an earlier step changes (a bigger
-cylinder). Letters past the face's edge are refused: <i>Some of the profile is off the face</i>; on a sphere, so is
+cylinder). Letters past the face's edge run on round onto the faces that go on smoothly from it (the flat side and the
+rounded ends of a slot-shaped part), laid on them without stretching; where no face goes on smoothly they are
+refused: <i>Some of the profile is off the face</i>; on a sphere, so is
 a profile that reaches past the sphere's outline seen from the sketch.</p>
 
 <!-- ============================================================ 7 -->
@@ -1122,7 +1131,9 @@ colour. The default is PLA.</p></div>
 <div class="keep"><h2 id="section">8.4 Section views</h2>
 <p><span class="path">View ▸ Visual Style ▸ Section</span> cuts the view open — the model itself is not changed.</p></div>
 <ul>
-  <li>Select a flat face, a plane, or three points first; with nothing selected the section is on the XZ plane.</li>
+  <li>Select a flat face, a plane (XY, XZ, YZ from the browser too) or three points first; with nothing selected the
+      section is on the XZ plane. Both faces of the split button (Section, Section by 3 Points) cut at the selection, and
+      a face or plane selected while sectioned moves the cut there.</li>
   <li>A small <span class="ui">Section</span> panel moves the cut: <b>Offset</b> along the plane's normal,
       <b>Flip</b> to look from the other side, <span class="ui">Done</span> to keep the cut view,
       <span class="ui">Off</span> to close it. Clicking Section again also closes it.</li>
@@ -1467,7 +1478,7 @@ win-->
   <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
   <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Emboss</td></tr>
-  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
+  <tr><td></td><td>Modify</td><td class="wrap">Fillet | Full Round Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
   <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
@@ -1476,7 +1487,7 @@ win-->
   <tr><td></td><td>Options</td><td class="wrap">Return to FreeCAD · Ask on New</td></tr>
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
-  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin · Assembly Context</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin | Show All Sketches | Hide All Sketches · Assembly Context</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>
 

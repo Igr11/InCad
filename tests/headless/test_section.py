@@ -31,6 +31,17 @@ class SectionTest(unittest.TestCase):
         plc = section.placement([(xz, "")])
         self.assertAlmostEqual(abs(self.normal(plc).y), 1, places=6)
 
+    def test_origin_planes_cut_where_they_are(self):
+        """An origin plane's face is endless (its centre at -5e99): the section went there and cut nothing."""
+        for plane in self.body.Origin.OriginFeatures:
+            if plane.Role not in ("XY_Plane", "XZ_Plane", "YZ_Plane"):
+                continue
+            plc = section.placement([(plane, "")])
+            n = self.normal(plc)
+            self.assertLess(plc.Base.Length, 1e-6, plane.Role)  # through the origin
+            self.assertAlmostEqual(abs(n.dot(App.Vector(*{"XY_Plane": (0, 0, 1), "XZ_Plane": (0, 1, 0),
+                                                          "YZ_Plane": (1, 0, 0)}[plane.Role]))), 1, places=6)
+
     def test_default_and_refusals(self):
         self.assertAlmostEqual(abs(self.normal(section.placement([])).y), 1, places=6)  # XZ
         # what can't define a plane (an edge, a whole solid) is ignored: XZ
