@@ -5,3 +5,4 @@ __pycache__/
 Distrib/
 docs/manual/out/
 docs/manual/*_windows.html
+docs/whats_new/out/
