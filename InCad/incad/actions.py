@@ -290,14 +290,28 @@ def toggle_visibility():
     log.report("info", "Shown" if flag else "Hidden")
 
 
+def _component_docs(doc):
+    """The part files an assembly's components come from (each once)."""
+    from incad.core import assembly
+    out = []
+    for link in assembly.components(doc):
+        part = getattr(getattr(link, "LinkedObject", None), "Document", None)
+        if part is not None and part not in out:
+            out.append(part)
+    return out
+
+
 def origin_visibility(flag):
     import FreeCAD as App
-    from incad.core import document
-    body = document.primary_body(App.ActiveDocument) if App.ActiveDocument is not None else None
-    if body is None:
+    from incad.core import assembly, document
+    doc = App.ActiveDocument
+    is_asm = doc is not None and assembly.is_assembly(doc)
+    if not is_asm and (doc is None or document.primary_body(doc) is None):
         raise ValueError("Open a part first")
-    # every Solid's origin (a part with Solid1 and Solid2: only the first one's ever changed)
-    items = [f for o in App.ActiveDocument.Objects if o.TypeId == "App::Origin" for f in o.OriginFeatures]
+    # every Solid's origin (a part with Solid1 and Solid2: only the first one's ever changed); in an assembly its own
+    # origin and its parts' (the user: Hide / Show in assemblies too) — a part's origin is hidden in that part's file
+    docs = [doc] + (_component_docs(doc) if is_asm else [])
+    items = [f for d in docs for o in d.Objects if o.TypeId == "App::Origin" for f in o.OriginFeatures]
     _visibility_step("Show All Origin" if flag else "Hide All Origin", items,
                      lambda: document.set_visibility(items, flag))
     if flag:
@@ -310,17 +324,32 @@ def sketches_visibility(flag):
     import FreeCAD as App
     from incad.core import document, regions
     from incad.features import sketch_text
+    from incad.core import assembly
     doc = App.ActiveDocument
-    if doc is None or document.primary_body(doc) is None:
+    is_asm = doc is not None and assembly.is_assembly(doc)
+    if not is_asm and (doc is None or document.primary_body(doc) is None):
         raise ValueError("Open a part first")
-    items = [o for o in doc.Objects
+    docs = _component_docs(doc) if is_asm else [doc]  # an assembly: its parts' sketches, set in their files
+    items = [o for d in docs for o in d.Objects
              if (o.TypeId == "Sketcher::SketchObject" or sketch_text.is_text(o)) and document.body_of(o) is not None
              and not getattr(o, "InCadHelperOf", None) and not regions.is_profile(o)
              and not hasattr(o, "InCadPicks")]  # a Hole's centre sketch
     if not items:
-        raise ValueError("The part has no sketches")
+        raise ValueError("The assembly's parts have no sketches" if is_asm else "The part has no sketches")
     _visibility_step("Show All Sketches" if flag else "Hide All Sketches", items,
                      lambda: document.set_visibility(items, flag))
+
+
+def axes_visibility(flag):
+    """Show / Hide All Axes in an assembly (the user: the white axis lines can be hidden); remembered."""
+    from incad.core import log
+    from incad.ui import shell
+    prefs.set_assembly_axes(flag)
+    inst = shell.instance()
+    if inst is not None:
+        inst.schedule_refresh()
+        inst.dof_display_changed()
+    log.report("info", "Axes shown" if flag else "Axes hidden")
 
 
 def _bring_into_view(items):
@@ -1465,17 +1494,23 @@ def commands():
         Command(id="view.assembly_context", label="Assembly Context", icon="assembly", handler=toggle_assembly_context,
                 checkable=True, is_checked=assembly_context_shown, contexts=frozenset({"part"}),
                 tooltip="A part opened with Edit from its assembly: show or hide the other parts around it"),
+        Command(id="view.axes_show_all", label="Show All Axes", icon="show_all",
+                handler=lambda: axes_visibility(True), contexts=frozenset({"assembly"}),
+                tooltip="Show the axis of every turned body and hole of the assembly's parts"),
+        Command(id="view.axes_hide_all", label="Hide All Axes", icon="hide_all",
+                handler=lambda: axes_visibility(False), contexts=frozenset({"assembly"}),
+                tooltip="Hide the parts' axes (a constraint dialog still shows them while it waits for a pick)"),
         Command(id="view.origin_show_all", label="Show All Origin", icon="show_all",
-                handler=lambda: origin_visibility(True), contexts=frozenset({"part"}),
+                handler=lambda: origin_visibility(True), contexts=frozenset({"part", "assembly"}),
                 tooltip="Show every origin plane, axis and the centre point"),
         Command(id="view.origin_hide_all", label="Hide All Origin", icon="hide_all",
-                handler=lambda: origin_visibility(False), contexts=frozenset({"part"}),
+                handler=lambda: origin_visibility(False), contexts=frozenset({"part", "assembly"}),
                 tooltip="Hide every origin plane, axis and the centre point"),
         Command(id="view.sketches_show_all", label="Show All Sketches", icon="show_all",
-                handler=lambda: sketches_visibility(True), contexts=frozenset({"part"}),
+                handler=lambda: sketches_visibility(True), contexts=frozenset({"part", "assembly"}),
                 tooltip="Show every sketch and Text of the part, the ones its features use too"),
         Command(id="view.sketches_hide_all", label="Hide All Sketches", icon="hide_all",
-                handler=lambda: sketches_visibility(False), contexts=frozenset({"part"}),
+                handler=lambda: sketches_visibility(False), contexts=frozenset({"part", "assembly"}),
                 tooltip="Hide every sketch and Text of the part"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
         Command(id="view.show_in_browser", label="Show in Browser", icon="zoom_selection", handler=show_in_browser,
@@ -1533,7 +1568,19 @@ def commands():
                 contexts=frozenset({"assembly"}),
                 tooltip="Suppress the selected component (hidden, its constraints off) or bring it back"),
         Command(id="assembly.edit", label="Edit", icon="part", handler=lambda: _assembly("edit"),
-                contexts=frozenset({"assembly"}), tooltip="Open the selected component's part to edit it"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Edit the selected component's part in its tab, the other parts shown around it; Return "
+                        "goes back"),
+        Command(id="assembly.interference", label="Interference", icon="interference",
+                handler=lambda: __import__("incad.ui.shell", fromlist=["toggle_interference"]).toggle_interference(),
+                checkable=True,
+                is_checked=lambda: __import__("incad.ui.shell", fromlist=["interference_shown"]).interference_shown(),
+                contexts=frozenset({"assembly"}),
+                tooltip="Show where parts go into each other: each overlap in bright red over the parts, the pairs and "
+                        "their volumes listed; redrawn as parts move. Click again to turn it off"),
+        Command(id="assembly.open", label="Open", icon="open", handler=lambda: _assembly("open"),
+                contexts=frozenset({"assembly"}),
+                tooltip="Open the selected component's part in its own window, as a part of its own (Inventor: Open)"),
         Command(id="assembly.remove", label="Remove from Assembly", icon="delete", handler=lambda: _assembly("remove"),
                 contexts=frozenset({"assembly"}),
                 tooltip="Take the selected component out of the assembly (its part file stays)"),
@@ -1719,7 +1766,7 @@ def commands():
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
 SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
-         "view.origin_hide_all": "Hide All", "feature.full_round": "Full Round", "view.sketches_show_all": "Show Sketches", "view.sketches_hide_all": "Hide Sketches", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
+         "view.origin_hide_all": "Hide All", "view.axes_show_all": "Show Axes", "view.axes_hide_all": "Hide Axes", "feature.full_round": "Full Round", "view.sketches_show_all": "Show Sketches", "view.sketches_hide_all": "Hide Sketches", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",
          "sketch.circle_3pt": "Circle", "sketch.ellipse_3pt": "Ellipse", "sketch.rectangle_center": "Rectangle",

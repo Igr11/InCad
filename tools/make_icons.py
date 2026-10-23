@@ -213,6 +213,9 @@ ICONS.update({
                '<path d="M11 10 L13 6.5 H19 L21 10" fill="none" stroke="{S}" stroke-width="1.6"/>'
                '<circle cx="16" cy="18" r="4.6" fill="none" stroke="{S}" stroke-width="1.8"/>'
                '<circle cx="24" cy="13.5" r="1.1" fill="{A}"/>'),
+    "interference": ('<rect x="4" y="9" width="15" height="15" rx="1.5" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+                     '<rect x="13" y="4" width="15" height="15" rx="1.5" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+                     '<rect x="13" y="9" width="6" height="10" fill="#e8243c" stroke="#e8243c" stroke-width="1"/>'),
     "appearance": ('<path d="M16 4 C9 4 4 9 4 15.5 C4 21 8 25 12.5 25 C14.5 25 15 23.6 14.4 22.2 C13.7 20.6 14.8 19 16.5 19 H20 C24.5 19 28 16 28 12.5 C28 7.5 22.6 4 16 4 Z" fill="{F}" stroke="{S}" stroke-width="1.6"'
                    ' stroke-linejoin="round"/><circle cx="10" cy="14" r="2.1" fill="#d9382c"/>'
                    '<circle cx="13.5" cy="9" r="2.1" fill="#f2b51b"/><circle cx="19.5" cy="8.5" r="2.1" fill="#3a9a42"/>'

@@ -42,6 +42,54 @@ def placement(pairs):
     raise ValueError("For a section, select three points, a flat face or a plane (or nothing for XZ)")
 
 
+_SKIP = ("Sketcher::", "Image::", "Mesh::", "Spreadsheet::", "App::Origin", "App::Line", "App::Plane", "App::Point",
+         "Assembly::JointGroup", "PartDesign::Plane", "PartDesign::Line", "PartDesign::Point")
+_GROUPS = ("App::Part", "App::DocumentObjectGroup", "Assembly::AssemblyObject")
+
+
+def shown_shapes(doc):
+    """[(object, shape in the document's frame, the object its colour comes from)] of everything shown that has
+    faces — an assembly's components (InCad's links, or Bodies and Part shapes put in a FreeCAD assembly), a STEP
+    opened in its App::Part groups, shapes from other programs (the user: Section cuts any solid, STEPs, files from
+    other programs). Groups are opened, never cut as a whole (their shape is their children's again)."""
+    out = []
+
+    def add(o, shape, colour_of):
+        if shape is None or shape.isNull() or not shape.Faces:
+            return
+        parent = o.getGlobalPlacement().multiply(o.Placement.inverse()) if hasattr(o, "getGlobalPlacement") \
+            and hasattr(o, "Placement") else App.Placement()
+        if not parent.isIdentity():  # inside a moved group: into the document's frame
+            shape = shape.copy()
+            shape.transformShape(parent.toMatrix())
+        out.append((o, shape, colour_of))
+
+    def walk(objs, seen):
+        for o in objs:
+            if o in seen:
+                continue
+            seen.add(o)
+            t = o.TypeId
+            if t.startswith(_SKIP) or not getattr(o, "Visibility", True) or getattr(o, "Suppressed", False):
+                continue
+            if hasattr(o, "InCadMeshReference"):
+                continue  # an STL Reference: something to measure on, not a part
+            if t in _GROUPS:
+                walk(getattr(o, "Group", []), seen)
+            elif t == "App::Link":
+                try:
+                    add(o, o.Shape, getattr(o, "LinkedObject", None) or o)
+                except Exception:
+                    pass
+            elif hasattr(o, "Shape"):
+                try:
+                    add(o, o.Shape, o)
+                except Exception:
+                    pass
+    walk(doc.RootObjects, set())
+    return out
+
+
 def adjusted(base, offset=0.0, flip=False):
     """`base` moved `offset` along its normal; flipped = the other side is cut away."""
     normal = base.Rotation.multVec(App.Vector(0, 0, 1))

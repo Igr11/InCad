@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.8.0 — тестовая сборка<br>
+      Версия 0.9.0 — тестовая сборка<br>
       <!--mac-->FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (проверено на 1.1.3) · Windows 10 / 11 (x64), тестовая сборка win-->
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.8.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает InCad в сборке 0.9.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -135,14 +135,14 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>Эта сборка: 0.8.0, тестовая</h2>
-<p>0.8.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
+<div class="keep"><h2>Эта сборка: 0.9.0, тестовая</h2>
+<p>0.9.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
 <b>текст</b> и <b>Emboss</b> — в 0.5.0, экспорт в STEP и STL — в 0.5.1. Новое в 0.5.2: большие детали работают намного
 быстрее (пересчёт, правка ранней операции, щелчок по грани), а паз или две дуги можно образмерить по <b>внешним
 краям</b> (5.3). В 0.5.3 быстрее текст и массивы эскиза, удаление, каждое новое или изменённое значение
 (перестраиваются только операции, которые его используют), первое изменение после открытия файла и каждый
 предпросмотр операции, и появился пункт <span class="path">⚙ ▸ Show Log File</span>. Новое в 0.5.4: <b>Emboss на
-сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё. Новое в 0.8.0: <b>3D Line</b> по виртуальному кубу точек (путь для Sweep, 6.17); несколько рабочих плоскостей сразу (<b>Planes</b>) и их поворот кольцами (<b>Turn</b>); у Extrude <b>Extents 2</b> для второй стороны и To до ребра или рабочей оси; <b>Full</b> рядом с радиусом Fillet; окно Open показывает картинку файла; подсказки синие, ошибки красные; вкладка <b>Image</b> — фото-подложка, масштаб по известной длине; View ▸ <b>Screenshot</b>; оси деталей в сборке — для привязок; исправлено: стенка Sweep ровная и тогда, когда эскиз профиля перевёрнут на своей плоскости; Sweep в стороне от детали больше не зацикливает окно операции — полный
+сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё. Новое в 0.8.0: <b>3D Line</b> по виртуальному кубу точек (путь для Sweep, 6.17); несколько рабочих плоскостей сразу (<b>Planes</b>) и их поворот кольцами (<b>Turn</b>); у Extrude <b>Extents 2</b> для второй стороны и To до ребра или рабочей оси; <b>Full</b> рядом с радиусом Fillet; окно Open показывает картинку файла; подсказки синие, ошибки красные; вкладка <b>Image</b> — фото-подложка, масштаб по известной длине; View ▸ <b>Screenshot</b>; оси деталей в сборке — для привязок; исправлено: стенка Sweep ровная и тогда, когда эскиз профиля перевёрнут на своей плоскости; Sweep в стороне от детали больше не зацикливает окно операции. Новое в 0.9.0: <b>сечение сборки</b> — все детали, которые пересекает плоскость, каждая в своём цвете, а также STEP, файлы из других программ и сборки FreeCAD (8.4); <b>Interference</b>: пересечения деталей ярко-красным; Hide / Show осей, начала координат и эскизов в сборке; <b>Open</b> детали в отдельном окне (9.9) — полный
 список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
@@ -1208,7 +1208,9 @@ Sand, в настоящем размере на любой детали, — и 
   <li><span class="ui">Section by 3 Points</span> (в той же кнопке): щёлкните три отмеченные точки — углы, середины рёбер,
       центры окружностей — для плоскости разреза.</li>
 </ul>
-<p>Сечения работают и в деталях, и в сборках.</p>
+<p>В сборке разрез проходит через все показанные детали, которые пересекает плоскость: каждая плоскость разреза — в
+цвете своей детали, со своим углом штриховки, чтобы соседние детали различались. Режет и всё остальное, что показано: STEP, тела из других программ и сборки, сделанные в самом FreeCAD (детали
+как Body или тела внутри сборки), — каждую деталь в её цвете.</p>
 
 <div class="keep"><h2>8.5 Настройки</h2>
 <ul>
@@ -1361,6 +1363,20 @@ Sand, в настоящем размере на любой детали, — и 
 </figure>
 <p><span class="path">View ▸ Assembly Context</span> (меню View или вкладка View детали) выключает и включает остальные
 детали.</p>
+
+<p>Правый клик по детали ▸ <span class="ui">Open</span> (и Assembly ▸ Component ▸ Edit | Open) открывает её файл в
+отдельном окне как самостоятельную деталь — без сборки вокруг и без Return, как Open в Inventor.</p>
+
+<div class="keep"><h3>Hide / Show в сборке</h3>
+<p>В <span class="path">View ▸ Visual Style ▸ Hide / Show</span> есть <b>Show / Hide All Axes</b> (светлые осевые линии
+тел вращения и отверстий деталей; запоминается — окно связи всё равно показывает их, пока ждёт выбора), <b>Show / Hide
+All Origin</b> (начало координат сборки и деталей) и <b>Show / Hide All Sketches</b> (эскизы деталей: меняется в их
+файлах).</p></div>
+
+<div class="keep"><h3>Interference — пересечения</h3>
+<p><span class="path">Assembly ▸ Analyze ▸ Interference</span> показывает, где детали заходят друг в друга: каждое
+пересечение ярко-красным поверх деталей и панель со списком пар и объёмов. Грани, которые только касаются (вал в своём
+отверстии), — не пересечение. Перерисовывается, когда детали двигаются; повторный щелчок выключает.</p></div>
 
 <div class="keep"><h2 id="asm-update">9.10 Обновление сборки после изменения детали</h2>
 <p>Когда вы возвращаетесь во вкладку сборки после изменения детали, InCad спрашивает: <span class="ui">Parts of … changed.
@@ -1596,12 +1612,13 @@ win-->
 <h2>Сборка</h2>
 <table class="long">
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
-  <tr><td>Assemble</td><td>Component</td><td class="wrap">Place · Create · Ground · Boolean · Threads (Threads Off / On)</td></tr>
+  <tr><td>Assemble</td><td>Component</td><td class="wrap">Place · Create · Ground · Edit | Open · Boolean · Threads (Threads Off / On)</td></tr>
   <tr><td></td><td>Constrain</td><td class="wrap">Mate · Flush · Angle · Parallel · Perpendicular · Tangent · Insert</td></tr>
   <tr><td></td><td>Joint</td><td class="wrap">Rigid · Rotational · Slider · Cylindrical · Ball</td></tr>
+  <tr><td></td><td>Analyze</td><td class="wrap">Interference</td></tr>
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
-  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show · Degrees of Freedom</td></tr>
+  <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show / Hide All Axes, Origin, Sketches · Degrees of Freedom</td></tr>
   <tr><td></td><td>Capture</td><td class="wrap">Screenshot</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>

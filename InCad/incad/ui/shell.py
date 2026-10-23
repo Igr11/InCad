@@ -357,7 +357,7 @@ class Shell(QtCore.QObject):
         self._visibility_applied = set()  # document names whose saved visibility was put in step once
         self._projections_told = {}  # (doc, sketch) -> Refs of projected edges a used sketch was told to keep
         self._sel_watch = None
-        self._section_display = None  # (SectionDisplay, body, was_visible) while sectioned
+        self._section_display = None  # ([SectionDisplay], doc, view, [Caps], [(shape, colour)]) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
@@ -372,6 +372,9 @@ class Shell(QtCore.QObject):
         self._axis_lines = None  # the components' axes in an assembly (incad.ui.axis_lines)
         self._dof_glyphs = None   # DofGlyphs on the active assembly view
         self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
+        self._interference_on = set()  # assemblies whose Interference is on (incad.core.interference)
+        self._interference = None      # (InterferenceDisplay, document name, signature drawn)
+        self._interference_pending = False
         self._dof_hover = None    # (document name, part name) under the pointer (the tip)
         self._dof_linger = None   # (document name, part name, until) a part just dragged keeps its gizmo a while
         self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
@@ -2835,6 +2838,7 @@ class Shell(QtCore.QObject):
             self._close_wait_notice()
         if is_asm and fs is None:
             self._schedule_dof(doc)
+        self._schedule_interference(doc if is_asm else None)
         self.dof_display_changed()  # a tab switch, an undo or a finished drag: glyphs at the parts' new places
 
     # ----- assemblies -----
@@ -2947,6 +2951,13 @@ class Shell(QtCore.QObject):
     def assembly_edit(self, link=None):
         doc = self._assembly_doc()
         self.open_component(self._picked_component(doc, link, "edit"))
+
+    def assembly_open(self, link=None):
+        """Inventor's Open: the component's part in its own window, as a part of its own (no assembly around it)."""
+        doc = self._assembly_doc()
+        link = self._picked_component(doc, link, "open")
+        self.open_component(link, context=False)
+        log.report("info", "%s opened in its own window" % link.LinkedObject.Document.Label)
 
     def assembly_remove(self, link=None):
         from incad.core import delete, log, safe
@@ -3110,7 +3121,12 @@ class Shell(QtCore.QObject):
         if self._axis_lines is not None and (view is None or self._axis_lines.view is not view):
             self._axis_lines.remove()
             self._axis_lines = None
-        if view is None or not hasattr(view, "getSceneGraph"):
+        fs = self.feature_session
+        picking = fs is not None and getattr(fs.kind, "ASSEMBLY", False)  # a constraint dialog: axes to pick
+        if view is None or not hasattr(view, "getSceneGraph") or not (prefs.assembly_axes() or picking):
+            if self._axis_lines is not None:
+                self._axis_lines.remove()
+                self._axis_lines = None
             return
         if self._axis_lines is None:
             self._axis_lines = AxisLines(view, self.theme, doc.Name)
@@ -3176,6 +3192,84 @@ class Shell(QtCore.QObject):
             return None
         return name
 
+    def toggle_interference(self):
+        """Interference on / off for the assembly in front (the user: parts going into each other in a bright
+        colour): on, every overlap is drawn red over the parts, the pairs listed, and redrawn as parts move."""
+        import FreeCAD as App
+        from incad.core import assembly
+        doc = App.ActiveDocument
+        if not assembly.is_assembly(doc):
+            raise ValueError("Open an assembly first")
+        self._interference_on ^= {doc.Name}
+        if doc.Name not in self._interference_on:
+            self._clear_interference(close_panel=True)
+        self.schedule_refresh()
+        self._schedule_interference(doc, force=True)
+
+    def interference_shown(self):
+        import FreeCAD as App
+        return App.ActiveDocument is not None and App.ActiveDocument.Name in self._interference_on
+
+    def _clear_interference(self, close_panel=False):
+        if self._interference is not None:
+            self._interference[0].remove()
+            self._interference = None
+        if close_panel and getattr(self.info_panel, "_incad_interference", False):
+            self._close_info_panel()
+
+    def _schedule_interference(self, doc, force=False):
+        """Drawn after the refresh (never in it: the booleans take a moment), only when something moved."""
+        if doc is None or doc.Name not in self._interference_on:
+            if self._interference is not None:
+                self._clear_interference(close_panel=True)
+            return
+        if force and self._interference is not None:
+            self._interference = (self._interference[0], self._interference[1], None)
+        if self._interference_pending:
+            return
+        self._interference_pending = True
+        QtCore.QTimer.singleShot(0, lambda name=doc.Name: self._update_interference(name))
+
+    def _update_interference(self, name):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import interference
+        from incad.ui.info_panel import InfoPanel
+        from incad.ui.interference_display import InterferenceDisplay
+        self._interference_pending = False
+        doc = App.ActiveDocument
+        if doc is None or doc.Name != name or name not in self._interference_on or doc.Recomputing:
+            return
+        drag = getattr(self, "asm_drag", None)
+        if drag is not None and drag.active() or self.dof_handles is not None and self.dof_handles.dragging():
+            return  # the drag's end refreshes, and draws it then
+        sig = interference.signature(doc)
+        view = Gui.getDocument(name).ActiveView
+        if self._interference is not None and self._interference[1] == name and self._interference[2] == sig \
+                and self._interference[0].view is view:
+            return
+        with perf.measure("interference"):
+            found = interference.overlaps(doc)
+        if self._interference is None or self._interference[0].view is not view:
+            self._clear_interference()
+            self._interference = (InterferenceDisplay(view), name, sig)
+        self._interference[0].set([shape for _, _, shape, _ in found])
+        self._interference = (self._interference[0], name, sig)
+        rows = [("%s ↔ %s" % (a.Label, b.Label), "%.3g mm³" % v) for a, b, _, v in found[:12]]
+        if len(found) > 12:
+            rows.append(("…", "%d more" % (len(found) - 12)))
+        if not rows:
+            rows = [("No parts go into each other", "")]
+        self._close_info_panel()
+        parent = self._mdi().viewport() if self._mdi() is not None else self.mw
+        self.info_panel = InfoPanel("Interference: %d" % len(found), rows, self.theme, parent)
+        self.info_panel._incad_interference = True
+        self.info_panel.adjustSize()
+        self.info_panel.move(16, parent.height() - self.info_panel.height() - 16)
+        self.info_panel.show()
+        log.report("info", "Interference: %s" % ("; ".join("%s ↔ %s %.3g mm³" % (a.Label, b.Label, v)
+                                                            for a, b, _, v in found[:4]) or "none"))
+
     def toggle_dof(self):
         import FreeCAD as App
         from incad.core import assembly
@@ -3196,8 +3290,9 @@ class Shell(QtCore.QObject):
         self._dof_hover = (doc.Name, name) if name and doc is not None else None  # (document, part)
         self.dof_display_changed()
 
-    def open_component(self, link):
-        """Open the component's file in its own tab (Inventor: Open)."""
+    def open_component(self, link, context=True):
+        """Open the component's file in its own tab — Edit: with the other parts drawn around it (context); Open:
+        as a part of its own."""
         import FreeCAD as App
         import FreeCADGui as Gui
         path = link.LinkedObject.Document.FileName
@@ -3210,7 +3305,13 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
-        self._show_context(link, part)
+        if context:
+            self._show_context(link, part)
+        else:
+            old = self._contexts.pop(part.Name, None)  # an earlier Edit's picture goes: this is the part alone
+            if old is not None:
+                old.remove()
+        self.schedule_refresh()
 
     def _show_context(self, link, part):
         """Edit from the assembly: the other parts drawn around this one in its tab (ui/assembly_context), from the
@@ -3313,16 +3414,15 @@ class Shell(QtCore.QObject):
         from incad.core import document, section
         from incad.ui.section_panel import SectionPanel
         self.stop_section(keep_cut=False)
-        self._section_base = base
         doc = self._doc()
-        body = document.primary_body(doc) if doc is not None else None
-        if body is None or body.Shape.isNull():
-            raise ValueError("Open a part with a solid to see a section")
-        self._show_cut(body, section.adjusted(base))
+        targets = self._section_targets(doc)
+        if not targets:
+            raise ValueError("Open a part with a solid (or an assembly with parts) to see a section")
+        self._section_base = base
+        self._show_cut(doc, section.adjusted(base), targets)
         reach = 50.0
         try:
-            if body is not None and not body.Shape.isNull():
-                reach = max(10.0, body.Shape.BoundBox.DiagonalLength / 2.0)
+            reach = max(10.0, self._compound([sh for sh, _ in targets]).BoundBox.DiagonalLength / 2.0)
         except Exception:
             pass
         parent = self._mdi().viewport() if self._mdi() is not None else self.mw
@@ -3342,9 +3442,9 @@ class Shell(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.core import document, section
         doc = self._doc()
-        body = document.primary_body(doc) if doc is not None else None
-        if body is None or body.Shape.isNull():
-            raise ValueError("Open a part with a solid first")
+        targets = self._section_targets(doc)
+        if not targets:
+            raise ValueError("Open a part with a solid (or an assembly with parts) first")
         self.stop_section(keep_cut=False)
 
         def done(points):
@@ -3352,7 +3452,7 @@ class Shell(QtCore.QObject):
                 self.start_section(section.through_points(*points[:3]))
             except ValueError as e:
                 log.report("warning", str(e))
-        self.start_point_pick(section.snap_points(body.Shape), 3,
+        self.start_point_pick(section.snap_points(self._compound([sh for sh, _ in targets])), 3,
                               "Section: click 3 points — corners, edge middles, circle centres (Esc cancels)", done)
 
     def start_point_pick(self, points, count, prompt, on_done, on_cancel=None):
@@ -3419,48 +3519,77 @@ class Shell(QtCore.QObject):
                 log.report("warning", str(e), traceback.format_exc())
         self.schedule_refresh()
 
-    def _show_cut(self, body, placement):
-        """FreeCAD's clipping plane removes one side (fast); the material on the plane is drawn on top of it."""
+    def _show_cut(self, doc, placement, targets=None):
+        """FreeCAD's clipping plane removes one side (fast); the material on the plane is drawn on top of it — for a
+        part, its shown Solids; in an assembly, every shown component in its own colour, its hatching turned from its
+        neighbour's (the user: a section in the assembly cuts all the parts the plane goes through)."""
         import FreeCAD as App
         import FreeCADGui as Gui
         from incad.core import section
         from incad.ui.section_display import SectionDisplay
-        view = Gui.getDocument(body.Document.Name).ActiveView
-        shape = body.Shape
-        if self._section_display is None or self._section_display[3] is None:
-            caps = section.Caps(shape)  # meshed once per section session: the slider then slices in milliseconds
+        view = Gui.getDocument(doc.Name).ActiveView
+        if self._section_display is None:
+            targets = targets if targets is not None else self._section_targets(doc)
+            caps = [section.Caps(sh) for sh, _ in targets]  # meshed once a session: the slider slices in ms
         else:
-            caps = self._section_display[3]
-        # a plane that misses the part (or leaves nothing) is turned round: a section always shows material
-        faces = caps.faces(placement)
-        if not faces:
+            targets, caps = self._section_display[4], self._section_display[3]
+        # a plane that misses everything (or leaves nothing) is turned round: a section always shows material
+        cut = [c.faces(placement) for c in caps]
+        if not any(cut):
             flipped = section.adjusted(placement, 0.0, True)
-            if caps.faces(flipped):
-                placement, faces = flipped, caps.faces(flipped)
+            again = [c.faces(flipped) for c in caps]
+            if any(again):
+                placement, cut = flipped, again
         kept = placement.Rotation.multVec(App.Vector(0, 0, 1))  # the side FreeCAD keeps with `clip` (probed)
         clip = App.Placement(placement.Base, placement.Rotation.multiply(App.Rotation(App.Vector(1, 0, 0), 180)))
         if self._section_display is None:
-            color = (0.8, 0.8, 0.8)
-            try:
-                color = tuple(body.Tip.ViewObject.ShapeColor[:3])
-            except Exception:
-                pass
-            self._section_display = (SectionDisplay(view, color), body, view, caps)
+            displays = [SectionDisplay(view, color) for _, color in targets]
+            self._section_display = (displays, doc, view, caps, targets)
         else:
             view.toggleClippingPlane(0)
         view.toggleClippingPlane(1, False, True, clip)  # no drag handle: destroying it crashes FreeCAD (probed)
-        shift = kept * max(0.01, shape.BoundBox.DiagonalLength / 2000.0)
-        self._section_display[0].set_faces(faces, shift, caps.polygons)
-        try:  # hatching, as Inventor draws cut material; the loops faces() just sliced, no second slice
-            # between the plane and the face (nearer the viewer than the face, still on the kept side)
-            self._section_display[0].set_hatch(section.hatch(caps.last_loops, placement,
-                                                             shape.BoundBox.DiagonalLength / 45.0), shift * 0.5)
-        except Exception as e:
-            log.logger().warning("Section hatch: %s", e)
+        size = self._compound([sh for sh, _ in targets]).BoundBox.DiagonalLength
+        shift = kept * max(0.01, size / 2000.0)
+        for k, (display, c, faces) in enumerate(zip(self._section_display[0], caps, cut)):
+            display.set_faces(faces, shift, c.polygons)
+            try:  # hatching, as Inventor draws cut material; the loops faces() just sliced, no second slice
+                # between the plane and the face (nearer the viewer than the face, still on the kept side)
+                display.set_hatch(section.hatch(c.last_loops, placement, size / 45.0, 45.0 + 90.0 * (k % 2)
+                                                + 30.0 * (k // 2 % 2)), shift * 0.5)
+            except Exception as e:
+                log.logger().warning("Section hatch: %s", e)
+                try:
+                    display.set_hatch([], shift * 0.5)  # never the previous position's hatch
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _compound(shapes):
+        import Part
+        return shapes[0] if len(shapes) == 1 else Part.makeCompound(shapes)
+
+    def _section_targets(self, doc):
+        """[(shape, colour)] the section cuts: an InCad part's shown Solids (one); else everything shown — an
+        assembly's components each in its part's colour, a STEP's or another program's shapes."""
+        from incad.core import document, section
+        if doc is None:
+            return []
+        body = document.primary_body(doc)
+        if body is not None and not body.Shape.isNull() and body.Shape.Solids:
+            return [(body.Shape, self._part_colour(body))]
+        return [(shape, self._part_colour(colour_of)) for _, shape, colour_of in section.shown_shapes(doc)]
+
+    @staticmethod
+    def _part_colour(obj):
+        try:
+            vo = obj.ViewObject
+            return tuple(vo.ShapeAppearance[0].DiffuseColor[:3]) if hasattr(vo, "ShapeAppearance") \
+                else tuple(vo.ShapeColor[:3])
+        except Exception:
             try:
-                self._section_display[0].set_hatch([], shift * 0.5)  # never the previous position's hatch
+                return tuple(obj.Tip.ViewObject.ShapeColor[:3])
             except Exception:
-                pass
+                return (0.8, 0.8, 0.8)
 
     def section_on(self):
         return self._section_display is not None
@@ -3484,9 +3613,10 @@ class Shell(QtCore.QObject):
                 pass
             self.section_panel = None
         if not keep_cut and self._section_display is not None:
-            display, body, view = self._section_display[:3]
+            displays, _doc, view = self._section_display[:3]
             self._section_display = None
-            display.remove()
+            for display in displays:
+                display.remove()
             try:
                 view.toggleClippingPlane(0)
             except Exception:
@@ -4053,6 +4183,14 @@ def toggle_dof():
     return _active().toggle_dof()
 
 
+def toggle_interference():
+    return _active().toggle_interference()
+
+
+def interference_shown():
+    return _shell is not None and _shell.interference_shown()
+
+
 def toggle_assembly_context():
     return _active().toggle_assembly_context()
 
@@ -4091,8 +4229,12 @@ def start_slot_tool(mode):
     return _active().start_slot_tool(mode)
 
 
-def open_component(link):
-    return _active().open_component(link)
+def open_component(link, context=True):
+    return _active().open_component(link, context)
+
+
+def assembly_open(link=None):
+    return _active().assembly_open(link)
 
 
 def edit_feature(feature):

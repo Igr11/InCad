@@ -191,3 +191,13 @@ def export_type():
 
 def set_export_type(value):
     _set_choice("ExportType", EXPORT_TYPES, value)
+
+
+def assembly_axes():
+    """View ▸ Show / Hide All Axes in an assembly: the components' axes drawn (on by default; the user: the white
+    axis lines can be hidden). A constraint dialog shows them while it waits for a pick either way."""
+    return bool(_s().get("bool", "AssemblyAxes", True))
+
+
+def set_assembly_axes(value):
+    _s().set("bool", "AssemblyAxes", bool(value))

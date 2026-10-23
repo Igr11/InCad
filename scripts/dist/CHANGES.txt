@@ -5,6 +5,23 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.9.0
+-----
+Section, Interference, Hide / Show and Open in assemblies.
+
+Improvements
+- Section in assemblies (View ▸ Visual Style ▸ Section): the cut goes through every shown part the plane meets,
+  each cut face in its part's colour with its own hatching angle; Offset, Flip and Section by 3 Points work as in a
+  part. It was refused in an assembly. It also cuts STEPs, shapes from other programs and assemblies made in FreeCAD (their Bodies and shapes);
+  Interference checks those too.
+- Interference (Assembly ▸ Analyze ▸ Interference): where parts go into each other, every overlap in bright red over
+  the parts and a panel with each pair and its volume; parts that only touch are no interference; redrawn as parts move.
+- Assemblies get Hide / Show too: Show / Hide All Axes (the parts' light centre lines, remembered; a constraint
+  dialog still shows them for a pick), Show / Hide All Origin and Show / Hide All Sketches.
+- Right-click a part in an assembly ▸ Open: its file in its own window as a part of its own (Inventor's Open);
+  Edit still opens it with the assembly around it.
+
+
 0.8.0
 -----
 3D Line on a virtual cube, several work planes at once and turned with rings, Extrude Extents 2, Fillet Full, file pictures in Open, a Image tab, Screenshot, axes in assemblies; Sweep Wall and detached-Sweep fixes.
