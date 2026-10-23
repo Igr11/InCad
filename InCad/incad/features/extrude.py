@@ -18,13 +18,20 @@ FIELDS = (
     Field("distance", "Distance", "value_length", default="10 mm", show_if=("extent", ("distance",))),
     Field("direction", "Direction", "choice", (("default", "→"), ("flip", "←"), ("symmetric", "⇆"),
                                                ("two_sides", "⇄ 2")), "default"),
-    Field("distance2", "Distance 2", "value_length", default="5 mm", show_if=("direction", ("two_sides",))),
+    Field("extent2", "Extents 2", "choice", (("distance", "Distance"), ("to_next", "To Next"),
+                                             ("through_all", "Through All"), ("to", "To")), "distance",
+          show_if=("direction", ("two_sides",))),
+    Field("to_face2", "To 2", "pick", show_if=(("direction", ("two_sides",)), ("extent2", ("to",))), pick="to_face"),
+    Field("distance2", "Distance 2", "value_length", default="5 mm",
+          show_if=(("direction", ("two_sides",)), ("extent2", ("distance",)))),
     Field("taper", "Taper", "value_angle", default="0 °"),
 )
 _TYPE = {"distance": "Length", "to_next": "UpToFirst", "to": "UpToFace"}
 UP_TO = "InCadUpTo"  # on an Extrude whose To target needs a helper: what was picked ('Obj:Sub')
+UP_TO2 = "InCadUpTo2"  # the same for the second side (⇄ 2 ▸ Extents 2 ▸ To)
 HELPER, ROLE = "InCadHelperOf", "InCadHelperRole"
 _POINTS = ("PartDesign::Point", "App::Point")
+_LINES = ("PartDesign::Line", "App::Line")
 
 
 def _normal(sk):
@@ -46,7 +53,7 @@ def default_operation(body, sk):
 def defaults(doc, body, profile):
     values = {f.key: f.default for f in FIELDS}
     values["operation"] = default_operation(body, profile)
-    values["to_face"] = ""
+    values["to_face"] = values["to_face2"] = ""
     return values
 
 
@@ -54,15 +61,26 @@ def _feature_type(operation):
     return "PartDesign::Pocket" if operation == "cut" else "PartDesign::Pad"
 
 
+def _type(f, extent):
+    cut = f.TypeId == "PartDesign::Pocket"
+    return ("ThroughAll" if cut else "UpToLast") if extent == "through_all" else _TYPE.get(extent, "Length")
+
+
 def _apply(doc, f, values):
     cut = f.TypeId == "PartDesign::Pocket"
     extent = values.get("extent", "distance")
-    f.Type = ("ThroughAll" if cut else "UpToLast") if extent == "through_all" else _TYPE.get(extent, "Length")
+    f.Type = _type(f, extent)
     if extent == "to" and values.get("to_face"):
         f.UpToFace = _to_target(doc, f, values["to_face"])
     else:
-        _drop_helpers(doc, f)
+        _drop_helpers(doc, f, side=1)
     direction = values.get("direction", "default")
+    extent2 = values.get("extent2", "distance") if direction == "two_sides" else "distance"
+    f.Type2 = _type(f, extent2)  # the second side has its own extents (Inventor's two directions)
+    if extent2 == "to" and values.get("to_face2"):
+        f.UpToFace2 = _to_target(doc, f, values["to_face2"], side=2)
+    else:
+        _drop_helpers(doc, f, side=2)
     f.SideType = {"symmetric": "Symmetric", "two_sides": "Two sides"}.get(direction, "One side")
     f.Reversed = direction == "flip"
     if extent == "to_next" and direction == "default" and _material_only_behind(f):
@@ -101,13 +119,22 @@ def _remove(doc, o):
     doc.removeObject(o.Name)
 
 
-def _drop_helpers(doc, f, keep=()):
+def _side_of(role):
+    return 2 if role.endswith("2") else 1
+
+
+def _drop_helpers(doc, f, keep=(), side=None):
+    """f's To helpers (of one side, or of both) except `keep`."""
     body = f.getParentGeoFeatureGroup()
     for o in list(body.Group if body is not None else []):
-        if getattr(o, HELPER, None) == f.Name and getattr(o, ROLE, "").startswith("to_") and o not in keep:
+        role = getattr(o, ROLE, "")
+        if getattr(o, HELPER, None) == f.Name and role.startswith("to_") and o not in keep \
+                and side in (None, _side_of(role)):
             _remove(doc, o)
-    if not keep and hasattr(f, UP_TO):
-        setattr(f, UP_TO, "")
+    if not keep:
+        for prop in ((UP_TO, UP_TO2) if side is None else ((UP_TO,) if side == 1 else (UP_TO2,))):
+            if hasattr(f, prop):
+                setattr(f, prop, "")
 
 
 def _bound(doc, f, obj, sub, role):
@@ -123,11 +150,12 @@ def _bound(doc, f, obj, sub, role):
     if list(binder.Support) != support:
         binder.Support = support
     binder.recompute()
-    element = "Vertex1" if sub.startswith("Vertex") or obj.TypeId in _POINTS else "Face1"
+    element = "Vertex1" if sub.startswith("Vertex") or obj.TypeId in _POINTS else \
+        "Edge1" if sub.startswith("Edge") or obj.TypeId in _LINES else "Face1"
     return binder, element, binder
 
 
-def _to_target(doc, f, pick):
+def _to_target(doc, f, pick, side=1):
     """f.UpToFace for the picked To target: a face or plane of the extrude's own Solid as it is; any face of another
     Solid (flat or curved) through a binder; a point (a corner, a sketch or work point) through a plane parallel to
     the sketch, which follows the point."""
@@ -135,13 +163,33 @@ def _to_target(doc, f, pick):
     obj = doc.getObject(name)
     if obj is None:
         raise ValueError("Select a face, a plane or a point for To")
+    tail, prop = ("", UP_TO) if side == 1 else ("2", UP_TO2)
     point = sub.startswith("Vertex") or (not sub and obj.TypeId in _POINTS)
+    edge = sub.startswith("Edge") or (not sub and obj.TypeId in _LINES)
     keep = []
-    if point:
-        target, element, binder = _bound(doc, f, obj, sub, "to_binder")
+    if point or edge:
+        target, element, binder = _bound(doc, f, obj, sub, "to_binder" + tail)
         keep += [binder] if binder is not None else []
         sk = profile_of(f)
-        plane = _helper(doc, f, "to_plane", "PartDesign::Plane", "Extrude To (point)")
+        if edge:  # an edge or axis: through its middle (a work point on it, which follows the edge)
+            mine = [o for o in f.getParentGeoFeatureGroup().Group
+                    if getattr(o, HELPER, None) == f.Name and getattr(o, ROLE, None) in ("to_point" + tail,
+                                                                                         "to_plane" + tail)]
+            if not any(getattr(o, ROLE, None) == "to_point" + tail for o in mine):
+                for o in mine:  # the plane is made again after the new point: nothing refers to a later object
+                    _remove(doc, o)
+            mid = _helper(doc, f, "to_point" + tail, "PartDesign::Point", "Extrude To (edge)")
+            refs = [(target, element)]
+            if list(mid.AttachmentSupport) != refs or mid.MapMode != "OnEdge":
+                mid.AttachmentSupport = refs
+                mid.MapMode = "OnEdge"
+                mid.MapPathParameter = 0.5
+            mid.recompute()
+            if "Invalid" in mid.State:
+                raise ValueError("To: no point on that edge (%s)" % mid.getStatusString())
+            keep.append(mid)
+            target, element = mid, ""
+        plane = _helper(doc, f, "to_plane" + tail, "PartDesign::Plane", "Extrude To (point)")
         refs = [(sk, ""), (target, element)]
         if list(plane.AttachmentSupport) != refs or plane.MapMode != "ParallelPlane":
             plane.AttachmentSupport = refs
@@ -152,17 +200,17 @@ def _to_target(doc, f, pick):
         keep.append(plane)
         result = (plane, [""])
     else:
-        target, element, binder = _bound(doc, f, obj, sub, "to_binder")
+        target, element, binder = _bound(doc, f, obj, sub, "to_binder" + tail)
         keep += [binder] if binder is not None else []
         result = (target, [element] if element else [])
-    _drop_helpers(doc, f, keep)
+    _drop_helpers(doc, f, keep, side)
     if keep:
-        if not hasattr(f, UP_TO):
-            f.addProperty("App::PropertyString", UP_TO, "InCad", "What To was picked on")
-            f.setPropertyStatus(UP_TO, "Hidden")
-        setattr(f, UP_TO, pick)
-    elif hasattr(f, UP_TO):
-        setattr(f, UP_TO, "")
+        if not hasattr(f, prop):
+            f.addProperty("App::PropertyString", prop, "InCad", "What To was picked on")
+            f.setPropertyStatus(prop, "Hidden")
+        setattr(f, prop, pick)
+    elif hasattr(f, prop):
+        setattr(f, prop, "")
     return result
 
 
@@ -251,13 +299,18 @@ def read(doc, feature):
     extent = {"Length": "distance", "UpToFirst": "to_next", "UpToFace": "to", "ThroughAll": "through_all",
               "UpToLast": "through_all"}.get(f.Type, "distance")
     direction = {"Symmetric": "symmetric", "Two sides": "two_sides"}.get(f.SideType, "flip" if f.Reversed else "default")
-    to_face = ""
-    if getattr(f, UP_TO, ""):
-        to_face = getattr(f, UP_TO)  # through a helper: what was picked
-    elif f.UpToFace and f.UpToFace[0] is not None:
-        sub = f.UpToFace[1][0] if f.UpToFace[1] else ""
-        to_face = "%s:%s" % (f.UpToFace[0].Name, sub) if sub else f.UpToFace[0].Name
-    return {"operation": operation, "extent": extent, "direction": direction, "to_face": to_face,
+    def picked(prop, link):
+        if getattr(f, prop, ""):
+            return getattr(f, prop)  # through a helper: what was picked
+        if link and link[0] is not None:
+            sub = link[1][0] if link[1] else ""
+            return "%s:%s" % (link[0].Name, sub) if sub else link[0].Name
+        return ""
+    extent2 = {"Length": "distance", "UpToFirst": "to_next", "UpToFace": "to", "ThroughAll": "through_all",
+               "UpToLast": "through_all"}.get(getattr(f, "Type2", "Length"), "distance")
+    return {"operation": operation, "extent": extent, "direction": direction,
+            "to_face": picked(UP_TO, f.UpToFace), "extent2": extent2,
+            "to_face2": picked(UP_TO2, getattr(f, "UpToFace2", None)),
             "distance": value_text(doc, f, "Length") or "10 mm",
             "distance2": value_text(doc, f, "Length2") or "5 mm",
             "taper": value_text(doc, f, "TaperAngle") or "0 °"}
@@ -309,7 +362,7 @@ def _replace(doc, old, type_id):
     after = body.Group[index - 1] if index > 0 else None
     label = old.Label
     helpers = [o for o in body.Group if getattr(o, HELPER, None) == old.Name]
-    up_to = getattr(old, UP_TO, "")
+    up_to = {p: getattr(old, p, "") for p in (UP_TO, UP_TO2)}
     body.removeObject(old)
     doc.removeObject(old.Name)
     new = doc.addObject(type_id, "Extrude")
@@ -318,10 +371,11 @@ def _replace(doc, old, type_id):
     new.Profile = profile
     for h in helpers:  # the To target's helpers follow the re-made feature
         setattr(h, HELPER, new.Name)
-    if up_to:
-        new.addProperty("App::PropertyString", UP_TO, "InCad", "What To was picked on")
-        new.setPropertyStatus(UP_TO, "Hidden")
-        setattr(new, UP_TO, up_to)
+    for prop, text in up_to.items():
+        if text:
+            new.addProperty("App::PropertyString", prop, "InCad", "What To was picked on")
+            new.setPropertyStatus(prop, "Hidden")
+            setattr(new, prop, text)
     for path, expr in bindings.items():
         new.setExpression(path.lstrip("."), expr)
     if was_tip:

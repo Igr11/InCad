@@ -113,6 +113,50 @@ def test_2_edit_to_a_corner_of_it():
     assert abs(f.Shape.BoundBox.ZMax - 29) < 1e-6, f.Shape.BoundBox
 
 
+def test_3_edit_to_an_edge_of_it():
+    f = doc().getObject(ST["f"])
+    Gui.Selection.clearSelection()
+    s().edit_feature(f)
+    harness.pump(1000)
+    if dialog().active_pick() != "to_face":
+        dialog().field("to_face").click()
+        harness.pump(300)
+    box = ST["box"]
+    edge = [i + 1 for i, e in enumerate(box.Shape.Edges) if abs(e.BoundBox.ZMax) < 1e-6][0]  # its bottom: z = 25
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, box.getParentGeoFeatureGroup().Name, "%s.Edge%d" % (box.Name, edge))
+    harness.pump(1500)
+    assert dialog().values()["to_face"] == "%s:Edge%d" % (box.Name, edge), (dialog().values(), dialog().error_text())
+    assert not dialog().error_text(), dialog().error_text()
+    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    f = ST["body"].Tip
+    assert "Invalid" not in f.State and abs(f.Shape.BoundBox.ZMax - 25) < 1e-6, (f.State, f.Shape.BoundBox)
+
+
+def test_4_second_side_has_its_own_extents():
+    """⇄ 2 shows Extents 2 (Distance / To Next / Through All / To); Through All goes down through the base."""
+    f = doc().getObject(ST["f"])
+    Gui.Selection.clearSelection()
+    s().edit_feature(f)
+    harness.pump(1000)
+    d = dialog()
+    d.field("direction").button("two_sides").click()
+    harness.pump(800)
+    assert d.field("extent2").isVisible(), "no Extents 2"
+    d.field("extent2").button("through_all").click()
+    harness.pump(1500)
+    assert not d.field("distance2").isVisible(), "Distance 2 shown for Through All"
+    assert not d.error_text(), d.error_text()
+    if os.environ.get("INNCAD_SHOT"):
+        d.grab().save(os.environ["INNCAD_SHOT"])
+    QTest.mouseClick(d.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    f = ST["body"].Tip
+    assert "Invalid" not in f.State, f.getStatusString()
+    assert f.Type2 == "UpToLast" and abs(f.AddSubShape.BoundBox.ZLength - 25) < 1e-6, (f.Type2, f.AddSubShape.BoundBox)
+
+
 def test_9_cleanup():
     if s().feature_session is not None:
         s().feature_session.cancel()
@@ -120,4 +164,5 @@ def test_9_cleanup():
     App.closeDocument(doc().Name)
 
 
-harness.run([test_0_part_and_a_box_above, test_1_face_of_another_solid, test_2_edit_to_a_corner_of_it, test_9_cleanup])
+harness.run([test_0_part_and_a_box_above, test_1_face_of_another_solid, test_2_edit_to_a_corner_of_it, test_3_edit_to_an_edge_of_it,
+             test_4_second_side_has_its_own_extents, test_9_cleanup])

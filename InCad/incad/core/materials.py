@@ -44,7 +44,11 @@ def set_material(doc, name):
         raise ValueError("Unknown material %r (choose one of %s)" % (name, ", ".join(MATERIALS)))
     setattr(_store(doc, create=True), _PROP, name)
     color = MATERIALS[name][1]
+    from incad.core import appearance
     for body in document.bodies(doc):
+        if appearance.record(body) is not None:  # a coloured Solid: drawn from its record (the material's colour
+            appearance.apply(body, force=True)    # where it has none of its own)
+            continue
         vo = getattr(body, "ViewObject", None)
         if vo is not None:
             try:

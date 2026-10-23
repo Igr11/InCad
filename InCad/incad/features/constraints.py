@@ -98,6 +98,8 @@ def _axis(link, el):
     if sh.ShapeType == "Face" and sh.Surface.TypeId == "Part::GeomPlane":
         n = _normal(link, el)
         return (sh.CenterOfMass, App.Vector(n).normalize()) if n is not None else None
+    if sh.ShapeType == "Face" and sh.Surface.TypeId in ("Part::GeomCylinder", "Part::GeomCone"):
+        return sh.CenterOfMass, App.Vector(sh.Surface.Axis).normalize()  # a round face: its axis, as an edge
     if sh.ShapeType == "Edge" and safe.curve_type(sh) == "Part::GeomLine":
         return sh.CenterOfMass, App.Vector(sh.Curve.Direction).normalize()
     return None
@@ -108,15 +110,35 @@ def _mixed(doc, values):
     kinds = []
     for link, el in _moving_refs(doc, values):
         try:
-            kinds.append(link.Shape.getElement(el).ShapeType)
+            sh = link.Shape.getElement(el)
+            round_face = sh.ShapeType == "Face" and sh.Surface.TypeId in ("Part::GeomCylinder", "Part::GeomCone")
+            kinds.append("Edge" if round_face else sh.ShapeType)  # a round face stands for its axis: an edge
         except Exception:
             kinds.append(None)
     return set(kinds) == {"Face", "Edge"}
 
 
+_ROUND = ("Part::GeomCylinder", "Part::GeomCone")
+
+
+def _both_round(doc, values):
+    """Two round faces (or two parts' axes clicked): Mate and Flush put their axes in line (the user, as Inventor)."""
+    try:
+        for link, el in _moving_refs(doc, values):
+            sh = link.Shape.getElement(el)
+            if sh.ShapeType != "Face" or sh.Surface.TypeId not in _ROUND:
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def _joint_type(doc, spec, values, j=None):
     """FreeCAD's joint type for these picks: Parallel and Perpendicular swap for a face against an edge; an Angle of
-    90 deg there (FreeCAD's Angle 0, which its solver handles badly) is FreeCAD's Parallel: the edge stands up."""
+    90 deg there (FreeCAD's Angle 0, which its solver handles badly) is FreeCAD's Parallel: the edge stands up; Mate
+    or Flush on two round faces (two axes) is FreeCAD's Cylindrical: the axes in line."""
+    if spec.key in ("mate", "flush") and _both_round(doc, values):
+        return "Cylindrical"
     if spec.joint in _SWAP and _mixed(doc, values):
         return _SWAP[spec.joint]
     if spec.joint == "Angle" and j is not None and _mixed(doc, values) and abs(j.Angle.Value) < 1e-9:
@@ -452,6 +474,11 @@ def _met(doc, j, spec, values):
         if a1 is None or a2 is None:  # an older Angle on a curved face: FreeCAD's own axis, not checked here
             return True
         return abs(abs(a1[1].dot(a2[1])) - _wanted(j)) < 1e-6
+    if spec.key in ("mate", "flush") and _both_round(doc, values):  # two axes: in line
+        (l1, e1), (l2, e2) = _moving_refs(doc, values)
+        (p1, d1), (p2, d2) = _axis(l1, e1), _axis(l2, e2)
+        off = (p2 - p1) - d1 * (p2 - p1).dot(d1)
+        return abs(abs(d1.dot(d2)) - 1) < 1e-6 and off.Length < 1e-4
     facing = _facing(spec, values)
     if spec.value != "offset" or facing is None:
         return True

@@ -34,14 +34,15 @@ def test_0_part_with_two_pieces():
     os.makedirs(folder, exist_ok=True)
     doc.saveAs(os.path.join(folder, "Bench.FCStd"))
     harness.pump(500)
-    ST.update(folder=folder)
+    label = part.Label
+    ST.update(folder=folder, names=("Bench_assy", [label + "_1", label + "_2"]))
 
 
 def test_1_dialog_then_ok_opens_the_assembly():
     def press_ok():
         dlg = QtWidgets.QApplication.activeModalWidget()
         assert dlg is not None and dlg.windowTitle() == "Make Assembly", dlg
-        assert dlg.names() == ("Bench-Assembly", ["Bench-Solid1", "Bench-Solid2"]), dlg.names()
+        assert dlg.names() == ST["names"], dlg.names()  # the Solid's name kept, the assembly the part's + _assy
         dlg.ok_button.click()
     from incad.core import make_assembly as ma
     part0 = App.ActiveDocument
@@ -64,7 +65,7 @@ def test_1_dialog_then_ok_opens_the_assembly():
     ma.make, App.openDocument = real_make, real_open
     harness.pump(3000)
     assert getattr(r, "ok", True), getattr(r, "error", "")
-    for name in ("Bench-Assembly", "Bench-Solid1", "Bench-Solid2"):
+    for name in [ST["names"][0]] + ST["names"][1]:
         assert os.path.exists(os.path.join(ST["folder"], name + ".FCStd")), name
     asm_doc = App.ActiveDocument
     assert assembly.is_assembly(asm_doc), asm_doc.Label
@@ -125,13 +126,13 @@ def test_3_place_into_a_new_unsaved_assembly():
     harness.pump(1000)
     asm_doc = App.ActiveDocument
     assert assembly.is_assembly(asm_doc) and not asm_doc.FileName
-    part = os.path.join(ST["folder"], "Bench-Solid1.FCStd")
+    part = os.path.join(ST["folder"], ST["names"][1][0] + ".FCStd")
     link = shell.assembly_place(part)
     harness.pump(1500)
     timer.stop()
     assert not seen_modals, seen_modals
     assert link is not None, "placed"
-    assert asm_doc.FileName == os.path.join(ST["folder"], asm_doc.Label + ".FCStd"), asm_doc.FileName
+    assert asm_doc.FileName == os.path.join(ST["folder"], ST["names"][1][0] + "_assy.FCStd"), asm_doc.FileName
     assert len(assembly.components(asm_doc)) == 1
 
 

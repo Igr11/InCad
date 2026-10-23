@@ -37,7 +37,14 @@ class MakeAssemblyTest(unittest.TestCase):
         self.assertEqual([round(p.volume) for p in found], [2000, 500])
 
     def test_default_names(self):
-        self.assertEqual(ma.default_names(self.doc, 2), ("Plate-Assembly", ["Plate-Solid1", "Plate-Solid2"]))
+        """The assembly is the part's name + _assy; each part keeps its Solid's name (the user), numbered when one
+        Solid holds several pieces or the name is the part's own."""
+        label = self.body.Label
+        self.assertEqual(ma.default_names(self.doc, ma.pieces(self.doc)), ("Plate_assy", [label + "_1", label + "_2"]))
+        self.body.Label = "Plate"  # the part's own name: a number keeps the part's file
+        names = ma.default_names(self.doc, ma.pieces(self.doc))[1]
+        self.assertEqual(names, ["Plate_1", "Plate_2"])
+        self.assertEqual(ma.check_names(self.doc, "Plate_assy", names), "")
 
     def test_two_part_files_with_history_and_an_assembly(self):
         asm_path = ma.make(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid2"])

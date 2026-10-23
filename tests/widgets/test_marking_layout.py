@@ -28,7 +28,7 @@ class MarkingLayoutTest(unittest.TestCase):
     def test_contexts(self):
         self.assertEqual(set(marking_layout.LAYOUT),
                          {"part", "face", "edge", "vertex", "empty", "browser", "origin", "sketch", "assembly",
-                          "asm_face", "asm_edge", "solid", "joint", "asm_cut"})
+                          "asm_face", "asm_edge", "solid", "joint", "asm_cut", "picture"})
         self.assertEqual(marking_layout.LAYOUT["origin"]["list"], ["sketch.start", "view.toggle_visibility"])  # planes/axes
         for ctx in ("part", "face", "edge", "vertex", "browser", "origin"):  # Hide / Show from any RMB in the view
             self.assertIn("view.toggle_visibility", marking_layout.LAYOUT[ctx]["list"], ctx)

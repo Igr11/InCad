@@ -400,6 +400,9 @@ def glyph_parts():
 
 def test_9a_view_button_draws_only_available_freedoms():
     from incad.core import dof
+    s()._dof_linger = None  # the part dragged just before keeps its gizmo a while (the user): not this test's
+    s().dof_display_changed()
+    harness.pump(200)
     assert glyph_parts() == 0
     commands.REGISTRY.run("view.dof")
     harness.pump(800)

@@ -446,6 +446,16 @@ def finish_dialog():
     shell.instance().finish_dialog()
 
 
+def start_line3d():
+    """3D Line, from the 3D Model tab or from inside a sketch (the Sketch tab has it too, the user: a 3D Line is a kind
+    of sketch): an open sketch is finished first."""
+    from incad.ui import shell
+    session = shell.sketch_session()
+    if session is not None and session.editing() is not None:
+        finish_sketch()
+    start_feature("line3d")
+
+
 def start_feature(kind_name):
     from incad import features
     from incad.ui import shell
@@ -465,7 +475,7 @@ def make_assembly():
     _refuse_while_busy()  # an open dialog's preview would be written into every copy
     doc = App.ActiveDocument
     found = ma.pieces_or_refuse(doc)
-    asm, names = ma.default_names(doc, len(found))
+    asm, names = ma.default_names(doc, found)
     rows = [(n, "%.0f mm³" % p.volume) for n, p in zip(names, found)]
     dlg = MakeAssemblyDialog(asm, rows, lambda a, ns, replace=False: ma.check_names(doc, a, ns, replace),
                              Gui.getMainWindow(), existing=lambda a, ns: ma.existing(doc, a, ns))
@@ -684,6 +694,107 @@ def _ask_threads():
     return "on" if box.clickedButton() is on else "without" if box.clickedButton() is without else "cancel"
 
 
+SCREENSHOT_ASK = None  # tests: callable() -> (path, transparent), instead of the Save dialog
+SHOT_TYPES = (".png", ".jpg", ".jpeg", ".bmp")
+
+
+def screenshot(path=None, transparent=False, window=False):
+    """View ▸ Screenshot (the user: the part on screen saved as a picture, for a web site): the 3D view as it is now —
+    the part, its colours, the view's background (or none: a PNG with a transparent background) — at the screen's
+    full resolution (twice the window's size on a Retina screen). window: the whole window with its ribbon, browser
+    and status bar (the user: with the toolbars too). PNG, JPEG or BMP; returns the file's path."""
+    import os
+    import FreeCAD as App
+    from incad.core import log
+    gdoc = _gui().ActiveDocument
+    if gdoc is None or App.ActiveDocument is None:
+        raise ValueError("Open a part or an assembly first")
+    view = gdoc.ActiveView
+    if path is None:
+        path, transparent = (SCREENSHOT_ASK or _ask_screenshot_path)(App.ActiveDocument, window)
+        if not path:
+            return None
+    if os.path.splitext(path)[1].lower() not in SHOT_TYPES:
+        path += ".png"
+    if transparent and not path.lower().endswith(".png"):
+        transparent = False  # only a PNG keeps a transparent background
+    vp = view.graphicsView().viewport()
+    dpr = vp.devicePixelRatioF()
+    w, h = int(round(vp.width() * dpr)), int(round(vp.height() * dpr))
+    if window:
+        w, h = _window_shot(path, view, vp, dpr)
+    else:
+        view.saveImage(path, w, h, "Transparent" if transparent else "Current")
+    if hasattr(prefs, "set_last_folder"):
+        prefs.set_last_folder(path)
+    log.report("info", "Saved the %s as %s (%d × %d)" % ("window" if window else "view", os.path.basename(path), w, h))
+    return path
+
+
+def screenshot_window():
+    return screenshot(window=True)
+
+
+def _window_shot(path, view, vp, dpr):
+    """The whole window into `path`, the 3D view drawn into it: a grab of the window has no picture where an OpenGL
+    view is (black), so the view is rendered on its own and painted in its place. Returns (width, height)."""
+    import os
+    import tempfile
+    from incad.qt import QtCore, QtGui
+    mw = _gui().getMainWindow()
+    shot = mw.grab().toImage()
+    tmp = os.path.join(tempfile.gettempdir(), "incad_window_view_%d.png" % os.getpid())
+    try:
+        view.saveImage(tmp, int(round(vp.width() * dpr)), int(round(vp.height() * dpr)), "Current")
+        part = QtGui.QImage(tmp)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    at = vp.mapTo(mw, QtCore.QPoint(0, 0))
+    p = QtGui.QPainter(shot)  # the grab keeps the screen's pixel ratio: the painter works in window px
+    p.drawImage(QtCore.QRectF(at.x(), at.y(), vp.width(), vp.height()), part)
+    for w in _floating_over(mw, vp):  # what floats over the view (its buttons, an open dialog) back on top
+        p.drawPixmap(w.mapTo(mw, QtCore.QPoint(0, 0)), w.grab())
+    p.end()
+    if not shot.save(path):
+        raise ValueError("Could not save %s" % os.path.basename(path))
+    return shot.width(), shot.height()
+
+
+def _floating_over(mw, vp):
+    """The visible widgets laid over the 3D view (children of it or of the widgets holding it), outermost ones only."""
+    from incad.qt import QtCore, QtWidgets
+    holders = []
+    w = vp
+    while w is not None and w is not mw:
+        holders.append(w)
+        w = w.parentWidget()
+    area = vp.rect().translated(vp.mapTo(mw, vp.rect().topLeft()))
+    out = []
+    for holder in holders:
+        for child in holder.findChildren(QtWidgets.QWidget, options=QtCore.Qt.FindDirectChildrenOnly):
+            if child in holders or not child.isVisible() or child.isWindow():
+                continue
+            box = child.rect().translated(child.mapTo(mw, child.rect().topLeft()))
+            if box.intersects(area) and not any(o.isAncestorOf(child) for o in out):
+                out.append(child)
+    return out
+
+
+def _ask_screenshot_path(doc, window=False):
+    import os
+    from incad.qt import QtWidgets
+    folder = prefs.last_folder() if hasattr(prefs, "last_folder") else os.path.expanduser("~")
+    name = os.path.join(folder, (doc.Label or "view") + ".png")
+    clear = "" if window else "PNG, transparent background (*.png);;"  # a whole window has no background to leave
+    filters = "PNG (*.png);;" + clear + "JPEG (*.jpg *.jpeg);;BMP (*.bmp)"
+    path, chosen = QtWidgets.QFileDialog.getSaveFileName(_gui().getMainWindow(),
+                                                         "Screenshot (Window)" if window else "Screenshot", name, filters)
+    return path, chosen.startswith("PNG, transparent")
+
+
 def export_file():
     """File ▸ Export: the part (every visible Solid) or the assembly (its visible components) to STEP or STL."""
     import os
@@ -856,6 +967,108 @@ def delete_selection():
     for name in names:
         context.set_target(name)
         delete_target()
+
+
+def _appearance_targets(doc):
+    """{Solid: [face indices] (none: the whole Solid)} — the picked faces, else the picked Solids (a feature, a row
+    the menu was opened on), else every Solid of the part."""
+    from incad.core import context, document
+    from incad.features import common
+    targets = {}
+    for s in common.selection_ex(doc.Name):
+        for sub in (s.SubElementNames or ("",)):
+            obj, elt = common.resolve(s.Object, sub) if sub else (s.Object, "")
+            body = document._solid_of(obj) if obj is not None else None
+            if body is None or body.TypeId != "PartDesign::Body":
+                continue
+            faces = targets.setdefault(body, [])
+            if elt.startswith("Face") and elt[4:].isdigit() and faces is not None:
+                faces.append(int(elt[4:]) - 1)
+            else:
+                targets[body] = None  # the whole Solid
+    if not targets and context.target():
+        body = doc.getObject(context.target())
+        body = document._solid_of(body) if body is not None else None
+        if body is not None and body.TypeId == "PartDesign::Body":
+            targets[body] = None
+    if not targets:
+        targets = {b: None for b in document.bodies(doc) if not b.Shape.isNull()}
+    return {b: (f or []) for b, f in targets.items()}
+
+
+def appearance(choose=None):
+    """Tools ▸ Material ▸ Appearance (the user: "rendering, or at least colour"; "Hide Edges"): colour, finish and
+    edges of the picked Solids or faces (nothing picked: every Solid), shown as chosen, one undo step on OK.
+    choose(dialog) -> True / False: the test's (or a caller's) choices instead of the user's."""
+    import FreeCAD as App
+    from incad.core import appearance as looks, document, log, safe
+    from incad.ui import shell
+    from incad.ui.appearance_dialog import AppearanceDialog
+    _refuse_while_busy()
+    doc = App.ActiveDocument
+    if doc is None or not document.is_incad_part(doc):
+        raise ValueError("Open a part first (a part's Solids and faces get a colour)")
+    targets = _appearance_targets(doc)
+    if not targets:
+        raise ValueError("The part has no Solid to colour yet")
+    nfaces = sum(len(f) for f in targets.values())
+    names = ", ".join(b.Label for b in targets)
+    title = ("%d face%s of %s" % (nfaces, "" if nfaces == 1 else "s", names)) if nfaces else names
+    first = next(iter(targets))
+    rec = looks.record(first) or {}
+    color, finish = rec.get("color") or looks.material_color(doc), rec.get("finish") or looks.DEFAULT_FINISH
+    if nfaces:
+        faces = first.Shape.Faces
+        e = looks.entry_at(rec, faces, targets[first][0], looks._tolerance(first.Shape)) if targets[first] else None
+        if e:
+            color, finish = e["color"], e.get("finish") or finish
+    edges = [(looks.record(b) or {}).get("edges", True) for b in targets]
+    from incad.core import textures
+    before = {b: (list(b.ViewObject.ShapeAppearance), b.ViewObject.DisplayMode, textures.name_on(b)) for b in targets}
+    s = shell.instance()
+    dlg = AppearanceDialog(title, color, finish, edges[0], len(set(edges)) > 1,
+                           s.theme if s is not None else "light", _gui().getMainWindow(), rec.get("texture") or "None")
+
+    def records():
+        hide = dlg.hide_edges()
+        out = {}
+        for b, faces in targets.items():
+            out[b] = looks.change(b, faces, dlg.color if dlg.color_chosen else None,
+                                  dlg.finish if dlg.finish_chosen else None,
+                                  None if hide is None else not hide, reset=dlg.reset_asked,
+                                  texture=dlg.texture if dlg.texture_chosen else None)
+        return out
+
+    def preview():
+        for b, r in records().items():
+            mats, edges_on = looks.wanted(b, r or {})
+            looks.draw(b, mats, edges_on, (r or {}).get("texture"))
+
+    def put_back():
+        for b, (mats, mode, texture) in before.items():
+            try:
+                b.ViewObject.ShapeAppearance = mats
+                b.ViewObject.DisplayMode = mode
+                textures.put(b, texture)
+            except Exception:
+                pass
+
+    dlg.changed.connect(preview)
+    ok = choose(dlg) if choose is not None else dlg.exec() == AppearanceDialog.Accepted
+    final = records() if ok else None
+    put_back()
+    if not ok:
+        return None
+
+    def run():
+        for b, r in final.items():
+            looks.set_record(b, r)
+            looks.apply(b, force=True)
+    r = safe.run_safely("Appearance", run, doc)
+    if not r.ok:
+        raise ValueError(r.error)
+    log.report("info", "Appearance: %s" % title)
+    return final
 
 
 def choose_material(ask=None):
@@ -1064,11 +1277,160 @@ def _undo_redo(redo):
     log.logger().info("undo/redo relinked %s", repaired)
 
 
+OPEN_ASK = None  # tests: callable() -> path, instead of the dialog
+
+
+def _openable():
+    """[(name, patterns)]: FreeCAD files, STEP and STL — not FreeCAD's long list of formats (the user: only what can be
+    opened)."""
+    return [("FreeCAD files", "*.FCStd *.fcstd"), ("STEP", "*.step *.stp *.STEP *.STP"), ("STL", "*.stl *.STL")]
+
+
+def open_filters():
+    kinds = _openable()
+    every = " ".join(p for _, p in kinds)
+    names = ", ".join(n for n, _ in kinds)
+    return ";;".join(["%s (%s)" % (names, every)] + ["%s (%s)" % k for k in kinds])
+
+def open_file():
+    """File ▸ Open with a picture of the file beside the list (incad.ui.open_dialog); opened as FreeCAD's Open does
+    (Recent Files, other types by their import module)."""
+    import os
+    import FreeCAD as App
+    if OPEN_ASK is not None:
+        path = OPEN_ASK()
+    else:
+        from incad.ui import open_dialog
+        path, _ = open_dialog.get_open_file(_gui().getMainWindow(), "Open", App.ParamGet(
+            "User parameter:BaseApp/Preferences/General").GetString("FileOpenSavePath", ""), open_filters())
+    if not path:
+        return None
+    App.ParamGet("User parameter:BaseApp/Preferences/General").SetString("FileOpenSavePath", os.path.dirname(path))
+    for d in App.listDocuments().values():
+        if d.FileName and os.path.abspath(d.FileName) == os.path.abspath(path):
+            _gui().setActiveDocument(d.Name)  # already open: shown, not opened twice
+            return d
+    if path.lower().endswith(".fcstd"):
+        App.openDocument(path)
+        _remember_recent(path)
+    else:
+        _gui().open(path)  # another type: by its import module
+    return App.ActiveDocument
+
+
+def _remember_recent(path):
+    """First in FreeCAD's Recent Files (its Open adds the file there; App.openDocument does not)."""
+    import os
+    import FreeCAD as App
+    p = App.ParamGet("User parameter:BaseApp/Preferences/RecentFiles")
+    most = p.GetInt("RecentFiles", 4) or 4
+    old = [p.GetString("MRU%d" % i, "") for i in range(most)]
+    files = [path] + [f for f in old if f and os.path.abspath(f) != os.path.abspath(path)]
+    for i, f in enumerate(files[:most]):
+        p.SetString("MRU%d" % i, f)
+
+
+# ----- Picture tab (the user: a tab of its own for the reference picture and its scaling) -----
+def _picture():
+    """The image the Image tab acts on: the selected one, else the last one inserted."""
+    import FreeCAD as App
+    from incad.core import image_reference
+    try:
+        obj = _target_object()
+    except Exception:
+        obj = None
+    if image_reference.is_picture(obj):
+        return obj
+    found = image_reference.pictures(App.ActiveDocument)
+    if not found:
+        raise ValueError("Insert an image first (Image ▸ Insert Image)")
+    return found[-1]
+
+
+def insert_picture():
+    import os
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from incad.core import image_reference
+    from incad.ui import open_dialog
+    doc = App.ActiveDocument
+    folder = prefs.import_folder() if hasattr(prefs, "import_folder") else ""
+    if not os.path.isdir(folder):
+        folder = os.path.dirname(doc.FileName) if doc is not None and doc.FileName else os.path.expanduser("~")
+    pats = " ".join("*%s *%s" % (e, e.upper()) for e in image_reference.IMAGES)
+    path, _ = open_dialog.get_open_file(Gui.getMainWindow(), "Insert Image", folder, "Images (%s)" % pats)
+    return insert_picture_at(path) if path else None
+
+
+def insert_picture_at(path):
+    """The picture into the open part (a new part, named after it, when none is open)."""
+    import os
+    import FreeCAD as App
+    from incad.core import document, image_reference, log, safe
+    _refuse_while_busy()
+    if hasattr(prefs, "set_import_folder"):
+        prefs.set_import_folder(os.path.dirname(path))
+    doc = App.ActiveDocument
+    if doc is None or not document.is_incad_part(doc):
+        doc = new_part(part_only=True)
+        if doc is None:
+            return None  # the New dialog was cancelled
+        doc.Label = os.path.splitext(os.path.basename(path))[0]
+    r = safe.run_safely("Insert Image", lambda: image_reference.add(doc, path), doc)
+    if not r.ok:
+        raise ValueError(r.error)
+    if App.GuiUp:
+        _gui().SendMsgToActiveView("ViewFit")
+    log.report("info", "%s: an image on the XY plane, %g × %g mm. Next: Image ▸ Scale / Transparency"
+               % (os.path.basename(path), round(r.value.XSize.Value, 1), round(r.value.YSize.Value, 1)))
+    return r.value
+
+
+def scale_picture():
+    from incad.ui import shell
+    _refuse_while_busy()
+    shell.edit_feature(_picture())
+
+
+def _picture_step(label, change):
+    from incad.core import safe
+    pic = _picture()
+    r = safe.run_safely(label, lambda: (change(pic), pic.Document.recompute()), pic.Document)
+    if not r.ok:
+        raise ValueError(r.error)
+
+
+def picture_on(plane):
+    from incad.core import image_reference
+    _picture_step("Image on %s" % plane.upper(), lambda pic: image_reference.put_on(pic, plane))
+
+
+def picture_turn():
+    from incad.core import image_reference
+    _picture_step("Turn Image", lambda pic: image_reference.turn(pic, 90))
+
+
+def picture_mirror():
+    from incad.core import image_reference
+    _picture_step("Mirror Image", image_reference.mirror)
+
+
+def pictures_show_hide():
+    import FreeCAD as App
+    from incad.core import document, image_reference
+    found = image_reference.pictures(App.ActiveDocument)
+    if not found:
+        raise ValueError("Insert an image first (Image ▸ Insert Image)")
+    show = not any(p.Visibility for p in found)
+    for p in found:
+        document._set_visible(p, show)
+
+
 def commands():
     return [
         Command(id="file.new", label="New", icon="new", handler=new_part, shortcut="Ctrl+N",
                 tooltip="New part (asks for mm or inch)"),
-        _std("file.open", "Open", "open", "Ctrl+O"),
+        Command(id="file.open", label="Open", icon="open", handler=open_file, shortcut="Ctrl+O"),
         _std("file.save", "Save", "save", "Ctrl+S"),
         _std("file.save_as", "Save As", "save", "Ctrl+Shift+S"),
         Command(id="file.export", label="Export", icon="export", handler=export_file, shortcut="Ctrl+E",
@@ -1150,7 +1512,7 @@ def commands():
                 contexts=frozenset({"part"})),
         Command(id="feature.fillet", label="Fillet", icon="fillet", handler=lambda: start_feature("fillet"),
                 shortcut="F", contexts=frozenset({"part"})),
-        Command(id="feature.full_round", label="Full Round Fillet", icon="fillet",
+        Command(id="feature.full_round", label="Full Round Fillet", icon="full_round",
                 handler=lambda: start_feature("full_round"), contexts=frozenset({"part"}),
                 tooltip="Pick two parallel edges of a face: it becomes one half cylinder, two fillets meeting on it "
                         "(the end of a bar, a plate's side)"),
@@ -1249,6 +1611,33 @@ def commands():
                 handler=lambda: constraints_visible(True), shortcut="F8", contexts=frozenset({"sketch"})),
         Command(id="sketch.constraints_hide", label="Hide Constraints", icon="constraints_toggle",
                 handler=lambda: constraints_visible(False), shortcut="F9", contexts=frozenset({"sketch"})),
+        Command(id="view.screenshot", label="Screenshot", icon="camera", handler=screenshot,
+                tooltip="Save the 3D view as a picture (PNG, JPEG or BMP; a PNG can have a transparent background)"),
+        Command(id="view.screenshot_window", label="Screenshot (Window)", icon="camera", handler=screenshot_window,
+                tooltip="Save the whole window — ribbon, browser, 3D view and status bar — as a picture"),
+        Command(id="picture.insert", label="Insert Image", icon="picture", handler=insert_picture,
+                contexts=frozenset({"part"}),
+                tooltip="A JPG or PNG on the XY plane to sketch over (100 mm across; Scale / Transparency sizes it)"),
+        Command(id="picture.scale", label="Scale / Transparency", icon="scale", handler=scale_picture,
+                contexts=frozenset({"part"}),
+                tooltip="Click two points of the image and type the real length between them: the whole image "
+                        "scales so it is; a slider sets how see-through it is"),
+        Command(id="picture.on_xy", label="On XY", icon="plane", handler=lambda: picture_on("xy"),
+                contexts=frozenset({"part"}), tooltip="The image onto the XY plane (seen from the top)"),
+        Command(id="picture.on_xz", label="On XZ", icon="plane", handler=lambda: picture_on("xz"),
+                contexts=frozenset({"part"}), tooltip="The image onto the XZ plane (seen from the front)"),
+        Command(id="picture.on_yz", label="On YZ", icon="plane", handler=lambda: picture_on("yz"),
+                contexts=frozenset({"part"}), tooltip="The image onto the YZ plane (seen from the right)"),
+        Command(id="picture.turn", label="Turn 90°", icon="rotational", handler=picture_turn,
+                contexts=frozenset({"part"}), tooltip="Turn the image a quarter turn in its plane"),
+        Command(id="picture.mirror", label="Mirror", icon="mirror", handler=picture_mirror,
+                contexts=frozenset({"part"}), tooltip="Mirror the image left to right"),
+        Command(id="picture.show_hide", label="Show / Hide", icon="hide_all", handler=pictures_show_hide,
+                contexts=frozenset({"part"}), tooltip="Show or hide every image of the part"),
+        Command(id="feature.line3d", label="3D Line", icon="line3d", handler=start_line3d,
+                contexts=frozenset({"part", "sketch"}),
+                tooltip="A line in space: click points of a virtual cube round the origin, or anywhere on its lines "
+                        "(lines, a spline, or a spline through the points) — a path for Sweep"),
         Command(id="feature.sweep", label="Sweep", icon="sweep", handler=lambda: start_feature("sweep"),
                 contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a path sketch"),
         Command(id="feature.loft", label="Loft", icon="loft", handler=lambda: start_feature("loft"),
@@ -1257,6 +1646,9 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a helix (springs)"),
         Command(id="feature.draft", label="Draft", icon="draft", handler=lambda: start_feature("draft"),
                 contexts=frozenset({"part"}), tooltip="Tilt faces by an angle (for moulding)"),
+        Command(id="tools.appearance", label="Appearance", icon="appearance", handler=lambda: appearance(),
+                tooltip="Colour and finish (matte, glossy, metal, glass…) of the picked Solids or faces — every Solid "
+                        "with nothing picked —, a texture (brushed, wood, carbon, knurl, sand) and Hide Edges"),
         Command(id="tools.material", label="Material", icon="material", handler=lambda: choose_material(),
                 contexts=frozenset({"part"}), tooltip="Part material: density for Mass Properties, colour"),
         Command(id="view.section_points", label="Section by 3 Points", icon="section",

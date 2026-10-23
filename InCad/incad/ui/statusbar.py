@@ -37,13 +37,19 @@ class StatusBar(QtWidgets.QWidget):
         self._dof.installEventFilter(self)
         self._dof.setCursor(QtCore.Qt.PointingHandCursor)
         self._dof.setToolTip("Show the geometry that is still free")
+        self._tint_prompt()
+
+    def _tint_prompt(self):
+        """The next-step prompt is a tip: blue, as the tips in the dialogs (errors are red)."""
+        self._prompt.setStyleSheet("color: %s;" % themes.PALETTES[self._theme]["accent"])
 
     def set_prompt(self, text):
         self._prompt.setText(text)
 
     def show_message(self, level, text, timeout_ms=8000):
         p = themes.PALETTES[self._theme]
-        color = {"error": p["error"], "warning": p["accent"]}.get(level, p["text"])
+        # the user: tips blue, errors red (a warning is something that did not work: red too)
+        color = {"error": p["error"], "warning": p["error"]}.get(level, p["accent"])
         self._message.setStyleSheet("color: %s; font-weight: 600;" % color)
         self._message.setText(text)
         self._message.setToolTip(text)
@@ -70,6 +76,7 @@ class StatusBar(QtWidgets.QWidget):
 
     def set_theme(self, theme):
         self._theme = theme
+        self._tint_prompt()
 
     def texts(self):
         def t(label):

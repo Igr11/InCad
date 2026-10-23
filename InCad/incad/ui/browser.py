@@ -14,7 +14,8 @@ EDIT_TRIGGERS = (QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstract
 
 KIND_ICONS = {"part": "part", "origin": "origin", "feature": "feature", "sketch": "sketch",
               "end_of_part": "end_of_part", "solids": "solids", "body": "part", "assembly": "assembly",
-              "component": "part", "relationships": "mate", "joint": "mate"}
+              "component": "part", "relationships": "mate", "joint": "mate",
+              "picture": "picture"}
 
 
 class _TypingFirst(QtCore.QObject):
@@ -334,7 +335,7 @@ class ModelBrowser(QtWidgets.QWidget):
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
         if item is None or item.data(0, KIND_ROLE) not in ("feature", "sketch", "origin_item", "body", "component",
-                                                           "joint"):
+                                                           "joint", "picture"):
             return  # a Solid's row and an assembly part's row have their menus too (Hide / Show…)
         self.tree.setCurrentItem(item)
         self.markingMenuRequested.emit(item.data(0, NAME_ROLE), self.tree.viewport().mapToGlobal(pos))
@@ -354,7 +355,8 @@ class ModelBrowser(QtWidgets.QWidget):
 
     def _on_double_click(self, item, _column=0):
         kind = item.data(0, KIND_ROLE)
-        if kind in ("feature", "sketch", "origin_item", "component", "joint"):  # an origin plane: a new sketch on it;
+        if kind in ("feature", "sketch", "origin_item", "component", "joint", "picture"):  # an origin plane: a new
+            # sketch on it; a picture: Scale by Length;
             # a constraint (Relationships): its dialog;
             # a component (or a row of its history): its part file opens
             self.featureActivated.emit(item.data(0, NAME_ROLE))

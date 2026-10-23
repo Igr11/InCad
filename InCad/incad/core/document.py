@@ -293,11 +293,20 @@ def detach_lump(feature):
             support = [sup for sup, subs in attached
                        if _on_piece(sup, subs, piece)]  # a face of a later step may be on the rest of the part
             profiles = [_profile_of(r) for r in related]
-            if (o in profiles or any(r in links or r in support for r in related)) and (
+            # every sketch a moving step is built from goes with it: a Sweep's path, a Loft's sections (left
+            # behind, FreeCAD said "links go out of the allowed scope" and the move undid itself over and over)
+            inputs = [x for r in related if r.TypeId != "Sketcher::SketchObject" for x in r.OutList]
+            if (o in profiles or (o.TypeId == "Sketcher::SketchObject" and o in inputs)
+                    or any(r in links or r in support for r in related)) and (
                     o.TypeId == "Sketcher::SketchObject" or o.isDerivedFrom("PartDesign::Feature")):
                 related.append(o)
                 grown = True
     related.sort(key=group.index)
+    for sk in [o for o in related if o.TypeId == "Sketcher::SketchObject"]:
+        users = [u for u in sk.InList if u in group and u not in related and u.isDerivedFrom("PartDesign::Feature")]
+        if users:
+            raise ValueError("%s shares %s with %s: it stays in %s" % (feature.Label, sk.Label, users[0].Label,
+                                                                        body.Label))
     movers = [o for o in related if o.TypeId != "Sketcher::SketchObject"]
     sketches = [o for o in related if o.TypeId == "Sketcher::SketchObject"]
     old_shapes = {m.Name: m.Shape.copy() for m in movers if not m.Shape.isNull()}

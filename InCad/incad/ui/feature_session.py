@@ -580,9 +580,15 @@ class FeatureSession(QtCore.QObject):
             owner = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
             if owner is None or owner.TypeId != "PartDesign::Body":
                 continue
-            if document.is_detached_lump(obj):
+            tried = self.__dict__.setdefault("_detach_tried", set())
+            if obj.Name not in tried and document.is_detached_lump(obj):
+                tried.add(obj.Name)  # once per dialog: a move that cannot be made is not tried on every pick
                 old_shape = obj.Shape.copy()
-                owner = document.detach_lump(obj)
+                try:
+                    owner = document.detach_lump(obj)
+                except Exception as e:
+                    log.report("warning", "%s does not touch the part, but stays where it is: %s" % (obj.Label, e))
+                    return pairs
                 log.report("info", "%s does not touch the part: made its own Solid (%s)" % (obj.Label, owner.Label))
                 pairs = self._remap_pairs(pairs, obj, old_shape)
                 self._remap_dialog(obj, old_shape)
@@ -1155,10 +1161,31 @@ class FeatureSession(QtCore.QObject):
             return
         self._refresh_options()
         values = self.dialog.values() if self.dialog is not None else values
+        if self._live_only(values):
+            return  # only how it looks (an image's transparency): set at once, no preview, no recompute
         self._pending = values
         if not (throttle and self._timer.isActive()):
             self._timer.start()
         self._sync_sketch_markers()
+
+    def _live_only(self, values):
+        """A change of the kind's LIVE values alone (Scale / Transparency's slider): kind.live sets it on the feature
+        at once — a preview recomputed the image, which reloaded its file at every step of the slider (the user: it
+        jerked). True when that was all."""
+        live = getattr(self.kind, "LIVE", ())
+        applied = self._applied or {}
+        if not live or self.feature is None or self._pending is not None or not _feature_alive(self.feature):
+            return False
+        changed = {k for k in set(values) | set(applied) if values.get(k) != applied.get(k)}
+        if not changed or not changed <= set(live):
+            return False
+        try:
+            self.kind.live(self.doc, self.feature, values)
+        except Exception:
+            log.logger().exception("%s live change", self.kind.TITLE)
+            return False
+        self._applied = dict(applied, **{k: values.get(k) for k in live})
+        return True
 
     def _activate_revealed_pick(self):
         """A choice that brings pick fields into view (Extrude's To face) makes the first of them the
@@ -1177,7 +1204,7 @@ class FeatureSession(QtCore.QObject):
         if self.dialog is None:
             return picked
         for f in self.kind.FIELDS:
-            if getattr(f, "pick", None) == "sketch":
+            if getattr(f, "pick", None) in ("sketch", "path"):
                 for obj, _ in common.parse_picks(self.doc, self.dialog.values().get(f.key)):
                     if obj.TypeId == "Sketcher::SketchObject" and obj not in picked:
                         picked.append(obj)

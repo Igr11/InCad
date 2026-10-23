@@ -4,7 +4,7 @@ Modes: 'part' (an InCad Part is active), 'empty' (no document, or a file not mad
 
 LAYOUT = {
     "part": [
-        ["3D Model", [["Sketch", ["sketch.start"]],
+        ["3D Model", [["Sketch", ["sketch.start", "feature.line3d"]],
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole",
                                   ["feature.sweep", "feature.loft", "feature.coil"], "feature.emboss"]],
                       ["Modify", [["feature.fillet", "feature.full_round", "feature.chamfer"], ["feature.shell", "feature.draft"],
@@ -16,13 +16,17 @@ LAYOUT = {
         ["Sketch", []],
         ["Inspect", [["Measure", [["inspect.measure", "inspect.distance", "inspect.angle", "inspect.length",
                                    "inspect.area"], "inspect.mass"]]]],
-        ["Tools", [["Material", ["tools.material"]], ["Options", ["view.freecad", "tools.ask_on_new"]]]],
+        ["Image", [["Insert", ["picture.insert"]], ["Scale", ["picture.scale"]],
+                     ["Place", [["picture.on_xy", "picture.on_xz", "picture.on_yz"], "picture.turn", "picture.mirror"]],
+                     ["Look", ["picture.show_hide"]]]],
+        ["Tools", [["Material", ["tools.material", "tools.appearance"]], ["Options", ["view.freecad", "tools.ask_on_new"]]]],
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"],
                                     ["view.toggle_visibility", "view.origin_show_all", "view.origin_hide_all",
                                      "view.sketches_show_all", "view.sketches_hide_all"],
                                     "view.assembly_context"]],
+                  ["Capture", [["view.screenshot", "view.screenshot_window"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "sketch": [
@@ -35,7 +39,7 @@ LAYOUT = {
                                  "sketch.slot_arc_flat"],
                                 ["sketch.polygon", "sketch.triangle", "sketch.square", "sketch.pentagon",
                                  "sketch.octagon", "sketch.polygon_n"],
-                                "sketch.point", "sketch.text"]],
+                                "sketch.point", "sketch.text", "feature.line3d"]],
                     ["Modify", [["sketch.fillet", "sketch.chamfer"], "sketch.trim", "sketch.extend", "sketch.offset"]],
                     ["Pattern", [["sketch.rect_pattern", "sketch.circ_pattern", "sketch.path_pattern"], "sketch.mirror"]],
                     ["Dimension", ["sketch.dimension", "sketch.dimension_overall"]],
@@ -49,6 +53,7 @@ LAYOUT = {
         ["View", [["Appearance", ["view.theme_toggle"]],
                   ["Navigate", ["view.zoom_all", "view.home", "nav.orbit", "nav.pan"]],
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"]]],
+                  ["Capture", [["view.screenshot", "view.screenshot_window"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "assembly": [
@@ -62,6 +67,7 @@ LAYOUT = {
                   ["Navigate", ["view.zoom_all", "view.home", "view.look_at", "view.zoom_selection", "nav.orbit", "nav.pan"]],
                   ["Visual Style", ["view.style_shaded", "view.style_wireframe", ["view.section", "view.section_points"],
                                     "view.toggle_visibility", "view.dof"]],
+                  ["Capture", [["view.screenshot", "view.screenshot_window"]]],
                   ["Windows", ["view.parameters"]]]],
     ],
     "empty": [

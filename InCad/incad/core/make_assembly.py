@@ -65,9 +65,32 @@ def _stem(doc):
     return os.path.splitext(os.path.basename(doc.FileName))[0] if doc.FileName else doc.Label
 
 
-def default_names(doc, n):
+def default_names(doc, found):
+    """(assembly, [part per piece]): the assembly is the part's name + _assy, each part file keeps its Solid's name
+    as the part shows it (the user: the names stay as they were); a Solid of several pieces numbers them, and a name
+    that would be the part's own file (or come twice) gets a number."""
     stem = _stem(doc)
-    return "%s-Assembly" % stem, ["%s-Solid%d" % (stem, i + 1) for i in range(n)]
+    if isinstance(found, int):  # how many pieces only: the part's name, numbered
+        return "%s_assy" % stem, ["%s_%d" % (stem, i + 1) for i in range(found)]
+    per_body = {}
+    for p in found:
+        per_body[p.body_name] = per_body.get(p.body_name, 0) + 1
+    taken, names, seen = {stem.lower(), ("%s_assy" % stem).lower()}, [], {}
+    for p in found:
+        body = doc.getObject(p.body_name)
+        base = (body.Label if body is not None else p.body_name).strip() or stem
+        for ch in '/\\:':
+            base = base.replace(ch, "_")
+        if per_body[p.body_name] > 1:
+            seen[p.body_name] = seen.get(p.body_name, 0) + 1
+            base = "%s_%d" % (base, seen[p.body_name])
+        name, k = base, 1
+        while name.lower() in taken:
+            k += 1
+            name = "%s_%d" % (base, k)
+        taken.add(name.lower())
+        names.append(name)
+    return "%s_assy" % stem, names
 
 
 def _path(doc, name):
@@ -114,12 +137,17 @@ def _has_split(body):
 def _detach_all(d):
     """Every separate piece left in a Solid by an older file goes to a Solid of its own; a Solid with a Split keeps
     them (the Split's Cut picks the piece, lumps before it included: their knife may cross them)."""
+    stay = set()  # a piece sharing a sketch with a step that stays (a Sweep's path) cannot move: it stays
     for _ in range(100):
         lump = next((f for b in document.bodies(d) if not _has_split(b) for f in b.Group
-                     if document.is_detached_lump(f)), None)
+                     if f.Name not in stay and document.is_detached_lump(f)), None)
         if lump is None:
             return
-        document.detach_lump(lump)
+        try:
+            document.detach_lump(lump)
+        except ValueError:
+            stay.add(lump.Name)
+            continue
         d.recompute()
 
 

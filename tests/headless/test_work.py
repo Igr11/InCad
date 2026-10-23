@@ -1,3 +1,4 @@
+import math
 import unittest
 
 import FreeCAD as App
@@ -21,6 +22,64 @@ class WorkTest(unittest.TestCase):
         self.doc.recompute()
         self.assertAlmostEqual(f.Placement.Base.z, 15, places=6)
         self.assertEqual(k.read(self.doc, f)["offset"], "15 mm")
+
+    def test_several_offset_planes_in_one_go(self):
+        """Planes = 3: three planes 10, 20, 30 mm off the base (for a loft); a new offset spaces them all, a new count
+        adds or drops planes, and one plane of the row can still be moved on its own."""
+        xy = util.xy_plane(self.body)
+        k = work.PLANE
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), base=xy.Name,
+                                                     offset="10 mm", count="3"))
+        self.doc.recompute()
+        row = work.series(self.doc, f)
+        self.assertEqual([round(p.Placement.Base.z, 6) for p in [f] + row], [10, 20, 30])
+        self.assertEqual(k.read(self.doc, f)["count"], "3")
+        k.update(self.doc, f, dict(k.read(self.doc, f), offset="5 mm", count="4"))
+        self.doc.recompute()
+        row = work.series(self.doc, f)
+        self.assertEqual([round(p.Placement.Base.z, 6) for p in [f] + row], [5, 10, 15, 20])
+        k.update(self.doc, f, dict(k.read(self.doc, f), count="2"))
+        self.doc.recompute()
+        row = work.series(self.doc, f)
+        self.assertEqual([round(p.Placement.Base.z, 6) for p in [f] + row], [5, 10])
+        self.assertEqual(len([o for o in self.body.Group if o.TypeId == "PartDesign::Plane"]), 2)
+        second = row[0]
+        self.assertIn("* 2", k.read(self.doc, second)["offset"])
+        k.update(self.doc, second, dict(k.read(self.doc, second), offset="12 mm"))
+        self.doc.recompute()
+        self.assertAlmostEqual(second.Placement.Base.z, 12, places=6)
+        self.assertAlmostEqual(f.Placement.Base.z, 5, places=6)
+
+    def test_turn_a_plane_of_the_row(self):
+        """Turn X / Y / Z (the user: loft planes turned about their axes, relative to the previous plane or the global
+        axes): the plane turns about its own point; turning one leaves the next as it was."""
+        k = work.PLANE
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None),
+                                                     base=util.xy_plane(self.body).Name, offset="10 mm", count="3"))
+        self.doc.recompute()
+        second, third = work.series(self.doc, f)
+        n = lambda p: p.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+        k.update(self.doc, second, dict(k.read(self.doc, second), turn_x="30 °"))
+        self.doc.recompute()
+        self.assertAlmostEqual(second.Placement.Base.z, 20, places=6)  # turned about its own point
+        self.assertAlmostEqual(n(second).getAngle(App.Vector(0, 0, 1)), math.radians(30), places=6)
+        self.assertAlmostEqual(n(third).getAngle(App.Vector(0, 0, 1)), 0, places=9)  # the next one as it was
+        self.assertEqual(k.read(self.doc, second)["turn_x"], "30 °")
+        # the third: 10° more than the second, relative to it; then read in global axes
+        k.update(self.doc, third, dict(k.read(self.doc, third), turn_ref="previous", turn_x="10 °", turn_y="0 °",
+                                       turn_z="0 °"))
+        self.doc.recompute()
+        self.assertAlmostEqual(n(third).getAngle(App.Vector(0, 0, 1)), math.radians(40), places=6)
+        self.assertEqual(k.read(self.doc, third)["turn_x"], "10 °")
+        k.update(self.doc, second, dict(k.read(self.doc, second), turn_x="0 °"))  # the second back: the third stays
+        self.doc.recompute()
+        self.assertAlmostEqual(n(third).getAngle(App.Vector(0, 0, 1)), math.radians(40), places=6)
+        g = dict(k.read(self.doc, third), turn_ref="global")
+        self.assertEqual(work.turn_text(self.doc, third, "global")["turn_x"], "40 °")
+        k.update(self.doc, third, dict(g, turn_x="-15 °", turn_y="0 °", turn_z="0 °"))
+        self.doc.recompute()
+        self.assertAlmostEqual(n(third).getAngle(App.Vector(0, 0, 1)), math.radians(15), places=6)
+        self.assertAlmostEqual(third.Placement.Base.z, 30, places=6)
 
     def test_axis_through_an_edge(self):
         k = work.AXIS

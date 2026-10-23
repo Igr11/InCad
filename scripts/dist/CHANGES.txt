@@ -5,6 +5,65 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.8.0
+-----
+3D Line on a virtual cube, several work planes at once and turned with rings, Extrude Extents 2, Fillet Full, file pictures in Open, a Image tab, Screenshot, axes in assemblies; Sweep Wall and detached-Sweep fixes.
+
+Improvements
+- 3D Line (3D Model ▸ Sketch ▸ 3D Line): a line in space drawn on a virtual cube of points round the origin — its size
+  and the step between the points are yours, written grey along its edges; nearer lines are thicker, far ones dotted,
+  so the cube reads in space. Click a cube point, or anywhere on its lines (the point slides freely, grey numbers give
+  the distances to the cube points either side); drag a point to move it. Lines, a Spline, or a spline Through the
+  points, with a Curvature comb you can switch off. Sweep takes it as its path.
+- Work Plane ▸ Offset ▸ Planes: several planes at once, 2×, 3×… the offset from the same base (for a loft); a new
+  offset spaces them all, and each can still be moved on its own.
+- Work Plane ▸ Turn (one compact row): X, Y, Z about the previous plane's axes or the global ones, typed or dragged on
+  red, green and blue rings on the plane. The plane turns about its own point; the next one stays as it was.
+- Extrude ▸ ⇄ 2: the second side has its own Extents 2 — Distance, To Next, Through All or To.
+- Extrude ▸ To also reaches an edge or a work axis (through its middle), and follows it.
+- Fillet ▸ Full beside the radius arrows: a full round between the two picked edges; off again, an ordinary fillet.
+  Full Round Fillet has its own icon.
+- File ▸ Open (and Import, Place in an assembly) shows a picture of the file under the pointer — a FreeCAD file's
+  saved view, an STL, STEP or IGES drawn shaded — with its date and size, and Desktop, Documents, Downloads and the
+  recent files' folders at the side.
+- File ▸ Open lists only what opens: FreeCAD files, STEP and STL.
+- Image tab: Insert Image (a JPG, PNG or BMP on the XY plane, 100 mm across), Scale / Transparency (click two
+  points of the picture and type the real length between them — the whole picture scales, the first point staying put;
+  a slider sets how see-through it is), On XY / XZ / YZ, Turn 90°, Mirror, Show / Hide. A double-click on the
+  picture's row opens Scale / Transparency.
+- View ▸ Screenshot (also in the File menu): the 3D view saved as PNG, JPEG or BMP at the screen's full resolution; a
+  PNG can have a transparent background, for a web page.
+- Assemblies show the axis of every turned body and hole (a cylinder or cone half way round or more) as a light dash-dot
+  centre line; click one while Mate, Flush, Insert, Rotational, Slider, Cylindrical, Parallel, Perpendicular or Angle waits for a pick to
+  use that axis.
+- Image ▸ Scale / Transparency: Line ▸ Horizontal or Vertical turns the image about the first point so the line
+  between the two points lies so; a magnifying glass beside the pointer while putting a point; the points are small
+  and bright.
+- 3D Line: a working layer — XY, XZ or YZ at the height you set (Tab / Shift+Tab or its arrows move it one step of the cube) — is bright
+  and alone takes clicks, the rest of the cube a faint cage; switching layers goes through the last point. The 3D Line
+  button is on the Sketch tab too (an open sketch is finished first).
+- View ▸ Screenshot ▸ Screenshot (Window): the whole window — ribbon, browser, 3D view and status bar — as a picture.
+  Make Assembly names each part file after its Solid and the assembly after the part + _assy; a new assembly saved on
+  its first Place is named after that part + _assy.
+- Assemblies: a part dragged by the mouse keeps its gizmo about 3 s (longer while the pointer is on a handle), so a
+  handle can still be grabbed; the handle being dragged turns amber; the gizmo's arrow heads are smaller. Image ▸
+  Scale / Transparency: the transparency slider no longer makes the image jerk; the magnifying glass shows the points
+  as small crosses, not magnified.
+- Tips are blue, errors red — in the dialogs and the status bar.
+- Tools ▸ Material ▸ Appearance (also in a Solid's, a face's or the part's right-click menu): the picked faces or
+  Solids — every Solid with nothing picked — in any colour, with a finish (Matte, Satin, Glossy, Metal, Chrome, Glass,
+  Rubber), a texture over the colour (Brushed, Wood, Carbon, Knurl, Sand) and Hide Edges; shown as chosen, one Undo
+  step. A coloured face keeps its colour when a feature moves it; assemblies show the parts' colours.
+
+Bug fixes
+- A Sweep's Wall came out uneven — thick on one side, thin on the other — when the profile's sketch was flipped on
+  its plane (Reversed): the wall's inner outline was a mirror image of the outer one. Edit the Sweep and press OK to
+  rebuild a wall made with the earlier version.
+- A Sweep made away from the part, then picked in a dialog (Move Face…), was split off into its own Solid without its
+  path sketch: FreeCAD repeated "links go out of the allowed scope", the dialog kept splitting it again and again and
+  InnCad could crash. It now moves once, with its path (a Loft with its sections).
+
+
 0.7.0
 -----
 Extrude To anything, Emboss round the corners, End of Part above sketches, Full Round Fillet, Show / Hide All Sketches.

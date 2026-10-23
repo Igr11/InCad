@@ -209,6 +209,28 @@ ICONS.update({
              'stroke-width="1.2" stroke-dasharray="2 2"/>'),
     "fillet": ('<path d="M5 27 V14 Q5 6 13 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
                '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
+    "camera": ('<rect x="4" y="10" width="24" height="16" rx="2.5" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+               '<path d="M11 10 L13 6.5 H19 L21 10" fill="none" stroke="{S}" stroke-width="1.6"/>'
+               '<circle cx="16" cy="18" r="4.6" fill="none" stroke="{S}" stroke-width="1.8"/>'
+               '<circle cx="24" cy="13.5" r="1.1" fill="{A}"/>'),
+    "appearance": ('<path d="M16 4 C9 4 4 9 4 15.5 C4 21 8 25 12.5 25 C14.5 25 15 23.6 14.4 22.2 C13.7 20.6 14.8 19 16.5 19 H20 C24.5 19 28 16 28 12.5 C28 7.5 22.6 4 16 4 Z" fill="{F}" stroke="{S}" stroke-width="1.6"'
+                   ' stroke-linejoin="round"/><circle cx="10" cy="14" r="2.1" fill="#d9382c"/>'
+                   '<circle cx="13.5" cy="9" r="2.1" fill="#f2b51b"/><circle cx="19.5" cy="8.5" r="2.1" fill="#3a9a42"/>'
+                   '<circle cx="23.5" cy="13" r="2.1" fill="#2b6fd6"/>'),
+    "picture": ('<rect x="4" y="7" width="24" height="18" rx="1.5" fill="{F}" stroke="{S}" stroke-width="1.6"/>'
+                '<path d="M6 23 L13 15 L18 20 L21 17 L26 23 Z" fill="{S}"/><circle cx="21" cy="12" r="2.2" fill="{A}"/>'),
+    "scale": ('<rect x="5" y="7" width="22" height="16" rx="1.5" fill="{F}" stroke="{N}" stroke-width="1.2"/>'
+              '<path d="M9 19 L23 11" stroke="{S}" stroke-width="2.2"/>'
+              '<circle cx="9" cy="19" r="2.2" fill="{S}"/><circle cx="23" cy="11" r="2.2" fill="{S}"/>'
+              '<path d="M5 27 H27 M5 25.5 V28.5 M27 25.5 V28.5" stroke="{S}" stroke-width="1.2"/>'),
+    "line3d": ('<path d="M6 12 L14 6 H28 V20 L20 26 H6 Z M6 12 H20 V26 M20 12 L28 6" fill="none" stroke="{N}"'
+               ' stroke-width="1" stroke-dasharray="2 2"/>'
+               '<path d="M6 26 L13 16 L20 19 L28 6" fill="none" stroke="{S}" stroke-width="2.4"/>'
+               '<circle cx="6" cy="26" r="2" fill="{S}"/><circle cx="13" cy="16" r="2" fill="{S}"/>'
+               '<circle cx="20" cy="19" r="2" fill="{S}"/><circle cx="28" cy="6" r="2" fill="{S}"/>'),
+    "full_round": ('<path d="M6 16 V5 H26 V16" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'
+                   '<path d="M6 28 V16 A10 10 0 0 1 26 16 V28" fill="none" stroke="{S}" stroke-width="2.4"/>'
+                   '<path d="M6 28 H26" fill="none" stroke="{N}" stroke-width="1.2"/>'),
     "chamfer": ('<path d="M5 27 V13 L12 6 H27" fill="none" stroke="{S}" stroke-width="2.4"/>'
                 '<path d="M5 27 H27 V6" fill="none" stroke="{N}" stroke-width="1.2" stroke-dasharray="2 2"/>'),
     "assembly": ('<path d="M3 14 L10 10 L17 14 L17 22 L10 26 L3 22 Z" fill="{F}" stroke="{S}" stroke-width="1.3"/>'

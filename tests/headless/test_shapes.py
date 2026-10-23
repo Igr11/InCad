@@ -163,6 +163,24 @@ class SweepWallTest(ShapesTest):
         self.assertAlmostEqual(self.body.Tip.Shape.Volume, expect, delta=0.02 * expect)
         self.assertEqual(len(self.body.Tip.Shape.Solids), 1)
 
+    def test_a_profile_flipped_on_its_plane_keeps_an_even_wall(self):
+        """The user's hexagon on a work plane, its sketch flipped (MapReversed) and off the plane's origin: the wall's
+        inner sketch copied the attachment without the flip, its outline mirrored off the outer one (uneven wall)."""
+        import math
+        r, c = 6.0, App.Vector(4, 3, 0)
+        pts = [c + App.Vector(r * math.cos(math.pi / 3 * k), r * math.sin(math.pi / 3 * k), 0) for k in range(6)]
+        prof = sketch(self.body, "YZ_Plane", "Hex", [Part.LineSegment(pts[k], pts[(k + 1) % 6]) for k in range(6)], 0)
+        prof.MapReversed = True
+        path = sketch(self.body, "XY_Plane", "Line", [Part.LineSegment(App.Vector(0, -c.x, 0),
+                                                                      App.Vector(40, -c.x, 0))], 5)
+        self.doc.recompute()
+        self.make(shapes.SWEEP, profile="Hex", path="Line", hollow=True, wall="1 mm", ends="both_open")
+        inner = [o for o in self.body.Group if o.Label.startswith("SweepWallProfile")][0]
+        self.assertTrue(inner.Placement.isSame(prof.Placement, 1e-9), (inner.Placement, prof.Placement))
+        outer = Part.Wire(Part.__sortEdges__(list(prof.Shape.Edges)))
+        for v in inner.Shape.Vertexes:
+            self.assertAlmostEqual(outer.distToShape(v)[0], 1.0, places=6)
+
     def test_read_round_trips_and_clearing_the_wall_removes_the_helpers(self):
         f = self.tube()
         v = shapes.SWEEP.read(self.doc, f)

@@ -408,6 +408,8 @@ class Handles:
         import FreeCAD as App
         if self.drag is not None:
             self.finish()
+        if self.shell.axis_pressed(view, viewport, x, y):  # a part's axis taken by a constraint dialog
+            return True
         if self.drawn is None or not self.can_grab():
             return False
         options = []

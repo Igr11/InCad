@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import FreeCAD as App
 import Part
 
-from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
+from incad.features.common import Field, format_picks, is_line3d, parse_picks, resolve, value_param, value_text
 
 _OP = Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join")
 _TYPES = {"sweep": ("PartDesign::AdditivePipe", "PartDesign::SubtractivePipe"),
@@ -15,8 +15,8 @@ _TYPES = {"sweep": ("PartDesign::AdditivePipe", "PartDesign::SubtractivePipe"),
 def _sketches(doc, text):
     out = []
     for obj, sub in parse_picks(doc, text):
-        obj = resolve(obj, sub)[0] if obj.TypeId != "Sketcher::SketchObject" else obj
-        if obj is not None and obj.TypeId == "Sketcher::SketchObject" and obj not in out:
+        obj = resolve(obj, sub)[0] if obj.TypeId != "Sketcher::SketchObject" and not is_line3d(obj) else obj
+        if obj is not None and (obj.TypeId == "Sketcher::SketchObject" or is_line3d(obj)) and obj not in out:
             out.append(obj)
     return out
 
@@ -48,7 +48,7 @@ def _sketch_preselect(keys):
     def pre(pairs):
         found = []
         for obj, sub in pairs:
-            if obj.TypeId == "Sketcher::SketchObject" and obj not in found:
+            if (obj.TypeId == "Sketcher::SketchObject" or is_line3d(obj)) and obj not in found:
                 found.append(obj)
         if len(keys) == 1:  # one picks field takes them all in order
             return {keys[0]: format_picks([(o, "") for o in found])} if found else {}
@@ -132,9 +132,11 @@ def _wall_sketch(doc, body, f, prof, geos, name, placement=None):
     sk = body.newObject("Sketcher::SketchObject", name)
     _mark(sk, f)
     if placement is None:
-        sk.AttachmentSupport = prof.AttachmentSupport
-        sk.MapMode = prof.MapMode
-        sk.AttachmentOffset = prof.AttachmentOffset
+        # the whole attachment: a profile flipped on its plane (MapReversed) gave a copy turned over, the wall's
+        # inner outline mirrored off the outer one (the user's uneven wall)
+        for prop in ("AttachmentSupport", "MapMode", "MapReversed", "MapPathParameter", "AttachmentOffset"):
+            if prop in prof.PropertiesList and prop in sk.PropertiesList:
+                setattr(sk, prop, getattr(prof, prop))
     else:
         sk.MapMode = "Deactivated"
         sk.Placement = placement
@@ -246,7 +248,7 @@ _WALL = (("hollow", (True,)), _JOIN)
 SWEEP = SimpleNamespace(
     __name__="incad.features.sweep", TITLE="Sweep", ICON="sweep", TYPES=_TYPES["sweep"], NEEDS_PROFILE=False,
     PROPS={}, STRUCTURAL=("join", "cut"), preselect=_sketch_preselect(["profile", "path"]),
-    FIELDS=(Field("profile", "Profile", "pick", pick="sketch"), Field("path", "Path", "pick", pick="sketch"), _OP,
+    FIELDS=(Field("profile", "Profile", "pick", pick="sketch"), Field("path", "Path", "pick", pick="path"), _OP,
             Field("hollow", "Wall", "bool", default=False, show_if=_JOIN),
             Field("wall", "Thickness", "value_length", default="1 mm", show_if=_WALL),
             Field("ends", "Ends", "choice", _ENDS, "both_open", show_if=_WALL)),

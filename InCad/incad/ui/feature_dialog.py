@@ -10,10 +10,10 @@ from incad.ui import theme as themes
 _NUMBER = re.compile(r"^\s*([-+]?\d+(?:\.\d+)?)\s*([^\d\s][^\d]*?)?\s*$")
 
 
-def step_text(text, delta, kind):
+def step_text(text, delta, kind, signed=False, size=None):
     """The text of a value field one step up or down (delta ±1, ±10 with Shift): 1 of the unit shown (1 mm, 1°,
-    1 count; 1/16 in), the number of decimals kept. None when the text is a formula, which cannot be stepped;
-    a length never goes below zero."""
+    1 count; 1/16 in) or the field's own step, the number of decimals kept. None when the text is a formula, which
+    cannot be stepped; a length never goes below zero, unless it is signed (a level: below zero is the other side)."""
     m = _NUMBER.match(text or "")
     if m is None:
         return None
@@ -21,10 +21,14 @@ def step_text(text, delta, kind):
     if unit and not re.match(r"^(mm|cm|m|in|\"|ft|'|°|deg|rad|µm|um)$", unit):
         return None
     step = 0.0625 if unit in ("in", '"') else 1.0
+    if size and unit in ("", "mm"):
+        step = float(size)  # the field's own step (3D Line's At: one step of the cube)
     value = float(number) + delta * step
-    if kind != "value_angle" and value < 0:
+    if kind != "value_angle" and not signed and value < 0:
         value = 0.0
     decimals = len(number.split(".")[1]) if "." in number else 0
+    if size:
+        decimals = max(decimals, len(("%g" % step).partition(".")[2]))  # a 2.5 mm step keeps its half
     if unit in ("in", '"'):
         decimals = max(decimals, 4)
     out = "%.*f" % (decimals, value)
@@ -49,6 +53,14 @@ class _StepButton(QtWidgets.QToolButton):
 
 class ValueField(QtWidgets.QLineEdit):
     stepped = Signal(int)  # ±1 (±10 with Shift) from the Up/Down keys
+    wheel_steps = False    # a compact field without arrows: the wheel over it steps it too
+
+    def wheelEvent(self, event):
+        if not self.wheel_steps or not event.angleDelta().y():
+            return super().wheelEvent(event)
+        big = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+        self.stepped.emit((1 if event.angleDelta().y() > 0 else -1) * (10 if big else 1))
+        event.accept()
 
     def insert(self, name):
         super().insert(name)
@@ -60,6 +72,85 @@ class ValueField(QtWidgets.QLineEdit):
             self.stepped.emit((1 if event.key() == QtCore.Qt.Key_Up else -1) * (10 if big else 1))
             return
         super().keyPressEvent(event)
+
+
+class SliderField(QtWidgets.QWidget):
+    """A slider with its value in % beside it; changes as it moves."""
+    changed = Signal()
+
+    def __init__(self, low, high, parent=None):
+        super().__init__(parent)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal, self)
+        self.slider.setRange(int(low), int(high))
+        self.label = QtWidgets.QLabel(self)
+        self.label.setFixedWidth(44)
+        row.addWidget(self.slider, 1)
+        row.addWidget(self.label)
+        self.slider.valueChanged.connect(self._moved)
+        self._moved(self.slider.value(), quiet=True)
+
+    def _moved(self, v, quiet=False):
+        self.label.setText("%d %%" % v)
+        if not quiet:
+            self.changed.emit()
+
+    def value(self):
+        return self.slider.value()
+
+    def set_value(self, v):
+        self.slider.blockSignals(True)
+        self.slider.setValue(int(v))
+        self.slider.blockSignals(False)
+        self._moved(self.slider.value(), quiet=True)
+
+
+class PointsField(QtWidgets.QWidget):
+    """'x y z; …' clicked in the view: shows how many, with Undo (the last one) and Clear."""
+    changed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        self.count = QtWidgets.QLabel("")
+        row.addWidget(self.count, 1)
+        self.undo = QtWidgets.QToolButton(self)
+        self.undo.setText("Undo")
+        self.clear = QtWidgets.QToolButton(self)
+        self.clear.setText("Clear")
+        for b in (self.undo, self.clear):
+            b.setObjectName("InCadClear")
+            b.setFocusPolicy(QtCore.Qt.NoFocus)
+            row.addWidget(b)
+        self.undo.clicked.connect(lambda: self._drop(last=True))
+        self.clear.clicked.connect(lambda: self._drop(last=False))
+        self._text = ""
+        self.set_text("")
+
+    def _items(self):
+        return [i for i in self._text.split(";") if i.strip()]
+
+    def text(self):
+        return self._text
+
+    def set_text(self, text):
+        self._text = text or ""
+        n = len(self._items())
+        self.count.setText("No points yet" if not n else "1 point" if n == 1 else "%d points" % n)
+        self.undo.setEnabled(n > 0)
+        self.clear.setEnabled(n > 0)
+
+    def add(self, item):
+        self.set_text("; ".join(self._items() + [item]).strip())
+        self.changed.emit()
+
+    def _drop(self, last):
+        items = self._items()
+        self.set_text("; ".join(items[:-1]) if last else "")
+        self.changed.emit()
 
 
 class ChoiceField(QtWidgets.QWidget):
@@ -134,7 +225,23 @@ class FeatureDialog(QtWidgets.QFrame):
         form = QtWidgets.QGridLayout()
         form.setHorizontalSpacing(8)
         self._steppers, self._lists = {}, {}
-        for r, f in enumerate(fields):
+        self._toggles = {}  # key -> (button, the value field it greys out)
+        r = -1
+        line = None  # the row same_row fields join: its layout
+        for f in fields:
+            if getattr(f, "same_row", False) and line is not None:
+                small = QtWidgets.QLabel(f.label)
+                widget = self._make(f)
+                if isinstance(widget, ValueField):
+                    widget.setMinimumWidth(0)
+                    widget.setFixedWidth(max(58, widget.fontMetrics().horizontalAdvance("-188.8°") + 14))
+                    widget.wheel_steps = True
+                    widget.stepped.connect(lambda d, k=f.key: self._step(k, d))
+                line.addWidget(small)
+                line.addWidget(widget)
+                self._labels[f.key], self._widgets[f.key], self._rows[f.key] = small, widget, (small, widget)
+                continue
+            r += 1
             label = QtWidgets.QLabel(f.label)
             widget = self._make(f)
             self._widgets[f.key] = widget  # the arrows read it while the row is built
@@ -145,6 +252,16 @@ class FeatureDialog(QtWidgets.QFrame):
                 form.addWidget(label, r, 0, QtCore.Qt.AlignTop)
             else:
                 form.addWidget(label, r, 0)
+            joined = [g for g in fields[fields.index(f) + 1:]]
+            if joined and getattr(joined[0], "same_row", False):  # the next fields share this row
+                holder = QtWidgets.QWidget(self)
+                line = QtWidgets.QHBoxLayout(holder)
+                line.setContentsMargins(0, 0, 0, 0)
+                line.setSpacing(4)
+                line.addWidget(row)
+                row = holder
+            else:
+                line = None
             form.addWidget(row, r, 1)
             self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, row)
         form.setColumnStretch(1, 1)  # spare width goes to the fields, never between the names and the fields
@@ -176,9 +293,10 @@ class FeatureDialog(QtWidgets.QFrame):
         self.setStyleSheet(
             "QFrame#InCadFeatureDialog {{ background: {panel}; border: 1px solid {border}; border-radius: 9px; }}"
             " QLabel {{ color: {text}; }} QLabel#InCadDialogTitle {{ font-weight: 600; }}"
-            " QLabel#InCadDialogError {{ color: {error}; }} QLabel#InCadDialogError[waiting=\"true\"] {{ color: {text_dim}; }}"
+            " QLabel#InCadDialogError {{ color: {error}; }} QLabel#InCadDialogError[waiting=\"true\"] {{ color: {accent}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
-            " padding: 2px 4px; }} QToolButton#InCadStep {{ background: {panel_alt}; color: {text};"
+            " padding: 2px 4px; }} QLineEdit:disabled {{ color: {text_dim}; }}"
+            " QToolButton#InCadStep {{ background: {panel_alt}; color: {text};"
             " border: 1px solid {border}; padding: 0; font-size: 7px; }} QToolButton#InCadStep:disabled {{"
             " color: {text_dim}; }} QToolButton#InCadSegment {{ background: {panel_alt}; color: {text};"
             " border: 1px solid {border}; padding: 2px 8px; }} QToolButton#InCadSegment:checked {{"
@@ -224,6 +342,14 @@ class FeatureDialog(QtWidgets.QFrame):
             w = QtWidgets.QCheckBox(self)
             w.toggled.connect(lambda _=False: self._emit())
             return w
+        if f.kind == "slider":  # a whole number dragged between choices[0] and choices[1] (a picture's transparency)
+            w = SliderField(f.choices[0], f.choices[1], self)
+            w.changed.connect(self._emit)
+            return w
+        if f.kind == "points":  # points clicked in the view (3D Line): how many, Undo the last, Clear
+            w = PointsField(self)
+            w.changed.connect(self._emit)
+            return w
         w = QtWidgets.QPushButton("Select…", self)
         w.setMinimumWidth(200)  # a hint like "Click sketches in order…" shows whole
         w.setObjectName("InCadPick")
@@ -253,6 +379,16 @@ class FeatureDialog(QtWidgets.QFrame):
             col.addWidget(b)
             arrows.append(b)
         row.addLayout(col)
+        if f.toggle:
+            key, text = f.toggle
+            t = QtWidgets.QToolButton(box)
+            t.setText(text)
+            t.setObjectName("InCadSegment")
+            t.setCheckable(True)
+            t.setFocusPolicy(QtCore.Qt.NoFocus)
+            t.toggled.connect(lambda _on, k=key: self._toggled(k))
+            row.addWidget(t)
+            self._toggles[key] = (t, f.key)
         self._steppers[f.key] = tuple(arrows)
         w.stepped.connect(lambda d, k=f.key: self._step(k, d))
         w.textChanged.connect(lambda _t, k=f.key: self._update_arrows(k))
@@ -347,14 +483,40 @@ class FeatureDialog(QtWidgets.QFrame):
         """A row's 'up' / 'down' / 'remove' button (tests)."""
         return self._lists[key][1][index].buttons[name]
 
+    def _toggled(self, key):
+        self._grey_toggled(key)
+        if not self._loading:
+            self._emit()
+
+    def _grey_toggled(self, key):
+        button, value_key = self._toggles[key]
+        on = button.isChecked()
+        self._widgets[value_key].setEnabled(not on)
+        if on:
+            for b in self._steppers.get(value_key, ()):
+                b.setEnabled(False)
+        else:
+            self._update_arrows(value_key)
+
+    def toggle(self, key):
+        return self._toggles[key][0]
+
     def _update_arrows(self, key):
-        can = step_text(self._widgets[key].text(), 1, self._fields[key].kind) is not None
+        can = step_text(self._widgets[key].text(), 1, self._fields[key].kind) is not None \
+            and self._widgets[key].isEnabled()  # greyed by its toggle (Fillet ▸ Full): no steps
         for b in self._steppers.get(key, ()):
             b.setEnabled(can)
 
     def _step(self, key, delta):
         w = self._widgets[key]
-        text = step_text(w.text(), delta, self._fields[key].kind)
+        f = self._fields[key]
+        size = None
+        if getattr(f, "step", None) is not None:
+            try:
+                size = f.step(self.values())
+            except Exception:
+                size = None
+        text = step_text(w.text(), delta, f.kind, getattr(f, "signed", False), size)
         if text is None or text == w.text():
             return
         self._type_timer.stop()
@@ -396,14 +558,24 @@ class FeatureDialog(QtWidgets.QFrame):
                 out[key] = w.currentData() if w.currentIndex() >= 0 else ""
             elif f.kind == "bool":
                 out[key] = w.isChecked()
+            elif f.kind == "points":
+                out[key] = w.text()
+            elif f.kind == "slider":
+                out[key] = w.value()
             else:
                 out[key] = w.property("pick") or ""
+        for key, (button, _value_key) in self._toggles.items():
+            out[key] = button.isChecked()
         return out
 
     def set_values(self, values):
         self._loading = True
         try:
             for key, value in values.items():
+                if key in self._toggles:
+                    self._toggles[key][0].setChecked(bool(value))
+                    self._grey_toggled(key)
+                    continue
                 f, w = self._fields.get(key), self._widgets.get(key)
                 if f is None:
                     continue
@@ -420,6 +592,10 @@ class FeatureDialog(QtWidgets.QFrame):
                         w.setCurrentIndex(i)
                 elif f.kind == "bool":
                     w.setChecked(bool(value))
+                elif f.kind == "points":
+                    w.set_text(value or "")
+                elif f.kind == "slider":
+                    w.set_value(int(value or 0))
                 else:
                     w.setProperty("pick", value or "")
                     w.setText(self._pick_label(f, value))

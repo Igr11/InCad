@@ -74,14 +74,25 @@ def _attach(doc, f, refs, mode, offset=None):
         doc.recompute()
 
 
-def _offset_param(doc, f, text):
+def _bound_offset(f):
     from incad.core import model
-    pname = model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
+    return model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
+
+
+def _offset_param(doc, f, text, pname=None):
+    """f's offset value: the one it had before _attach unbound it (the planes of its series use it), else a new one."""
+    from incad.core import model
+    pname = pname or _bound_offset(f)
+    if pname is not None and pname not in model._feature_names(doc):
+        pname = None
     if pname is None:
         pname = model.new_feature_parameter(doc, text or "10 mm", "length")
         f.setExpression(".AttachmentOffset.Base.z", "%s.%s" % (model.MODEL_NAME, pname))
-    elif model.parameter_text(doc, pname) != text:
-        model.set_model_parameter(doc, pname, text, everything=False)
+    else:
+        if _bound_offset(f) != pname:
+            f.setExpression(".AttachmentOffset.Base.z", "%s.%s" % (model.MODEL_NAME, pname))
+        if model.parameter_text(doc, pname) != text:
+            model.set_model_parameter(doc, pname, text, everything=False)
 
 
 def _deg(text):
@@ -103,9 +114,13 @@ _PLANE_MODES = (("offset", "Offset from plane"), ("parallel_point", "Parallel th
 
 def _plane_apply(doc, body, f, values):
     mode = values.get("mode") or "offset"
+    old = _load(f)
     if mode == "offset":
+        pname = _bound_offset(f)
         _attach(doc, f, [_first(doc, values.get("base"), "a plane or a flat face")], "FlatFace")
-        _offset_param(doc, f, values.get("offset") or "10 mm")
+        _offset_param(doc, f, values.get("offset") or "10 mm", pname)
+        _turn(doc, f, values)
+        _sync_series(doc, f, _plane_count(values.get("count")), values.get("base") or "")
     elif mode == "parallel_point":
         base = _first(doc, values.get("base"), "a plane or a flat face")
         point = _first(doc, values.get("point"), "a point")
@@ -158,7 +173,120 @@ def _plane_apply(doc, body, f, values):
                          _first(doc, values.get("point"), "a point")], "TangentPlane")
     else:
         raise ValueError("Unknown work plane method %r" % mode)
-    _store(f, {k: values.get(k, "") for k in ("mode", "base", "base2", "point", "edge", "face", "angle", "points")})
+    data = {k: values.get(k, "") for k in ("mode", "base", "base2", "point", "edge", "face", "angle", "points",
+                                           "turn_ref")}
+    if mode == "offset" and old.get("series_of") and old.get("base") == data["base"]:
+        data.update(series_of=old["series_of"], k=old.get("k"))  # still one of its first plane's series
+    _store(f, data)
+
+
+TURN_KEYS = ("turn_x", "turn_y", "turn_z")
+
+
+def _global_rotation(f):
+    body = f.getParentGeoFeatureGroup()
+    g = body.getGlobalPlacement() if body is not None else App.Placement()
+    return g.Rotation.multiply(f.Placement.Rotation)
+
+
+def _previous(doc, f):
+    """The plane a Turn relative to the previous plane is measured from: the one before it in its series (the first
+    plane for the second), else None (the base)."""
+    data = _load(f)
+    owner = doc.getObject(data.get("series_of") or "")
+    if owner is None:
+        return None
+    k = data.get("k") or 2
+    before = [p for p in series(doc, owner) if (_load(p).get("k") or 0) < k]
+    return before[-1] if before else owner
+
+
+def _reference(doc, f, ref, base_rot):
+    """The rotation Turn's angles are measured from: the global axes, or the previous plane (the base for the first)."""
+    if ref == "global":
+        return App.Rotation()
+    prev = _previous(doc, f)
+    return _global_rotation(prev) if prev is not None else base_rot
+
+
+def _turn(doc, f, values):
+    """Turn X / Y / Z: the plane turned about its own point (where its offset puts it), angles about the axes of the
+    previous plane or the global ones (X first, then Y, then Z). The result is kept as the plane's own turn from its
+    base, so turning the previous plane later leaves this one as it is (the user)."""
+    angles = [_deg(values.get(k) or "0") for k in TURN_KEYS]
+    base_rot = _global_rotation(f)  # just attached, unturned
+    ref = _reference(doc, f, values.get("turn_ref") or "previous", base_rot)
+    wanted = ref.multiply(App.Rotation(angles[2], angles[1], angles[0]))
+    local = base_rot.inverted().multiply(wanted)
+    if any(abs(a) > 1e-12 for a in angles) or values.get("turn_ref") == "global" or not local.isIdentity(1e-12):
+        f.AttachmentOffset = App.Placement(f.AttachmentOffset.Base, local)
+        doc.recompute([f])
+
+
+def turn_text(doc, f, ref):
+    """Turn X / Y / Z as the dialog shows them, from where the plane is now."""
+    body_rot = _global_rotation(f)
+    offset = App.Rotation(f.AttachmentOffset.Rotation)
+    base_rot = body_rot.multiply(offset.inverted())
+    rel = _reference(doc, f, ref, base_rot).inverted().multiply(body_rot)
+    z, y, x = rel.getYawPitchRoll()
+    return {k: "%g °" % (round(a, 6) + 0.0) for k, a in zip(TURN_KEYS, (x, y, z))}
+
+
+def _plane_count(text):
+    t = (text or "1").strip()
+    if not t.isdigit() or not 1 <= int(t) <= 50:
+        raise ValueError("Planes: a whole number from 1 to 50")
+    return int(t)
+
+
+def series(doc, f):
+    """The planes made with f by its Planes count (for lofts), in order: the k-th one is k offsets from f's base."""
+    body = f.getParentGeoFeatureGroup()
+    group = body.Group if body is not None else doc.Objects
+    out = [o for o in group if o.TypeId == "PartDesign::Plane" and _load(o).get("series_of") == f.Name]
+    return sorted(out, key=lambda o: _load(o).get("k") or 0)
+
+
+def _sync_series(doc, f, count, base):
+    """Planes 2..count of f's series at 2x, 3x... its offset from the same base, each with its own value (a formula of
+    f's: 'd5 * 2'), so a changed offset spaces them all and one plane can still be moved on its own."""
+    from incad.core import model
+    pname = model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
+    have = series(doc, f)
+    for o in reversed(have[count - 1:]):
+        users = [u.Label for u in o.InList if u.TypeId != "PartDesign::Body"]
+        if users:
+            raise ValueError("%s is used by %s: it stays (Planes can't drop it)" % (o.Label, ", ".join(users)))
+        name = model.bound_parameter(o, ".AttachmentOffset.Base.z") or model.bound_parameter(o, "AttachmentOffset.Base.z")
+        body = o.getParentGeoFeatureGroup()
+        if body is not None:
+            body.removeObject(o)
+        doc.removeObject(o.Name)
+        if name:
+            try:
+                model.remove_model_parameter(doc, name)
+            except ValueError:
+                pass
+    have = have[:count - 1]
+    for o in have:
+        if list(o.AttachmentSupport) != list(f.AttachmentSupport):
+            o.AttachmentSupport = f.AttachmentSupport
+            data = _load(o)
+            data["base"] = base
+            _store(o, data)
+    body = f.getParentGeoFeatureGroup()
+    for k in range(len(have) + 2, count + 1):
+        o = body.newObject("PartDesign::Plane", "WorkPlane")
+        o.AttachmentSupport = f.AttachmentSupport
+        o.MapMode = "FlatFace"
+        name = model.new_feature_parameter(doc, "%s * %d" % (pname, k), "length")
+        o.setExpression(".AttachmentOffset.Base.z", "%s.%s" % (model.MODEL_NAME, name))
+        _store(o, {"mode": "offset", "base": base, "base2": "", "point": "", "edge": "", "face": "", "angle": "",
+                   "points": "", "series_of": f.Name, "k": k})
+        have.append(o)
+    if have:
+        doc.recompute(have)
 
 
 def _to_global(body):
@@ -220,8 +348,9 @@ def _plane_create(doc, body, profile, values):
 
 
 def _plane_defaults(doc, body, profile=None):
-    return {"mode": "offset", "base": "", "base2": "", "offset": "10 mm", "point": "", "edge": "", "face": "",
-            "angle": "90 °", "points": ""}
+    return {"mode": "offset", "base": "", "base2": "", "offset": "10 mm", "count": "1", "point": "", "edge": "",
+            "face": "", "angle": "90 °", "points": "", "turn_ref": "previous", "turn_x": "0 °", "turn_y": "0 °",
+            "turn_z": "0 °"}
 
 
 def _plane_read(doc, f):
@@ -240,6 +369,10 @@ def _plane_read(doc, f):
     pname = model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
     if pname:
         values["offset"] = model.parameter_text(doc, pname)
+    values["count"] = str(1 + len(series(doc, f)))
+    if values["mode"] == "offset":
+        values["turn_ref"] = values.get("turn_ref") or "previous"
+        values.update(turn_text(doc, f, values["turn_ref"]))
     return values
 
 
@@ -256,13 +389,20 @@ PLANE = SimpleNamespace(
                   show_if=_modes("offset", "parallel_point", "midplane", "angle")),
             Field("base2", "Second plane", "pick", pick="plane", show_if=_modes("midplane")),
             Field("offset", "Offset", "value_length", default="10 mm", show_if=_modes("offset")),
+            Field("count", "Planes", "value_length", default="1", show_if=_modes("offset")),
+            Field("turn_ref", "Turn", "choice", (("previous", "Prev"), ("global", "Global")), "previous",
+                  show_if=_modes("offset")),
+            Field("turn_x", "X", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
+            Field("turn_y", "Y", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
+            Field("turn_z", "Z", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
             Field("edge", "Edge", "pick", pick="edge", show_if=_modes("angle", "normal_edge")),
             Field("angle", "Angle", "value_angle", default="90 °", show_if=_modes("angle")),
             Field("face", "Surface", "pick", pick="face", show_if=_modes("tangent")),
             Field("point", "Point", "pick", pick="vertex",
                   show_if=_modes("parallel_point", "normal_edge", "tangent")),
             Field("points", "Points", "picks", pick="three_points", show_if=_modes("three_points"))),
-    defaults=_plane_defaults, create=_plane_create, read=_plane_read, update=_plane_update, _pad_of=lambda f: f)
+    defaults=_plane_defaults, create=_plane_create, read=_plane_read, update=_plane_update, _pad_of=lambda f: f,
+    overlay=lambda shell, session: __import__("incad.ui.plane_turn", fromlist=["x"]).plane_overlay(shell, session))
 
 
 # ----- axes -----

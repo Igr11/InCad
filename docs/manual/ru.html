@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.7.0 — тестовая сборка<br>
+      Версия 0.8.0 — тестовая сборка<br>
       <!--mac-->FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (проверено на 1.1.3) · Windows 10 / 11 (x64), тестовая сборка win-->
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.7.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает InCad в сборке 0.8.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -135,14 +135,14 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 part</span>, а ниже — <span class="ui">Convert to InCad Part</span> (для файла с одним телом) и <span class="ui">Open in
 FreeCAD</span>.</p>
 
-<div class="keep"><h2>Эта сборка: 0.7.0, тестовая</h2>
-<p>0.7.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
+<div class="keep"><h2>Эта сборка: 0.8.0, тестовая</h2>
+<p>0.8.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
 <b>текст</b> и <b>Emboss</b> — в 0.5.0, экспорт в STEP и STL — в 0.5.1. Новое в 0.5.2: большие детали работают намного
 быстрее (пересчёт, правка ранней операции, щелчок по грани), а паз или две дуги можно образмерить по <b>внешним
 краям</b> (5.3). В 0.5.3 быстрее текст и массивы эскиза, удаление, каждое новое или изменённое значение
 (перестраиваются только операции, которые его используют), первое изменение после открытия файла и каждый
 предпросмотр операции, и появился пункт <span class="path">⚙ ▸ Show Log File</span>. Новое в 0.5.4: <b>Emboss на
-сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё — полный
+сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё. Новое в 0.8.0: <b>3D Line</b> по виртуальному кубу точек (путь для Sweep, 6.17); несколько рабочих плоскостей сразу (<b>Planes</b>) и их поворот кольцами (<b>Turn</b>); у Extrude <b>Extents 2</b> для второй стороны и To до ребра или рабочей оси; <b>Full</b> рядом с радиусом Fillet; окно Open показывает картинку файла; подсказки синие, ошибки красные; вкладка <b>Image</b> — фото-подложка, масштаб по известной длине; View ▸ <b>Screenshot</b>; оси деталей в сборке — для привязок; исправлено: стенка Sweep ровная и тогда, когда эскиз профиля перевёрнут на своей плоскости; Sweep в стороне от детали больше не зацикливает окно операции — полный
 список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
@@ -426,7 +426,10 @@ features</b>).</p></div>
 <kbd>S</kbd>) работают с файлом на переднем плане. <span class="ui">Close</span> (<kbd>⌘</kbd> <kbd>W</kbd>) спрашивает,
 сохранить ли изменения (<span class="ui">Save</span>, <span class="ui">Don't Save</span>, <span class="ui">Cancel</span>);
 <span class="ui">Quit</span> (<kbd>⌘</kbd> <kbd>Q</kbd>) спрашивает про каждый изменённый файл. У каждого открытого файла
-своя вкладка над видом.</p></div>
+своя вкладка над видом. Окно <span class="ui">Open</span> (и Import, Place) показывает картинку файла под курсором —
+вид, с которым сохранён файл FreeCAD, или затенённый STL, STEP, IGES (STEP больше 40 МБ не читается), — с его датой и
+размером.</p></div>
+<p><span class="ui">Open</span> показывает только файлы FreeCAD, STEP и STL. Картинка JPG, PNG или BMP для эскиза: Image ▸ Insert Image (6.18). <span class="path">View ▸ Capture ▸ Screenshot</span> (и File ▸ Screenshot) сохраняет 3D-вид в PNG, JPEG или BMP в полном разрешении экрана (на Retina — вдвое больше окна); PNG может быть с прозрачным фоном — для сайта. <span class="ui">Screenshot (Window)</span> (стрелка рядом) сохраняет всё окно — ленту, браузер, 3D-вид и строку состояния.</p>
 
 <!-- ============================================================ 4 -->
 <h1 class="chapter" id="mouse"><span class="num">4</span>Мышь, виды и меню-жесты</h1>
@@ -768,11 +771,12 @@ Emboss оборачивает их вокруг цилиндра или кону
   <tr><td>Extents</td><td class="wrap"><b>Distance</b> (на расстояние); <b>To Next</b> (до следующей грани детали; если в
       выбранную сторону ничего нет — в сторону детали); <b>Through All</b> (насквозь); <b>To</b> (до того, что вы выберете: грани
       любого тела, плоской или кривой, рабочей плоскости или плоскости Origin, или точки — угла, точки эскиза или рабочей
-      точки: выдавливание останавливается на плоскости через неё, параллельной эскизу, — и следует за целью, когда та
+      точки: выдавливание останавливается на плоскости через неё, параллельной эскизу; ребра или рабочей оси — через их середину — и следует за целью, когда та
       двигается).</td></tr>
   <tr><td>Distance</td><td class="wrap">Длина (10 мм).</td></tr>
   <tr><td>Direction</td><td class="wrap"><b>→</b> в сторону по умолчанию, <b>←</b> в другую сторону, <b>⇆</b> симметрично
-      (по половине в каждую), <b>⇄ 2</b> в обе стороны на разную длину (<b>Distance 2</b>, 5 мм).</td></tr>
+      (по половине в каждую), <b>⇄ 2</b> в обе стороны, у второй свои пределы <b>Extents 2</b>: Distance (<b>Distance 2</b>, 5 мм), To Next,
+      Through All или To (<b>To 2</b>).</td></tr>
   <tr><td>Taper</td><td class="wrap">Уклон боковых стенок (0°).</td></tr>
 </table>
 <p>Join, который не касается детали, становится отдельным телом; строка состояния об этом скажет. Join и Cut можно
@@ -837,7 +841,9 @@ Emboss оборачивает их вокруг цилиндра или кону
 Выделите рёбра и нажмите команду — или выберите рёбра в диалоге. Есть и в меню-жесте на ребре (E Fillet, W Chamfer).</p></div>
 <table>
   <tr><th>Операция</th><th class="wrap">Поля</th></tr>
-  <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 мм).</td></tr>
+  <tr><td>Fillet</td><td class="wrap"><b>Edges</b>, <b>Radius</b> (1 мм). <b>Full</b> (рядом со стрелками
+      радиуса): вместо скругления — полный радиус между двумя выбранными параллельными рёбрами, грань между ними
+      становится полуцилиндром (радиус гаснет); выключите — снова обычное скругление.</td></tr>
   <tr><td>Full Round Fillet</td><td class="wrap">Выберите два параллельных ребра (<b>Edges</b>) плоской грани (торец бруска,
       бок пластины): грань становится полуцилиндром, плавно переходящим в обе стороны, — два скругления сходятся на ней.</td></tr>
   <tr><td>Chamfer</td><td class="wrap"><b>Edges</b>; <b>Type</b>: <b>Distance</b>, <b>Two distances</b> (Distance,
@@ -925,7 +931,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 <p>В кнопке с вариантами в <span class="path">3D Model ▸ Create</span> после Hole. У каждой есть <b>Operation</b>: Join или Cut.</p></div>
 <table class="long">
   <tr><th>Операция</th><th class="wrap">Поля</th></tr>
-  <tr><td>Sweep</td><td class="wrap">Профиль <b>Profile</b> (замкнутый эскиз) вдоль пути <b>Path</b> (другой эскиз: линии,
+  <tr><td>Sweep</td><td class="wrap">Профиль <b>Profile</b> (замкнутый эскиз) вдоль пути <b>Path</b> (другой эскиз или 3D Line, 6.17: линии,
       дуги, сплайны). <b>Wall</b> (только для Join) делает трубу: толщина <b>Thickness</b> (1 мм) и концы <b>Ends</b> — Both
       open, Start closed или End closed.</td></tr>
   <tr><td>Loft</td><td class="wrap"><b>Sections</b>: два эскиза-сечения или больше, по порядку. Список показывает их с
@@ -1038,7 +1044,11 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
   <tr><th>Элемент</th><th class="wrap">Способы</th></tr>
   <tr><td>Work Plane</td><td class="wrap">Offset from plane (Offset 10 мм), Parallel through point, Midplane (между двумя
       плоскостями), Angle around edge (Angle 90°), Three points (щёлкните отмеченные точки, как в разрезе: углы, середины
-      рёбер, центры окружностей), Normal to edge at point, Tangent to surface at point.</td></tr>
+      рёбер, центры окружностей), Normal to edge at point, Tangent to surface at point. У Offset поле <b>Planes</b> делает сразу столько плоскостей — на 2×, 3×… отступа
+      от той же базы (для лофта: новый отступ раздвигает их все, каждую можно сдвинуть отдельно); <b>Turn</b>
+      поворачивает плоскость вокруг её точки — <b>X</b>, <b>Y</b>, <b>Z</b> вокруг осей предыдущей плоскости
+      (<b>Prev</b>) или глобальных (<b>Global</b>), вводом (колесо меняет шаг) или ручками на красном, зелёном и
+      синем кольцах; поворот плоскости не трогает следующую.</td></tr>
   <tr><td>Work Axis</td><td class="wrap">On edge, Two points, Intersection of two planes, Normal to plane through point,
       Axis of a cylinder, Parallel to edge through point.</td></tr>
   <tr><td>Work Point</td><td class="wrap">At vertex, Center of circle, Midpoint of edge, Edge meets plane, Two edges meet.</td></tr>
@@ -1078,6 +1088,45 @@ profile is off the face</i>; на сфере — и контур, выходящ
 за очертание сферы, видимое со стороны эскиза.</p>
 
 <!-- ============================================================ 7 -->
+<div class="keep"><h2 id="line3d">6.17 3D Line</h2>
+<p><span class="path">3D Model ▸ Sketch ▸ 3D Line</span> (и на вкладке Sketch). Линия в пространстве — путь для Sweep, — которую рисуют по
+виртуальному кубу точек вокруг начала координат, так что у каждого щелчка известна глубина.</p></div>
+<table class="long">
+  <tr><th>Поле</th><th class="wrap">Варианты и смысл</th></tr>
+  <tr><td>Line</td><td class="wrap"><b>Lines</b> (прямые отрезки), <b>Spline</b> (точки управляют сплайном) или
+      <b>Through points</b> (плавная линия через каждую точку). <b>Curvature</b>: фиолетовая гребёнка кривизны вдоль
+      линии — чем длиннее зубцы, тем круче изгиб; снимите галочку, чтобы её скрыть.</td></tr>
+  <tr><td>Cube, Step</td><td class="wrap">Размер куба (100 мм) и расстояние между его точками (10 мм); они подписаны
+      серым вдоль рёбер. Ближние линии толще и светлее, дальние тоньше и пунктиром, так что куб читается в
+      пространстве, как ни поверните вид.</td></tr>
+  <tr><td>Layer, At</td><td class="wrap"><b>XY</b>, <b>XZ</b> или <b>YZ</b>: ярко виден один слой куба — его линии, точки и синяя рамка с подписью «XY · 20 mm», — и щелчки берут только его; остальное — бледная клетка. <b>At</b> — его высота (или глубина); стрелки — или <kbd>Tab</kbd> / <kbd>⇧</kbd> <kbd>Tab</kbd> над видом — двигают его на шаг куба. При смене слоя он проходит через последнюю точку. <b>Cube</b>: весь куб, как раньше.</td></tr>
+  <tr><td>Points</td><td class="wrap">Щёлкните точку куба или любое место на его линии: там точка скользит свободно, а
+      серые числа показывают расстояния до точек куба с обеих сторон. От последней точки к курсору тянется пунктир.
+      Точку линии можно перетащить (над ней курсор-рука) — так же по кубу. <span class="ui">Undo</span> убирает
+      последнюю точку, <span class="ui">Clear</span> — все.</td></tr>
+</table>
+<p>OK оставляет линию (оранжевую) в теле, как эскиз; куб виден, только пока открыт диалог. Sweep берёт линию путём
+<b>Path</b> (6.9); Edit на ней снова открывает диалог.</p>
+
+<div class="keep"><h2 id="picture">6.18 Картинки-подложки (Image)</h2>
+<p>Вкладка <span class="ui">Image</span>: фото или чертёж за моделью, в масштабе по известной вам длине.</p></div>
+<table class="long">
+  <tr><th>Кнопка</th><th class="wrap">Что делает</th></tr>
+  <tr><td>Insert Image</td><td class="wrap">JPG, PNG или BMP на плоскости XY, по центру начала координат, 100 мм в
+      ширину (пропорции сохраняются); у неё своя строка в браузере (если деталь не открыта — новая деталь).</td></tr>
+  <tr><td>Scale / Transparency</td><td class="wrap">Щёлкните две точки картинки, расстояние между которыми вы знаете (за
+      курсором тянется пунктир и серым — его длина), введите настоящую длину <b>Real length</b>: вся картинка
+      масштабируется так, чтобы так и было, первая точка остаётся на месте. Третий щелчок начинает заново. Ползунок
+      <b>Transparency</b> (0–90 %) задаёт прозрачность картинки — её одну тоже можно сохранить по OK. Двойной щелчок по
+      строке картинки открывает это окно. <b>Line</b> ▸ Horizontal или Vertical поворачивает картинку вокруг первой точки, пока линия между двумя точками не ляжет так (фото, снятое криво, выпрямляется). Пока ставите точку, рядом с курсором — лупа.</td></tr>
+  <tr><td>On XY / On XZ / On YZ</td><td class="wrap">Картинка на эту плоскость начала координат (вид сверху, спереди,
+      справа), вокруг её середины.</td></tr>
+  <tr><td>Turn 90°, Mirror</td><td class="wrap">Поворот на четверть оборота в её плоскости; зеркально слева направо.</td></tr>
+  <tr><td>Show / Hide</td><td class="wrap">Все картинки детали сразу.</td></tr>
+</table>
+<p>Картинка — только для глаз: эскизы, нарисованные поверх, от неё не зависят. В меню её строки — Hide / Show, Rename
+и Delete.</p>
+
 <h1 class="chapter" id="solids"><span class="num">7</span>Несколько тел в одной детали</h1>
 <p class="lead">В детали может быть несколько отдельных тел — например, инструмент и деталь, которую он режет, или
 деталь, которую вы будете печатать частями.</p>
@@ -1139,6 +1188,15 @@ area), массу (Mass) и габарит (Size) детали. Масса сч�
   <tr><td>ASA</td><td>1,07</td><td>Steel</td><td>7,85</td></tr>
   <tr><td>TPU</td><td>1,21</td><td></td><td></td></tr>
 </table>
+
+<div class="keep"><h3>Appearance — внешний вид</h3>
+<p><span class="path">Tools ▸ Material ▸ Appearance</span> (и в меню правой кнопки у Solid, грани или детали) красит
+выбранные грани или Solid'ы — все Solid'ы, если ничего не выбрано. Цвет из палитры или любой (More…), вид поверхности —
+Matte, Satin, Glossy, Metal, Chrome, Glass (прозрачный), Rubber, —, фактура поверх цвета — Brushed, Wood, Carbon, Knurl,
+Sand, в настоящем размере на любой детали, — и <b>Hide Edges</b>, чтобы Solid рисовался без линий рёбер. Деталь сразу
+показывает выбор; OK сохраняет его (один шаг Undo), Cancel возвращает как было, Reset — к цвету материала (выбранные
+грани — к цвету Solid'а). Покрашенная грань остаётся покрашенной, когда фича её сдвигает, а сборка показывает детали
+в их цветах.</p></div>
 
 <div class="keep"><h2 id="section">8.4 Сечения</h2>
 <p><span class="path">View ▸ Visual Style ▸ Section</span> разрезает вид — сама модель не меняется.</p></div>
@@ -1246,6 +1304,8 @@ area), массу (Mass) и габарит (Size) детали. Масса сч�
   <tr><td>Ball</td><td class="wrap">Грань, ребро или точка на каждой детали</td><td class="wrap">Свободное вращение вокруг точки.</td>
       <td class="wrap">—</td></tr>
 </table>
+<p><b>Имена:</b> Make Assembly называет каждый файл детали по имени её тела в браузере, а сборку — по имени детали с <b>_assy</b> (Train_assy); новая сборка, сохранённая при первом Place, называется по этой детали + _assy.</p>
+<p><b>Оси:</b> у каждого тела вращения и отверстия деталей (цилиндр или конус хотя бы на пол-оборота) видна его ось — светлая штрих-пунктирная осевая на тёмной подложке. Щёлкните ось, когда Mate, Flush, Insert, Rotational, Slider, Cylindrical, Parallel, Perpendicular или Angle ждёт выбора: берётся эта ось (для Insert — её круглое ребро, ближнее к щелчку). Mate или Flush по двум осям (или двум круглым граням) ставит их соосно.</p>
 <p>Для соединений круглое ребро задаёт свой центр и ось — для шарниров и валов указывайте круглые рёбра.</p>
 
 <h2>9.6 Строки Relationships</h2>
@@ -1491,18 +1551,23 @@ win-->
 <div class="keep"><h2>Деталь</h2>
 <table class="long">
   <tr><th>Вкладка</th><th>Группа</th><th class="wrap">Команды</th></tr>
-  <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch</td></tr>
+  <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch · 3D Line</td></tr>
   <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Emboss</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Full Round Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
   <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
   <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
   <tr><td>Inspect</td><td>Measure</td><td class="wrap">Measure | Distance | Angle | Length | Area · Mass Properties</td></tr>
-  <tr><td>Tools</td><td>Material</td><td class="wrap">Material</td></tr>
+  <tr><td>Tools</td><td>Material</td><td class="wrap">Material · Appearance</td></tr>
   <tr><td></td><td>Options</td><td class="wrap">Return to FreeCAD · Ask on New</td></tr>
+  <tr><td>Image</td><td>Insert</td><td class="wrap">Insert Image</td></tr>
+  <tr><td></td><td>Scale</td><td class="wrap">Scale / Transparency</td></tr>
+  <tr><td></td><td>Place</td><td class="wrap">On XY | On XZ | On YZ · Turn 90° · Mirror</td></tr>
+  <tr><td></td><td>Look</td><td class="wrap">Show / Hide</td></tr>
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
   <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show | Show All Origin | Hide All Origin | Show All Sketches | Hide All Sketches · Assembly Context</td></tr>
+  <tr><td></td><td>Capture</td><td class="wrap">Screenshot</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>
 
@@ -1524,6 +1589,7 @@ win-->
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Orbit · Pan</td></tr>
   <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points</td></tr>
+  <tr><td></td><td>Capture</td><td class="wrap">Screenshot</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>
 
@@ -1536,6 +1602,7 @@ win-->
   <tr><td>View</td><td>Appearance</td><td class="wrap">Light / Dark</td></tr>
   <tr><td></td><td>Navigate</td><td class="wrap">Zoom All · Home View · Look At · Zoom Selection · Orbit · Pan</td></tr>
   <tr><td></td><td>Visual Style</td><td class="wrap">Shaded · Wireframe · Section | Section by 3 Points · Hide / Show · Degrees of Freedom</td></tr>
+  <tr><td></td><td>Capture</td><td class="wrap">Screenshot</td></tr>
   <tr><td></td><td>Windows</td><td class="wrap">Parameters</td></tr>
 </table>
 

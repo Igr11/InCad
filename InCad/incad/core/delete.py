@@ -101,6 +101,10 @@ def _delete(obj):
     if asm_cut.is_record(obj):
         asm_cut.remove(obj)
         return
+    from incad.core import image_reference
+    if image_reference.is_picture(obj):  # nothing of the model hangs on it
+        doc.removeObject(obj.Name)
+        return
     kind = features.kind_for(obj)
     if kind is combine:
         combine.delete(doc, obj)

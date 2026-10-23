@@ -6,6 +6,11 @@ from incad.core import perf
 from incad.ui import theme as themes
 
 
+HEAD = 0.12  # an arrow head's length × the gizmo's size (the user: the arrows smaller; was 0.25)
+HEAD_R, HEAD_R_LIT = 0.05, 0.068  # its base radius, plain and lit
+GRABBED = (1.0, 0.72, 0.1)  # the handle being dragged (the user: the one grabbed changes colour): amber
+
+
 def _rgb(hex_color):
     h = hex_color.lstrip("#")
     return tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
@@ -16,6 +21,7 @@ class DofGlyphs:
         from pivy import coin
         self.view, self.theme, self.doc_name = view, theme, doc_name
         self.count, self.parts, self.highlighted, self.lit = 0, {}, [], None
+        self.grabbed = False  # the lit handle is being dragged: drawn amber, not accent
         self.node = coin.SoAnnotation()
         self.node.setName("InCadDOF")
         self._pick = coin.SoPickStyle()
@@ -37,14 +43,14 @@ class DofGlyphs:
             style.lineWidth = 3
             sep.addChild(color)
             sep.addChild(style)
-            h = size * 0.25
+            h = size * HEAD
             for k, handle in enumerate(handles):
                 one = coin.SoSeparator()
                 if k == lit:
                     c = coin.SoBaseColor()
-                    c.rgb.setValue(*_rgb(palette["accent"]))
+                    c.rgb.setValue(*(GRABBED if self.grabbed else _rgb(palette["accent"])))
                     st = coin.SoDrawStyle()
-                    st.lineWidth = 6
+                    st.lineWidth = 8 if self.grabbed else 6
                     one.addChild(c)
                     one.addChild(st)
                 pts = handle.line
@@ -59,7 +65,7 @@ class DofGlyphs:
                     t.translation.setValue(base.x, base.y, base.z)
                     t.rotation.setValue(coin.SbRotation(coin.SbVec3f(0, 1, 0), coin.SbVec3f(d.x, d.y, d.z)))
                     cone = coin.SoCone()
-                    cone.height, cone.bottomRadius = h, size * (0.14 if k == lit else 0.1)
+                    cone.height, cone.bottomRadius = h, size * (HEAD_R_LIT if k == lit else HEAD_R)
                     head.addChild(t)
                     head.addChild(cone)
                     one.addChild(head)

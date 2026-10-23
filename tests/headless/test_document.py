@@ -659,3 +659,43 @@ class HideShowSolidTest(unittest.TestCase):
         document.apply_visibility(self.doc)
         self.assertTrue(self.piece.Visibility)
 
+
+class DetachSweepLumpTest(unittest.TestCase):
+    """A Sweep joined away from the part (the user's: the Move Face dialog then split it off on every pick, its path
+    sketch left behind — 'links go out of the allowed scope' — and the move undid itself, round and round): the path
+    goes with it."""
+
+    def setUp(self):
+        import Part
+        self.doc = util.new_doc("DlSw")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        yz = [o for o in self.body.Origin.OriginFeatures if o.Role == "YZ_Plane"][0]
+        xy = [o for o in self.body.Origin.OriginFeatures if o.Role == "XY_Plane"][0]
+        self.prof = self.body.newObject("Sketcher::SketchObject", "Prof")
+        self.prof.AttachmentSupport = [(yz, "")]
+        self.prof.MapMode = "FlatFace"
+        self.prof.AttachmentOffset = App.Placement(App.Vector(0, 0, 60), App.Rotation())
+        self.prof.addGeometry(Part.Circle(App.Vector(50, 5, 0), App.Vector(0, 0, 1), 2))
+        self.path = self.body.newObject("Sketcher::SketchObject", "Path")
+        self.path.AttachmentSupport = [(xy, "")]
+        self.path.MapMode = "FlatFace"
+        self.path.addGeometry(Part.LineSegment(App.Vector(60, 50, 0), App.Vector(90, 50, 0)))
+        self.doc.recompute()
+        self.sweep = self.body.newObject("PartDesign::AdditivePipe", "Sweep")
+        self.sweep.Profile = self.prof
+        self.sweep.Spine = (self.path, [])
+        self.body.Tip = self.sweep
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_the_path_moves_with_the_sweep(self):
+        self.assertTrue(document.is_detached_lump(self.sweep), self.sweep.Shape.Solids)
+        new = document.detach_lump(self.sweep)
+        self.doc.recompute()
+        self.assertIs(self.sweep.getParentGeoFeatureGroup(), new)
+        self.assertIs(self.path.getParentGeoFeatureGroup(), new)
+        self.assertIs(self.prof.getParentGeoFeatureGroup(), new)
+        self.assertNotIn("Invalid", self.sweep.State, self.sweep.getStatusString())
+        self.assertFalse(document.is_detached_lump(self.sweep))

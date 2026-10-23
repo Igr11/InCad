@@ -181,6 +181,18 @@ def _work_in_progress_above_end(nodes, doc=None, rolled=None):
     return nodes[:marker] + nodes[marker + 1:j] + [nodes[marker]] + nodes[j:]
 
 
+def _pictures(doc):
+    """Imported pictures (Image ▸ Insert Image): a row each; a double-click scales it (Scale by Length)."""
+    from incad.core import image_reference
+    out = []
+    for pic in image_reference.pictures(doc):
+        shown = bool(getattr(pic, "Visibility", True))
+        out.append(Node("picture", pic.Label, pic.Name, "" if shown else "hidden",
+                        "An image to sketch over: double-click to scale it by a known length"
+                        + ("" if shown else " (hidden: Hide / Show brings it back)")))
+    return out
+
+
 def _origin(body):
     origin = body.Origin
     items = [Node("origin_item", ROLE_LABELS.get(getattr(f, "Role", ""), f.Label), f.Name,
@@ -257,6 +269,7 @@ def build(doc):
                                   children=[Node("body", b.Label, b.Name, "" if document.is_shown(b) else "hidden",
                                                  "" if document.is_shown(b) else "Hidden (Hide / Show brings it back)")
                                             for b in listed]))
+    root.children.extend(_pictures(doc))
     if primary is not None:
         root.children.extend(_history(doc, primary))
     return [root]

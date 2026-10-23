@@ -4,6 +4,7 @@ a crash with InCad active: the snapshot stays in InCad's preferences until the r
 import json
 import os
 import re
+import time
 import traceback
 
 from incad import host
@@ -30,7 +31,7 @@ MENU_PREFIX = "InCadMenu_"
 TOOLBAR_GROUP = "User parameter:BaseApp/MainWindow/Toolbars"
 NAV_KEYS = {"NavigationStyle": "String", "ZoomAtCursor": "Bool"}
 NAV_VALUES = {"NavigationStyle": ("String", "Gui::CADNavigationStyle"), "ZoomAtCursor": ("Bool", True)}
-MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", None, "file.export", None, "file.close", None, "file.quit"]),
+MENUS = [("File", ["file.new", "file.new_assembly", "file.open", "file.save", "file.save_as", None, "file.export", "view.screenshot", "view.screenshot_window", None, "file.close", None, "file.quit"]),
          ("Edit", ["edit.undo", "edit.redo"]),
          ("View", ["view.theme_toggle", "view.zoom_all", "view.home", "view.style_shaded",
                    "view.style_wireframe", "view.assembly_context", "view.parameters", None, "view.freecad"])]
@@ -232,6 +233,10 @@ class _SelectionWatch:
         except Exception:
             log.logger().exception("InCad selection sync")
         handles = getattr(self.shell, "dof_handles", None)
+        linger = getattr(self.shell, "_dof_linger", None)
+        if linger is not None and linger[2] is not None and time.monotonic() > linger[2] - self.shell.LINGER + 0.4:
+            self.shell._dof_linger = None  # a click elsewhere (a new selection, or none): the dragged part's lingering
+            self.shell.dof_display_changed()  # gizmo goes at once (not the drag's own release, just before)
         if handles is not None and handles.wants_selection():
             self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes (assemblies only)
 
@@ -364,9 +369,11 @@ class Shell(QtCore.QObject):
         self._dof_pending = False
         self.asm_drag = None
         self.dof_handles = None   # the selected part's DOF gizmo: grab an arc to turn it, an arrow to slide it
+        self._axis_lines = None  # the components' axes in an assembly (incad.ui.axis_lines)
         self._dof_glyphs = None   # DofGlyphs on the active assembly view
         self._dof_on = set()      # assemblies whose View > Degrees of Freedom is on
         self._dof_hover = None    # (document name, part name) under the pointer (the tip)
+        self._dof_linger = None   # (document name, part name, until) a part just dragged keeps its gizmo a while
         self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
         self._hover_watch = None
         self._polygons_from = {}
@@ -760,6 +767,9 @@ class Shell(QtCore.QObject):
         if self._dof_glyphs is not None:
             self._dof_glyphs.remove()
             self._dof_glyphs = None
+        if self._axis_lines is not None:
+            self._axis_lines.remove()
+            self._axis_lines = None
         for ctx in self._contexts.values():
             ctx.remove()
         self._contexts = {}
@@ -1271,6 +1281,9 @@ class Shell(QtCore.QObject):
             kind = "joint"  # a Relationships row: Edit, Delete, Suppress, Rename
         elif obj is not None and asm_cut.is_record(obj):
             kind = "asm_cut"  # an assembly cut's row: no Suppress (it is no constraint)
+        from incad.core import image_reference
+        if image_reference.is_picture(obj):
+            kind = "picture"  # an imported picture's row: Edit scales it by a known length
         self._show_marking_menu(kind, global_pos)
 
     # ----- sketching -----
@@ -2666,6 +2679,14 @@ class Shell(QtCore.QObject):
             wire_style.refresh(doc, self.theme)  # objects made while Wireframe is on; a file saved in it
         except Exception as e:
             log.logger().warning("Wireframe lines: %s", e)
+        try:  # coloured faces found again after a recompute renumbered them; textures on a file opened (also a part
+            from incad.core import appearance  # an assembly opened: its components show the part's view)
+            for n in App.listDocuments():
+                d = App.getDocument(n)
+                if not getattr(d, "Restoring", False) and document.is_incad_part(d):
+                    appearance.apply_all(d)
+        except Exception as e:
+            log.logger().warning("Appearance: %s", e)
         try:
             from incad.core import quality
             quality.apply_all()  # files opened or made since: drawn at ⚙ ▸ Display Quality (once each)
@@ -2861,12 +2882,15 @@ class Shell(QtCore.QObject):
         from incad.core import assembly, log, safe
         doc = self._assembly_doc()
         if path is None:
-            path, _ = QtWidgets.QFileDialog.getOpenFileName(self.mw, "Place a part or assembly",
-                                                            os.path.dirname(doc.FileName or ""),
-                                                            "FreeCAD files (*.FCStd)")
+            from incad.ui import open_dialog
+            path, _ = open_dialog.get_open_file(self.mw, "Place a part or assembly", os.path.dirname(doc.FileName or ""),
+                                                "FreeCAD files (*.FCStd)")
             if not path:
                 return None
         if not doc.FileName:
+            import re
+            if re.match(r"^(Assembly|Unnamed)\d*$", doc.Label):  # not named yet: the part's name + _assy (the user)
+                doc.Label = os.path.splitext(os.path.basename(path))[0] + "_assy"
             target = os.path.join(os.path.dirname(path), doc.Label + ".FCStd")
             if os.path.exists(target) or os.path.abspath(target) == os.path.abspath(path):
                 if not self._ensure_saved(doc, os.path.dirname(path)):
@@ -3015,6 +3039,9 @@ class Shell(QtCore.QObject):
             if self._dof_glyphs is not None and self._dof_glyphs.doc_name == doc.Name:
                 self._dof_glyphs.remove()
                 self._dof_glyphs = None
+            if self._axis_lines is not None and self._axis_lines.doc_name == doc.Name:
+                self._axis_lines.remove()
+                self._axis_lines = None
         except Exception:
             log.logger().exception("InCad DOF on close")
 
@@ -3039,14 +3066,19 @@ class Shell(QtCore.QObject):
             self._dof_glyphs.remove()
             self._dof_glyphs = None
         handles = self.dof_handles
+        self._draw_axes(doc, view)
         if view is None or not hasattr(view, "getSceneGraph"):
             if handles is not None:
                 handles.clear_drawn()
             return
         counts = dof.last(doc) or {}
         hover = self._dof_hover[1] if self._dof_hover is not None and self._dof_hover[0] == doc.Name else None
-        tip = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else hover
+        dragged = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else None
+        tip = dragged or hover
         gizmo = handles.gizmo_part(doc) if handles is not None else None  # the clicked part: its glyph has handles
+        if gizmo and not dragged:
+            self._dof_linger = None  # a part selected: its own gizmo, no lingering one
+        gizmo = gizmo or self._lingering(doc, dragged, handles)
         names = list(counts) if doc.Name in self._dof_on else [n for n in dict.fromkeys((gizmo, tip)) if n]
         items, drawn = [], False
         for name in names:
@@ -3069,7 +3101,80 @@ class Shell(QtCore.QObject):
                 return
             self._dof_glyphs = DofGlyphs(view, self.theme, doc.Name)
         self._dof_glyphs.theme = self.theme
+        self._dof_glyphs.grabbed = handles is not None and handles.dragging()
         self._dof_glyphs.set(items)
+
+    def _draw_axes(self, doc, view):
+        """The components' axes, grey dashed (incad.ui.axis_lines): in an assembly's view, always."""
+        from incad.ui.axis_lines import AxisLines
+        if self._axis_lines is not None and (view is None or self._axis_lines.view is not view):
+            self._axis_lines.remove()
+            self._axis_lines = None
+        if view is None or not hasattr(view, "getSceneGraph"):
+            return
+        if self._axis_lines is None:
+            self._axis_lines = AxisLines(view, self.theme, doc.Name)
+        self._axis_lines.theme = self.theme
+        self._axis_lines.set(doc)
+
+    _AXIS_PICKS = {"face", "element", "cylinder", "direction", "circular_edge"}  # picks an axis can stand for
+
+    def axis_pressed(self, view, viewport, x, y):
+        """A click on a component's axis while a constraint dialog waits for a pick: the axis's round face (a round
+        edge of it for Insert) goes into the selection, and so into the dialog. True when it took the click."""
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        from incad.core import assembly
+        fs, lines = self.feature_session, self._axis_lines
+        if fs is None or fs.dialog is None or lines is None or not getattr(fs.kind, "ASSEMBLY", False):
+            return False
+        key = fs.dialog.active_pick()
+        if key is None or fs.dialog.field_def(key).pick not in self._AXIS_PICKS:
+            return False
+        hit = lines.hit(viewport, x, y)
+        doc = App.ActiveDocument
+        if hit is None or doc is None or doc.Name != lines.doc_name:
+            return False
+        name, start, end, face, circles = hit
+        sub = "Face%d" % face
+        if fs.dialog.field_def(key).pick == "circular_edge":
+            if not circles:
+                return False
+            from incad.ui import dof_handles as dh
+            link = doc.getObject(name)
+
+            def off(k):
+                c = link.Shape.Edges[k - 1].Curve.Center
+                sx, sy = dh.screen(view, viewport, c)
+                return (sx - x) ** 2 + (sy - y) ** 2
+            sub = "Edge%d" % min(circles, key=off)  # the round edge nearer the click
+        asm = assembly.assembly_of(doc)
+        Gui.Selection.addSelection(doc.Name, asm.Name, "%s.%s" % (name, sub))
+        return True
+
+    LINGER = 3.0  # s a part's gizmo stays after it was dragged (the user: it went out at once, hard to grab)
+
+    def _lingering(self, doc, dragged, handles):
+        """The part just dragged by the mouse (not selected: a press that moved is a drag, no click): its gizmo stays
+        LINGER seconds — longer while the pointer is on its handles — so a handle can still be grabbed."""
+        import time
+        from incad.qt import QtCore
+        now = time.monotonic()
+        if dragged:
+            self._dof_linger = (doc.Name, dragged, None)  # counts down once the drag ends
+            return None
+        linger = self._dof_linger
+        if linger is None or linger[0] != doc.Name or handles is None or not handles.can_grab():
+            return None
+        name, until = linger[1], linger[2]
+        if until is None or (handles.lit is not None and handles.drawn is not None and handles.drawn[1] == name):
+            until = now + self.LINGER
+            self._dof_linger = (doc.Name, name, until)
+            QtCore.QTimer.singleShot(int(self.LINGER * 1000) + 100, self.dof_display_changed)
+        if now > until or doc.getObject(name) is None:
+            self._dof_linger = None
+            return None
+        return name
 
     def toggle_dof(self):
         import FreeCAD as App

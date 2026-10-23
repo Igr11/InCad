@@ -15,6 +15,12 @@ class Field:
     pick: str = ""           # pick fields: edge | face | feature | axis | plane | vertex | sketch | circular_edge
     listed: bool = False     # picks fields: show the picks as a numbered list (remove, reorder), e.g. Loft sections
     optional: bool = False   # pick fields: an empty one has a default: never made active by itself
+    signed: bool = False     # value fields: below zero is a direction or a level (3D Line's At), not an error
+    same_row: bool = False   # shown in the row of the field before it, its label in front of it (compact: Work Plane's
+                             # Turn X / Y / Z); value fields there have no arrows (the wheel or ↑↓ step them)
+    step: object = None      # value fields: callable(values) -> the arrows' step in mm (3D Line's At: the cube's step)
+    toggle: tuple = ()       # value fields: (key, label) of an on/off button after the arrows (Fillet ▸ Full);
+                             # while it is on the value is not used (greyed)
 
 
 def shown(field, values):
@@ -112,7 +118,7 @@ def profile_of(feature):
 
 
 _PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
-           "plane": "planes", "sketch": "sketches", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
+           "plane": "planes", "sketch": "sketches", "path": "paths", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
            "direction": "faces or edges", "move_to": "items"}
 
 
@@ -146,7 +152,12 @@ def resolve(obj, sub):
     return obj, sub
 
 
-WHOLE_OBJECT = ("sketch",)  # picks that mean the object, whatever element of it was clicked
+def is_line3d(obj):
+    """A 3D Line (incad.features.line3d): Sweep takes it as its path."""
+    return obj is not None and "InCadLine3D" in getattr(obj, "PropertiesList", ())
+
+
+WHOLE_OBJECT = ("sketch", "path")  # picks that mean the object, whatever element of it was clicked
 
 
 def whole(kind, pairs):
@@ -315,6 +326,8 @@ def accepts(kind, obj, sub):
         return feature_of(obj, sub) is not None
     if kind == "sketch":  # the sketch itself, or any point/line of it clicked in the view
         return tid == "Sketcher::SketchObject"
+    if kind == "path":  # Sweep's path: a sketch, or a 3D Line
+        return tid == "Sketcher::SketchObject" or is_line3d(obj)
     if kind == "body":
         if tid == "PartDesign::Body":
             return True
@@ -329,9 +342,9 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomCircle"
     if kind == "face":
         return sub.startswith("Face") and el is not None
-    if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face or a straight edge
-        if sub.startswith("Face") and el is not None:
-            return el.Surface.TypeId == "Part::GeomPlane"
+    if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face, a straight edge, or a
+        if sub.startswith("Face") and el is not None:  # round face (its axis: a part's axis clicked in an assembly)
+            return el.Surface.TypeId in ("Part::GeomPlane", "Part::GeomCylinder", "Part::GeomCone")
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomLine"
     if kind == "component":
         return tid == "App::Link"
@@ -365,10 +378,11 @@ def accepts(kind, obj, sub):
         if sub.startswith("Edge"):
             return el is not None
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
-    if kind == "to_face":  # Extrude To: any face of any Solid (flat or curved), a work / origin plane, any point
-        if not sub:
-            return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point", "App::Point")
-        return sub.startswith(("Face", "Vertex")) and el is not None
+    if kind == "to_face":  # Extrude To: any face of any Solid (flat or curved), a work / origin plane, any point,
+        if not sub:          # any edge or axis (through its middle)
+            return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point", "App::Point", "PartDesign::Line",
+                           "App::Line")
+        return sub.startswith(("Face", "Vertex", "Edge")) and el is not None
     if kind == "move_to":  # Move Face To: a flat face, a work / origin plane, any edge, a vertex or a work point
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane", "PartDesign::Point")

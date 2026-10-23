@@ -31,6 +31,9 @@ def _picks_text(f, prop="Base"):
 
 # ----- Fillet -----
 def _fillet_create(doc, body, profile, values):
+    if values.get("full"):  # Full: a full round between the two picked edges (incad.features.full_round)
+        from incad.features import full_round
+        return full_round.create(doc, body, None, {"edges": values.get("edges")})
     obj, subs = _base(doc, values.get("edges"), body.Tip)
     f = body.newObject("PartDesign::Fillet", "Fillet")
     f.Base = (obj, subs)
@@ -39,10 +42,45 @@ def _fillet_create(doc, body, profile, values):
 
 
 def _fillet_read(doc, f):
-    return {"edges": _picks_text(f), "radius": value_text(doc, f, "Radius") or "1 mm"}
+    from incad.features import full_round
+    if full_round.claims(f):
+        return {"edges": full_round.read(doc, f)["edges"], "radius": "1 mm", "full": True}
+    return {"edges": _picks_text(f), "radius": value_text(doc, f, "Radius") or "1 mm", "full": False}
+
+
+def _fillet_claims(f):
+    """A Fillet, or a Full Round (edited here with Full on)."""
+    from incad.features import full_round
+    return f.TypeId == "PartDesign::Fillet" or full_round.claims(f)
+
+
+def _fillet_pending(values):
+    from incad.features import full_round
+    return full_round.pending(values) if values.get("full") else ""
+
+
+def _fillet_switch(doc, f, values):
+    """Full switched on or off on an existing feature: the Fillet and the Full Round swap places (the last step only:
+    nothing may be built on it)."""
+    body = f.getParentGeoFeatureGroup()
+    users = [o.Label for o in f.InList if o is not body and getattr(o, "BaseFeature", None) is f]
+    if users or body.Tip is not f:
+        raise ValueError("Full can't be switched here: %s is built on this fillet" % (", ".join(users) or "the part"))
+    label_was = f.Label
+    body.removeObject(f)
+    f.Document.removeObject(f.Name)
+    new = _fillet_create(doc, body, None, values)
+    if not values.get("full"):
+        new.Label = label_was if "Full" not in label_was else new.Label
+    return new
 
 
 def _fillet_update(doc, f, values):
+    from incad.features import full_round
+    if bool(values.get("full")) != full_round.claims(f):
+        return _fillet_switch(doc, f, values)
+    if values.get("full"):
+        return full_round.update(doc, f, {"edges": values.get("edges")})
     obj, subs = _base(doc, values.get("edges"), _expected(f))
     f.Base = (obj, subs)
     value_param(doc, f, "Radius", values.get("radius") or "1 mm", "length")
@@ -50,14 +88,16 @@ def _fillet_update(doc, f, values):
 
 
 FILLET = SimpleNamespace(
-    __name__="incad.features.fillet", TITLE="Fillet", ICON="fillet", TYPES=("PartDesign::Fillet",),
+    __name__="incad.features.fillet", TITLE="Fillet", ICON="fillet",
+    TYPES=("PartDesign::Fillet", "PartDesign::FeaturePython"), claims=_fillet_claims,
     NEEDS_PROFILE=False, PROPS={"radius": "Radius"}, PRESELECT={"edges": "edge"}, SOLID_PICKS=True,
+    RECREATE_ON=("full",), LOCKED_WHEN_EDITING=(), pending=_fillet_pending,
     PREVIEW_WHILE_PICKING=True,  # the rounded part shows while edges are picked; a click on it means the part's edge
     TANGENT_CHAIN=True,  # a click takes the edge's smooth chain (Inventor / Fusion)
     FACE_EDGES=True,  # a click on a face takes all its edges
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
-            Field("radius", "Radius", "value_length", default="1 mm")),
-    defaults=lambda doc, body, profile: {"edges": "", "radius": "1 mm"},
+            Field("radius", "Radius", "value_length", default="1 mm", toggle=("full", "Full"))),
+    defaults=lambda doc, body, profile: {"edges": "", "radius": "1 mm", "full": False},
     create=_fillet_create, read=_fillet_read, update=_fillet_update, _pad_of=lambda f: f)
 
 

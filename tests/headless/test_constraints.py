@@ -437,7 +437,7 @@ class RoundOneFixesTest(unittest.TestCase):
 
 
 class DirectionPickTest(unittest.TestCase):
-    def test_a_direction_is_a_flat_face_or_a_straight_edge(self):
+    def test_a_direction_is_a_flat_face_a_straight_edge_or_a_round_face(self):
         from incad.features.common import accepts
         doc = App.newDocument("Picks")
         try:
@@ -450,7 +450,7 @@ class DirectionPickTest(unittest.TestCase):
             self.assertTrue(accepts("direction", box, "Edge1"))
             curved = [i + 1 for i, f in enumerate(cyl.Shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"][0]
             circle = [i + 1 for i, e in enumerate(cyl.Shape.Edges) if e.Curve.TypeId == "Part::GeomCircle"][0]
-            self.assertFalse(accepts("direction", cyl, "Face%d" % curved))
+            self.assertTrue(accepts("direction", cyl, "Face%d" % curved))  # its axis (a part's axis clicked)
             self.assertFalse(accepts("direction", cyl, "Edge%d" % circle))
             self.assertFalse(accepts("direction", box, "Vertex1"))
         finally:

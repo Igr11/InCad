@@ -120,6 +120,12 @@ def hits_bar(pos):
     return bool(info) and (info.get("SubName") or "").split(".")[0] == ST["b"]
 
 
+def clear_of_bar(pos, r=8):
+    """No pixel within r px picks the bar: FreeCAD's own click picks within its pick radius (a few px), so a point just
+    off the bar's edge still selects the bar."""
+    return all(not hits_bar(QtCore.QPointF(pos.x() + dx, pos.y() + dy)) for dx in (-r, 0, r) for dy in (-r, 0, r))
+
+
 def bar_spot():
     """A point of the bar's top that picks the bar itself (FreeCAD's joint markers are picked on top of parts)."""
     box = obj("b").Shape.BoundBox
@@ -265,8 +271,7 @@ def test_3b_every_arc_of_a_free_part_turns_by_the_pointer_both_ways():
             # the one grabbed)
             t0s = [0.3 + 0.1 * i for i in range(40)]
             t0s = [t for t in t0s if 0 <= t + math.radians(deg) <= 1.5 * math.pi]
-            t0 = next((t for t in t0s if s().dof_handles.hit(view(), viewport(), *pt(arc_path(arc, t, deg)[0])) == k),
-                      None)
+            t0 = next((t for t in t0s if catches(arc_path(arc, t, deg)[0], k)), None)
             assert t0 is not None, ("a point 8 px outside the arc where it is the one lit", k)
             start = App.Placement(c.Placement)
             n0 = len(doc().UndoNames)
@@ -398,6 +403,21 @@ def test_8_no_handle_while_a_constraint_dialog_is_open():
     assert same(b.Placement, bb) and temp_grounds() == 1
 
 
+def _around(q, r=2):
+    return [QtCore.QPointF(q.x() + dx, q.y() + dy) for dx in (-r, 0, r) for dy in (-r, 0, r)]
+
+
+def catches(q, k):
+    """q catches handle k, and so do the points 2 px round it: a press there is the handle's even a pixel off (a
+    spot on the edge of its catch is a coin toss)."""
+    return all(s().dof_handles.hit(view(), viewport(), p.x(), p.y()) == k for p in _around(q))
+
+
+def well_on(q, k):
+    """q catches handle k and lies over the bar, and so do the points 2 px round it."""
+    return catches(q, k) and all(hits_bar(p) for p in _around(q))
+
+
 def own_arc_spot(deg=45):
     """(k, arc, t0): a point of the arc 8 px outside it that lies over the bar itself and catches that arc."""
     k, arc = handle("turn")
@@ -406,7 +426,7 @@ def own_arc_spot(deg=45):
         if not 0 <= t0 + math.radians(deg) <= 1.5 * math.pi:
             continue
         q = arc_path(arc, t0, deg)[0]
-        if hits_bar(q) and s().dof_handles.hit(view(), viewport(), q.x(), q.y()) == k:
+        if well_on(q, k):
             return k, arc, t0
     return k, arc, None
 
@@ -419,11 +439,21 @@ def test_10_a_click_on_a_handle_goes_to_freecad_unless_over_its_own_part():
     before = sel()
     click(arc_path(arc, t0, 45)[0])
     assert gizmo() == ST["b"] and sel() == before, ("a click on a handle over its own part changes nothing", sel())
-    outside = [p for p in arc.line if not hits_bar(screen_of(p))
-               and s().dof_handles.hit(view(), viewport(), *pt(screen_of(p))) == k]
-    assert outside, "a point of the arc off the bar"
-    click(screen_of(outside[len(outside) // 2]))
-    assert gizmo() is None, ("the click went to FreeCAD: it selected what is there (not the bar)", sel())
+    # seen from the top the arc reaches past the bar's sides (in the isometric view it lies over the bar nearly all
+    # round); a spot well off the bar, since FreeCAD's click picks within its pick radius
+    camera = view().getCamera()
+    try:
+        view().viewTop()
+        harness.pump(500)
+        k, arc = handle("turn")
+        outside = [q for q in (screen_of(p) for p in arc.line)
+                   if clear_of_bar(q, 6) and s().dof_handles.hit(view(), viewport(), q.x(), q.y()) == k]
+        assert outside, "a point of the arc well off the bar"
+        click(outside[len(outside) // 2])
+        assert gizmo() is None, ("the click went to FreeCAD: it selected what is there (not the bar)", sel())
+    finally:
+        view().setCamera(camera)
+        harness.pump(500)
 
 
 def test_11_a_quick_second_press_still_grabs():
