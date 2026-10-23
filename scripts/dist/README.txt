@@ -94,3 +94,7 @@ Please send:
 - if you can, the .FCStd file you were working on;
 - a screenshot if something looks wrong.
 If FreeCAD crashed, macOS shows a crash report: please copy its text as well.
+
+LICENSE
+InCad is free software under the GNU LGPL 2.1 or later (LICENSE.txt), as FreeCAD:
+https://github.com/Igr11/InCad. It is an independent project, not made or endorsed by the FreeCAD project.

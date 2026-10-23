@@ -86,3 +86,7 @@ FreeCAD установлен в необычное место? В командн
 - текст Report view FreeCAD, если там есть ошибки (View > Panels > Report view,
   после "Return to FreeCAD");
 - если можно, файл .FCStd, с которым вы работали, и снимок экрана.
+
+ЛИЦЕНЗИЯ
+InCad — свободная программа под GNU LGPL 2.1 или новее (LICENSE.txt), как и FreeCAD:
+https://github.com/Igr11/InCad. Это независимый проект, его не делает и не одобряет проект FreeCAD.

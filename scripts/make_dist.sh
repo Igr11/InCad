@@ -11,6 +11,8 @@ NAME="InCad-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-macOS-arm64"
 for f in scripts/dist/CHANGES.txt scripts/dist/CHANGES_ru.txt; do  # every build says what changed
   grep -qx "$VER" "$f" || { echo "ERROR: $f has no section for $VER: add its improvements and bug fixes first"; exit 1; }
 done
+# the Addon Manager reads package.xml: its version follows the module's
+grep -q "<version>$VER</version>" package.xml || { echo "ERROR: package.xml says another version than $VER"; exit 1; }
 [[ -n "$(git status --porcelain -- InCad)" ]] && echo "NOTE: InCad/ has uncommitted changes; they go into the build"
 OUT="$REPO/Distrib"
 STAGE="$(mktemp -d)"  # built on the system disk: an external (exFAT) disk adds ._ files to every copy
@@ -22,6 +24,7 @@ sed "s/VERSION/$NAME/g" scripts/dist/README.txt > "$STAGE/$NAME/README.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/README_ru.txt > "$STAGE/$NAME/README_ru.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES.txt > "$STAGE/$NAME/CHANGES.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES_ru.txt > "$STAGE/$NAME/CHANGES_ru.txt"
+cp LICENSE "$STAGE/$NAME/LICENSE.txt"
 for f in InCad-presentation.pdf InCad-presentation_ru.pdf InCad-manual.pdf InCad-manual_ru.pdf; do  # one language each
   [[ -f scripts/dist/$f ]] || { echo "ERROR: scripts/dist/$f is missing (scripts/make_presentation.sh, scripts/print_manual.sh)"; exit 1; }
   cp scripts/dist/$f "$STAGE/$NAME/"

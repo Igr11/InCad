@@ -83,3 +83,7 @@ Please send:
 - the text of FreeCAD's Report view if it shows errors (View > Panels > Report view,
   under "Return to FreeCAD");
 - if you can, the .FCStd file you were working on and a screenshot.
+
+LICENSE
+InCad is free software under the GNU LGPL 2.1 or later (LICENSE.txt), as FreeCAD:
+https://github.com/Igr11/InCad. It is an independent project, not made or endorsed by the FreeCAD project.

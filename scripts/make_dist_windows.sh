@@ -11,6 +11,8 @@ NAME="InCad-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-Windows-x64-U
 for f in scripts/dist/CHANGES.txt scripts/dist/CHANGES_ru.txt; do  # every build says what changed
   grep -qx "$VER" "$f" || { echo "ERROR: $f has no section for $VER: add its improvements and bug fixes first"; exit 1; }
 done
+# the Addon Manager reads package.xml: its version follows the module's
+grep -q "<version>$VER</version>" package.xml || { echo "ERROR: package.xml says another version than $VER"; exit 1; }
 [[ -n "$(git status --porcelain -- InCad scripts/windows)" ]] && echo "NOTE: uncommitted changes go into the build"
 OUT="$REPO/Distrib"
 STAGE="$(mktemp -d)"  # built on the system disk: an external (exFAT) disk adds ._ files to every copy
@@ -24,6 +26,7 @@ sed "s/VERSION/$NAME/g" scripts/dist/README_windows.txt > "$D/README.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/README_windows_ru.txt > "$D/README_ru.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES.txt > "$D/CHANGES.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES_ru.txt > "$D/CHANGES_ru.txt"
+cp LICENSE "$D/LICENSE.txt"
 for f in manual presentation; do  # the Windows editions (Ctrl, install.bat, %LOCALAPPDATA%), under the usual names
   for suffix in "" _ru; do
     src=scripts/dist/InCad-$f-windows$suffix.pdf
