@@ -3,7 +3,10 @@
 An Inventor/Alibre-style workbench for FreeCAD 1.1.3 on macOS: ribbon, Model Browser with End of Part and
 Parameters, light/dark in one click, ⇄ back to FreeCAD in one click. Files stay normal `.FCStd`.
 
-Current version: 0.5.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
+Current version: 0.10.0 (what changed: [scripts/dist/CHANGES.txt](scripts/dist/CHANGES.txt)).
+
+License: LGPL-2.1-or-later (see [LICENSE](LICENSE)), as FreeCAD. InCad is an independent project, not made or
+endorsed by the FreeCAD project.
 
 ## Install
     scripts/install.sh        # symlinks InCad/ into FreeCAD's Mod folder; restart FreeCAD
