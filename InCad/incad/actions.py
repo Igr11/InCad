@@ -301,6 +301,31 @@ def _component_docs(doc):
     return out
 
 
+def set_shown(flag):
+    """Hide / Show, said outright (the user: Undo is no way back — a Hide button and a Show button): the picked
+    objects (a part's Solid, an assembly's component, a sketch, a plane…) hidden or shown, one undo step."""
+    from incad.core import document, log
+    targets = document.visibility_targets(_visibility_targets())
+    _visibility_step("Show" if flag else "Hide", targets, lambda: document.set_visibility(targets, flag))
+    log.report("info", "%s %s" % ("Shown:" if flag else "Hidden:", ", ".join(o.Label for o in targets[:4])))
+
+
+def show_all_parts():
+    """Show All: every Solid of the part, every component of the assembly, back on the view — nothing to pick (a
+    hidden part can't be clicked)."""
+    import FreeCAD as App
+    from incad.core import document, log
+    doc = App.ActiveDocument
+    if doc is None:
+        raise ValueError("Open a part or an assembly first")
+    items = [o for o in document.all_parts(doc) if not document.is_shown(o)]
+    if not items:
+        log.report("info", "Everything is shown already")
+        return
+    _visibility_step("Show All", items, lambda: document.set_visibility(items, True))
+    log.report("info", "Shown: %s" % ", ".join(o.Label for o in items[:6]) + ("…" if len(items) > 6 else ""))
+
+
 def origin_visibility(flag):
     import FreeCAD as App
     from incad.core import assembly, document
@@ -1207,12 +1232,59 @@ def _assembly(action):
     return getattr(shell, "assembly_" + action)()
 
 
+SAVE_ASM_ASK = None  # tests: (doc, default path) -> the path chosen, instead of the Save dialog
+
+
+def save_assembly(doc, as_new=False):
+    """Save / Save As of an assembly (the user: a folder named after it at the place chosen, the assembly and all its
+    parts inside): a new assembly or Save As asks where and under what name; an assembly saved elsewhere or with parts
+    outside its folder is gathered into a folder of its name beside it; one already gathered just saves."""
+    import os
+    from incad import host
+    from incad.core import log, pack
+    from incad.qt import QtWidgets
+    if not as_new and pack.packed(doc):
+        pack.save(doc, doc.FileName)
+        _gui().getDocument(doc.Name).Modified = False
+        log.report("info", "Saved %s and its parts" % doc.Label)
+        return doc.FileName
+    path = doc.FileName if (doc.FileName and not as_new) else None
+    if path is None:
+        default = os.path.join(prefs.export_folder() or os.path.expanduser("~"), doc.Label + ".FCStd")
+        if SAVE_ASM_ASK is not None:
+            path = SAVE_ASM_ASK(doc, default)
+        else:
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                _gui().getMainWindow(), "Save Assembly %s — a folder of this name holds it and its parts" % doc.Label,
+                default, "FreeCAD files (*.FCStd)")
+        if not path:
+            return None
+        if not path.lower().endswith(".fcstd"):
+            path += ".FCStd"
+        prefs.set_export_folder(os.path.dirname(path))
+    folder, copied = pack.save(doc, path)
+    for d in [doc] + pack.part_docs(doc):
+        g = _gui().getDocument(d.Name)
+        if g is not None:
+            g.Modified = False
+    log.report("info", "Saved %s in the folder %s with its %d parts%s" % (
+        doc.Label, folder, len(pack.part_docs(doc)),
+        (" (copied there: %s)" % ", ".join(label for label, _ in copied[:5])) if copied else ""))
+    return doc.FileName
+
+
 def _std(cmd_id, label, icon, shortcut=""):
     name, index = STD_COMMANDS[cmd_id], STD_INDEX.get(cmd_id, 0)
 
     def handler():
         if cmd_id in _GUARDED:
             _refuse_while_busy()
+        if cmd_id in ("file.save", "file.save_as"):
+            import FreeCAD as App
+            from incad.core import assembly
+            doc = App.ActiveDocument
+            if doc is not None and assembly.is_assembly(doc):
+                return save_assembly(doc, as_new=cmd_id == "file.save_as")
         result = run_std(name, index)
         if cmd_id in ("view.style_shaded", "view.style_wireframe"):
             import FreeCAD as App
@@ -1494,6 +1566,15 @@ def commands():
         Command(id="view.assembly_context", label="Assembly Context", icon="assembly", handler=toggle_assembly_context,
                 checkable=True, is_checked=assembly_context_shown, contexts=frozenset({"part"}),
                 tooltip="A part opened with Edit from its assembly: show or hide the other parts around it"),
+        Command(id="view.hide", label="Hide", icon="hide_all", handler=lambda: set_shown(False),
+                contexts=frozenset({"part", "assembly"}),
+                tooltip="Hide the selected Solid, component, sketch or plane (Show or Show All brings it back)"),
+        Command(id="view.show", label="Show", icon="visibility", handler=lambda: set_shown(True),
+                contexts=frozenset({"part", "assembly"}),
+                tooltip="Show the selected Solid, component, sketch or plane (pick a hidden one in the browser)"),
+        Command(id="view.show_all_parts", label="Show All", icon="show_all", handler=show_all_parts,
+                contexts=frozenset({"part", "assembly"}),
+                tooltip="Show every hidden Solid of the part, every hidden component of the assembly"),
         Command(id="view.axes_show_all", label="Show All Axes", icon="show_all",
                 handler=lambda: axes_visibility(True), contexts=frozenset({"assembly"}),
                 tooltip="Show the axis of every turned body and hole of the assembly's parts"),
@@ -1765,7 +1846,7 @@ def commands():
 
 
 # Short ribbon labels (the full name stays in the tooltip and in split-button menus)
-SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.origin_show_all": "Show All",
+SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", "assembly.threads_toggle": "Threads", "view.toggle_visibility": "Hide / Show", "view.show_all_parts": "Show All", "view.origin_show_all": "Show All",
          "view.origin_hide_all": "Hide All", "view.axes_show_all": "Show Axes", "view.axes_hide_all": "Hide Axes", "feature.full_round": "Full Round", "view.sketches_show_all": "Show Sketches", "view.sketches_hide_all": "Hide Sketches", "inspect.distance": "Measure", "inspect.angle": "Measure", "inspect.length": "Measure", "inspect.area": "Measure",
          "sketch.slot": "Slot", "sketch.slot_overall": "Slot", "sketch.slot_center": "Slot", "sketch.slot_arc": "Arc Slot",
          "sketch.slot_arc_flat": "Arc Slot", "sketch.arc": "Arc", "sketch.arc_center": "Arc", "sketch.arc_ellipse": "Arc",

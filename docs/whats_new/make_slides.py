@@ -53,7 +53,7 @@ page("01_cover.html", f"""<section style="{DARK};padding:120px 128px">
   <img src="chess_6_wood.jpg" style="width:240px;height:500px;object-fit:cover;border-radius:16px;margin-top:70px">
   <img src="chess_8_red.jpg" style="width:240px;height:500px;object-fit:cover;border-radius:16px">
 </div>
-<p style="position:absolute;left:128px;bottom:64px;font-size:26px;color:#8FA0B2">InnCad Plus 0.9.0 · InnCad 0.13.0 · InCad 0.9.0 (и всё из 0.8) &nbsp;·&nbsp; 23 октября 2026 &nbsp;·&nbsp; FreeCAD 1.1</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:26px;color:#8FA0B2">InnCad Plus 0.10.0 · InnCad 0.14.0 · InCad 0.10.0 (и всё из 0.8 и 0.9) &nbsp;·&nbsp; 23 октября 2026 &nbsp;·&nbsp; FreeCAD 1.1</p>
 </section>""")
 
 # 2 — the chess demo
@@ -156,6 +156,20 @@ page("09b_asm_section.html", f"""<section class="dark" style="{DARK};padding:96p
   </div>
 </div>
 <p style="position:absolute;left:112px;bottom:40px;font-size:20px;color:#8FA0B2">Moto Engine Demo — сборка из 20 деталей, сделанная в FreeCAD</p>
+</section>""")
+
+# 9c — 0.10
+page("09c_v010.html", f"""<section class="dark" style="{DARK};padding:96px 112px;display:flex;flex-direction:column;gap:30px">
+<p class="k" style="color:#F08A24">Новое в 0.10</p>
+<h2 class="t">Порядок в сборке</h2>
+<div style="display:flex;gap:56px;align-items:flex-start">
+  <img class="img" src="moto_iso.jpg" style="width:820px;height:600px;object-fit:cover">
+  <div style="flex:1">""" + bullets(["Явные <b>Hide</b>, <b>Show</b> и <b>Show All</b> — на ленте и в каждом меню правой кнопки",
+                                     "В сборке деталь прячется и показывается <b>в дереве сборки</b>: её строка остаётся, Show возвращает",
+                                     "Файлы не из InnCad — из скрипта, FreeCAD, STEP — открываются <b>со всеми инструментами</b>",
+                                     "<b>Save</b> сборки: папка с её именем, в ней сборка и все детали",
+                                     "Гизмо меньше и появляется по щелчку на пару секунд; стрелки прокрутки у вкладок"], "#F3F2EE", 27) + """</div>
+</div>
 </section>""")
 
 # 10 — goodies

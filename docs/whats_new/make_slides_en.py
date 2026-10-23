@@ -53,7 +53,7 @@ page("01_cover.html", f"""<section style="{DARK};padding:120px 128px">
   <img src="chess_6_wood.jpg" style="width:240px;height:500px;object-fit:cover;border-radius:16px;margin-top:70px">
   <img src="chess_8_red.jpg" style="width:240px;height:500px;object-fit:cover;border-radius:16px">
 </div>
-<p style="position:absolute;left:128px;bottom:64px;font-size:26px;color:#8FA0B2">InnCad Plus 0.9.0 · InnCad 0.13.0 · InCad 0.9.0 (with all of 0.8) &nbsp;·&nbsp; 23 October 2026 &nbsp;·&nbsp; FreeCAD 1.1</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:26px;color:#8FA0B2">InnCad Plus 0.10.0 · InnCad 0.14.0 · InCad 0.10.0 (with all of 0.8 and 0.9) &nbsp;·&nbsp; 23 October 2026 &nbsp;·&nbsp; FreeCAD 1.1</p>
 </section>""")
 
 # 2 — the chess demo
@@ -156,6 +156,20 @@ page("09b_asm_section.html", f"""<section class="dark" style="{DARK};padding:96p
   </div>
 </div>
 <p style="position:absolute;left:112px;bottom:40px;font-size:20px;color:#8FA0B2">Moto Engine Demo — a 20-part assembly made in FreeCAD</p>
+</section>""")
+
+# 9c — 0.10
+page("09c_v010.html", f"""<section class="dark" style="{DARK};padding:96px 112px;display:flex;flex-direction:column;gap:30px">
+<p class="k" style="color:#F08A24">New in 0.10</p>
+<h2 class="t">Order in the assembly</h2>
+<div style="display:flex;gap:56px;align-items:flex-start">
+  <img class="img" src="moto_iso.jpg" style="width:820px;height:600px;object-fit:cover">
+  <div style="flex:1">""" + bullets(["<b>Hide</b>, <b>Show</b> and <b>Show All</b> said outright — in the ribbon and every right-click menu",
+                                     "In an assembly a part hides and shows <b>in the assembly's tree</b>: its row stays, Show brings it back",
+                                     "Files not made in InnCad — a script's, FreeCAD's, a STEP — open <b>with every tool</b>",
+                                     "<b>Save</b> of an assembly: a folder of its name holding it and all its parts",
+                                     "A smaller gizmo, shown on a click for a couple of seconds; scroll arrows on the file tabs"], "#F3F2EE", 27) + """</div>
+</div>
 </section>""")
 
 # 10 — goodies

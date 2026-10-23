@@ -241,6 +241,7 @@ class _SelectionWatch:
             self.shell.dof_display_changed()  # the clicked part's DOF gizmo comes or goes (assemblies only)
 
     def addSelection(self, doc, obj, sub, pnt):
+        self.shell._gizmo_seen = None  # every click on a part shows its gizmo again, for a couple of seconds
         self._check()
 
     def removeSelection(self, doc, obj, sub):
@@ -355,6 +356,7 @@ class Shell(QtCore.QObject):
         self._syncing = False    # the tree is setting the model's selection: the watcher stays quiet
         self._area_warned = set()  # area copies already reported as lost (until their area is back)
         self._visibility_applied = set()  # document names whose saved visibility was put in step once
+        self._adopt_tried = set()  # files made outside InCad already offered to become InCad parts
         self._projections_told = {}  # (doc, sketch) -> Refs of projected edges a used sketch was told to keep
         self._sel_watch = None
         self._section_display = None  # ([SectionDisplay], doc, view, [Caps], [(shape, colour)]) while sectioned
@@ -386,6 +388,22 @@ class Shell(QtCore.QObject):
     # ----- FreeCAD's own UI -----
     def _mdi(self):
         return self.mw.findChild(QtWidgets.QMdiArea)
+
+    def _tune_tabs(self):
+        """The file tabs (the user: an assembly's parts opened one by one): on the Mac Qt neither scrolls nor
+        shortens them, so past the window's width they were out of reach (5 of 18 shown): arrows, long names cut
+        with …, the full name in the tab's tooltip."""
+        mdi = self._mdi()
+        if mdi is None:
+            return
+        for bar in mdi.findChildren(QtWidgets.QTabBar):
+            if not bar.usesScrollButtons():
+                bar.setUsesScrollButtons(True)
+            if bar.elideMode() != QtCore.Qt.ElideRight:
+                bar.setElideMode(QtCore.Qt.ElideRight)
+            for i in range(bar.count()):
+                if bar.tabToolTip(i) != bar.tabText(i):
+                    bar.setTabToolTip(i, bar.tabText(i))
 
     def _freecad_toolbars(self):
         return [t for t in self.mw.findChildren(QtWidgets.QToolBar)
@@ -1030,7 +1048,7 @@ class Shell(QtCore.QObject):
         info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
         context.set_target(None)
         if info:
-            obj = doc.getObject(info["Object"])
+            obj = doc.getObject(info["Object"]) if info.get("Document") == doc.Name else None
             datum = obj is not None and (obj.TypeId in document.ORIGIN_TYPES or obj.TypeId in document.DATUM_TYPES)
             if obj is not None and (datum or obj.TypeId == "Sketcher::SketchObject"):
                 # a shown plane, axis or point (origin or work feature), or a shown sketch: the object's own menu
@@ -1045,7 +1063,14 @@ class Shell(QtCore.QObject):
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
             Gui.Selection.clearSelection()
-            Gui.Selection.addSelection(info["Document"], info["Object"], comp)
+            parent = info.get("ParentObject")
+            if info.get("SubName") and getattr(parent, "Document", None) is doc:
+                # a part of an assembly: picked as the assembly's component ('Assembly' + 'Cover.Hole4.Face4'), never
+                # as the object in the part's own file — that made the part's file the active one, opened its tab and
+                # Hide hid it there (the user: it opened in a new window and vanished, with no way back)
+                Gui.Selection.addSelection(doc.Name, parent.Name, info["SubName"])
+            else:
+                Gui.Selection.addSelection(info["Document"], info["Object"], comp)
         else:
             kind = "part" if document.is_incad_part(doc) else "empty"
         from incad.core import assembly
@@ -2674,9 +2699,18 @@ class Shell(QtCore.QObject):
         from incad.core import assembly as assemblies
         if doc is not None and fs is None:
             self._purge_stale_areas(doc)
+        if doc is not None and fs is None and doc.Name not in self._adopt_tried and not document.is_incad_part(doc) \
+                and not assemblies.is_assembly(doc) and not getattr(doc, "Restoring", False) \
+                and not getattr(doc, "Recomputing", False) and self._in_its_tab(doc):
+            self._adopt_tried.add(doc.Name)
+            self._adopt_foreign(doc)
         is_part = document.is_incad_part(doc)
         is_asm = assemblies.is_assembly(doc)
         editing = self.sketches.editing() if is_part else None
+        try:
+            self._tune_tabs()
+        except Exception:
+            log.logger().exception("file tabs")
         try:
             from incad.ui import wire_style
             wire_style.refresh(doc, self.theme)  # objects made while Wireframe is on; a file saved in it
@@ -3085,10 +3119,12 @@ class Shell(QtCore.QObject):
         counts = dof.last(doc) or {}
         hover = self._dof_hover[1] if self._dof_hover is not None and self._dof_hover[0] == doc.Name else None
         dragged = self.asm_drag.link_name if self.asm_drag is not None and self.asm_drag.active() else None
-        tip = dragged or hover
+        tip = dragged  # the part under the pointer draws nothing of its own (the user: the gizmo stayed while the mouse
+        # was on the part — that was its hover glyph, the same arrows)
         gizmo = handles.gizmo_part(doc) if handles is not None else None  # the clicked part: its glyph has handles
         if gizmo and not dragged:
             self._dof_linger = None  # a part selected: its own gizmo, no lingering one
+            gizmo = self._gizmo_wanted(doc, gizmo, hover, handles)
         gizmo = gizmo or self._lingering(doc, dragged, handles)
         names = list(counts) if doc.Name in self._dof_on else [n for n in dict.fromkeys((gizmo, tip)) if n]
         items, drawn = [], False
@@ -3107,6 +3143,15 @@ class Shell(QtCore.QObject):
                 items.append((name, hs, size, name == tip, None))
         if handles is not None and not drawn:
             handles.clear_drawn()
+        if drawn and not dragged and not getattr(self, "_gizmo_check_due", False):
+            # a gizmo on screen goes out on time whatever else happens (a timer set earlier can come before its
+            # moment): looked at again every half second while it is there
+            self._gizmo_check_due = True
+
+            def again():
+                self._gizmo_check_due = False
+                self.dof_display_changed()
+            QtCore.QTimer.singleShot(500, again)
         if self._dof_glyphs is None:
             if not items:
                 return
@@ -3169,6 +3214,26 @@ class Shell(QtCore.QObject):
         return True
 
     LINGER = 3.0  # s a part's gizmo stays after it was dragged (the user: it went out at once, hard to grab)
+
+    def _gizmo_wanted(self, doc, name, hover, handles):
+        """The selected part's gizmo: shown when the part is clicked, kept while a handle is dragged or under the pointer,
+        and out LINGER seconds after (the user: always on it was in the way — "it must go out when nobody pulls it",
+        "give a couple of seconds to grab it"). A click on the part shows it again. None: not now."""
+        now = time.monotonic()
+        seen = getattr(self, "_gizmo_seen", None)
+        fresh = seen is None or seen[:2] != (doc.Name, name)  # just clicked: shown, then it fades unless held
+        on_it = fresh or handles.dragging() or (  # dragged, or the pointer on a handle about to grab it
+            handles.lit is not None and handles.drawn is not None and handles.drawn[1] == name)
+        if on_it:
+            self._gizmo_seen = (doc.Name, name, now)
+            return name
+        seen = getattr(self, "_gizmo_seen", None)
+        if seen is not None and seen[:2] == (doc.Name, name) and now - seen[2] < self.LINGER:
+            if getattr(self, "_gizmo_timer_for", None) != seen:
+                self._gizmo_timer_for = seen
+                QtCore.QTimer.singleShot(int((self.LINGER - (now - seen[2])) * 1000) + 100, self.dof_display_changed)
+            return name
+        return None
 
     def _lingering(self, doc, dragged, handles):
         """The part just dragged by the mouse (not selected: a press that moved is a drag, no click): its gizmo stays
@@ -3295,6 +3360,9 @@ class Shell(QtCore.QObject):
         as a part of its own."""
         import FreeCAD as App
         import FreeCADGui as Gui
+        if link.LinkedObject is None:  # its part file was not found where the assembly says
+            raise ValueError("%s: its part file was not found — open the assembly from the folder its parts are in, "
+                             "or Place the part again" % link.Label)
         path = link.LinkedObject.Document.FileName
         part = link.LinkedObject.Document
         if Gui.getDocument(part.Name) is None or Gui.getDocument(part.Name).ActiveView is None:
@@ -3305,6 +3373,7 @@ class Shell(QtCore.QObject):
             link.Document.recompute()
         App.setActiveDocument(part.Name)
         Gui.ActiveDocument = Gui.getDocument(part.Name)
+        self._adopt_foreign_part(part, link.Document)
         if context:
             self._show_context(link, part)
         else:
@@ -3312,6 +3381,37 @@ class Shell(QtCore.QObject):
             if old is not None:
                 old.remove()
         self.schedule_refresh()
+
+    @staticmethod
+    def _in_its_tab(doc):
+        """The document is the one shown in front, in a tab of its own (an assembly's part files load without one, and
+        one of them can be the active document for a moment while the assembly opens: never made a part then)."""
+        import FreeCADGui as Gui
+        g = Gui.getDocument(doc.Name)
+        return g is not None and g.ActiveView is not None and Gui.ActiveDocument is not None \
+            and Gui.ActiveDocument.Document is doc
+
+    def _adopt_foreign_part(self, part, asm):
+        """A component's file opened from the assembly: made outside InCad, it becomes an InCad part at once, in the
+        assembly's units (the user: it opened as "Not an InnCad part" — no tools, and Hide took it away)."""
+        from incad.core import document
+        self._adopt_tried.add(part.Name)
+        return self._adopt_foreign(part, document.part_units(asm))
+
+    def _adopt_foreign(self, doc, units=None):
+        """A file made outside InCad — a script's or FreeCAD's part, a STEP opened as it is — gets every tool of an
+        InCad part (the user: parts not made in InCad must be edited the same way). Nothing to make a part of
+        (no solid): left as it is."""
+        from incad.core import document, safe
+        if document.is_incad_part(doc):
+            return False
+        r = safe.run_safely("Open as InCad Part", lambda: document.adopt_foreign(doc, units or prefs.default_units()),
+                            doc)
+        if not r.ok or r.value is None:
+            return False
+        log.report("info", "%s was made outside InCad: it is an InCad part now (Save keeps that)" % doc.Label)
+        self.schedule_refresh()
+        return True
 
     def _show_context(self, link, part):
         """Edit from the assembly: the other parts drawn around this one in its tab (ui/assembly_context), from the
@@ -3967,7 +4067,13 @@ def ask_save(docs, action="quitting"):
         choice = dlg.result_choice()
     if choice[0] == "cancel":
         return False
+    from incad.core import assembly
     for d in changed:
+        if choice[0] == "save" and d.Label in choice[1] and assembly.is_assembly(d):
+            from incad import actions  # an assembly goes into its folder with its parts (the user)
+            if actions.save_assembly(d) is None:
+                return False
+            continue
         if choice[0] == "save" and d.Label in choice[1]:
             if d.FileName:
                 d.save()

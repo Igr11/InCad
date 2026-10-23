@@ -5,6 +5,39 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.10.0
+-----
+Hide / Show / Show All, also in the assembly's tree; files made outside InCad edited like InCad parts; an assembly saved into a folder with its parts; a smaller gizmo that goes out; file tabs reachable.
+
+Improvements
+- The assembly gizmo is a third smaller and no longer stays on the part: a click on a part shows it for a couple of
+  seconds to grab a handle, it stays while a handle is dragged or under the pointer, and then goes out; another click
+  shows it again.
+- Save an assembly into a folder of its name: Save (first time) or Save As writes Name/Name.FCStd at the place chosen,
+  with every part of the assembly (a sub-assembly's too) saved into that folder; the assembly links to the copies, the
+  files the parts came from stay as they were. Saving again keeps it all there.
+- Hide, Show and Show All said outright (View ▸ Visual Style ▸ Hide / Show and every right-click menu): Hide and Show
+  act on the selected solid, assembly part, plane or sketch (a hidden one by its browser row); Show All brings back
+  every hidden solid of the part, every hidden part of the assembly, with nothing to pick.
+- Files made outside InCad — a script's or FreeCAD's part, a STEP opened as it is — become InCad parts by themselves
+  when they come to the front, with every tool: the largest Solid is the main one, a STEP's shapes become Solids where
+  they are shown. No Convert button to find.
+
+Bug fixes
+- Selecting a part of an assembly lit its whole history in the browser and opened it: only the part's own row lights up
+  now.
+- A right-click on a part of an assembly picked the object inside the part's own file: that file became the active one
+  and opened in a tab of its own, and Hide hid the part there — it vanished from the assembly with no row to bring it
+  back. The right-click now picks the part as the assembly's component: Hide and Show act in the assembly's tree, and
+  Show on a part's row also brings back a part hidden inside its own file.
+- A part whose file was made outside InCad (by a script, in FreeCAD), opened from an assembly with a double-click, Edit
+  or Open, opened as "Not an InCad part": no tools in its tab, and a Solid hidden there could not be brought back. It
+  now opens as an InCad part (one Solid): the part ribbon, its history in the browser, and Undo or Hide / Show bring
+  a hidden Solid back.
+- With many files open (an assembly's parts opened one by one) the tabs past the window's edge could not be reached: the
+  tab bar now has scroll arrows, long names are cut with …, and the full name shows when the pointer rests on a tab.
+
+
 0.9.0
 -----
 Section, Interference, Hide / Show and Open in assemblies.

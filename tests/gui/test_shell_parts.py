@@ -96,17 +96,15 @@ def test_3b_typing_a_parameter_like_a_user():
 
 
 def test_4_plain_file():
+    """A file made outside InCad (a bare Body) is an InCad part as soon as it is in front (the user: such parts get
+    every tool) — no Convert button to find first."""
     d = App.newDocument("Plain")
     d.addObject("PartDesign::Body", "Body")
     d.recompute()
-    harness.pump(800)
-    labels = [r[1] for r in s().browser.tree_rows()]
-    assert labels[:2] == ["Not an InCad part", "Convert to InCad Part"], labels
-    assert not s().browser.add_button.isEnabled(), "parameters must be locked in a plain FreeCAD file"
-    s().browser.actionTriggered.emit("convert")
-    harness.pump(800)
+    s().schedule_refresh()
+    harness.pump(1200)
     assert document.is_incad_part(d)
-    assert s().browser.add_button.isEnabled()
+    assert s().browser.add_button.isEnabled(), "parameters locked in a file made an InCad part"
     assert "Origin" in [r[1] for r in s().browser.tree_rows()]
 
 

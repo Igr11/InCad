@@ -358,5 +358,5 @@ class GlyphSizeTest(unittest.TestCase):
 
     def test_twenty_percent_smaller_than_before(self):
         from incad.core import dof
-        self.assertAlmostEqual(dof.glyph_size(100.0), 28.0)   # was 35
-        self.assertAlmostEqual(dof.glyph_size(10.0), 4.0)     # the floor: was 5
+        self.assertAlmostEqual(dof.glyph_size(100.0), 18.0)   # was 35, then 28 ("they are huge")
+        self.assertAlmostEqual(dof.glyph_size(10.0), 3.0)     # the floor: was 5, then 4

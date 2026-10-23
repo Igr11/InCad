@@ -304,6 +304,18 @@ def test_3b_every_arc_of_a_free_part_turns_by_the_pointer_both_ways():
 
 def test_4_drag_an_arrow_slides_along_it():
     select_bar()
+    camera = view().getCamera()
+    try:
+        Gui.SendMsgToActiveView("ViewSelection")  # the bar large: the smaller gizmo's arrow spans enough pixels for
+        harness.pump(600)                         # a 10 mm drag to be read to half a millimetre
+        select_bar()
+        _drag_the_arrow()
+    finally:
+        view().setCamera(camera)
+        harness.pump(400)
+
+
+def _drag_the_arrow():
     b = obj("b")
     bb = App.Placement(b.Placement)
     n0 = len(doc().UndoNames)
@@ -439,16 +451,19 @@ def test_10_a_click_on_a_handle_goes_to_freecad_unless_over_its_own_part():
     before = sel()
     click(arc_path(arc, t0, 45)[0])
     assert gizmo() == ST["b"] and sel() == before, ("a click on a handle over its own part changes nothing", sel())
-    # seen from the top the arc reaches past the bar's sides (in the isometric view it lies over the bar nearly all
-    # round); a spot well off the bar, since FreeCAD's click picks within its pick radius
+    # a handle off the bar: seen from the top, the arrow across the bar reaches past its sides (the gizmo is small
+    # now: its arc stays over the 6 mm bar); a spot well off the bar, as FreeCAD's click picks within its pick radius
     camera = view().getCamera()
     try:
         view().viewTop()
-        harness.pump(500)
-        k, arc = handle("turn")
-        outside = [q for q in (screen_of(p) for p in arc.line)
-                   if clear_of_bar(q, 6) and s().dof_handles.hit(view(), viewport(), q.x(), q.y()) == k]
-        assert outside, "a point of the arc well off the bar"
+        Gui.SendMsgToActiveView("ViewSelection")
+        harness.pump(600)
+        select_bar()
+        outside = []
+        for k, h in enumerate(s().dof_handles.drawn[2]):
+            outside += [q for q in (screen_of(p) for p in h.line)
+                        if clear_of_bar(q, 6) and s().dof_handles.hit(view(), viewport(), q.x(), q.y()) == k]
+        assert outside, "a point of a handle well off the bar"
         click(outside[len(outside) // 2])
         assert gizmo() is None, ("the click went to FreeCAD: it selected what is there (not the bar)", sel())
     finally:

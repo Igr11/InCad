@@ -419,22 +419,19 @@ def test_9a_view_button_draws_only_available_freedoms():
 
 
 def test_9b_hover_tip_on_a_free_part_only():
-    s()._on_dof_hover(ST["t"])
-    harness.pump(300)
-    assert glyph_parts() == 1 and s()._dof_glyphs.highlighted == [ST["t"]]
-    s()._on_dof_hover(ST["m"])  # DOF 0: no tip
-    harness.pump(300)
-    assert glyph_parts() == 0
-    s()._on_dof_hover(None)
-    harness.pump(300)
-    assert glyph_parts() == 0
+    """The part under the pointer draws nothing of its own (the user: "the gizmo stayed while the mouse was on the
+    part" — it was this hover glyph): its arrows show on a click, a drag, or with View ▸ Degrees of Freedom."""
+    for name in (ST["t"], ST["m"], None):
+        s()._on_dof_hover(name)
+        harness.pump(300)
+        assert glyph_parts() == 0, (name, glyph_parts())
 
 
 def test_9c_hover_from_real_preselection():
     pos = top_of("t")
     send(QtCore.QEvent.MouseMove, pos, QtCore.Qt.NoButton, QtCore.Qt.NoButton)
     harness.pump(600)
-    assert glyph_parts() == 1, glyph_parts()
+    assert glyph_parts() == 0, glyph_parts()
     send(QtCore.QEvent.MouseMove, QtCore.QPointF(5, 5), QtCore.Qt.NoButton, QtCore.Qt.NoButton)  # empty corner
     harness.pump(600)
     assert glyph_parts() == 0, glyph_parts()

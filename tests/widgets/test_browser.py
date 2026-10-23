@@ -33,6 +33,22 @@ class BrowserTest(unittest.TestCase):
             (1, "Extrusion1", "feature", ""), (2, "Sketch1", "sketch", ""), (1, "End of Part", "end_of_part", ""),
             (1, "Fillet1", "feature", "rolled_back"), (1, "Broken", "feature", "error")])
 
+    def test_a_component_selected_lights_its_row_not_its_history(self):
+        """An assembly's component rows carry its history, every row standing for the component: selecting the part
+        lights its own row only and leaves the history closed (the user: it lit the whole history)."""
+        b = ModelBrowser("light")
+        b.set_nodes([Node("assembly", "Asm", children=[
+            Node("component", "Base", "Base", children=[
+                Node("feature", "Base_Floor", "Base", children=[Node("sketch", "SkBase_Floor", "Base")]),
+                Node("feature", "Base_Cavity", "Base")]),
+            Node("component", "Cover", "Cover")])])
+        for label in ("Base", "Base_Floor"):
+            b.item_by_label(label).setExpanded(False)
+        b.select_names(["Base"])
+        lit = [i.text(0) for i in b.tree.selectedItems()]
+        self.assertEqual(lit, ["Base"])
+        self.assertFalse(b.item_by_label("Base").isExpanded(), "the history opened")
+
     def test_error_color_and_tooltip(self):
         item = self.b.item_by_label("Broken")
         self.assertEqual(item.foreground(0).color(), QtGui.QColor(theme.PALETTES["light"]["error"]))

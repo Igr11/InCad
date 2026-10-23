@@ -184,7 +184,7 @@ class ModelBrowser(QtWidgets.QWidget):
         try:
             self.tree.clearSelection()
             for item in self._items():
-                if item.data(0, NAME_ROLE) in names:
+                if item.data(0, NAME_ROLE) in names and not self._under_same(item):
                     parent = item.parent()
                     while parent is not None:
                         if not parent.isExpanded():
@@ -196,6 +196,18 @@ class ModelBrowser(QtWidgets.QWidget):
                 self.tree.scrollToItem(first)  # a sketch picked in the 3D view is found in the tree
         finally:
             self.tree.blockSignals(False)
+
+    @staticmethod
+    def _under_same(item):
+        """A row under a row of the same object (an assembly component's history rows all stand for the component):
+        only the top one is highlighted, its history left closed (the user: selecting a part lit its whole history)."""
+        name = item.data(0, NAME_ROLE)
+        parent = item.parent()
+        while parent is not None:
+            if parent.data(0, NAME_ROLE) == name:
+                return True
+            parent = parent.parent()
+        return False
 
     def _on_expanded(self, item, expanded):
         if item.data(0, KIND_ROLE) == "origin" and not getattr(self, "_rebuilding", False):

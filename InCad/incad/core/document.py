@@ -708,6 +708,12 @@ def set_visibility(objects, flag, record=True):
                 _set_visible(origin, True)
         _set_visible(o, bool(flag))
         _tip_follows(o)
+        linked = getattr(o, "LinkedObject", None) if o.TypeId == "App::Link" else None
+        if flag and getattr(linked, "TypeId", "") == "PartDesign::Body" and not is_shown(linked):
+            if SHOWN_PROP in linked.PropertiesList:  # its Solid hidden inside its part's file (an older InCad did
+                _record_choice(linked, True)        # that): back too, and kept so after an undo or a reopen
+            _set_visible(linked, True)
+            _tip_follows(linked, True)
 
 
 def apply_visibility(doc):
@@ -777,19 +783,94 @@ def _solid_of(o):
     return None
 
 
-def toggle_visibility(objects):
-    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state. Sketches, planes,
-    axes and points as they are; anything of a Solid (a face, a feature) hides or shows that whole Solid."""
+def visibility_targets(objects):
+    """What Hide / Show acts on for the picked objects: sketches, planes, axes and points as they are; anything of a
+    Solid (a face, a feature) means that whole Solid; an assembly's component means the component."""
     targets = [o for o in objects if o.TypeId == "Sketcher::SketchObject" or o.TypeId in ORIGIN_TYPES
-               or o.TypeId in DATUM_TYPES]
+               or o.TypeId in DATUM_TYPES or hasattr(o, "InCadMeshReference")  # InnCad Plus: an STL Reference,
+               or hasattr(o, "InCadImportedSurfaces")]  # an STL's surfaces
     targets += [s for s in dict.fromkeys(_solid_of(o) for o in objects if o not in targets) if s is not None]
     if not targets:
         seen = ", ".join(dict.fromkeys(o.Label for o in objects if hasattr(o, "Label")))
         raise ValueError("Nothing to hide or show in %s: select a solid, a plane, an axis, a point or a sketch"
                          % seen if seen else "Select a solid, a plane, an axis, a point or a sketch first")
+    return targets
+
+
+def toggle_visibility(objects):
+    """Hide / Show: hides when any target is visible, else shows them all. Returns the new state."""
+    targets = visibility_targets(objects)
     flag = not any(is_shown(o) for o in targets)
     set_visibility(targets, flag)
     return flag
+
+
+def all_parts(doc):
+    """What Show All brings back: every Solid of a part (not a Boolean's used-up tool), every component of an
+    assembly (InCad's links, or the Bodies and shapes put in an assembly made elsewhere)."""
+    from incad.core import assembly
+    if assembly.is_assembly(doc):
+        asm = assembly.assembly_of(doc)
+        out = []
+
+        def walk(objs):
+            for o in objs:
+                if o.TypeId in ("App::Part", "App::DocumentObjectGroup"):
+                    walk(o.Group)
+                elif o.TypeId == "App::Link" or o.TypeId == "PartDesign::Body" or (
+                        o.TypeId.startswith("Part::") and hasattr(o, "Shape")):
+                    out.append(o)
+        walk(asm.Group if asm is not None else [])
+        # a component's own Solid hidden inside its part's file (an older InCad hid it there from the assembly):
+        # Show All brings that back too, so nobody has to go looking for it
+        out += [l.LinkedObject for l in out if l.TypeId == "App::Link"
+                and getattr(l.LinkedObject, "TypeId", "") == "PartDesign::Body"]
+        return out
+    from incad.features import combine
+    used = combine.used_up_names(doc)
+    return [b for b in bodies(doc) if b.Name not in used]
+
+
+def adopt_foreign(doc, units="mm"):
+    """A file made outside InCad (a script, FreeCAD, a STEP opened as it is) becomes an InCad part, so it has every
+    tool an InCad part has (the user: parts not made in InCad must be edited the same way). With Bodies: the
+    largest is the main Solid. Without: every shown solid shape becomes a Solid on it (its base, as Import makes
+    one), placed where it is shown. Returns the main Solid, or None when there is nothing to make a part of."""
+    from incad.core import assembly
+    if is_incad_part(doc) or assembly.is_assembly(doc):
+        return None
+    found = bodies(doc)
+    if not found:
+        from incad.core import section
+        shapes = [(o, sh) for o, sh, _ in section.shown_shapes(doc) if sh.Solids and o.TypeId != "App::Link"]
+        if not shapes:
+            return None
+        for o, sh in shapes:
+            base = doc.addObject("Part::Feature", "Imported")
+            # in the file's frame, moved in its geometry: a Solid's base drops a shape's own placement (the block of a
+            # STEP group moved 100 mm came back at the origin)
+            where = o.getGlobalPlacement() if hasattr(o, "getGlobalPlacement") else o.Placement
+            moved = o.Shape.copy()
+            moved.Placement = App.Placement()
+            base.Shape = moved.transformed(where.toMatrix(), True)
+            base.Label = o.Label + " (imported)"
+            body = doc.addObject("PartDesign::Body", "Body")
+            body.Label = o.Label
+            body.BaseFeature = base
+            o.Visibility = False
+            base.Visibility = False
+        doc.recompute()
+        found = bodies(doc)
+
+    def volume(b):
+        try:
+            return b.Shape.Volume
+        except Exception:
+            return 0.0
+    main = max(found, key=volume)
+    _meta_set(doc, **{TYPE_KEY: "Part", PRIMARY_KEY: main.Name})
+    set_units(doc, units)
+    return main
 
 
 def _broken_shape(obj):

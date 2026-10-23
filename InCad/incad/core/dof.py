@@ -261,8 +261,9 @@ FAR = 1.5  # a turn axis farther from the part's centre than this many glyph siz
 
 
 def glyph_size(diagonal):
-    """A part's DOF glyph / gizmo size (mm) from its box diagonal (the user: 20 % smaller than 0.35 / 5 mm)."""
-    return max(diagonal * 0.28, 4.0)
+    """A part's DOF glyph / gizmo size (mm) from its box diagonal (the user: 20 % smaller than 0.35 / 5 mm; then
+    "they are huge" — a third smaller again)."""
+    return max(diagonal * 0.18, 3.0)
 
 
 def handles(freedom, placement, centre, size):
