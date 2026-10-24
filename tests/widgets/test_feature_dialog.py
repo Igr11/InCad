@@ -410,3 +410,31 @@ class SectionListTest(unittest.TestCase):
         self.assertFalse(self.d.row_button("sections", 1, "down").isEnabled())
         self.assertTrue(self.d.undo_change())
         self.assertEqual(self.d.values()["sections"], "SkC,SkA")
+
+
+class FieldsAreaTest(unittest.TestCase):
+    def setUp(self):
+        qtapp.app()
+
+    def test_a_tall_dialog_scrolls_its_fields_and_keeps_ok_in_the_view(self):
+        """The user: Worm's fields ran off the screen and OK with them."""
+        from incad.qt import QtWidgets
+        parent = QtWidgets.QWidget()
+        parent.resize(600, 420)
+        fields = tuple(Field("v%d" % i, "Value %d" % i, "value_length", default="1 mm") for i in range(20))
+        d = FeatureDialog("Tall", "incad", fields, {f.key: "1 mm" for f in fields}, parent=parent)
+        parent.show()
+        d.show()
+        d.adjustSize()
+        qtapp.app().processEvents()
+        try:
+            self.assertLessEqual(d.height(), parent.height() - 16, "inside the view")
+            ok = d.ok_button.mapTo(parent, d.ok_button.rect().bottomLeft())
+            self.assertLess(ok.y(), parent.height(), "OK in sight")
+            self.assertTrue(d._fields_area.verticalScrollBar().maximum() > 0, "the fields scroll")
+            area = d._fields_area
+            step = d._steppers["v0"][1]
+            right = step.mapTo(area.viewport(), step.rect().topRight()).x()
+            self.assertLessEqual(right, area.viewport().width(), "the ▲▼ stay in sight beside the scroll bar")
+        finally:
+            parent.close()

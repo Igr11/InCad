@@ -151,6 +151,25 @@ class CapsTest(unittest.TestCase):
         self.assertAlmostEqual(sum(f.Area for f in caps.faces(plane)), 60, places=3)
 
 
+class GearCapsTest(unittest.TestCase):
+    """The user (Windows): a gear's section was sometimes empty, as if made of zero-thickness surfaces. A plane
+    through the mesh's vertices (a gear's middle) left holes in the loop; a worm's axial section came out in bits."""
+    def test_gear_and_worm_cuts_are_whole(self):
+        import Part
+        from incad.core import gears
+        V = App.Vector
+        for name, solid in (("spur", gears.gear_solid(2, 20, width=10, bore=8)),
+                            ("helical", gears.gear_solid(2, 20, helix=20, width=10, bore=8)),
+                            ("worm", gears.worm_solid(2, 1, 20, 40, bore=8))):
+            caps = section.Caps(solid)
+            mid = solid.BoundBox.Center
+            for rot in (App.Rotation(), App.Rotation(V(1, 0, 0), 90), App.Rotation(V(0, 1, 0), 90)):
+                pl = App.Placement(mid, rot)
+                exact = sum(f.Area for f in section.cap_faces(solid, pl))
+                got = sum(f.Area for f in caps.faces(pl))
+                self.assertAlmostEqual(got, exact, delta=0.01 * exact, msg="%s %s" % (name, rot.toEuler()))
+
+
 class HatchTest(unittest.TestCase):
     def test_hatch_stays_inside_the_loops(self):
         from incad.core import section

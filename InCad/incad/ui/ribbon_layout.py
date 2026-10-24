@@ -6,7 +6,8 @@ LAYOUT = {
     "part": [
         ["3D Model", [["Sketch", ["sketch.start", "feature.line3d"]],
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole",
-                                  ["feature.sweep", "feature.loft", "feature.coil"], "feature.emboss"]],
+                                  ["feature.sweep", "feature.loft", "feature.coil"], ["feature.gear", "feature.worm"],
+                                  "feature.emboss"]],
                       ["Modify", [["feature.fillet", "feature.full_round", "feature.chamfer"], ["feature.shell", "feature.draft"],
                                   "feature.thread", "feature.threads_toggle", "feature.combine", "feature.split",
                                   "feature.move_face"]],

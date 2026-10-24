@@ -337,6 +337,7 @@ class Shell(QtCore.QObject):
         self._box_owner = None
         self.feature_session = None
         self._overlay = None  # the open dialog's own view handle (Move Face's arrow): the navigator's handle hook
+        self._gear_gizmo = None  # the gizmo on a gear selected in the part, no dialog open (ui/gear_gizmo)
         self.info_panel = None
         self.plane_panel = None
         self.slot_tool = None
@@ -771,6 +772,7 @@ class Shell(QtCore.QObject):
         self._menus = []
 
     def _teardown(self):
+        self._drop_gear_gizmo()
         if self._sel_watch is not None:
             try:
                 import FreeCADGui as Gui
@@ -1216,6 +1218,10 @@ class Shell(QtCore.QObject):
         import FreeCADGui as Gui
         if not self.active or self._syncing or self.browser is None:
             return
+        try:
+            self._sync_gear_gizmo()  # a gear picked: its gizmo (the user: there after the gears are placed)
+        except Exception:
+            log.logger().exception("gear gizmo")
         doc = App.ActiveDocument
         from incad.features import common as _common
         sels = _common.selection_ex(doc.Name) if doc is not None else []
@@ -2415,6 +2421,8 @@ class Shell(QtCore.QObject):
         if not started:
             self.feature_session = None
         hook = getattr(kind, "overlay", None)
+        if started:
+            self._drop_gear_gizmo()  # a dialog has the mouse now (its own gizmo, if any)
         if started and hook is not None and self.feature_session is fs and fs.dialog is not None:
             try:  # (an Esc or OK during the first preview closed it already)
                 self._overlay = hook(self, fs)
@@ -2425,6 +2433,66 @@ class Shell(QtCore.QObject):
                 log.logger().exception("%s overlay", kind.TITLE)
                 self._drop_overlay()
         self.schedule_refresh()
+
+    def _selected_gear(self):
+        """The set's first gear when exactly one gear (or worm) is selected in the active part and nothing else owns
+        the mouse; else None."""
+        import FreeCAD as App
+        from incad.core import assembly
+        from incad.features import common as _common
+        from incad.features import gear
+        if self.feature_session is not None or self.sketches.editing() is not None or any(
+                getattr(self, a, None) is not None for a in ("_point_pick", "_region_pick", "_profile_pick")):
+            return None
+        doc = App.ActiveDocument
+        if doc is None or assembly.is_assembly(doc):
+            return None
+        sels = _common.selection_ex(doc.Name)
+        if len(sels) != 1:
+            return None
+        sel = sels[0]
+        subs = sel.SubElementNames or ("",)
+        found = set()
+        for sub in subs:
+            obj, el = _common.resolve(sel.Object, sub)
+            g = gear.gear_of(obj, el)
+            if g is None:
+                return None
+            found.add(gear.lead_of(g).Name)
+        if len(found) != 1:
+            return None
+        lead = doc.getObject(found.pop())
+        return lead if gear.gizmo_frame(lead) is not None else None
+
+    def _sync_gear_gizmo(self):
+        """The gizmo on the selected gear comes, follows the gear (undo, an edit) or goes."""
+        from incad.ui.gear_gizmo import GearGizmo
+        cur = self._gear_gizmo
+        if cur is not None and cur.dragging():
+            return
+        want = self._selected_gear() if self.active else None
+        if cur is not None and (want is None or cur.target is not want):
+            self._drop_gear_gizmo()
+            cur = None
+        if want is None:
+            return
+        if cur is None:
+            self._gear_gizmo = GearGizmo(self, feature=want)
+            if self.navigator is not None:
+                self.navigator.handle_hook = self._gear_gizmo
+        else:
+            cur.refresh()
+
+    def _drop_gear_gizmo(self):
+        g, self._gear_gizmo = self._gear_gizmo, None
+        if g is None:
+            return
+        try:
+            g.remove()
+        except Exception:
+            log.logger().exception("gear gizmo")
+        if self.navigator is not None and self.navigator.handle_hook is g:
+            self.navigator.handle_hook = self.dof_handles
 
     def _drop_overlay(self):
         overlay, self._overlay = self._overlay, None
@@ -2666,6 +2734,10 @@ class Shell(QtCore.QObject):
         self._refresh_pending = False
         if self.ribbon is None:
             return
+        try:
+            self._sync_gear_gizmo()
+        except Exception:
+            log.logger().exception("gear gizmo")
         import FreeCAD as App
         if any(getattr(App.getDocument(n), "Restoring", False) for n in App.listDocuments()):
             # a file is still loading: FreeCAD pumps events for its progress bar, and a refresh now would
@@ -3676,7 +3748,7 @@ class Shell(QtCore.QObject):
             return []
         body = document.primary_body(doc)
         if body is not None and not body.Shape.isNull() and body.Shape.Solids:
-            return [(body.Shape, self._part_colour(body))]
+            return [(self._section_shape(body), self._part_colour(body))]
         return [(shape, self._part_colour(colour_of)) for _, shape, colour_of in section.shown_shapes(doc)]
 
     @staticmethod
@@ -3690,6 +3762,23 @@ class Shell(QtCore.QObject):
                 return tuple(obj.Tip.ViewObject.ShapeColor[:3])
             except Exception:
                 return (0.8, 0.8, 0.8)
+
+    @staticmethod
+    def _section_shape(body):
+        """What the section cuts: every Solid of the part that is shown (the second gear of a pair, a piece of its
+        own, looked hollow when only the main Solid got its cut faces)."""
+        import Part
+        from incad.core import document
+        shapes = []
+        for b in document.bodies(body.Document):
+            try:
+                if not b.Shape.isNull() and b.Shape.Solids and document.is_shown(b):
+                    shapes.append(b.Shape)
+            except Exception:
+                continue
+        if not shapes:
+            return body.Shape
+        return shapes[0] if len(shapes) == 1 else Part.makeCompound(shapes)
 
     def section_on(self):
         return self._section_display is not None

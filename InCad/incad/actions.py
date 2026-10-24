@@ -1772,6 +1772,12 @@ def commands():
                 contexts=frozenset({"part"}), tooltip="Loft through two or more section sketches"),
         Command(id="feature.coil", label="Coil", icon="coil", handler=lambda: start_feature("coil"),
                 contexts=frozenset({"part"}), tooltip="Sweep a profile sketch along a helix (springs)"),
+        Command(id="feature.gear", label="Spur Gears", icon="gear", handler=lambda: start_feature("gear"),
+                contexts=frozenset({"part"}),
+                tooltip="A pair of spur or helical gears in mesh (or one gear): module, ratio or centre distance, "
+                        "teeth; Make Assembly puts each in a part file"),
+        Command(id="feature.worm", label="Worm Gear", icon="worm", handler=lambda: start_feature("worm"),
+                contexts=frozenset({"part"}), tooltip="A worm and its wheel in mesh (or the worm alone)"),
         Command(id="feature.draft", label="Draft", icon="draft", handler=lambda: start_feature("draft"),
                 contexts=frozenset({"part"}), tooltip="Tilt faces by an angle (for moulding)"),
         Command(id="tools.appearance", label="Appearance", icon="appearance", handler=lambda: appearance(),

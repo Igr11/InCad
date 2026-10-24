@@ -37,13 +37,14 @@ def pieces_or_refuse(doc):
     if not doc.FileName:
         raise ValueError("Save the part first: its folder takes the new files")
     found = pieces(doc)
+    if not found:
+        raise ValueError("This part has no solid to assemble")
     if len(found) < 2:
         joiner = _joiner(doc)
         if joiner is not None:
             raise ValueError("This part is one piece: %s joined the split pieces again (make it before the Split, "
                              "or as a New Solid)" % joiner.Label)
-        raise ValueError("This part is one piece: nothing to assemble")
-    return found
+    return found  # one piece too (the user: a single gear goes into an assembly as well)
 
 
 def _joiner(doc):
@@ -163,18 +164,23 @@ def _suppress_lost_steps(d, body, split_feature):
         d.recompute()
 
 
-def _finish_copy(path, point):
-    """Open the copy, keep only the piece at `point`, save it. Raises with the reason when the piece's copy is not
-    one clean solid."""
+def _finish_copy(path, point, body_name=None):
+    """Open the copy, keep only the piece at `point` (of the Solid `body_name`), save it. Raises with the reason when
+    the piece's copy is not one clean solid."""
     d = App.openDocument(path, hidden=True)
     try:
         d.recompute()
         _detach_all(d)
-        from incad.features import combine, split
+        from incad.features import combine, gear, split
+        gear.bake_all(d)  # a gear meshing with one in another Solid stands on its own: its file holds it alone
         used = combine.used_up_names(d)
         probe = Part.Vertex(point)
-        keep = min((b for b in document.bodies(d) if not b.Shape.isNull() and b.Name not in used),
-                   key=lambda b: b.Shape.distToShape(probe)[0])
+        candidates = [b for b in document.bodies(d) if not b.Shape.isNull() and b.Name not in used]
+        # the Solid the point is inside (its own name first): the nearest one by distance to its faces can be another
+        # (a worm wheel's inside point lay in a tooth right at the worm's thread: both files got the worm)
+        holding = sorted((b for b in candidates if b.Shape.isInside(point, 1e-6, True)),
+                         key=lambda b: b.Name != body_name)
+        keep = holding[0] if holding else min(candidates, key=lambda b: b.Shape.distToShape(probe)[0])
         needed = {o.getParentGeoFeatureGroup() for o in keep.OutListRecursive if hasattr(o, "getParentGeoFeatureGroup")}
         needed |= {o for o in keep.OutListRecursive if o.TypeId == "PartDesign::Body"}
         for b in document.bodies(d):
@@ -240,22 +246,26 @@ def _make(doc, asm_name, names, replace=False):
     for path in old:  # set aside, so a failure puts them back as they were
         kept[path] = path + ".incad-replace"
         os.replace(path, kept[path])
+    from incad.features import gear
+    train = gear.train_of(doc, found)  # read here: the copies let their gears' mates go (bake)
     made = []
     try:
         for piece, name in zip(found, names):
             path = _path(doc, name)
             made.append(path)  # before writing: a write that fails half-way is removed too
             doc.saveCopy(path)
-            _finish_copy(path, piece.point)
+            _finish_copy(path, piece.point, piece.body_name)
         asm_path = _path(doc, asm_name)
         a = App.newDocument(asm_name, hidden=True)
         try:
             assembly.make_assembly(a, document.part_units(doc) or "mm")
             made.append(asm_path)
             a.saveAs(asm_path)
-            for path in made[:-1]:  # largest first: the first placed is grounded
-                assembly.place(a, path, beside=False)
+            links = [assembly.place(a, path, beside=False) for path in made[:-1]]  # largest first: grounded
             a.recompute()
+            if train[0]:  # gears turn on their axes, the ones in mesh together (the user)
+                from incad.core import gear_train
+                gear_train.build(a, links, *train)
             a.save()
         finally:
             App.closeDocument(a.Name)

@@ -47,6 +47,10 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   `set_model_parameter(..., everything=False)` inside dialogs. `incad.core.perf` logs `Slow:` calls and event-loop stalls.
 - Overall dimensions (`incad.core.overall_dims`): a construction axis through two arc centres + a point where it leaves
   each arc; the value box offers Centers / Overall / Gap for any distance between two arcs (FreeCAD's own is the gap).
+- Gears (from InnCad Plus): Spur Gears / Worm Gear are `PartDesign::FeaturePython` with `InCadGear` settings
+  (`incad.features.gear`, teeth from FreeCAD's own `fcgear` in `core/gears`); a set is a lead gear + a second in its own
+  Solid (delete the lead = both); `ui/gear_gizmo` drives Offset / Turn; Make Assembly bakes mates and joins each gear by a
+  Rotational joint to a hidden grounded Gear Axes (`core/gear_train`), the DOF gizmo turns meshing gears by their ratio.
 - Windows (untested build, `scripts/make_dist_windows.sh`): what differs per system lives in `incad.host`.
 - Model values live in one VarSet (InCadModel): FreeCAD touches every object using ANY value when one changes — wrap
   value changes in `model.changing_values` (only users of a changed value stay touched); `bind` touches its feature.

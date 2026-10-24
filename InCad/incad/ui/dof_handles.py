@@ -9,6 +9,7 @@ The screen math at the top is pure (no FreeCAD, no Qt): points are (x, y) in log
 import math
 
 from incad.core import gestures, log
+from incad.qt import viewport_of
 
 HANDLE_PX = 12        # logical px around a handle's line or arrow head that catch it
 MIN_SHAFT_PX = 2 * HANDLE_PX  # a slide arrow seen shorter (nearly end-on, a dot at the centre) is no handle
@@ -174,6 +175,8 @@ class HandleDrag:
         self.label = link.Label
         self.amount = 0.0
         self._held, self._start, self._good = [], None, None
+        self._train = []  # gears in mesh that turn with this one: (name, point, axis, ratio, start placement)
+        self._train_good, self._own_sign = [], 1.0
 
     def _doc(self):
         import FreeCAD as App
@@ -214,6 +217,13 @@ class HandleDrag:
                       and not assembly.is_grounded(c) and not assembly.is_suppressed(c)]
         for name in self._held:
             assembly.ground(doc.getObject(name))
+        from incad.core import gear_train
+        own = gear_train.axis_of(doc, link.Name) if h.kind == "turn" else None
+        if own is not None and abs(abs(h.axis.dot(own[1])) - 1) < 1e-6:  # turning a gear on its own axis
+            self._own_sign = 1.0 if h.axis.dot(own[1]) > 0 else -1.0
+            self._train = [(n, p, a, r, App.Placement(doc.getObject(n).Placement))
+                           for n, p, a, r in gear_train.followers(doc, link.Name) if n in self._held]
+            self._train_good = [t[4] for t in self._train]
 
     def _angle(self, x, y):
         """The arc's own angle under the pointer: read through the projected ellipse, or, seen edge-on, tracked
@@ -249,14 +259,20 @@ class HandleDrag:
             delta = App.Placement(h.axis * self.amount, App.Rotation())
             text = "Slide %.1f mm" % self.amount
         link.Placement = delta.multiply(self._start)
+        for name, point, axis, ratio, start in self._train:  # the gears in mesh turn by their ratio (held still)
+            doc.getObject(name).Placement = App.Placement(
+                App.Vector(), App.Rotation(axis, self.amount * self._own_sign * ratio), point).multiply(start)
         try:
             ok = assembly.assembly_of(doc).solve() == 0
         except Exception:
             ok = False
         if ok:
             self._good = App.Placement(link.Placement)
+            self._train_good = [App.Placement(doc.getObject(t[0]).Placement) for t in self._train]
         else:
             link.Placement = self._good  # the solver can't meet this step: the last good place
+            for t, plc in zip(self._train, self._train_good):
+                doc.getObject(t[0]).Placement = plc
         self._status(text)
         self.shell.dof_display_changed()
 
@@ -370,7 +386,7 @@ class Handles:
             return []
         doc_name, _, handles, size, drawn_view = self.drawn
         try:
-            if drawn_view.graphicsView().viewport() != viewport:
+            if viewport_of(drawn_view) != viewport:
                 return []  # the gizmo is in another view
         except Exception:
             return []
@@ -378,7 +394,8 @@ class Handles:
         if App.ActiveDocument is None or App.ActiveDocument.Name != doc_name:
             return []
         sc = lambda v: screen(view, viewport, v)
-        h_len = size * 0.25
+        from incad.ui.dof_glyphs import HEAD
+        h_len = size * HEAD
         out = []
         for k, h in enumerate(handles):
             polylines = [[sc(p) for p in h.line]]

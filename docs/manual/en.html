@@ -95,7 +95,7 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <li><span class="n">3</span><span><a class="t" href="#window">The InCad window</a><br><span class="d">Ribbon, Model Browser, Parameters, status line, themes, settings, Undo.</span></span></li>
     <li><span class="n">4</span><span><a class="t" href="#mouse">Mouse, views and marking menus</a><br><span class="d">Orbit, pan and zoom, the right-click marking menus, the View tab.</span></span></li>
     <li><span class="n">5</span><span><a class="t" href="#sketch">Sketching</a><br><span class="d">Starting a sketch, drawing tools, dimensions and formulas, constraints and the Constraint List, projected geometry, sketch patterns.</span></span></li>
-    <li><span class="n">6</span><span><a class="t" href="#features">Part features</a><br><span class="d">How feature dialogs work, then every feature: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Move Face, Thread, Sweep, Loft, Coil, Boolean, Split, patterns, work features.</span></span></li>
+    <li><span class="n">6</span><span><a class="t" href="#features">Part features</a><br><span class="d">How feature dialogs work, then every feature: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Move Face, Thread, Sweep, Loft, Coil, Spur Gears, Worm Gear, Boolean, Split, patterns, work features.</span></span></li>
     <li><span class="n">7</span><span><a class="t" href="#solids">Several solids in one part</a><br><span class="d">Separate solids, sketching on another solid, hiding, deleting, turning them into an assembly.</span></span></li>
     <li><span class="n">8</span><span><a class="t" href="#inspect">Inspect and tools</a><br><span class="d">Measuring, mass properties, materials, section views, options.</span></span></li>
     <li><span class="n">9</span><span><a class="t" href="#assembly">Assemblies</a><br><span class="d">Placing parts, constraints and joints, degrees of freedom, moving parts, editing a part in place, Make Assembly, Boolean between parts.</span></span></li>
@@ -138,7 +138,7 @@ to come back.</p>
 <b>outer edges</b> (5.3). 0.5.3 makes Text and sketch patterns, deleting, every new or changed value (only the
 features that use it are rebuilt), the first change after opening a file and every feature preview faster, and adds
 <span class="path">⚙ ▸ Show Log File</span>. New in 0.5.4: <b>Emboss on a sphere</b> (6.16) and
-<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7). New in 0.6.0: a <b>Compact</b> ribbon (View ▸ Ribbon Size: icons without names, the lowest ribbon), Work Plane ▸ Three points clicked on marked points as in Section; fixed: Offset and Symmetric on slots, Section on the XY / XZ / YZ plane. New in 0.7.0: Extrude ▸ <b>To</b> any face of any Solid, a curved one too, or any point; Emboss letters past the face run on round onto the faces that go on smoothly from it; End of Part above sketches, Texts and work planes; <b>Full Round Fillet</b> (two edges); Show / Hide All Sketches; a part goes see-through while you sketch on a plane inside it. New in 0.8.0: <b>3D Line</b> drawn on a virtual cube of points (a path for Sweep, 6.17); several work planes in one go (<b>Planes</b>) and turned with rings (<b>Turn</b>); Extrude <b>Extents 2</b> for the second side, and To an edge or a work axis; <b>Full</b> beside Fillet's radius; the Open window shows the file's picture; tips blue, errors red; an <b>Image</b> tab — a photo to sketch over, scaled by a known length; View ▸ <b>Screenshot</b>; the parts' axes in assemblies, to constrain to; fixed: a Sweep's wall stays even when the profile's sketch is flipped on its plane; a Sweep made away from the part no longer sends a dialog round and round. New in 0.9.0: <b>Section in assemblies</b> — every part the plane meets, each in its colour, also STEPs, other programs' files and FreeCAD's own assemblies (8.4); <b>Interference</b>: overlapping parts in bright red; Hide / Show of axes, origin and sketches in assemblies; <b>Open</b> a component's part in its own window (9.9). New in 0.10.0: <b>Hide</b>, <b>Show</b> and <b>Show All</b> said outright, in the ribbon and every right-click menu; in an assembly a part hides and shows in the assembly's tree (9.9); files made outside InCad — a script's, FreeCAD's, a STEP — open with every tool; Save of an assembly puts it and all its parts into a folder of its name (9.9); the assembly gizmo smaller, shown for a couple of seconds on a click; scroll arrows on the file tabs — CHANGES.txt has the
+<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7). New in 0.6.0: a <b>Compact</b> ribbon (View ▸ Ribbon Size: icons without names, the lowest ribbon), Work Plane ▸ Three points clicked on marked points as in Section; fixed: Offset and Symmetric on slots, Section on the XY / XZ / YZ plane. New in 0.7.0: Extrude ▸ <b>To</b> any face of any Solid, a curved one too, or any point; Emboss letters past the face run on round onto the faces that go on smoothly from it; End of Part above sketches, Texts and work planes; <b>Full Round Fillet</b> (two edges); Show / Hide All Sketches; a part goes see-through while you sketch on a plane inside it. New in 0.8.0: <b>3D Line</b> drawn on a virtual cube of points (a path for Sweep, 6.18); several work planes in one go (<b>Planes</b>) and turned with rings (<b>Turn</b>); Extrude <b>Extents 2</b> for the second side, and To an edge or a work axis; <b>Full</b> beside Fillet's radius; the Open window shows the file's picture; tips blue, errors red; an <b>Image</b> tab — a photo to sketch over, scaled by a known length; View ▸ <b>Screenshot</b>; the parts' axes in assemblies, to constrain to; fixed: a Sweep's wall stays even when the profile's sketch is flipped on its plane; a Sweep made away from the part no longer sends a dialog round and round. New in 0.9.0: <b>Section in assemblies</b> — every part the plane meets, each in its colour, also STEPs, other programs' files and FreeCAD's own assemblies (8.4); <b>Interference</b>: overlapping parts in bright red; Hide / Show of axes, origin and sketches in assemblies; <b>Open</b> a component's part in its own window (9.9). New in 0.10.0: <b>Hide</b>, <b>Show</b> and <b>Show All</b> said outright, in the ribbon and every right-click menu; in an assembly a part hides and shows in the assembly's tree (9.9); files made outside InCad — a script's, FreeCAD's, a STEP — open with every tool; Save of an assembly puts it and all its parts into a folder of its name (9.9); the assembly gizmo smaller, shown for a couple of seconds on a click; scroll arrows on the file tabs — CHANGES.txt has the
 full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
@@ -429,7 +429,7 @@ first.</p>
 Each open file has its own tab above the view. The <span class="ui">Open</span> window (and Import, Place) shows a picture of the
 file under the pointer — the view a FreeCAD file was saved with, an STL, STEP or IGES drawn shaded (a STEP over 40 MB
 is not read) — with its date and size.</p></div>
-<p><span class="ui">Open</span> lists FreeCAD files, STEP and STL only. A <b>JPG</b>, <b>PNG</b> or <b>BMP</b> to sketch over: Image ▸ Insert Image (6.18). <span class="path">View ▸ Capture ▸ Screenshot</span> (also File ▸ Screenshot) saves the 3D view as PNG, JPEG or BMP at the screen's full resolution (twice the window's size on a Retina screen); a PNG can have a transparent background, for a web page. <span class="ui">Screenshot (Window)</span> (the arrow beside it) saves the whole window — ribbon, browser, 3D view and status bar.</p>
+<p><span class="ui">Open</span> lists FreeCAD files, STEP and STL only. A <b>JPG</b>, <b>PNG</b> or <b>BMP</b> to sketch over: Image ▸ Insert Image (6.19). <span class="path">View ▸ Capture ▸ Screenshot</span> (also File ▸ Screenshot) saves the 3D view as PNG, JPEG or BMP at the screen's full resolution (twice the window's size on a Retina screen); a PNG can have a transparent background, for a web page. <span class="ui">Screenshot (Window)</span> (the arrow beside it) saves the whole window — ribbon, browser, 3D view and status bar.</p>
 
 <!-- ============================================================ 4 -->
 <h1 class="chapter" id="mouse"><span class="num">4</span>Mouse, views and marking menus</h1>
@@ -925,7 +925,7 @@ references.</p>
 <p>On the <span class="path">3D Model ▸ Create</span> split button after Hole. Each has an <b>Operation</b>: Join or Cut.</p></div>
 <table class="long">
   <tr><th>Feature</th><th class="wrap">Fields</th></tr>
-  <tr><td>Sweep</td><td class="wrap"><b>Profile</b> (a closed sketch) along <b>Path</b> (another sketch or a 3D Line, 6.17: lines, arcs,
+  <tr><td>Sweep</td><td class="wrap"><b>Profile</b> (a closed sketch) along <b>Path</b> (another sketch or a 3D Line, 6.18: lines, arcs,
       splines). <b>Wall</b> (Join only) makes a tube: <b>Thickness</b> (1 mm) and <b>Ends</b> — Both open, Start closed or
       End closed.</td></tr>
   <tr><td>Loft</td><td class="wrap"><b>Sections</b>: two or more sketches, in order. The list shows them numbered;
@@ -1076,7 +1076,39 @@ refused: <i>Some of the profile is off the face</i>; on a sphere, so is
 a profile that reaches past the sphere's outline seen from the sketch.</p>
 
 <!-- ============================================================ 7 -->
-<div class="keep"><h2 id="line3d">6.17 3D Line</h2>
+<div class="keep"><h2 id="gear">6.17 Spur Gears and Worm Gear</h2>
+<p><span class="path">3D Model ▸ Create ▸ Spur Gears</span> (split button with Worm Gear) makes a pair of gears in mesh in
+one dialog, as Inventor's Design Accelerator — no sketch. Each gear is a Solid of its own; <span class="ui">Make
+Assembly</span> (the Assembly tab) then puts each into a part file of its own and builds the assembly, so any gear
+can be opened and saved anywhere. Involute teeth (the standard tooth: addendum 1 module, dedendum 1.25 modules).</p></div>
+<ol>
+  <li>Press <span class="ui">Spur Gears</span> and press <span class="ui">OK</span>: a pair 20 and 30 teeth, module 2 mm,
+      ready. The line under the fields says what the numbers make: teeth, pitch diameters, ratio, centre distance.</li>
+  <li><b>Both gears</b>: Module, Pressure angle (20° standard), Helix angle (0° spur; 5–45° helical — gear 2 gets the
+      other hand by itself), Hand of gear 1. <b>Make</b>: Pair or One gear.</li>
+  <li><b>Gear 1</b>: Teeth, Width, Bore Ø (8 mm; 0 = none). <b>Gear 2</b>: Size by <b>Teeth</b>, <b>Ratio</b> (1.5: half as many
+      teeth again) or <b>Center dist.</b> (the nearest whole number of teeth), Width, Bore Ø.</li>
+  <li><b>Place (optional)</b>: <b>Axis</b> (a work axis, a sketch line — a construction line too — or a straight edge),
+      <b>Center</b> (a circle: a shaft's end, a hole, a sketch circle — its centre and plane; a corner or a work point)
+      or <b>Plane</b>. Nothing picked: a Solid of its own at the part's origin — beside the gears already there.</li>
+  <li><b>Mesh with</b> (Both gears) puts gear 1 in mesh with a gear already there — a third gear for a pair: click that
+      gear. Module, pressure and helix angle then come from it; <b>Around it</b> turns gear 1 round it (degrees from its
+      X), <b>Around gear 1</b> (Gear 2) does the same for gear 2. A worm can mesh with a gear already there the same way.</li>
+</ol>
+<p><b>Moving it.</b> Gear 1 carries the assembly's gizmo — while the dialog is open, and whenever you click a gear of the
+set in the part: drag an arrow to slide the pair along gear 1's X, Y or Z (whole mm; hold <kbd>⌘</kbd> for any value), an arc to
+turn it round its axis or tilt it round X or Y (5°). The value shows at the pointer and in <b>Offset X / Y / Z</b>, <b>Turn</b>,
+<b>Rotate X / Y</b>, where you can also type it. Gear 2 always stays in mesh; a drag without the dialog is one undo step.</p>
+<p><span class="path">3D Model ▸ Create ▸ Worm Gear</span>: the worm and its wheel in one dialog. <b>Worm</b>: Module (axial),
+Pressure angle, Hand, Starts (1–6), Pitch Ø, Length, Bore Ø; <b>Make</b>: Worm and wheel or Worm only. <b>Wheel</b>: Size by
+Teeth, Ratio (30: thirty turns of a one-start worm per turn of the wheel) or Center dist., Width, Bore Ø (10 mm). The worm's
+Bore Ø (8 mm) gives its axis to pick: for a joint, an Axis or a Center. The wheel
+lies across the worm at its middle, its teeth leaning as the worm's thread (the lead angle). The thread runs out one
+module before each end: the worm's ends are round.</p>
+<p>Double-click either gear of a set to change the set. Deleting the first gear (or the worm) takes the second with it.
+Every number is a parameter (d0, d1 …): rename it in the Parameters panel and use it in formulas.</p>
+
+<div class="keep"><h2 id="line3d">6.18 3D Line</h2>
 <p><span class="path">3D Model ▸ Sketch ▸ 3D Line</span> (also on the Sketch tab). A line in space — a path for Sweep — drawn on a virtual cube
 of points round the origin, so every click knows its depth.</p></div>
 <table class="long">
@@ -1096,7 +1128,7 @@ of points round the origin, so every click knows its depth.</p></div>
 <p>OK keeps the line (orange) in the Solid, as a sketch; the cube shows only while the dialog is open. Sweep takes the
 line as its <b>Path</b> (6.9); Edit on it opens the dialog again.</p>
 
-<div class="keep"><h2 id="picture">6.18 Images to sketch over</h2>
+<div class="keep"><h2 id="picture">6.19 Images to sketch over</h2>
 <p>The <span class="ui">Image</span> tab: a photo or a drawing behind the model, sized by a length you know.</p></div>
 <table class="long">
   <tr><th>Button</th><th class="wrap">What it does</th></tr>
@@ -1404,12 +1436,16 @@ now?</span></p></div>
 <ul>
   <li>Every separate piece becomes a part file <b>with its history</b>; the assembly links them where they were, the
       largest piece grounded.</li>
+  <li><b>Gears</b> (6.17) are not grounded: each stands on its own axis — a Rotational joint to <i>Gear Axes</i>, a
+      hidden grounded copy of their bore circles. Select a gear and drag the gizmo's arc: it turns, and the gears in
+      mesh with it turn by their ratio (a worm and its wheel too).</li>
   <li>The original part is not changed.</li>
   <li>Running Make Assembly again on the same part offers <span class="ui">Replace existing files</span> (with the names of
       the files already there), so the files of the earlier run are overwritten instead of asking for new names. The part
       itself is never replaced. If one of those files is open with unsaved changes, InCad asks first.</li>
-  <li>A part that is one piece cannot be made into an assembly; split it first (Split ▸ Keep all) or make pieces as
-      New Solid.</li>
+  <li>A part of one piece makes an assembly of one component (a single gear, say). To get several components, split
+      it first (Split ▸ Keep all) or make pieces as New Solid. Gears of a set (6.17) each go into a part file of their
+      own, still in mesh.</li>
 </ul>
 
 <div class="keep"><h2>9.13 Boolean between parts</h2>

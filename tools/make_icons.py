@@ -347,6 +347,32 @@ ICONS.update({
              '<text x="16" y="25" font-family="Helvetica" font-size="9" font-weight="bold" text-anchor="middle" '
              'fill="{A}">kg</text>'),
 })
+
+
+def _gear_path(cx=16.0, cy=16.0, teeth=10, r_tip=13.5, r_root=10.0):
+    import math
+    pts = []
+    for k in range(teeth):
+        a = 2 * math.pi * k / teeth
+        step = 2 * math.pi / teeth
+        for frac, r in ((-0.30, r_root), (-0.16, r_tip), (0.16, r_tip), (0.30, r_root)):
+            pts.append((cx + r * math.cos(a + frac * step), cy + r * math.sin(a + frac * step)))
+    return "M" + " L".join("%.2f %.2f" % p for p in pts) + " Z"
+
+
+ICONS.update({
+    # two gears in mesh (one gear alone is the ⚙ settings button)
+    "gear": ('<path d="%s" fill="{F}" stroke="{S}" stroke-width="1.3" stroke-linejoin="round"/>'
+             '<circle cx="12" cy="19" r="3" fill="none" stroke="{S}" stroke-width="1.4"/>'
+             '<path d="%s" fill="{F}" stroke="{A}" stroke-width="1.3" stroke-linejoin="round"/>'
+             '<circle cx="24.5" cy="8" r="1.8" fill="none" stroke="{A}" stroke-width="1.3"/>'
+             % (_gear_path(12, 19, 10, 11, 8.2), _gear_path(24.5, 8, 7, 7, 4.9))),
+    "worm": ('<rect x="4" y="10" width="24" height="12" rx="2" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+             '<path d="M8 10 L12 22 M13 10 L17 22 M18 10 L22 22 M23 10 L27 22" stroke="{S}" stroke-width="1.8"/>'
+             '<path d="M1 16 H31" stroke="{A}" stroke-width="1.4" stroke-dasharray="3 2"/>'),
+})
+
+
 ALL_NAMES = sorted(list(ICONS) + list(PER_THEME))
 
 

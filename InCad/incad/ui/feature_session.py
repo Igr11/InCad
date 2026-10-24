@@ -154,7 +154,8 @@ class FeatureSession(QtCore.QObject):
             for value in getattr(self.kind, "STRUCTURAL", ("intersect", "new_solid")):
                 if "operation" in self.dialog._widgets and value in self.dialog.field("operation")._buttons:
                     self.dialog.set_choice_enabled("operation", value, False)
-            for key in getattr(self.kind, "RECREATE_ON", ()):  # can't change on an existing feature
+            locked = getattr(self.kind, "LOCKED_WHEN_EDITING", getattr(self.kind, "RECREATE_ON", ()))
+            for key in locked:  # can't change on an existing feature (a gear set's update copes with them all)
                 if key in self.dialog._widgets:
                     self.dialog.field(key).setEnabled(False)
         self.dialog.changed.connect(self._changed)
@@ -165,6 +166,7 @@ class FeatureSession(QtCore.QObject):
         self.dialog.activePickChanged.connect(lambda _key: self._sync_pick_view(seed=True))
         self.dialog.picksEdited.connect(self._picks_edited)
         self._refresh_options()
+        self._show_info()
         if self.feature is not None:
             self.dialog.set_values({f.key: values.get(f.key) for f in self.kind.FIELDS if f.kind == "combo"})
         self._applied = self.dialog.values()
@@ -242,7 +244,9 @@ class FeatureSession(QtCore.QObject):
                    "to_face": "a face, a plane or a point",
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
                    "emboss_face": "a round (cylinder, cone or sphere) or a flat face",
-                   "move_to": "a face, plane, edge or point"}
+                   "move_to": "a face, plane, edge or point",
+                   "gear": "another Gear or a Worm", "gear_center": "a circle, a corner or a point",
+                   "gear_plane": "a plane, a flat face or a sketch"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
     _ON_BASE = _GEOMETRY + ("two_points", "three_points", "move_to")
@@ -301,6 +305,9 @@ class FeatureSession(QtCore.QObject):
                 if b is not None and (b, "") not in out:
                     out.append((b, ""))
             return out
+        if pick == "gear":  # a click on its teeth means the Gear or Worm itself
+            from incad.features import gear
+            return [(gear.gear_of(o, el) or o, "" if gear.gear_of(o, el) else el) for o, el in pairs]
         if pick != "feature":
             return pairs
         out = []
@@ -1160,6 +1167,7 @@ class FeatureSession(QtCore.QObject):
         if self.dialog is None:
             return
         self._refresh_options()
+        self._show_info()
         values = self.dialog.values() if self.dialog is not None else values
         if self._live_only(values):
             return  # only how it looks (an image's transparency): set at once, no preview, no recompute
@@ -1306,6 +1314,7 @@ class FeatureSession(QtCore.QObject):
         self._fill_empty_picks()
         self._show_adjusted()
         self._show_summary()
+        self._show_info()  # what the values made, once they made it
         self._sync_sketch_markers()
         self._sync_axis_line()
         if getattr(self.kind, "IN_SKETCH", False):  # the sketch's Text outlines follow the words as they are typed
@@ -1429,6 +1438,16 @@ class FeatureSession(QtCore.QObject):
                 self.dialog.set_values(diff)
         except Exception:
             log.logger().exception("adjusted values")
+
+    def _show_info(self):
+        """A kind may say what the values make (Gear: its teeth and diameters) under the fields."""
+        hook = getattr(self.kind, "info", None)
+        if hook is None or self.dialog is None:
+            return
+        try:
+            self.dialog.set_info(hook(self.dialog.values()) or "")
+        except Exception:
+            log.logger().exception("dialog info")
 
     def _show_summary(self):
         """A kind may describe what its pick fields now stand for (names, dependents) beyond the picks themselves."""

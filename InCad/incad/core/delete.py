@@ -81,6 +81,11 @@ def delete(obj, with_users=False, replace_main=False):
         if replace_main:
             _hand_over_main(obj)
     doc = obj.Document
+    from incad.features import gear
+    if gear.is_gear(obj):  # a set's first gear (or worm): its second goes with it, with the Solid it had
+        second = gear.second_of(obj)
+        if second is not None:
+            gear._remove_gear(doc, second)
     _delete(obj)
     from incad.core import document
     try:  # every Solid shows its End of Part again (a Boolean that went with a tool Solid lived in another Solid)

@@ -5,6 +5,33 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.11.0
+-----
+Spur Gears and Worm Gear: a pair of gears in mesh, or a worm and its wheel, in one dialog; they turn together in an assembly.
+
+Improvements
+- Spur Gears (3D Model > Create, split button with Worm Gear): one dialog makes a pair of gears in mesh, no sketch -
+  Both gears (module, pressure and helix angle, hand), Gear 1 (teeth, width, bore), Gear 2 sized by teeth, ratio or
+  centre distance; or One gear. Involute teeth (addendum 1 module, dedendum 1.25). The line under the fields says what
+  the numbers make: teeth, pitch diameters, ratio, centre distance. Every number is a parameter.
+- Worm Gear: the worm (axial module, 1-6 starts, pitch diameter, length, hand) and its wheel the same way; the worm's
+  ends are round (the thread runs out one module before each end).
+- Place: an Axis (work axis, sketch line, straight edge), a Center (a circle, a corner or a point) or a Plane; nothing
+  picked: a Solid of its own at the origin, beside the gears already there. Mesh with puts gear 1 (or the worm) in mesh
+  with a gear already there - a third gear for a pair - and Around it / Around gear 1 turn a gear round its mate.
+- Gear 1 carries the assembly's gizmo while the dialog is open and whenever a gear of the set is clicked: arrows slide
+  the pair (whole mm), arcs turn or tilt it (5 degrees); gear 2 always stays in mesh. Double-click a gear to change the
+  set; deleting the first gear (or the worm) takes the second with it.
+- Make Assembly puts each gear into a part file of its own and stands it on its own axis (a Rotational joint to a
+  hidden, grounded Gear Axes): drag the gizmo's arc on a gear and the gears in mesh turn with it by their ratio, a worm
+  and its wheel too. A part of one piece now makes an assembly of one component (a single gear).
+- A long dialog scrolls its fields and keeps OK in sight.
+
+Bug fixes
+- Section: gears and worms show their cut whole (the cut through a gear's middle was hollow, a worm's in bits), and
+  every shown Solid of the part gets its cut faces, not only the main one.
+
+
 0.10.0
 -----
 Hide / Show / Show All, also in the assembly's tree; files made outside InCad edited like InCad parts; an assembly saved into a folder with its parts; a smaller gizmo that goes out; file tabs reachable.

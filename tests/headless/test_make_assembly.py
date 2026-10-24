@@ -134,14 +134,108 @@ class MakeAssemblyTest(unittest.TestCase):
     def test_duplicate_names_are_refused(self):
         self.assertIn("twice", ma.check_names(self.doc, "Plate-Assembly", ["Plate-Solid1", "Plate-Solid1"]))
 
-    def test_a_one_piece_part_is_refused(self):
+    def test_a_one_piece_part_makes_an_assembly_of_one(self):
+        """The user: even a single gear goes into an assembly."""
         d = util.new_doc("One")
         util.padded_part(d, 10, incad=True)
         d.recompute()
         d.saveAs(os.path.join(self.dir, "One.FCStd"))
-        with self.assertRaises(ValueError) as ctx:
-            ma.make(d, "One-Assembly", ["One-Solid1"])
-        self.assertIn("one piece", str(ctx.exception))
+        path = ma.make(d, "One-Assembly", ["One-Solid1"])
+        a = App.openDocument(path)
+        try:
+            self.assertEqual(len(assembly.components(a)), 1)
+        finally:
+            App.closeDocument(a.Name)
+
+    def test_a_gear_pair_goes_into_two_part_files_each_gear_alone(self):
+        from incad.features import gear
+        d = util.new_doc("Gp")
+        body = document.make_part(d)
+        d.recompute()
+        k = gear.GEAR
+        a = k.create(d, body, None, dict(k.defaults(d, body), teeth="20", helix="15 °"))
+        b = k.create(d, body, None, dict(k.defaults(d, body), mesh=a.Name, size="ratio", ratio="1.5"))
+        d.recompute()
+        want = b.Shape.copy()
+        d.saveAs(os.path.join(self.dir, "Gp.FCStd"))
+        path = ma.make(d, "Gp-Assembly", ["Gp-Solid1", "Gp-Solid2"])
+        asm = App.openDocument(path)
+        try:
+            comps = assembly.components(asm)
+            self.assertEqual(len(comps), 2)
+            for c in comps:
+                part = c.LinkedObject.Document
+                gears = [o for o in part.Objects if gear.is_gear(o)]
+                self.assertEqual(len(gears), 1, part.Label)
+                self.assertIsNone(gears[0].MeshWith)
+            shapes = [c.Shape for c in comps]
+            mate = min(shapes, key=lambda sh: abs(sh.Volume - want.Volume))
+            self.assertAlmostEqual(mate.Volume, want.Volume, delta=1e-3 * want.Volume)
+            self.assertLess((mate.BoundBox.Center - want.BoundBox.Center).Length, 1e-3, "where it stood")
+            self.assertLess(shapes[0].common(shapes[1]).Volume, 0.01 * want.Volume / 30, "still in mesh")
+        finally:
+            App.closeDocument(asm.Name)
+
+    def gear_assembly(self, kind, name, **values):
+        from incad.features import gear
+        d = util.new_doc(name)
+        body = document.make_part(d)
+        d.recompute()
+        k = getattr(gear, kind)
+        k.create(d, body, None, dict(k.defaults(d, body), **values))
+        d.recompute()
+        d.saveAs(os.path.join(self.dir, name + ".FCStd"))
+        return App.openDocument(ma.make(d, name + "-Assembly", [name + "-Solid1", name + "-Solid2"]))
+
+    def turn_together(self, asm, degrees):
+        """Turn the first gear as the gizmo's arc does: the gears in mesh turn by their ratio; still in mesh."""
+        from incad.core import gear_train
+        a, b = assembly.components(asm)
+        p, axis = gear_train.axis_of(asm, a.Name)
+        starts = {c.Name: App.Placement(c.Placement) for c in (a, b)}
+        a.Placement = App.Placement(App.Vector(), App.Rotation(axis, degrees), p).multiply(starts[a.Name])
+        moved = gear_train.followers(asm, a.Name)
+        self.assertEqual([n for n, *_ in moved], [b.Name])
+        for n, q, ax, r in moved:
+            asm.getObject(n).Placement = App.Placement(App.Vector(), App.Rotation(ax, degrees * r), q).multiply(
+                starts[n])
+        for c in (a, b):
+            assembly.ground(c)
+        self.assertEqual(assembly.assembly_of(asm).solve(), 0, "each still on its axis")
+        for c in (a, b):
+            assembly.unground(c)
+        asm.recompute()
+        return a, b
+
+    def test_gears_turn_on_their_axes_and_together(self):
+        """The user: after Make Assembly a gear should turn about its own axis, and the other one with it."""
+        from incad.core import dof
+        asm = self.gear_assembly("SPUR_GEARS", "Gt", teeth="20", size2="ratio", ratio="1.5", helix="15 °")
+        try:
+            a, b = assembly.components(asm)
+            self.assertFalse(assembly.is_grounded(a) or assembly.is_grounded(b), "gears turn: none grounded")
+            kinds = [getattr(j, "InCadConstraint", "") for j in assembly.joints(asm)]
+            self.assertEqual(kinds.count("rotational"), 2, kinds)
+            free, _ = dof.ensure(asm)
+            self.assertEqual([(free[c.Name].slides, len(free[c.Name].turns)) for c in (a, b)], [([], 1), ([], 1)])
+            vol = min(a.Shape.Volume, b.Shape.Volume)
+            for degrees in (7.0, 23.0, -40.0):
+                a, b = self.turn_together(asm, degrees)
+                # in mesh: no more than the Boolean's own noise (±0.5 mm³ here); the wrong way round runs teeth through
+                self.assertLess(a.Shape.common(b.Shape).Volume, 2e-4 * vol, "in mesh after %g°" % degrees)
+                self.assertLess(a.Shape.distToShape(b.Shape)[0], 0.05)
+        finally:
+            App.closeDocument(asm.Name)
+
+    def test_a_worm_and_its_wheel_turn_together(self):
+        asm = self.gear_assembly("WORM_GEAR", "Wt", starts="2", size2="ratio", ratio="20")
+        try:
+            vol = min(c.Shape.Volume for c in assembly.components(asm))
+            for degrees in (30.0, 95.0, -200.0):
+                a, b = self.turn_together(asm, degrees)
+                self.assertLess(a.Shape.common(b.Shape).Volume, 0.02 * vol / 40, "in mesh after %g°" % degrees)
+        finally:
+            App.closeDocument(asm.Name)
 
     def test_an_unsaved_part_is_refused(self):
         d = util.new_doc("Unsaved")
@@ -167,7 +261,7 @@ class MakeAssemblyTest(unittest.TestCase):
         hidden copies it opens become FreeCAD's active document, and closing them left none active."""
         original = ma._finish_copy
 
-        def opens_then_fails(path, point):
+        def opens_then_fails(path, point, body_name=None):
             App.openDocument(path, hidden=True)
             raise ValueError("boom")
         ma._finish_copy = opens_then_fails
@@ -253,9 +347,7 @@ class MakeAssemblyReviewTest(unittest.TestCase):
         combine.create(d, body, None, dict(combine.defaults(d, body, None), base=body.Name, tools=pin_body.Name))
         d.recompute()
         d.saveAs(os.path.join(self.dir, "Bo.FCStd"))
-        with self.assertRaises(ValueError) as ctx:  # the pin is used up: the part is one piece
-            ma.pieces_or_refuse(d)
-        self.assertIn("one piece", str(ctx.exception))
+        self.assertEqual(len(ma.pieces_or_refuse(d)), 1)  # the pin is used up: the part is one piece
 
     def test_a_kept_tool_is_a_piece_and_the_base_copy_still_cuts(self):
         from incad.features import combine
@@ -286,11 +378,11 @@ class MakeAssemblyReviewTest(unittest.TestCase):
         self._split(d, body)
         d.saveAs(os.path.join(self.dir, "Fb.FCStd"))
         original, calls = ma._finish_copy, []
-        def second_fails(path, point):
+        def second_fails(path, point, body_name=None):
             calls.append(path)
             if len(calls) == 2:
                 raise ValueError("boom")
-            return original(path, point)
+            return original(path, point, body_name)
         ma._finish_copy = second_fails
         try:
             with self.assertRaises(ValueError):

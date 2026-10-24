@@ -11,7 +11,7 @@ class Field:
     kind: str                # value_length | value_angle | choice | combo | bool | text | pick | picks
     choices: tuple = ()      # ((value, label), …) for choice
     default: object = None
-    show_if: tuple = None    # (other key, (values…)) or a tuple of those (all must hold)
+    show_if: tuple = None    # (other key, (values…) or a test of its value) or a tuple of those (all must hold)
     pick: str = ""           # pick fields: edge | face | feature | axis | plane | vertex | sketch | circular_edge
     listed: bool = False     # picks fields: show the picks as a numbered list (remove, reorder), e.g. Loft sections
     optional: bool = False   # pick fields: an empty one has a default: never made active by itself
@@ -24,12 +24,13 @@ class Field:
 
 
 def shown(field, values):
-    """Is the field shown for these values? show_if is (key, values) or a tuple of those (all must hold)."""
+    """Is the field shown for these values? show_if is (key, values or a test of the value) or a tuple of those
+    (all must hold)."""
     cond = field.show_if
     if cond is None:
         return True
     conds = cond if isinstance(cond[0], tuple) else (cond,)
-    return all(values.get(k) in allowed for k, allowed in conds)
+    return all(allowed(values.get(k)) if callable(allowed) else values.get(k) in allowed for k, allowed in conds)
 
 
 def closed_profile(sk):
@@ -393,6 +394,20 @@ def accepts(kind, obj, sub):
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
+    if kind == "gear_center":  # where a gear stands: a circle (its centre and plane), a corner or a point
+        if not sub:
+            return tid == "PartDesign::Point"
+        if sub.startswith("Vertex"):
+            return el is not None
+        return sub.startswith("Edge") and el is not None and safe.curve_type(el) in (
+            "Part::GeomCircle", "Part::GeomArcOfCircle")
+    if kind == "gear_plane":  # the plane a gear stands on: a work or origin plane, a flat face, a sketch
+        if not sub:
+            return tid in ("App::Plane", "PartDesign::Plane", "Sketcher::SketchObject")
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
+    if kind == "gear":  # another Gear or Worm: its row, or its teeth clicked
+        from incad.features import gear
+        return gear.gear_of(obj, sub) is not None
     return False
 
 
@@ -435,6 +450,8 @@ _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Cli
                "sketch_curve": "Click a line, arc, circle or curve…",
                "sketch_box": "Click a line of the box…"}
 _PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})
+_EMPTY_HINT.update({"gear": "None — click a gear or worm…", "gear_center": "Origin — click a circle…",
+                    "gear_plane": "Automatic — click a plane…"})
 _SKETCH_NAMES = {"H_Axis": "X axis", "V_Axis": "Y axis", "RootPoint": "Origin"}
 
 

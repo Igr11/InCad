@@ -218,9 +218,9 @@ class Caps:
             d = (pts - np.array([base.x, base.y, base.z])) @ nn  # signed distance of every point
             tri = d[facets]  # (M, 3)
             cross = (tri.max(axis=1) > 0) & (tri.min(axis=1) < 0)
-            segs = []
+            segs, edges = [], []
             for f, dd in zip(facets[cross], tri[cross]):
-                hits = []
+                hits, keys = [], []
                 for i in range(3):
                     j = (i + 1) % 3
                     a, b = dd[i], dd[j]
@@ -228,8 +228,11 @@ class Caps:
                         t = a / (a - b)
                         q = pts[f[i]] + (pts[f[j]] - pts[f[i]]) * t
                         hits.append(App.Vector(*q))
+                        keys.append((min(f[i], f[j]), max(f[i], f[j])))
                 if len(hits) == 2:
                     segs.append((hits[0], hits[1]))
+                    edges.append((keys[0], keys[1]))
+            self._edges = edges  # the mesh edge each end lies on: chained by those, not by distance
             return segs
         segs = []
         for f in facets:
@@ -253,10 +256,14 @@ class Caps:
         if self.mesh is None:
             return []
         n = pl.Rotation.multVec(App.Vector(0, 0, 1))
-        segments = self._segments(pl.Base, n)
         tol = max(1e-5, self.shape.BoundBox.DiagonalLength / 2e4)
+        # the mesh is sliced a hair off the plane: a plane through mesh vertices (a gear's middle, where its side
+        # faces are meshed) left a hole in the loop at every vertex on it, and the cut showed hollow
+        self._edges = None
+        segments = self._segments(pl.Base + n * (tol * 0.0123), n)
+        chained = _loops_by_edges(segments, self._edges) if self._edges else None
         out = []
-        for loop in _loops(segments, tol):
+        for loop in (chained if chained is not None else _loops(segments, tol)):
             flat = [q - n * (q - pl.Base).dot(n) for q in loop]  # exactly on the plane
             out.append(flat)
         return out
@@ -286,6 +293,43 @@ class Caps:
         return out
 
 
+def _loops_by_edges(segments, edges):
+    """Closed loops from the slice's segments, each end known by the mesh edge it lies on: on a closed mesh every
+    crossed edge belongs to two crossing triangles, so the loops follow without a tolerance (chaining by distance
+    took wrong turns where the outline passes close to itself: a worm's axial section came out in bits). None when
+    the mesh isn't closed there (an edge met once or more than twice): chain by distance instead."""
+    by_edge = {}
+    for i, (ka, kb) in enumerate(edges):
+        by_edge.setdefault(ka, []).append(i)
+        by_edge.setdefault(kb, []).append(i)
+    if any(len(v) != 2 for v in by_edge.values()):
+        return None
+    used = [False] * len(segments)
+    loops = []
+    for start in range(len(segments)):
+        if used[start]:
+            continue
+        used[start] = True
+        a, b = segments[start]
+        first_key, key = edges[start]
+        loop = [a, b]
+        i = start
+        while key != first_key:
+            j = by_edge[key][0] if by_edge[key][0] != i else by_edge[key][1]
+            if used[j]:
+                return None  # not one simple loop: leave it to the distance chaining
+            used[j] = True
+            ka, kb = edges[j]
+            c, d = segments[j]
+            nxt, point = (kb, d) if ka == key else (ka, c)
+            loop.append(point)
+            key, i = nxt, j
+        loop.pop()  # its last point is the first again
+        if len(loop) >= 3:
+            loops.append(loop)
+    return loops
+
+
 def _loops(segments, tol):
     """Closed loops (lists of points) from unordered segments: walked from a start segment in both directions,
     matching ends within `tol`; a chain that comes back to its start (or within 20·tol of it) is a loop; open
@@ -300,18 +344,27 @@ def _loops(segments, tol):
     used = [False] * len(segs)
 
     def extend(chain):
-        """Walk on from the chain's last point; True when the walk came back to the chain's first point."""
+        """Walk on from the chain's last point; True when the walk came back to the chain's first point. Where more
+        segments meet (the outline passing close to itself: a worm's thread at its root), the walk goes on along
+        the one that turns least (taking the nearest went off along the other pass and broke the cut into bits)."""
         while True:
             k = key(chain[-1])
             nxt, best = None, None
+            came = chain[-1] - chain[-2] if len(chain) > 1 else None
+            if came is not None and came.Length > 1e-12:
+                came = came * (1.0 / came.Length)
             for j in ends.get(k, []):
                 if used[j]:
                     continue
                 c, d = segs[j]
                 far = d if (c - chain[-1]).Length <= (d - chain[-1]).Length else c
-                dist = (far - chain[-1]).Length
-                if best is None or dist < best:
-                    nxt, best = j, dist
+                step = far - chain[-1]
+                if came is not None and step.Length > 1e-12:
+                    score = -came.dot(step * (1.0 / step.Length))  # straight on: -1, back: +1
+                else:
+                    score = step.Length
+                if best is None or score < best:
+                    nxt, best = j, score
             if nxt is None:
                 return False
             used[nxt] = True

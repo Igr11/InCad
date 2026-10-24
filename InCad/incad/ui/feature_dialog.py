@@ -191,6 +191,49 @@ class ChoiceField(QtWidgets.QWidget):
             self._buttons[value].setChecked(True)
 
 
+class _FieldsArea(QtWidgets.QScrollArea):
+    """The dialog's fields: as tall as they are, but never past the view it sits in (the user: Worm's fields ran off
+    the screen and took OK with them) — then they scroll, and the line under them and the buttons stay in sight."""
+    ROOM = 170  # px the dialog's title, info / error lines, buttons and margins take beside the fields
+
+    def __init__(self, dialog, box):
+        super().__init__(dialog)
+        self._dialog = dialog
+        self.setObjectName("InCadFieldsArea")
+        self.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setWidgetResizable(True)
+        self.setWidget(box)
+        self.viewport().setAutoFillBackground(False)
+        self._refit = QtCore.QTimer(self)  # the fields re-laid out (styled once shown, a row shown or hidden):
+        self._refit.setSingleShot(True)    # the dialog fits them again, once per burst
+        self._refit.setInterval(0)
+        self._refit.timeout.connect(lambda: dialog._fit_if_alive())
+        box.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.widget() and event.type() == QtCore.QEvent.LayoutRequest:
+            self._refit.start()
+        return False
+
+    def _limit(self):
+        parent = self._dialog.parentWidget()
+        if parent is None:
+            return 10 ** 6
+        return max(160, parent.height() - 32 - self.ROOM)
+
+    def sizeHint(self):
+        inner = self.widget().sizeHint()
+        h = min(inner.height(), self._limit())
+        # the scroll bar's room always: taken out of the fields when it appears, it pushed the ▲▼ out of sight
+        bar = max(self.verticalScrollBar().sizeHint().width(),
+                  self.style().pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent, None, self))
+        return QtCore.QSize(inner.width() + bar + 2, h)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+
 class FeatureDialog(QtWidgets.QFrame):
     changed = Signal(dict)
     accepted = Signal()
@@ -242,6 +285,13 @@ class FeatureDialog(QtWidgets.QFrame):
                 self._labels[f.key], self._widgets[f.key], self._rows[f.key] = small, widget, (small, widget)
                 continue
             r += 1
+            if f.kind == "heading":  # a group's title over its fields (Spur Gears: Gear 1, Gear 2)
+                head_label = QtWidgets.QLabel(f.label)
+                head_label.setObjectName("InCadDialogSection")
+                form.addWidget(head_label, r, 0, 1, 2)
+                self._labels[f.key] = self._widgets[f.key] = head_label
+                self._rows[f.key] = (head_label,)
+                continue
             label = QtWidgets.QLabel(f.label)
             widget = self._make(f)
             self._widgets[f.key] = widget  # the arrows read it while the row is built
@@ -265,7 +315,18 @@ class FeatureDialog(QtWidgets.QFrame):
             form.addWidget(row, r, 1)
             self._labels[f.key], self._widgets[f.key], self._rows[f.key] = label, widget, (label, row)
         form.setColumnStretch(1, 1)  # spare width goes to the fields, never between the names and the fields
-        col.addLayout(form)
+        box = QtWidgets.QWidget()
+        box.setObjectName("InCadFieldRows")
+        box.setAutoFillBackground(False)
+        form.setContentsMargins(0, 0, 0, 0)
+        box.setLayout(form)
+        self._fields_area = _FieldsArea(self, box)
+        col.addWidget(self._fields_area)
+        self._info = QtWidgets.QLabel("")  # what the values make (a gear's diameters): never blocks OK
+        self._info.setObjectName("InCadDialogInfo")
+        self._info.setWordWrap(True)
+        self._info.hide()
+        col.addWidget(self._info)
         self._error = QtWidgets.QLabel("")
         self._error.setObjectName("InCadDialogError")
         self._error.setWordWrap(True)
@@ -293,7 +354,8 @@ class FeatureDialog(QtWidgets.QFrame):
         self.setStyleSheet(
             "QFrame#InCadFeatureDialog {{ background: {panel}; border: 1px solid {border}; border-radius: 9px; }}"
             " QLabel {{ color: {text}; }} QLabel#InCadDialogTitle {{ font-weight: 600; }}"
-            " QLabel#InCadDialogError {{ color: {error}; }} QLabel#InCadDialogError[waiting=\"true\"] {{ color: {accent}; }}"
+            " QLabel#InCadDialogSection {{ color: {accent}; font-weight: 600; padding-top: 6px; }}"
+            " QLabel#InCadDialogInfo {{ color: {text_dim}; }} QLabel#InCadDialogError {{ color: {error}; }} QLabel#InCadDialogError[waiting=\"true\"] {{ color: {accent}; }}"
             " QLineEdit {{ background: {panel_alt}; color: {text}; border: 1px solid {border}; border-radius: 4px;"
             " padding: 2px 4px; }} QLineEdit:disabled {{ color: {text_dim}; }}"
             " QToolButton#InCadStep {{ background: {panel_alt}; color: {text};"
@@ -305,7 +367,8 @@ class FeatureDialog(QtWidgets.QFrame):
             " padding: 4px 14px; }} QPushButton:default {{ background: {accent}; color: {selection_text}; }}"
             " QPushButton:disabled {{ color: {text_dim}; background: {panel}; }}"
             " QPushButton#InCadPick {{ border-radius: 4px; padding: 2px 8px; text-align: left; }}"
-            " QPushButton#InCadPick:checked {{ border: 2px solid {accent}; }}".format(**p))
+            " QPushButton#InCadPick:checked {{ border: 2px solid {accent}; }}"
+            " QScrollArea#InCadFieldsArea, QWidget#InCadFieldRows {{ background: transparent; border: none; }}".format(**p))
         self.set_values(values)
         self._history = [self.values()]  # the floor: what the dialog opened with
 
@@ -456,7 +519,7 @@ class FeatureDialog(QtWidgets.QFrame):
         self._lists[key] = (rows, made)
         rows.setVisible(bool(made))
         self._widgets[key].setText(self._list_hint(items))
-        self.adjustSize()
+        self._fit()
 
     @staticmethod
     def _list_hint(items):
@@ -502,7 +565,8 @@ class FeatureDialog(QtWidgets.QFrame):
         return self._toggles[key][0]
 
     def _update_arrows(self, key):
-        can = step_text(self._widgets[key].text(), 1, self._fields[key].kind) is not None \
+        f = self._fields[key]
+        can = step_text(self._widgets[key].text(), 1, f.kind, getattr(f, "signed", False)) is not None \
             and self._widgets[key].isEnabled()  # greyed by its toggle (Fillet ▸ Full): no steps
         for b in self._steppers.get(key, ()):
             b.setEnabled(can)
@@ -548,6 +612,8 @@ class FeatureDialog(QtWidgets.QFrame):
         out = {}
         for key, f in self._fields.items():
             w = self._widgets[key]
+            if f.kind == "heading":
+                continue
             if f.kind in ("value_length", "value_angle"):
                 out[key] = w.text().strip()
             elif f.kind == "text":
@@ -577,7 +643,7 @@ class FeatureDialog(QtWidgets.QFrame):
                     self._grey_toggled(key)
                     continue
                 f, w = self._fields.get(key), self._widgets.get(key)
-                if f is None:
+                if f is None or f.kind == "heading":
                     continue
                 if f.kind in ("value_length", "value_angle"):
                     w.setText(str(value))
@@ -665,17 +731,22 @@ class FeatureDialog(QtWidgets.QFrame):
     def _update_visibility(self):
         from incad.features.common import shown as _shown
         values = self.values()
+        changed = False
         for key, f in self._fields.items():
             shown = _shown(f, values)
             for w in self._rows[key]:
+                if w.isHidden() == shown:
+                    changed = True
                 w.setVisible(shown)
+        if changed and self.isVisible():
+            self._fit()
 
     # ----- helpers for the session and tests -----
     def field(self, key):
         return self._widgets[key]
 
     def row_visible(self, key):
-        return not self._rows[key][1].isHidden()
+        return not self._rows[key][-1].isHidden()
 
     def label_text(self, key):
         return self._labels[key].text()
@@ -766,7 +837,42 @@ class FeatureDialog(QtWidgets.QFrame):
         self._rescue = rescue[1] if rescue else None
         self.rescue_button.setText(rescue[0] if rescue else "")
         self.rescue_button.setVisible(bool(text and rescue))
-        self.adjustSize()  # grow (or shrink back) so the reason never squeezes the fields
+        self._fit()  # grow (or shrink back) so the reason never squeezes the fields
+
+    def _fit(self):
+        """Grow or shrink to what is shown now (rows shown or hidden, a message): the fields' area first."""
+        area = getattr(self, "_fields_area", None)
+        if area is not None:
+            area.widget().adjustSize()
+            hint = area.sizeHint()
+            area.setMinimumWidth(hint.width())  # the layout keeps a stale hint otherwise: the ▲▼ went out of sight
+            area.setFixedHeight(hint.height())
+        self.adjustSize()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._fit()
+
+    def _fit_if_alive(self):
+        try:
+            if self.isVisible() and not getattr(self, "_fitting", False):
+                self._fitting = True  # a fit re-lays the fields out: never a loop
+                try:
+                    self._fit()
+                finally:
+                    self._fitting = False
+        except RuntimeError:
+            pass
+
+    def set_info(self, text):
+        """A line on what the values make (a kind's info hook): grey, OK stays as it is."""
+        if text != self._info.text():
+            self._info.setText(text)
+            self._info.setVisible(bool(text))
+            self._fit()
+
+    def info_text(self):
+        return self._info.text()
 
     def error_text(self):
         return self._error.text()
