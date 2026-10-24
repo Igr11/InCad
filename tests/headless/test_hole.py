@@ -66,6 +66,33 @@ class HoleTest(unittest.TestCase):
         self.assertLess(self.body.Shape.Volume, boss.Shape.Volume)
         self.assertAlmostEqual(hole.read(self.doc, f)["placement"], "concentric")
 
+    def test_concentric_to_several_round_edges_and_faces_at_once(self):
+        """The user: several holes in one go, and a round face (easier to click than its edge); no Face picked —
+        the flat face beside the first round edge."""
+        sk = self.body.newObject("Sketcher::SketchObject", "Bosses")
+        sk.AttachmentSupport = [(self.pad, "Face%d" % self.top)]
+        sk.MapMode = "FlatFace"
+        for x in (4, 10, 16):
+            sk.addGeometry(Part.Circle(App.Vector(x, 5, 0), App.Vector(0, 0, 1), 2))
+        boss = util.add_pad(self.body, sk, 3, name="Bosses")
+        self.body.Tip = boss
+        self.doc.recompute()
+        S = boss.Shape
+        circle = [i + 1 for i, e in enumerate(S.Edges) if e.Curve.TypeId == "Part::GeomCircle"
+                  and abs(e.BoundBox.ZMax - 13) < 1e-6 and abs(e.Curve.Center.x - 4) < 1e-6][0]
+        sides = {round(f.Surface.Center.x): i + 1 for i, f in enumerate(S.Faces) if f.Surface.TypeId == "Part::GeomCylinder"}
+        picks = "%s:Edge%d,%s:Face%d,%s:Face%d" % (boss.Name, circle, boss.Name, sides[10], boss.Name, sides[16])
+        f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), placement="concentric",
+                                                        edge=picks, diameter="1 mm", depth_type="distance", depth="2 mm"))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        bores = sorted(round(fc.Surface.Center.x, 6) for fc in f.Shape.Faces
+                       if fc.Surface.TypeId == "Part::GeomCylinder" and abs(fc.Surface.Radius - 0.5) < 1e-6)
+        self.assertEqual(sorted(set(bores)), [4, 10, 16])
+        self.assertAlmostEqual(self.doc.getObject(f.Profile[0].Name).getGlobalPlacement().Base.z, 13, places=6)
+        r = hole.read(self.doc, f)
+        self.assertEqual((r["placement"], r["edge"], r["face"]), ("concentric", picks, ""))
+
     def test_parameters(self):
         sk = self.sketch_with_circle()
         f = hole.create(self.doc, self.body, None, dict(hole.defaults(self.doc, self.body, None), sketch=sk.Name))

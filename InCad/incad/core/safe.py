@@ -1,7 +1,7 @@
 """Safe command guard. Every model change runs in one undo transaction; on an exception or an invalid result
 the transaction is aborted, the model recomputed back to its previous state, and the user told why."""
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from incad.core import log
 
@@ -23,10 +23,13 @@ class SafeResult:
     ok: bool
     value: object = None
     error: str = ""
+    broken: list = field(default_factory=list)  # the objects the change broke (names), when that undid it
 
 
 class _InvalidResult(Exception):
-    pass
+    def __init__(self, text, names=()):
+        super().__init__(text)
+        self.names = list(names)
 
 
 def _status(obj):
@@ -189,8 +192,13 @@ def snapshot_broken(doc):
 
 def problems(doc, broken_before, touched, deep=True):
     """Reasons why objects that were fine (not in broken_before) are now broken; shapes checked for `touched`."""
-    found = [_broken(o, o.Name in touched, deep) for o in doc.Objects if o.Name not in broken_before]
-    return [p for p in found if p]
+    return [why for _name, why in broken_now(doc, broken_before, touched, deep)]
+
+
+def broken_now(doc, broken_before, touched, deep=True):
+    """[(name, reason)] of the objects that were fine (not in broken_before) and are broken now."""
+    found = [(o.Name, _broken(o, o.Name in touched, deep)) for o in doc.Objects if o.Name not in broken_before]
+    return [(n, why) for n, why in found if why]
 
 
 def _relink(doc):
@@ -201,9 +209,10 @@ def _relink(doc):
         log.report("warning", "Could not repair formula links: %s" % e, traceback.format_exc())
 
 
-def run_safely(label, fn, doc=None, only=None):
+def run_safely(label, fn, doc=None, only=None, quiet_broken=False):
     """Run fn() as one undo step named `label`. Never raises at the outermost level. only: the objects to recompute
-    (an open sketch: the part follows on Finish Sketch), else the whole document."""
+    (an open sketch: the part follows on Finish Sketch), else the whole document. quiet_broken: when the change broke
+    other objects it is undone without a message, their names in the result's `broken` (the caller asks)."""
     global _depth
     if _depth > 0:
         return SafeResult(True, fn())  # nested: the outer guard owns the transaction and catches errors
@@ -238,17 +247,18 @@ def run_safely(label, fn, doc=None, only=None):
         value = fn()
         touched = {o.Name for o in doc.Objects if "Touched" in o.State or o.Name not in names_before}
         doc.recompute(only) if only else doc.recompute()
-        found = problems(doc, broken_before, {o.Name for o in only} if only else touched)
+        found = broken_now(doc, broken_before, {o.Name for o in only} if only else touched)
         if found:
-            raise _InvalidResult("; ".join(found))
+            raise _InvalidResult("; ".join(why for _n, why in found), [n for n, _why in found])
     except Exception as e:
         doc.abortTransaction()
         doc.recompute()
         _relink(doc)
         invalid = isinstance(e, _InvalidResult)
         msg = str(e) if invalid else "%s failed: %s" % (label, e)
-        log.report("error", msg, "" if invalid else traceback.format_exc())
-        return SafeResult(False, error=msg)
+        if not (invalid and quiet_broken):
+            log.report("error", msg, "" if invalid else traceback.format_exc())
+        return SafeResult(False, error=msg, broken=e.names if invalid else [])
     finally:
         _depth -= 1
     doc.commitTransaction()

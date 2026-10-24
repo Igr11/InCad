@@ -96,6 +96,17 @@ def delete(obj, with_users=False, replace_main=False):
         pass
 
 
+def delete_all(objects):
+    """Delete several (a feature and what is built on it), the latest first, each with what InCad made for it."""
+    doc = objects[0].Document
+    names = [o.Name for o in objects]
+    order = {o.Name: i for i, o in enumerate(doc.Objects)}
+    for name in sorted(names, key=lambda n: order.get(n, 0), reverse=True):
+        obj = doc.getObject(name)
+        if obj is not None:  # gone with an earlier one (a helper)
+            delete(obj)
+
+
 def _delete(obj):
     from incad import features
     from incad.core import asm_cut, assembly, document

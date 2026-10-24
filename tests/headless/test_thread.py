@@ -168,6 +168,94 @@ class ThreadTest(unittest.TestCase):
         self.assertFalse(common.accepts("cylinder", obj, "Face1" if sub != "Face1" else "Face2"))
 
 
+class SeveralFacesTest(unittest.TestCase):
+    """The user: threads in several holes at once, as Hole does — a thread on each face picked, one dialog."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Tm")
+        self.body = document.make_part(self.doc)
+        self.pad = shaft(self.doc, self.body)
+        sk = self.body.newObject("Sketcher::SketchObject", "TwoSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        for x in (20, 40):
+            sk.addGeometry(Part.Circle(App.Vector(x, 0, 0), App.Vector(0, 0, 1), 5))
+        self.more = util.add_pad(self.body, sk, 20, name="Shafts")
+        self.body.Tip = self.more
+        self.doc.recompute()
+        self.faces = ["%s:Face%d" % (self.more.Name, i + 1) for i, f in enumerate(self.more.Shape.Faces)
+                      if f.Surface.TypeId == "Part::GeomCylinder" and abs(f.Surface.Radius - 5) < 1e-6]
+        self.assertEqual(len(self.faces), 3)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def threads(self):
+        return [o for o in self.doc.Objects if thread.claims(o) and not getattr(o, thread.HELPER, None)]
+
+    def test_a_thread_on_each_face_then_edited_alone(self):
+        v = dict(thread.defaults(self.doc, self.body, None), face=",".join(self.faces), size="M10")
+        self.doc.UndoMode = 1
+        self.doc.openTransaction("Thread")  # the dialog's step
+        f = thread.create(self.doc, self.body, None, v)
+        self.doc.recompute()
+        self.assertEqual(len(self.threads()), 3)
+        self.assertEqual([c.Name for c in thread.companions(self.doc, f)], [t.Name for t in self.threads()][1:])
+        f = thread.update(self.doc, f, dict(v, face=",".join(self.faces[:2])))  # one face taken off: its thread goes
+        self.doc.recompute()
+        self.assertEqual(len(self.threads()), 2)
+        self.assertTrue(all("Invalid" not in t.State for t in self.threads()))
+        r = thread.read(self.doc, f)
+        self.assertEqual(r["face"], self.faces[0])
+        self.assertEqual(len(thread.companions(self.doc, f)), 1, "read (after every preview) keeps them")
+        self.doc.commitTransaction()  # OK
+        self.assertEqual(thread.companions(self.doc, f), [], "an existing thread is edited alone")
+
+
+class SeveralHolesTest(unittest.TestCase):
+    """The user: several threads worked on shafts, not in holes — the second hole was clicked on the first thread's
+    preview (its fill, made again at every preview), and that name died: the faces are named on the part."""
+
+    def test_the_second_hole_clicked_on_the_first_threads_preview(self):
+        from incad.features import hole
+        doc = util.new_doc("Th")
+        try:
+            body, pad = util.padded_part(doc, 10, incad=True)
+            top = [i + 1 for i, f in enumerate(pad.Shape.Faces) if abs(f.CenterOfMass.z - 10) < 1e-6][0]
+            sk = body.newObject("Sketcher::SketchObject", "Holes")
+            sk.AttachmentSupport = [(pad, "Face%d" % top)]
+            sk.MapMode = "FlatFace"
+            for x in (5, 15):
+                sk.addGeometry(Part.Circle(App.Vector(x, 5, 0), App.Vector(0, 0, 1), 2.5))
+            doc.recompute()
+            h = hole.create(doc, body, None, dict(hole.defaults(doc, body, None), sketch=sk.Name, diameter="5 mm",
+                                                  depth_type="through_all"))
+            doc.recompute()
+
+            def bore(obj, x):
+                return "%s:Face%d" % (obj.Name, [i + 1 for i, f in enumerate(obj.Shape.Faces)
+                                                 if f.Surface.TypeId == "Part::GeomCylinder"
+                                                 and abs(f.Surface.Center.x - x) < 1e-6][0])
+            v = dict(thread.defaults(doc, body, None), face=bore(h, 5))
+            doc.UndoMode = 1
+            doc.openTransaction("Thread")  # the dialog's step: the threads made in it belong together
+            f = thread.create(doc, body, None, v)
+            doc.recompute()
+            on_preview = bore(body.Tip, 15)  # what a click on the second hole names now
+            self.assertFalse(on_preview.startswith(h.Name + ":"), on_preview)
+            f = thread.update(doc, f, dict(v, face=v["face"] + "," + on_preview))
+            doc.recompute()
+            shown = thread.adjusted(doc, f)["face"].split(",")
+            self.assertEqual([x.split(":")[0] for x in shown], [h.Name, h.Name], shown)
+            f = thread.update(doc, f, dict(v, face=",".join(shown)))  # the next preview, with what the dialog shows
+            doc.recompute()
+            made = [o for o in doc.Objects if thread.claims(o) and not getattr(o, thread.HELPER, None)]
+            self.assertEqual(len(made), 2)
+            self.assertTrue(all("Invalid" not in t.State for t in made), [(t.Name, t.getStatusString()) for t in made])
+        finally:
+            App.closeDocument(doc.Name)
+
+
 class ThreadReviewTest(unittest.TestCase):
     def setUp(self):
         self.doc = util.new_doc("Tr")

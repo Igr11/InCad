@@ -5,6 +5,23 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.11.2
+-----
+Hole and Thread in several places at once, Apply + keeps the settings, Delete asks about what breaks.
+
+Improvements
+- Hole > Concentric: click several round edges or round faces at once (Round) - a hole at the centre of each; the
+  Face is optional (the flat face beside them, the one facing you).
+- Thread on several faces at once (holes or shafts): a thread on each with the same settings; afterwards each is a
+  thread of its own.
+- Apply + opens the next dialog with the same settings (only the picks start empty), in every tool.
+
+Bug fixes
+- Delete of a feature that others are built on (a Chamfer on a Fillet's edges) hung, then did nothing: it now asks to
+  delete those too, as one undo step; No leaves the part as it was.
+- Thread in a second hole: the click on it (shown as the first thread's preview) was dropped.
+
+
 0.11.1
 -----
 Work Axis fixes: the axis of a cylinder or a cone, marked points for every Point field, the view turns while points are picked; Hide / Show no longer rebuilds the part.

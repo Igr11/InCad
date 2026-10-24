@@ -948,7 +948,26 @@ def delete_target():
         if d.HasPendingTransaction:
             d.abortTransaction()
         d.openTransaction("Delete")
-    res = safe.run_safely("Delete", lambda: delete.delete(obj, **kw), doc)
+    res = safe.run_safely("Delete", lambda: delete.delete(obj, **kw), doc, quiet_broken=not extras)
+    from incad.core import log
+    victims, told = [obj], False
+    for _round in range(5):  # what was built on it broke: ask, then delete it too (Inventor) — as one undo step
+        if res.ok or not res.broken or extras:
+            break
+        more = [doc.getObject(n) for n in res.broken]
+        more = [o for o in more if o is not None and o not in victims and o.TypeId != "PartDesign::Body"]
+        if not more:
+            break
+        names = ", ".join(o.Label for o in more)
+        if not shell.confirm("Delete", "%s is built on %s: without it, it fails. Delete %s too?"
+                                       % (names, ", ".join(o.Label for o in victims), names)):
+            log.report("info", "Nothing deleted")
+            told = True
+            break
+        victims += more
+        res = safe.run_safely("Delete", lambda: delete.delete_all(victims), doc, quiet_broken=True)
+    if not res.ok and res.broken and not extras and not told:
+        log.report("error", res.error)  # undone, and nothing more to offer
     for d in extras:
         if res.ok:
             d.commitTransaction()

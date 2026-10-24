@@ -79,6 +79,43 @@ class DeleteTest(unittest.TestCase):
             delete.delete(self.body.Origin.OriginFeatures[0])
 
 
+class DeleteWhatBreaksTest(unittest.TestCase):
+    """The user (Windows): deleting a Chamfer from the browser hung and then did nothing — what was built on it broke,
+    so the delete was rolled back with a cryptic edge-link message. The broken ones are named, to go too (Inventor)."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Db")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+        v = [i + 1 for i, e in enumerate(self.pad.Shape.Edges) if e.BoundBox.ZLength > 9][0]
+        self.fillet = self.body.newObject("PartDesign::Fillet", "Fillet")
+        self.fillet.Base = (self.pad, ["Edge%d" % v])
+        self.fillet.Radius = 3
+        self.doc.recompute()
+        arc = [i + 1 for i, e in enumerate(self.fillet.Shape.Edges)
+               if e.Curve.TypeId == "Part::GeomCircle" and e.BoundBox.ZMax > 9.9][0]
+        self.chamfer = self.body.newObject("PartDesign::Chamfer", "Chamfer")
+        self.chamfer.Base = (self.fillet, ["Edge%d" % arc])
+        self.chamfer.Size = 0.5
+        self.doc.recompute()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_what_breaks_is_named_and_nothing_changes(self):
+        r = safe.run_safely("Delete", lambda: delete.delete(self.fillet), self.doc, quiet_broken=True)
+        self.assertFalse(r.ok)
+        self.assertEqual(r.broken, ["Chamfer"])
+        self.assertIsNotNone(self.doc.getObject("Fillet"))
+
+    def test_deleting_it_with_what_breaks_is_one_step(self):
+        r = safe.run_safely("Delete", lambda: delete.delete_all([self.fillet, self.chamfer]), self.doc)
+        self.assertTrue(r.ok, r.error)
+        self.assertIsNone(self.doc.getObject("Fillet"))
+        self.assertIsNone(self.doc.getObject("Chamfer"))
+        self.assertIs(self.body.Tip, self.pad)
+        self.assertAlmostEqual(self.body.Shape.Volume, self.pad.Shape.Volume, places=6)
+
+
 class DeleteKeptFitTest(CombineTest):
     def test_delete_combine_with_a_worked_on_fit_copy(self):
         f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")

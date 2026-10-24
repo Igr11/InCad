@@ -341,6 +341,11 @@ def accepts(kind, obj, sub):
         return sub.startswith("Edge") and el is not None
     if kind == "circular_edge":
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomCircle"
+    if kind == "round":  # a hole's centre: a round edge, or a round face (cylinder, cone) — easier to click
+        if sub.startswith("Edge"):
+            return el is not None and safe.curve_type(el) == "Part::GeomCircle"
+        return sub.startswith("Face") and el is not None and el.Surface.TypeId in ("Part::GeomCylinder",
+                                                                                 "Part::GeomCone")
     if kind == "face":
         return sub.startswith("Face") and el is not None
     if kind == "direction":  # what Parallel / Perpendicular / Angle compare: a flat face, a straight edge, or a
@@ -390,7 +395,7 @@ def accepts(kind, obj, sub):
         if sub.startswith(("Edge", "Vertex")):
             return el is not None
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
-    if kind == "plane":
+    if kind in ("plane", "hole_face"):
         if not sub:
             return tid in ("App::Plane", "PartDesign::Plane")
         return sub.startswith("Face") and el is not None and el.Surface.TypeId == "Part::GeomPlane"
@@ -449,6 +454,8 @@ _EMPTY_HINT = {"feature": "Click a feature (tree or view)…", "direction": "Cli
                "sketch_limit": "Click a line or a point…", "sketch_path": "Click the path's lines, arcs or splines…",
                "sketch_curve": "Click a line, arc, circle or curve…",
                "sketch_box": "Click a line of the box…"}
+_EMPTY_HINT.update({"round": "Click round edges or round faces…", "hole_face": "Automatic — or click a flat face…"})
+_PLURAL.update({"round": "round edges / faces"})
 _PLURAL.update({"sketch_geometry": "items", "sketch_limit": "items", "sketch_path": "segments"})
 _EMPTY_HINT.update({"gear": "None — click a gear or worm…", "gear_center": "Origin — click a circle…",
                     "gear_plane": "Automatic — click a plane…"})

@@ -1,5 +1,5 @@
-"""Hole (Inventor) = PartDesign Hole. Placement from a sketch's points/circle centres, or concentric to a circular
-edge on a flat face (a hidden helper sketch holds the centre point)."""
+"""Hole (Inventor) = PartDesign Hole. Placement from a sketch's points/circle centres, or concentric to round edges
+and round faces (a hole at the centre of each; a hidden helper sketch on the flat face holds the centre points)."""
 import FreeCAD as App
 import Part
 
@@ -16,8 +16,8 @@ _THREADED = ("clearance", "tapped")
 FIELDS = (
     Field("placement", "Placement", "choice", (("sketch", "From Sketch"), ("concentric", "Concentric")), "sketch"),
     Field("sketch", "Sketch", "pick", show_if=("placement", ("sketch",)), pick="sketch"),
-    Field("face", "Face", "pick", show_if=("placement", ("concentric",)), pick="plane"),
-    Field("edge", "Circular edge", "pick", show_if=("placement", ("concentric",)), pick="circular_edge"),
+    Field("edge", "Round", "picks", show_if=("placement", ("concentric",)), pick="round"),
+    Field("face", "Face", "pick", show_if=("placement", ("concentric",)), pick="hole_face", optional=True),
     Field("hole_type", "Hole", "choice", (("simple", "Simple"), ("clearance", "Clearance"), ("tapped", "Tapped")),
           "simple"),
     Field("thread_standard", "Standard", "combo", (("iso", "ISO metric"), ("iso_fine", "ISO metric fine"),
@@ -109,25 +109,67 @@ def _default_size(std, names, diameter_text):
     return next((n for n in names if n == guess or n.startswith(guess + "x")), names[0] if names else "")
 
 
+def _round_centre(obj, sub):
+    """(a point on the axis, unit axis) of a round edge or a round face (cylinder, cone), global."""
+    el = obj.getSubObject(sub)
+    if sub.startswith("Edge") and el is not None and el.Curve.TypeId == "Part::GeomCircle":
+        point, axis = App.Vector(el.Curve.Center), App.Vector(el.Curve.Axis)
+    elif sub.startswith("Face") and el is not None and el.Surface.TypeId in ("Part::GeomCylinder", "Part::GeomCone"):
+        point, axis = App.Vector(el.Surface.Center), App.Vector(el.Surface.Axis)
+    else:
+        raise ValueError("%s is not a round edge or a round face" % sub)
+    return point, axis.normalize()
+
+
+def _start_face(obj, sub, axis):
+    """The flat face the holes start on when none is picked: one square to the axis beside the first round edge or
+    face; of two (a round face's both ends) the one that looks at the viewer, else the upper one."""
+    shape = obj.Shape
+    el = shape.getElement(sub)
+    flats = [f for f in shape.ancestorsOfType(el, Part.Face) if f.Surface.TypeId == "Part::GeomPlane"] \
+        if sub.startswith("Edge") else \
+        [f for e in el.Edges for f in shape.ancestorsOfType(e, Part.Face) if f.Surface.TypeId == "Part::GeomPlane"]
+    flats = [f for f in flats if abs(abs(f.normalAt(0, 0).dot(axis)) - 1) < 1e-6]
+    if not flats:
+        raise ValueError("Pick the flat face the holes start on")
+    try:
+        import FreeCADGui as Gui
+        look = Gui.ActiveDocument.ActiveView.getViewDirection()
+    except Exception:
+        look = App.Vector(0, 0, -1)
+    best = max(flats, key=lambda f: -f.normalAt(0, 0).dot(look))
+    i = next(k for k, f in enumerate(shape.Faces, 1) if f.isSame(best))
+    return obj, "Face%d" % i
+
+
 def _helper_sketch(doc, body, values, sk=None):
-    """A hidden sketch on the face with a point at the circular edge's centre (fixed position). The picks are
-    kept on the sketch (InCadPicks) so the dialog can show and change them; `sk` reuses an existing helper."""
-    faces, edges = parse_picks(doc, values.get("face")), parse_picks(doc, values.get("edge"))
-    if not faces or not edges:
-        raise ValueError("Pick the flat face and the round edge the hole is centred on")
-    face_obj, face = faces[0]
-    edge_obj, edge = edges[0]
-    centre = edge_obj.getSubObject(edge).Curve.Center
+    """A hidden sketch on the flat face with a point at each round edge's or face's centre (fixed positions). The
+    picks are kept on the sketch (InCadPicks) so the dialog can show and change them; `sk` reuses an existing helper."""
+    rounds = parse_picks(doc, values.get("edge"))
+    if not rounds:
+        raise ValueError("Pick the round edges or faces the holes are centred on")
+    axes = [_round_centre(*resolve(o, s)) for o, s in rounds]
+    faces = parse_picks(doc, values.get("face"))
+    face_ref = resolve(*faces[0]) if faces else _start_face(*resolve(*rounds[0]), axes[0][1])
     if sk is None:
         sk = body.newObject("Sketcher::SketchObject", "HoleCentre")
         sk.addProperty("App::PropertyString", "InCadPicks", "InCad")
     sk.deleteAllGeometry()
-    sk.AttachmentSupport = [resolve(face_obj, face)]
+    sk.AttachmentSupport = [face_ref]
     sk.MapMode = "FlatFace"
     sk.InCadPicks = "%s|%s" % (values.get("face"), values.get("edge"))
     doc.recompute()
-    local = sk.getGlobalPlacement().inverse().multVec(centre)
-    sk.addGeometry(Part.Point(App.Vector(local.x, local.y, 0)))
+    inv = sk.getGlobalPlacement().inverse()
+    normal = sk.getGlobalPlacement().Rotation.multVec(App.Vector(0, 0, 1))
+    placed = []
+    for point, axis in axes:
+        if abs(abs(axis.dot(normal)) - 1) > 1e-6:
+            raise ValueError("A round edge or face is not square to the face the holes start on")
+        local = inv.multVec(point)
+        at = App.Vector(local.x, local.y, 0)
+        if all((at - q).Length > 1e-6 for q in placed):  # an edge and its face: one hole
+            placed.append(at)
+            sk.addGeometry(Part.Point(at))
     sk.Visibility = False
     doc.recompute()
     return sk

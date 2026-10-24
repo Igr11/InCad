@@ -20,10 +20,12 @@ NEEDS_PROFILE = False
 PROPS = {"length": "Height"}
 PRESELECT = {"face": "cylinder"}
 SOLID_PICKS = True  # its picks are on the part: a sketch line over an edge stands for that edge
+# the next hole is clicked on this thread's own preview (it is the part on screen): taken, then named on the part below
+PICKS_ON_SELF = ("face", "start_face")
 _STORE = "InCadThread"
 
 FIELDS = (
-    Field("face", "Face", "pick", pick="cylinder"),
+    Field("face", "Face", "picks", pick="cylinder"),  # several: a thread on each, the same settings (the user)
     Field("start_face", "Start face", "pick", pick="plane"),
     Field("offset", "Offset", "value_length", default="0 mm"),
     Field("length_mode", "Length", "choice", (("full", "Full length"), ("distance", "Distance")), "full"),
@@ -564,7 +566,66 @@ def _walled(solid, placement, sign, radius, a0, a1, angles=12):
     return [(b0, b1) for b0, b1 in spans if b1 - b0 >= 0.3]
 
 
+_MATES = {}  # (document, thread) -> (undo count, the threads made with it in its dialog, one per further face)
+
+
+def _items(values, doc=None):
+    """The faces picked, each named on the feature below the threads when a doc is given (a face clicked on the
+    preview of another thread here, or on its fill: those are made again at every preview, the name would die)."""
+    items = [i.strip() for i in (values.get("face") or "").split(",") if i.strip()]
+    if doc is None:
+        return items
+    return [rehome(doc, dict(values, face=i, start_face=""))["face"] for i in items]
+
+
+def adjusted(doc, f):
+    """The dialog's Face list as the threads use it (faces on the part, not on a preview that is made again)."""
+    faces = [_load(t).get("face") for t in [f] + companions(doc, f)]
+    return {"face": ",".join(x for x in faces if x)} if all(faces) else {}
+
+
+def _one(values, item):
+    return dict(values, face=item)
+
+
+def companions(doc, f):
+    """The threads made with `f` in its open dialog (the further faces): shown and computed with it. Once that
+    dialog's step is committed (OK) each is a thread of its own: a later edit of `f` is `f` alone."""
+    count, names = _MATES.get((doc.Name, f.Name), (None, []))
+    if count != doc.UndoCount or not doc.HasPendingTransaction:  # (the count moves on the step's first change)
+        return []
+    return [doc.getObject(n) for n in names if doc.getObject(n) is not None]
+
+
+def _discard(doc, body, t):
+    _remove_helpers(doc, body, t)
+    sk = t.Profile[0] if isinstance(t.Profile, (tuple, list)) and t.Profile else None
+    if body.Tip is t:
+        body.Tip = t.BaseFeature
+    for obj in (t, sk):
+        if obj is not None and doc.getObject(obj.Name) is not None:
+            body.removeObject(obj)
+            doc.removeObject(obj.Name)
+
+
 def create(doc, body, profile_, values):
+    """A thread on every face picked (one dialog for several holes or shafts); the first is the dialog's feature."""
+    items = _items(values, doc) or [""]
+    f = _create_one(doc, body, _one(values, items[0]))
+    mates = []
+    try:
+        for item in items[1:]:
+            mates.append(_create_one(doc, body, _one(values, item)).Name)
+    except Exception:
+        for t in reversed([doc.getObject(n) for n in mates] + [f]):
+            _discard(doc, body, t)
+        doc.recompute()
+        raise
+    _MATES[(doc.Name, f.Name)] = (doc.UndoCount, mates)
+    return f
+
+
+def _create_one(doc, body, values):
     values = rehome(doc, values)
     obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
     _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
@@ -597,7 +658,21 @@ def read(doc, f):
 
 
 def update(doc, f, values):
-    return _build(doc, f.getParentGeoFeatureGroup(), f, values)
+    body = f.getParentGeoFeatureGroup()
+    items = _items(values, doc) or [""]
+    mates = companions(doc, f)
+    first = _build(doc, body, f, _one(values, items[0]))
+    kept = []
+    for i, item in enumerate(items[1:]):
+        if i < len(mates):
+            kept.append(_build(doc, body, mates[i], _one(values, item)).Name)
+        else:
+            t = _create_one(doc, body, _one(values, item))
+            kept.append(t.Name)
+    for t in mates[len(items) - 1:]:  # a face taken off the list: its thread goes
+        _discard(doc, body, t)
+    _MATES[(doc.Name, f.Name)] = (doc.UndoCount, kept)
+    return first
 
 
 def _pad_of(f):

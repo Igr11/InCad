@@ -87,6 +87,15 @@ class _Recomputed:
             pass
 
 
+_AGAIN = {}  # kind name -> the values Apply + carries into the next dialog of that kind (picks left out)
+
+
+def _carried(kind, values):
+    """What Apply + keeps for the next one: every value but the picks (the user: the settings are remembered)."""
+    return {f.key: values[f.key] for f in kind.FIELDS
+            if f.key in values and f.kind not in ("pick", "picks", "heading")}
+
+
 class FeatureSession(QtCore.QObject):
     def __init__(self, kind, doc, body, profile=None, feature=None, theme="light", parent=None, on_close=None):
         super().__init__(parent)
@@ -135,6 +144,9 @@ class FeatureSession(QtCore.QObject):
         try:
             if self.creating:
                 values = self.kind.defaults(doc, self.body, self.profile)
+                again = _AGAIN.pop(getattr(self.kind, "__name__", ""), None)  # Apply +: the last one's settings
+                if again:
+                    values.update({k: v for k, v in again.items() if k in values})
                 if getattr(self.kind, "NEEDS_PROFILE", True):
                     document.adopt(self.body, self.profile)  # a sketch left in another Solid comes along
                     self.feature = self.kind.create(doc, self.body, self.profile, values)
@@ -238,13 +250,15 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "limit", "to_face",
-                 "direction", "emboss_face")
+    _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "round", "hole_face", "limit",
+                 "to_face", "direction", "emboss_face")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
                    "to_face": "a face, a plane or a point",
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
                    "emboss_face": "a round (cylinder, cone or sphere) or a flat face",
                    "move_to": "a face, plane, edge or point",
+                   "round": "round edges or round faces (a hole at the centre of each)",
+                   "hole_face": "the flat face the holes start on",
                    "gear": "another Gear or a Worm", "gear_center": "a circle, a corner or a point",
                    "gear_plane": "a plane, a flat face or a sketch"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
@@ -1351,7 +1365,9 @@ class FeatureSession(QtCore.QObject):
             group = list(body.Group)
             if f not in group:
                 return []
-            mine = set(document.helpers_of(body, f))
+            mine = set(document.helpers_of(body, f)) | set(self._companions())
+            for c in self._companions():
+                mine |= set(document.helpers_of(body, c))
             return [o for o in group[group.index(f) + 1:] if o not in mine and o.isDerivedFrom("PartDesign::Feature")]
         except Exception:
             return []
@@ -1410,7 +1426,20 @@ class FeatureSession(QtCore.QObject):
         """The feature with its helpers (a hole's chamfer, a thread's fill)."""
         if self.feature is None or not _feature_alive(self.feature):
             return []
-        return [self.feature] + (document.helpers_of(self.body, self.feature) if self.body is not None else [])
+        out = [self.feature] + (document.helpers_of(self.body, self.feature) if self.body is not None else [])
+        for c in self._companions():  # Thread on several faces: the others are made and shown with it
+            out += [c] + (document.helpers_of(self.body, c) if self.body is not None else [])
+        return out
+
+    def _companions(self):
+        hook = getattr(self.kind, "companions", None)
+        if hook is None or self.feature is None or not _feature_alive(self.feature):
+            return []
+        try:
+            return hook(self.doc, self.feature)
+        except Exception:
+            log.logger().exception("companions")
+            return []
 
     def _roll_forward(self, commit):
         """The dialog closes: on OK the features after this one are computed (once), and whatever that broke is
@@ -1665,6 +1694,7 @@ class FeatureSession(QtCore.QObject):
             self._after_preview = "apply"
             return
         kind = self.kind
+        carried = _carried(kind, self.dialog.values()) if self.dialog is not None else {}
         self.ok()
         # once, and only after a commit: a second Apply that landed during the preview is folded in, and an Esc
         # that landed there means stop (Inventor), not "and now the next one"
@@ -1677,10 +1707,13 @@ class FeatureSession(QtCore.QObject):
             except Exception:
                 pass
             def again():
+                _AGAIN[getattr(kind, "__name__", "")] = carried
                 try:
                     shell.start_feature(kind)
                 except Exception as e:  # e.g. no closed sketch left: say so instead of a silent traceback
                     log.report("warning", "%s: %s" % (kind.TITLE, e))
+                finally:
+                    _AGAIN.pop(getattr(kind, "__name__", ""), None)  # never into a later, fresh dialog
             QtCore.QTimer.singleShot(0, again)
 
     def cancel(self):
