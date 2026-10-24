@@ -1,4 +1,4 @@
-InCad for FreeCAD - Windows test build (UNTESTED)
+InCad for FreeCAD - Windows test build
 =================================================
 
 Build: VERSION
