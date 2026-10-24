@@ -264,3 +264,113 @@ class InventorWorkFeaturesTest(unittest.TestCase):
         self.assertAlmostEqual((m.Placement.Base - App.Vector(10, 0, 10)).Length, 0, places=6)
         x = self.make(work.POINT, mode="edge_plane", edge=self.vertical, base=util.xy_plane(self.body).Name)
         self.assertAlmostEqual(x.Placement.Base.z, 0, places=6)
+
+
+class RoundFaceAxisTest(unittest.TestCase):
+    """The user: Axis of a cylinder on a partial cylinder (a half ring) or a cone came out across the part — it was the
+    face's axis of inertia, not the surface's own axis."""
+
+    def setUp(self):
+        self.doc = util.new_doc("Ra")
+        self.body, self.pad = util.padded_part(self.doc, 10, incad=True)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def solid(self, type_id, **props):
+        o = self.body.newObject(type_id, "Round")
+        for k, v in props.items():
+            setattr(o, k, v)
+        o.Placement = App.Placement(App.Vector(40, 7, 0), App.Rotation(App.Vector(1, 0, 0), -90))  # axis along +Y
+        self.body.Tip = o
+        self.doc.recompute()
+        return o
+
+    def axis_of(self, o, surface):
+        face = [i + 1 for i, f in enumerate(o.Shape.Faces) if f.Surface.TypeId == surface][0]
+        k = work.AXIS
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="cylinder",
+                                                       face="%s:Face%d" % (o.Name, face)))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        d = f.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+        self.assertAlmostEqual(abs(d.y), 1, places=6, msg="along the round face's axis: %s" % d)
+        p = f.Placement.Base
+        self.assertAlmostEqual(math.hypot(p.x - 40, p.z), 0, places=6, msg="through its centre: %s" % p)
+        return f
+
+    def test_a_half_cylinder(self):
+        o = self.solid("PartDesign::AdditiveCylinder", Radius=12, Height=8, Angle=180)
+        f = self.axis_of(o, "Part::GeomCylinder")
+        self.assertTrue(f.AttachmentSupport[0][1][0].startswith("Edge"), "follows the part: on a round edge")
+        o.Placement = App.Placement(App.Vector(50, 7, 3), o.Placement.Rotation)
+        self.doc.recompute()
+        self.assertAlmostEqual((f.Placement.Base - App.Vector(50, f.Placement.Base.y, 3)).Length, 0, places=6)
+
+    def test_a_cone(self):
+        self.axis_of(self.solid("PartDesign::AdditiveCone", Radius1=28, Radius2=23, Height=27), "Part::GeomCone")
+
+    def test_a_flat_face_is_refused(self):
+        k = work.AXIS
+        top = [i + 1 for i, f in enumerate(self.pad.Shape.Faces) if f.Surface.TypeId == "Part::GeomPlane"][0]
+        with self.assertRaises(ValueError) as ctx:
+            k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="cylinder",
+                                                    face="%s:Face%d" % (self.pad.Name, top)))
+        self.assertIn("round", str(ctx.exception))
+
+    def test_an_axis_through_two_marked_points(self):
+        """Work Axis ▸ Two points on the part's markers: a corner stays a vertex (followed), an edge middle is '@x y z'."""
+        k = work.AXIS
+        corner = [i + 1 for i, v in enumerate(self.pad.Shape.Vertexes) if v.Point.Length < 1e-6][0]
+        text = "%s:Vertex%d,@0 0 10" % (self.pad.Name, corner)
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="two_points",
+                                                     points=text))
+        self.doc.recompute()
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        d = f.Placement.Rotation.multVec(App.Vector(0, 0, 1))
+        self.assertAlmostEqual(abs(d.z), 1, places=6)
+        self.assertAlmostEqual(f.Placement.Base.Length, 0, places=6)
+        self.assertEqual(k.read(self.doc, f)["points"], text)
+        with self.assertRaises(ValueError):
+            k.update(self.doc, f, dict(k.read(self.doc, f), points="@1 1 1,@1 1 1"))
+
+    def test_marked_points_that_are_no_corners(self):
+        """Every Point field takes the part's marked points; one that is no corner ('@x y z', global) fixes the
+        feature where it is now (an edge middle of the 20 x 10 x 10 box: 10 0 10)."""
+        mid = "@10 0 10"
+        k = work.POINT
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="vertex", vertex=mid))
+        self.doc.recompute()
+        self.assertAlmostEqual((f.Placement.Base - App.Vector(10, 0, 10)).Length, 0, places=6)
+        edge = [i + 1 for i, e in enumerate(self.pad.Shape.Edges)
+                if e.Curve.TypeId == "Part::GeomLine" and e.BoundBox.ZLength > 9][0]
+        a = work.AXIS
+        g = a.create(self.doc, self.body, None, dict(a.defaults(self.doc, self.body, None), mode="parallel_point",
+                                                     edge="%s:Edge%d" % (self.pad.Name, edge), point=mid))
+        self.doc.recompute()
+        self.assertAlmostEqual(abs(g.Placement.Rotation.multVec(App.Vector(0, 0, 1)).z), 1, places=6)
+        self.assertAlmostEqual(math.hypot(g.Placement.Base.x - 10, g.Placement.Base.y), 0, places=6)
+        top = [i + 1 for i, fc in enumerate(self.pad.Shape.Faces)
+               if fc.Surface.TypeId == "Part::GeomPlane" and abs(fc.CenterOfMass.z - 10) < 1e-6][0]
+        h = a.create(self.doc, self.body, None, dict(a.defaults(self.doc, self.body, None), mode="normal_plane",
+                                                     base="%s:Face%d" % (self.pad.Name, top), point=mid))
+        self.doc.recompute()
+        self.assertAlmostEqual(abs(h.Placement.Rotation.multVec(App.Vector(0, 0, 1)).z), 1, places=6)
+        self.assertAlmostEqual(math.hypot(h.Placement.Base.x - 10, h.Placement.Base.y), 0, places=6)
+        xy = [o for o in self.body.Origin.OriginFeatures if o.Role == "XY_Plane"][0]
+        k = work.PLANE
+        q = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="parallel_point",
+                                                     base=xy.Name, point=mid))
+        self.doc.recompute()
+        self.assertAlmostEqual(q.Placement.Base.z, 10, places=6)
+
+    def test_a_work_feature_recomputes_only_itself(self):
+        """The user: Work Axis lagged — every pick recomputed the whole part (a touched Emboss: 9.6 s, not 0.1 s)."""
+        self.pad.touch()
+        k = work.AXIS
+        corner = [i + 1 for i, v in enumerate(self.pad.Shape.Vertexes) if v.Point.Length < 1e-6][0]
+        f = k.create(self.doc, self.body, None, dict(k.defaults(self.doc, self.body, None), mode="two_points",
+                                                     points="%s:Vertex%d,@0 0 10" % (self.pad.Name, corner)))
+        self.assertNotIn("Invalid", f.State)
+        self.assertIn("Touched", self.pad.State, "the part waits for OK")
+

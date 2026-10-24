@@ -88,9 +88,58 @@ def test_1_points_light_up_and_three_clicks_make_the_plane():
     assert abs(abs(n.z) - 1) < 1e-6 and abs(plane.Placement.Base.z - 6) < 1e-6, plane.Placement
 
 
+def test_2_work_axis_two_points_light_up_too():
+    """The user: Work Axis ▸ Two points showed no points to click (only a vertex picked blind)."""
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("work.axis")
+    harness.pump(1000)
+    d = dialog()
+    assert d is not None
+    w = d.field("mode")
+    w.setCurrentIndex(w.findData("two_points"))  # from On edge: its Edge pick was active, then hidden
+    harness.pump(800)
+    btn = d.field("points")
+    assert d.active_pick() == "points", d.active_pick()  # the points light up at once, no click on Points
+    pick = s()._point_pick
+    assert pick is not None and len(pick.points) >= 8, pick and len(pick.points)
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    dpr = vp.devicePixelRatioF()
+    for p in (V(20, 0, 0), V(20, 0, 6)):  # a vertical edge of the box, corner to corner
+        i = next(i for i, q in enumerate(pick.points) if (q - p).Length < 1e-6)
+        sx, sy = view.getPointOnViewport(pick.points[i])
+        s()._point_clicked(vp, sx / dpr, vp.height() - sy / dpr)
+        harness.pump(400)
+    harness.pump(1500)
+    assert s()._point_pick is None
+    assert btn.text() == "2 points", btn.text()
+    QTest.mouseClick(d.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1000)
+    assert s().feature_session is None
+    axis = [o for o in body().Group if o.TypeId == "PartDesign::Line"][-1]
+    assert "Invalid" not in axis.State, axis.getStatusString()
+    assert axis.MapMode == "TwoPointLine", axis.MapMode  # on the corners: it follows them
+    dz = axis.Placement.Rotation.multVec(V(0, 0, 1))
+    assert abs(abs(dz.z) - 1) < 1e-6 and abs(axis.Placement.Base.x - 20) < 1e-6, axis.Placement
+
+
+def test_3_a_work_point_lights_the_points_at_once():
+    """The user: Parallel to edge through point (and every Point field) picked a vertex blind."""
+    Gui.Selection.clearSelection()
+    commands.REGISTRY.run("work.point")
+    harness.pump(1000)
+    d = dialog()
+    assert d is not None and d.active_pick() == "vertex", d and d.active_pick()
+    pick = s()._point_pick
+    assert pick is not None and len(pick.points) >= 8, pick and len(pick.points)
+    d.cancel_button.click()
+    harness.pump(800)
+
+
 def test_9_cleanup():
     harness.pump(300)
     App.closeDocument(doc().Name)
 
 
-harness.run([test_0_box, test_1_points_light_up_and_three_clicks_make_the_plane, test_9_cleanup])
+harness.run([test_0_box, test_1_points_light_up_and_three_clicks_make_the_plane,
+             test_2_work_axis_two_points_light_up_too, test_3_a_work_point_lights_the_points_at_once, test_9_cleanup])

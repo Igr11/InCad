@@ -3654,11 +3654,12 @@ class Shell(QtCore.QObject):
             self.status.set_prompt("Ready")
 
     def _point_clicked(self, viewport, x, y):
-        """A click while picking points: on a marker it counts; elsewhere it is ignored."""
+        """A click while picking points: on a marker it counts; elsewhere a drag still turns the view (the user:
+        only pan worked) and a plain click is ignored."""
         pick = self._point_pick
         i = pick.nearest(viewport, x, y)
         if i is None:
-            return True
+            return "drag"
         p = pick.points[i]
         if any((p - q).Length < 1e-9 for q in pick.picked):
             return True

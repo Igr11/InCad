@@ -308,6 +308,16 @@ class VisibilityTest(unittest.TestCase):
         document.show_result(self.body)
         self.assertTrue(wp.Visibility, "a tip move does not hide a work plane")
 
+    def test_showing_the_origin_touches_nothing(self):
+        """The user: Show All Origin took 11 s — writing InCadShown on the origin planes touched every sketch on them
+        and every feature after, and the part was rebuilt. The choice is an output: recorded, never a change."""
+        items = document.origin_items(self.body)
+        document.prepare_choice(items)
+        for flag in (True, False, True):
+            document.set_visibility(items, flag)
+            touched = [o.Name for o in self.doc.Objects if "Touched" in o.State]
+            self.assertEqual(touched, [], flag)
+
     def test_hide_show_is_one_undo_step_that_undo_and_redo_follow(self):
         """FreeCAD records no Visibility change in a transaction: the choice lives in InCadShown (recorded), and
         apply_visibility puts the view back in step after undo/redo."""

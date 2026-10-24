@@ -676,10 +676,14 @@ def is_shown(obj):
 
 def _record_choice(o, flag):
     """The choice goes into InCadShown: FreeCAD records that in the undo step (a Visibility change alone leaves
-    the step empty), and apply_visibility reads it back after undo/redo."""
+    the step empty), and apply_visibility reads it back after undo/redo. An output: writing it touches nothing (the
+    user: Show All Origin took 11 s — it touched the planes, every sketch on them and the part was rebuilt)."""
     if SHOWN_PROP not in o.PropertiesList:
         o.addProperty("App::PropertyBool", SHOWN_PROP, "InCad", "Shown in the part view by choice")
-    setattr(o, SHOWN_PROP, bool(flag))
+    if "Output" not in o.getPropertyStatus(SHOWN_PROP):  # also on files saved before
+        o.setPropertyStatus(SHOWN_PROP, "Output")
+    if bool(getattr(o, SHOWN_PROP)) != bool(flag):
+        setattr(o, SHOWN_PROP, bool(flag))
 
 
 def prepare_choice(objects):

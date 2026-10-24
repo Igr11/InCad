@@ -45,6 +45,8 @@ Inventor/Alibre-style workbench for FreeCAD 1.1.3 (macOS). Spec: docs/superpower
   touches and recomputes everything after). Feature dialogs preview with `doc.recompute([feature + helpers])` (part
   rolled back to the edited feature, the rest once on OK) and check only the shapes that preview computed;
   `set_model_parameter(..., everything=False)` inside dialogs. `incad.core.perf` logs `Slow:` calls and event-loop stalls.
+  `InCadShown` is an `Output` property (a Hide / Show choice touches nothing: on the origin it rebuilt the whole part);
+  work features recompute only themselves (`doc.recompute([f])`, the rest on OK).
 - Overall dimensions (`incad.core.overall_dims`): a construction axis through two arc centres + a point where it leaves
   each arc; the value box offers Centers / Overall / Gap for any distance between two arcs (FreeCAD's own is the gap).
 - Gears (from InnCad Plus): Spur Gears / Worm Gear are `PartDesign::FeaturePython` with `InCadGear` settings

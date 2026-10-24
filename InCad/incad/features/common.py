@@ -481,9 +481,15 @@ def pick_label(kind, text):
     if kind == "two_points":
         n = len([i for i in (text or "").split(";") if i.strip()])
         return "Select…" if not n else ("1 of 2 points" if n == 1 else "2 points")
-    if kind == "three_points":
+    if kind == "marked_point" and (text or "").strip().startswith("@"):
+        x, y, z = (float(v) for v in text.strip()[1:].split())
+        return "Point %g, %g, %g" % (round(x, 3), round(y, 3), round(z, 3))
+    if kind == "marked_point":
+        kind = "vertex"  # a corner of the part: named as any picked vertex
+    if kind in ("three_points", "axis_points"):
+        need = 3 if kind == "three_points" else 2
         n = len([i for i in (text or "").split(",") if i.strip()])
-        return "Select…" if not n else ("3 points" if n == 3 else "%d of 3 points" % n)
+        return "Select…" if not n else ("%d points" % need if n == need else "%d of %d points" % (n, need))
     items = [i for i in (text or "").split(",") if i.strip()]
     if not items:
         return _EMPTY_HINT.get(kind, "Select…")

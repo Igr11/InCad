@@ -5,6 +5,25 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.11.1
+-----
+Work Axis fixes: the axis of a cylinder or a cone, marked points for every Point field, the view turns while points are picked; Hide / Show no longer rebuilds the part.
+
+Bug fixes
+- Work Axis > Axis of a cylinder on part of a cylinder (a half ring) or on a cone came out across the part: it took
+  the face's axis of inertia. It is now the surface's own axis, on a round edge of the face, so it follows the part;
+  a face that is not round is refused.
+- Every Point field of Work Plane, Work Axis and Work Point (Two points, Parallel to edge through point, Normal to
+  plane through point, ...) picked a vertex blind: they now light the part's marked points (corners, edge middles,
+  circle centres) as soon as they are active, also right after the Method changes. A corner keeps the feature on it;
+  another marked point fixes it where it is now.
+- While marked points are shown (Two points, Three points, Section by points) the view turns again with the left
+  button; only pan worked.
+- Show All Origin (and every Hide / Show) touched the planes and everything built on them: the whole part was
+  rebuilt, 10 s on a part with embossed text, and Work Axis lagged after it. A Hide / Show choice now touches nothing,
+  and work features recompute only themselves while their dialog is open.
+
+
 0.11.0
 -----
 Spur Gears and Worm Gear: a pair of gears in mesh, or a worm and its wheel, in one dialog; they turn together in an assembly.

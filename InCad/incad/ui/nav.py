@@ -50,7 +50,8 @@ class Navigator(QtCore.QObject):
         self._replaying = False
         self._pivot = None
         self.mode = None
-        self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click
+        self.click_hook = None      # callable(view, viewport, x, y) -> True takes the left click; "drag": a drag
+        self._click_off = False     # (orbit) goes on as usual, a plain click is taken
         self.dblclick_hook = None   # same for left double-clicks
         self.drag_hook = None       # begin(view, viewport, x, y) on a left drag, end() on its release
         # InCad's own drags (DOF handles): press(view, viewport, x, y) -> True takes a plain left press (or the
@@ -138,8 +139,11 @@ class Navigator(QtCore.QObject):
                 if kind == "move" and event.buttons() == QtCore.Qt.NoButton:
                     self._call_handle("hover", view, obj, pos.x(), pos.y())
             if event.button() == QtCore.Qt.LeftButton:
-                if kind == "press" and machine.state == "idle" and self.click_hook is not None \
-                        and self.click_hook(view, obj, pos.x(), pos.y()):
+                taken = kind == "press" and machine.state == "idle" and self.click_hook is not None \
+                    and self.click_hook(view, obj, pos.x(), pos.y())
+                if taken == "drag":  # off the markers: the press goes on to the gesture rules (left drag orbits)
+                    self._click_off = True
+                elif taken:
                     self._swallow_release = True
                     return True
                 if kind == "release" and self._swallow_release:
@@ -149,6 +153,10 @@ class Navigator(QtCore.QObject):
                         and self.dblclick_hook(view, obj, pos.x(), pos.y()):
                     return True
             actions = machine.feed(kind, _button(event.button()), _held(event.buttons()), pos.x(), pos.y())
+            if self._click_off and actions and actions[0][0] in ("replay_press", "drag_start", "orbit_start"):
+                self._click_off = False
+                if actions[0][0] == "replay_press":  # a plain click off the markers: nothing to select there
+                    return True
             for action in actions:
                 self._do(obj, view, action, entry[2])
             return gestures.PASS not in actions

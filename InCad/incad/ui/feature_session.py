@@ -249,8 +249,9 @@ class FeatureSession(QtCore.QObject):
                    "gear_plane": "a plane, a flat face or a sketch"}
     # picks made on the shape: the base is shown while they are active (Move Face To also takes other Solids' edges,
     # so it is no _GEOMETRY pick that must lie on the base)
-    _ON_BASE = _GEOMETRY + ("two_points", "three_points", "move_to")
-    _MARKER_PICKS = {"two_points": 2, "three_points": 3}  # clicks on the part's markers, not the selection
+    _ON_BASE = _GEOMETRY + ("two_points", "three_points", "axis_points", "marked_point", "move_to")
+    # clicks on the part's markers, not the selection (a work plane's and a work axis's points: every shown Solid's)
+    _MARKER_PICKS = {"two_points": 2, "three_points": 3, "axis_points": 2, "marked_point": 1}
     _CORNER_PICKS = ("move_to", "vertex")  # picks that take a point: a click near a corner picks the corner
     _ANYWHERE = ("to_face",)  # Extrude To: a face or point of any Solid, not only the one being built on
 
@@ -856,9 +857,8 @@ class FeatureSession(QtCore.QObject):
             self.dialog.set_active_pick(None)
             return
         count = self._MARKER_PICKS[field.pick]
-        what = "Axis" if count == 2 else "Work plane"
-        sh.start_point_pick(points, count, "%s: click %d points — corners, edge middles, circle centres (Esc cancels)"
-                            % (what, count), on_done=lambda pts, k=key: self._points_picked(k, pts),
+        sh.start_point_pick(points, count, "%s: click %s — corners, edge middles, circle centres (Esc cancels)"
+                            % (self.kind.TITLE, "a point" if count == 1 else "%d points" % count), on_done=lambda pts, k=key: self._points_picked(k, pts),
                             on_cancel=lambda k=key: self._points_cancelled(k))
 
     def _marker_points(self, pick):
@@ -866,7 +866,7 @@ class FeatureSession(QtCore.QObject):
         Solid of the part that is shown, and the shown sketches."""
         from incad.core import document, section
         base = self._expected_base()
-        if pick == "three_points" and self.body is not None:  # global, as the markers are drawn
+        if pick in ("three_points", "axis_points", "marked_point") and self.body is not None:  # global, as drawn
             shapes = [b.Shape for b in document.bodies(self.doc) if not b.Shape.isNull() and document.is_shown(b)]
             for o in self.doc.Objects:
                 if o.TypeId == "Sketcher::SketchObject" and document.is_shown(o) and not o.Shape.isNull():
@@ -891,7 +891,7 @@ class FeatureSession(QtCore.QObject):
         self._point_key = None
         if self._closed or self.dialog is None:
             return
-        if self.dialog.field_def(key).pick == "three_points":
+        if self.dialog.field_def(key).pick in ("three_points", "axis_points", "marked_point"):
             from incad.features import work
             text = work.format_point_picks(self.body, self._expected_base(), points)
         else:
@@ -1196,14 +1196,18 @@ class FeatureSession(QtCore.QObject):
         return True
 
     def _activate_revealed_pick(self):
-        """A choice that brings pick fields into view (Extrude's To face) makes the first of them the
-        active pick, so the next click fills it and not whatever was active before."""
+        """A choice that brings pick fields into view (Extrude's To face, Work Axis ▸ Two points) makes the first of
+        them the active pick, so the next click fills it — markers to click light up at once (the user: Two points
+        showed no points). A pick the choice hid is never left active: its clicks went to a field out of sight."""
         waiting = self._waiting_picks()
-        revealed = [k for k in waiting if k not in getattr(self, "_seen_waiting", waiting)
-                    and self.dialog.field_def(k).pick not in self._MARKER_PICKS]  # those show markers, refit the view
+        revealed = [k for k in waiting if k not in getattr(self, "_seen_waiting", waiting)]
         self._seen_waiting = waiting
-        if revealed and self.dialog.active_pick() not in waiting:
+        active = self.dialog.active_pick()
+        hidden = active is not None and not self._shown(self.dialog.field_def(active))
+        if revealed and (active not in waiting or hidden):
             self.dialog.set_active_pick(revealed[0])
+        elif hidden:
+            self.dialog.set_active_pick(None)
 
     def _picked_sketches(self):
         """The sketches named in the dialog's `sketch` fields (Sweep's profile and path, Loft's sections)."""

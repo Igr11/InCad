@@ -34,6 +34,33 @@ class HooksTest(unittest.TestCase):
         self.assertTrue(self.nav.eventFilter(self.w, ev("press", L, L)))  # held back by the gesture rules
         self.assertEqual(self.nav._attached[self.w][1].state, "left_held")
 
+    def test_drag_only_click_hook_lets_the_view_turn_but_takes_a_plain_click(self):
+        """Picking marked points (Work Axis ▸ Two points): a press off the markers still orbits (left drag, left +
+        right); a plain click there selects nothing (the user: only pan worked while the points showed)."""
+        self.nav.click_hook = lambda *a: "drag"
+        replays, done = [], []
+        self.nav._replay = lambda *a, **k: replays.append(a)
+        real_do = self.nav._do
+        self.nav._do = lambda obj, view, action, mods: done.append(action[0]) if action[0].startswith("orbit") \
+            else real_do(obj, view, action, mods)
+        L, R = QtCore.Qt.LeftButton, QtCore.Qt.RightButton
+        machine = self.nav._attached[self.w][1]
+        self.assertTrue(self.nav.eventFilter(self.w, ev("press", L, L)))
+        self.assertEqual(machine.state, "left_held")
+        self.assertTrue(self.nav.eventFilter(self.w, ev("release", L, QtCore.Qt.NoButton)))
+        self.assertEqual((machine.state, replays), ("idle", []), "a plain click is not replayed to FreeCAD")
+        self.nav.eventFilter(self.w, ev("press", L, L))
+        self.nav.eventFilter(self.w, ev("press", R, L | R))
+        self.assertEqual((machine.state, done), ("orbit", ["orbit_start"]))
+        self.nav.eventFilter(self.w, ev("release", R, L))
+        self.nav.eventFilter(self.w, ev("release", L, QtCore.Qt.NoButton))
+        move = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, QtCore.QPointF(40, 10), QtCore.QPointF(40, 10),
+                                 QtCore.Qt.NoButton, L, QtCore.Qt.NoModifier)
+        self.nav.eventFilter(self.w, ev("press", L, L))
+        self.nav.eventFilter(self.w, move)
+        self.assertEqual(machine.state, "passthrough", "a left drag goes to FreeCAD (it orbits there)")
+        self.assertEqual(len(replays), 1)
+
     def test_dblclick_hook(self):
         self.nav.dblclick_hook = lambda *a: True
         L = QtCore.Qt.LeftButton

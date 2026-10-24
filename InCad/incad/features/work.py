@@ -58,7 +58,8 @@ def _load(f):
 
 
 def _attach(doc, f, refs, mode, offset=None):
-    """Attach with zero offset, recompute, then apply a computed offset (from the attached placement)."""
+    """Attach with zero offset, recompute, then apply a computed offset (from the attached placement). Only the
+    work feature is recomputed (the user: the whole part was, a heavy Emboss took 9 s a pick); the rest on OK."""
     from incad.core import model
     for path in (".AttachmentOffset.Base.z", "AttachmentOffset.Base.z"):
         if model.bound_parameter(f, path) is not None:
@@ -66,12 +67,12 @@ def _attach(doc, f, refs, mode, offset=None):
     f.AttachmentOffset = App.Placement()
     f.AttachmentSupport = refs
     f.MapMode = mode
-    doc.recompute()
+    doc.recompute([f])
     if "Invalid" in f.State:
         raise ValueError("These picks don't define the work feature (%s)" % f.getStatusString())
     if offset is not None:
         f.AttachmentOffset = offset(App.Placement(f.Placement))
-        doc.recompute()
+        doc.recompute([f])
 
 
 def _bound_offset(f):
@@ -123,11 +124,12 @@ def _plane_apply(doc, body, f, values):
         _sync_series(doc, f, _plane_count(values.get("count")), values.get("base") or "")
     elif mode == "parallel_point":
         base = _first(doc, values.get("base"), "a plane or a flat face")
-        point = _first(doc, values.get("point"), "a point")
-        if not base[1]:  # a whole plane object: FreeCAD follows the point (associative)
+        free = _is_free(values.get("point"))
+        point = None if free else _first(doc, values.get("point"), "a point")
+        if not base[1] and not free:  # a whole plane object: FreeCAD follows the point (associative)
             _attach(doc, f, [base, point], "ParallelPlane")
-        else:  # a face: FreeCAD's ParallelPlane needs a whole object, so the offset is computed (ruling)
-            p = _element(*point).Point
+        else:  # a face or a marked point: FreeCAD's ParallelPlane needs whole objects, so the offset is computed
+            p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"]) if free else _element(*point).Point
 
             def to_point(p0):
                 return App.Placement(App.Vector(0, 0, p0.inverse().multVec(p).z), App.Rotation())
@@ -166,11 +168,24 @@ def _plane_apply(doc, body, f, values):
             body = body or f.getParentGeoFeatureGroup()
             _place_through(doc, body, f, [_point_of(doc, body, i) for i in items])
     elif mode == "normal_edge":
-        _attach(doc, f, [_first(doc, values.get("edge"), "an edge"), _first(doc, values.get("point"), "a point")],
-                "NormalToEdge")
+        if _is_free(values.get("point")):  # a marked point that is no corner: fixed where it is now
+            edge = _element(*_first(doc, values.get("edge"), "an edge"))
+            p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
+            u = edge.Curve.parameter(p)
+            _set_fixed(doc, f, App.Placement(p, App.Rotation(App.Vector(0, 0, 1), edge.tangentAt(u))))
+        else:
+            _attach(doc, f, [_first(doc, values.get("edge"), "an edge"),
+                             _first(doc, values.get("point"), "a point")], "NormalToEdge")
     elif mode == "tangent":
-        _attach(doc, f, [_first(doc, values.get("face"), "a curved face"),
-                         _first(doc, values.get("point"), "a point")], "TangentPlane")
+        if _is_free(values.get("point")):
+            face = _element(*_first(doc, values.get("face"), "a curved face"))
+            p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
+            u, v = face.Surface.parameter(p)
+            _set_fixed(doc, f, App.Placement(face.Surface.value(u, v),
+                                             App.Rotation(App.Vector(0, 0, 1), face.normalAt(u, v))))
+        else:
+            _attach(doc, f, [_first(doc, values.get("face"), "a curved face"),
+                             _first(doc, values.get("point"), "a point")], "TangentPlane")
     else:
         raise ValueError("Unknown work plane method %r" % mode)
     data = {k: values.get(k, "") for k in ("mode", "base", "base2", "point", "edge", "face", "angle", "points",
@@ -294,7 +309,7 @@ def _to_global(body):
 
 
 def format_point_picks(body, base, points):
-    """Three clicked marker points (global) as the Points field's text: a corner of the part's own shape as its
+    """Clicked marker points (global) as the Points field's text: a corner of the part's own shape as its
     vertex (the plane follows it), anything else (an edge middle, a circle centre, another Solid's corner, a
     sketch point) as '@x y z', global."""
     out = []
@@ -317,8 +332,42 @@ def _point_of(doc, body, item):
         return App.Vector(*(float(v) for v in item[1:].split()))
     el = _element(*_first(doc, item, "a point"))
     if el is None or el.ShapeType != "Vertex":
-        raise ValueError("Pick three points")
+        raise ValueError("Pick the points again")
     return _to_global(body).multVec(el.Point)  # a feature's shape lies in its body
+
+
+def _is_free(text):
+    """A marked point that is no corner of the part ('@x y z', global): the feature stands where it is now."""
+    return (text or "").strip().startswith("@")
+
+
+def _local(doc, body, item):
+    """A point pick in the body's coordinates (where the attached placements are)."""
+    return _to_global(body).inverse().multVec(_point_of(doc, body, item.strip()))
+
+
+def _set_fixed(doc, f, plc):
+    """No attachment: the feature at `plc` (in its body)."""
+    f.AttachmentSupport = []
+    f.MapMode = "Deactivated"
+    f.AttachmentOffset = App.Placement()
+    f.Placement = plc
+    doc.recompute([f])
+
+
+def _line_through(doc, body, f, pts):
+    """An axis through two fixed points (global): no attachment, its placement in the body."""
+    a, b = pts
+    if (b - a).Length < 1e-9:
+        raise ValueError("Pick two different points")
+    plc = App.Placement(a, App.Rotation(App.Vector(0, 0, 1), b - a))
+    if body is not None:
+        plc = body.getGlobalPlacement().inverse().multiply(plc)
+    f.AttachmentSupport = []
+    f.MapMode = "Deactivated"
+    f.AttachmentOffset = App.Placement()
+    f.Placement = plc
+    doc.recompute([f])
 
 
 def _place_through(doc, body, f, pts):
@@ -338,7 +387,7 @@ def _place_through(doc, body, f, pts):
     f.MapMode = "Deactivated"
     f.AttachmentOffset = App.Placement()
     f.Placement = plc
-    doc.recompute()
+    doc.recompute([f])
 
 
 def _plane_create(doc, body, profile, values):
@@ -398,7 +447,7 @@ PLANE = SimpleNamespace(
             Field("edge", "Edge", "pick", pick="edge", show_if=_modes("angle", "normal_edge")),
             Field("angle", "Angle", "value_angle", default="90 °", show_if=_modes("angle")),
             Field("face", "Surface", "pick", pick="face", show_if=_modes("tangent")),
-            Field("point", "Point", "pick", pick="vertex",
+            Field("point", "Point", "pick", pick="marked_point",
                   show_if=_modes("parallel_point", "normal_edge", "tangent")),
             Field("points", "Points", "picks", pick="three_points", show_if=_modes("three_points"))),
     defaults=_plane_defaults, create=_plane_create, read=_plane_read, update=_plane_update, _pad_of=lambda f: f,
@@ -416,29 +465,83 @@ def _axis_apply(doc, body, f, values):
     if mode == "edge":
         _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "TwoPointLine")
     elif mode == "two_points":
-        pts = _all(doc, values.get("points"))
-        if len(pts) != 2:
+        items = [i.strip() for i in (values.get("points") or "").split(",") if i.strip()]
+        if len(items) != 2:
             raise ValueError("Pick two points")
-        _attach(doc, f, pts, "TwoPointLine")
+        if not any(i.startswith("@") for i in items):
+            _attach(doc, f, _all(doc, ",".join(items)), "TwoPointLine")  # corners: it follows them
+        else:
+            body = body or f.getParentGeoFeatureGroup()
+            _line_through(doc, body, f, [_point_of(doc, body, i) for i in items])
     elif mode == "intersection":
         _attach(doc, f, [_first(doc, values.get("base"), "the first plane"),
                          _first(doc, values.get("base2"), "the second plane")], "IntersectionLine")
     elif mode == "normal_plane":
-        _attach(doc, f, [_first(doc, values.get("base"), "a plane or a flat face"),
-                         _first(doc, values.get("point"), "a point")], "FaceNormal")
+        if _is_free(values.get("point")):
+            face = _element(*_first(doc, values.get("base"), "a plane or a flat face"))
+            p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
+            _set_fixed(doc, f, App.Placement(p, App.Rotation(App.Vector(0, 0, 1),
+                                                             face.normalAt(*face.Surface.parameter(p)))))
+        else:
+            _attach(doc, f, [_first(doc, values.get("base"), "a plane or a flat face"),
+                             _first(doc, values.get("point"), "a point")], "FaceNormal")
     elif mode == "cylinder":
         obj, sub = _first(doc, values.get("face"), "a cylindrical face or a round edge")
-        _attach(doc, f, [(obj, sub)], "AxisOfCurvature" if sub.startswith("Edge") else "AxisOfInertia3")
+        if sub.startswith("Edge"):
+            _attach(doc, f, [(obj, sub)], "AxisOfCurvature")
+        else:
+            _attach_round_face(doc, f, obj, sub)
     elif mode == "parallel_point":
-        point = _element(*_first(doc, values.get("point"), "a point"))
+        if _is_free(values.get("point")):
+            at = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
+        else:
+            at = _element(*_first(doc, values.get("point"), "a point")).Point
 
         def through(p0):
-            local = p0.inverse().multVec(point.Point)
+            local = p0.inverse().multVec(at)
             return App.Placement(App.Vector(local.x, local.y, 0), App.Rotation())
         _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "TwoPointLine", through)
     else:
         raise ValueError("Unknown work axis method %r" % mode)
     _store(f, {k: values.get(k, "") for k in ("mode", "edge", "points", "base", "base2", "point", "face")})
+
+
+def round_axis(face):
+    """(point, unit direction) of a round face's own axis — cylinder, cone, torus, sphere, a surface of revolution —
+    or None. Not the face's axes of inertia: a part of a cylinder (a half ring) or a cone had them across the part."""
+    s = face.Surface
+    if s.TypeId == "Part::GeomSurfaceOfRevolution":
+        point, direction = App.Vector(s.Location), App.Vector(s.Direction)
+    elif s.TypeId in ("Part::GeomCylinder", "Part::GeomCone", "Part::GeomToroid", "Part::GeomSphere"):
+        point, direction = App.Vector(s.Center), App.Vector(s.Axis)
+    else:
+        return None
+    return point, direction.normalize()
+
+
+def _attach_round_face(doc, f, obj, sub):
+    """The axis of a round face: on a circle of the face that has that axis (it follows the part); a face with none
+    gets the axis placed from the surface, attached to its object."""
+    face = _element(obj, sub)
+    axis = round_axis(face) if face is not None and hasattr(face, "Surface") else None
+    if axis is None:
+        raise ValueError("Axis of a cylinder: pick a round face (a cylinder or a cone) or a round edge")
+    point, direction = axis
+    shape = obj.Shape
+    for e in face.Edges:
+        c = e.Curve
+        if c.TypeId != "Part::GeomCircle" or App.Vector(c.Axis).cross(direction).Length > 1e-7:
+            continue
+        off = App.Vector(c.Center) - point
+        if (off - direction * off.dot(direction)).Length > 1e-6:
+            continue  # a circle beside the axis (a letter's round on the face)
+        i = next((k for k, x in enumerate(shape.Edges, 1) if x.isSame(e)), None)
+        if i is not None:
+            _attach(doc, f, [(obj, "Edge%d" % i)], "AxisOfCurvature")
+            return
+    rot = App.Rotation(App.Vector(0, 0, 1), direction)
+    _attach(doc, f, [(obj, "")], "ObjectZ",
+            lambda p0: p0.inverse().multiply(App.Placement(point, rot)))
 
 
 def _axis_create(doc, body, profile, values):
@@ -477,23 +580,27 @@ AXIS = SimpleNamespace(
     NEEDS_PROFILE=False, PROPS={}, PRESELECT={"edge": "axis"},
     FIELDS=(Field("mode", "Method", "combo", _AXIS_MODES, "edge"),
             Field("edge", "Edge", "pick", pick="edge", show_if=_modes("edge", "parallel_point")),
-            Field("points", "Points", "picks", pick="vertex", show_if=_modes("two_points")),
+            Field("points", "Points", "picks", pick="axis_points", show_if=_modes("two_points")),
             Field("base", "Plane", "pick", pick="plane", show_if=_modes("intersection", "normal_plane")),
             Field("base2", "Second plane", "pick", pick="plane", show_if=_modes("intersection")),
             Field("face", "Cylinder", "pick", pick="element", show_if=_modes("cylinder")),
-            Field("point", "Point", "pick", pick="vertex", show_if=_modes("normal_plane", "parallel_point"))),
+            Field("point", "Point", "pick", pick="marked_point", show_if=_modes("normal_plane", "parallel_point"))),
     defaults=_axis_defaults, create=_axis_create, read=_axis_read, update=_axis_update, _pad_of=lambda f: f)
 
 
 # ----- points -----
-_POINT_MODES = (("vertex", "At vertex"), ("center", "Center of circle"), ("midpoint", "Midpoint of edge"),
+_POINT_MODES = (("vertex", "At a point"), ("center", "Center of circle"), ("midpoint", "Midpoint of edge"),
                 ("edge_plane", "Edge meets plane"), ("two_edges", "Two edges meet"))
 
 
 def _point_apply(doc, body, f, values):
     mode = values.get("mode") or "vertex"
     if mode == "vertex":
-        _attach(doc, f, [_first(doc, values.get("vertex"), "a vertex")], "Vertex")
+        if _is_free(values.get("vertex")):
+            _set_fixed(doc, f, App.Placement(_local(doc, body or f.getParentGeoFeatureGroup(), values["vertex"]),
+                                             App.Rotation()))
+        else:
+            _attach(doc, f, [_first(doc, values.get("vertex"), "a point")], "Vertex")
     elif mode == "center":
         _attach(doc, f, [_first(doc, values.get("edge"), "a round edge")], "CenterOfCurvature")
     elif mode == "midpoint":
@@ -539,7 +646,7 @@ POINT = SimpleNamespace(
     __name__="incad.features.work_point", TITLE="Work Point", ICON="work_point", TYPES=("PartDesign::Point",),
     NEEDS_PROFILE=False, PROPS={}, PRESELECT={"vertex": "vertex"},
     FIELDS=(Field("mode", "Method", "combo", _POINT_MODES, "vertex"),
-            Field("vertex", "Vertex", "pick", pick="vertex", show_if=_modes("vertex")),
+            Field("vertex", "Point", "pick", pick="marked_point", show_if=_modes("vertex")),
             Field("edge", "Edge", "pick", pick="edge",
                   show_if=_modes("center", "midpoint", "edge_plane", "two_edges")),
             Field("edge2", "Second edge", "pick", pick="edge", show_if=_modes("two_edges")),
