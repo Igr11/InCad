@@ -10,7 +10,7 @@ STD_COMMANDS = {
     "view.style_shaded": "Std_DrawStyle", "view.style_wireframe": "Std_DrawStyle",
     "view.look_at": "Std_AlignToSelection", "view.zoom_selection": "Std_ViewFitSelection",
 }
-STD_INDEX = {"view.style_shaded": 6, "view.style_wireframe": 2}  # Std_DrawStyle items: 6 Flat lines, 2 Wireframe
+STD_INDEX = {"view.style_shaded": 0, "view.style_wireframe": 2}  # Std_DrawStyle items: 0 As is (each Solid its own: Hide Edges), 2 Wireframe
 SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
     "sketch.line": ("Line", "line", "Sketcher_CreatePolyline", "L"),  # polyline: chains, arcs with M
     "sketch.circle": ("Circle", "circle", "Sketcher_CreateCircle", "C"),

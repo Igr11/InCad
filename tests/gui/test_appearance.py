@@ -24,6 +24,17 @@ def body():
     return document.primary_body(App.ActiveDocument)
 
 
+def drawn():
+    """What the view really draws for the Solid ('NormalRoot' = with edges, 'FlatRoot' = without): a draw style
+    over the whole view wins over the Solid's DisplayMode."""
+    from pivy import coin
+    sa = coin.SoSearchAction()
+    sa.setName(coin.SbName("ModeSwitch"))
+    sa.apply(body().Tip.ViewObject.RootNode)
+    switch = sa.getPath().getTail()
+    return switch.getChild(switch.whichChild.getValue()).getName().getString()
+
+
 def colors():
     return [tuple(round(c, 2) for c in m.DiffuseColor[:3]) for m in body().ViewObject.ShapeAppearance]
 
@@ -131,9 +142,13 @@ def test_4_the_face_keeps_it_when_it_moves():
 
 
 def test_5_hide_edges():
+    commands.REGISTRY.run("view.style_shaded")  # the user's report: after the Shaded button the edges stayed
+    harness.pump(400)
     assert body().ViewObject.DisplayMode == "Flat Lines"
+    assert drawn() == "NormalRoot", drawn()
     pick(hide=True)
     assert body().ViewObject.DisplayMode == "Shaded", body().ViewObject.DisplayMode
+    assert drawn() == "FlatRoot", ("edges still drawn", drawn())
     assert appearance.record(body())["edges"] is False
     assert near(colors()[top_face()], GREEN), ("the colours stay", colors())
     App.ActiveDocument.undo()

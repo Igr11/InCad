@@ -5,6 +5,15 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.11.3
+-----
+Hide Edges works after the Shaded button.
+
+Bug fixes
+- Appearance > Hide Edges did nothing once the Shaded button had been used: Shaded drew the edge lines of every Solid
+  whatever its setting. Shaded now shows each Solid as it is set, so Hide Edges hides its edges.
+
+
 0.11.2
 -----
 Hole and Thread in several places at once, Apply + keeps the settings, Delete asks about what breaks.
