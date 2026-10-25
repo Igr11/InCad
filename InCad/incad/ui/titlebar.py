@@ -23,6 +23,10 @@ class TitleStrip(QtWidgets.QWidget):
         self._name.setObjectName("InCadDocName")
         row.addWidget(self._name)
         row.addStretch(1)
+        import incad
+        self._version = QtWidgets.QLabel("InCad %s" % incad.__version__)  # the user: which build
+        self._version.setObjectName("InCadVersion")
+        row.addWidget(self._version)
         for cmd_id in self.RIGHT:
             self._add(row, cmd_id, with_text=(cmd_id == "view.freecad"))
         self.settings_button = QtWidgets.QToolButton(self)
@@ -51,6 +55,9 @@ class TitleStrip(QtWidgets.QWidget):
 
     def button(self, cmd_id):
         return self._buttons.get(cmd_id)
+
+    def version_text(self):
+        return self._version.text()
 
     def set_document_name(self, text):
         self._name.setText(text)

@@ -43,6 +43,11 @@ class TitleStripTest(unittest.TestCase):
     def test_freecad_button_has_text(self):
         self.assertEqual(self.ts.button("view.freecad").text(), "FreeCAD")
 
+    def test_shows_the_version(self):
+        """The user: the add-on's version shows somewhere in InCad."""
+        import incad
+        self.assertEqual(self.ts.version_text(), "InCad %s" % incad.__version__)
+
     def test_document_name(self):
         self.ts.set_document_name("Bracket")
         self.assertEqual(self.ts.document_name(), "Bracket")

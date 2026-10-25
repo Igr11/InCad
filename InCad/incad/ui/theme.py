@@ -19,6 +19,7 @@ ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 STYLE = """
 QWidget#InCadTitle {{ background: {window}; color: {text}; border-bottom: 1px solid {border}; }}
 QLabel#InCadDocName {{ color: {text}; font-weight: 600; }}
+QLabel#InCadVersion {{ color: {text_dim}; font-size: 11px; padding: 0 6px; }}
 QWidget#InCadRibbon {{ background: {panel}; color: {text}; border-bottom: 1px solid {border}; }}
 QTabBar#InCadRibbonTabs {{ background: {window}; }}
 QTabBar#InCadRibbonTabs::tab {{ background: {window}; color: {text}; padding: 5px 14px; border: none; }}
