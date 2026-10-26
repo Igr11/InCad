@@ -20,7 +20,9 @@ trap 'rm -rf "$STAGE"' EXIT
 export COPYFILE_DISABLE=1
 D="$STAGE/$NAME"
 mkdir -p "$D"
-rsync -a --exclude "__pycache__" --exclude "._*" --exclude ".DS_Store" --exclude "*.pyc" InCad/ "$D/InCad/"
+rsync -a --exclude "__pycache__" --exclude "._*" --exclude ".DS_Store" --exclude "*.pyc" --exclude "_report_key.py" \
+  InCad/ "$D/InCad/"
+python3 -B scripts/write_report_key.py "$D/InCad"  # ⚙ ▸ Report a Bug's key, from a file on this Mac
 for f in install.bat install.ps1 uninstall.bat uninstall.ps1 freecad_probe.py; do cp scripts/windows/$f "$D/"; done
 sed "s/VERSION/$NAME/g" scripts/dist/README_windows.txt > "$D/README.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/README_windows_ru.txt > "$D/README_ru.txt"

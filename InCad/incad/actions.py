@@ -35,7 +35,6 @@ SKETCHER = {  # InCad id: (label, icon, FreeCAD Sketcher command, shortcut)
     "sketch.perpendicular": ("Perpendicular", "perpendicular", "Sketcher_ConstrainPerpendicular", ""),
     "sketch.tangent": ("Tangent", "tangent", "Sketcher_ConstrainTangent", ""),
     "sketch.equal": ("Equal", "equal", "Sketcher_ConstrainEqual", ""),
-    "sketch.symmetric": ("Symmetric", "symmetric", "Sketcher_ConstrainSymmetric", ""),
     "sketch.fix": ("Fix", "fix", "Sketcher_ConstrainLock", ""),
     "sketch.show_dof": ("Show Free Geometry", "show_dof", "Sketcher_SelectElementsWithDoFs", ""),
     "sketch.stop": ("Stop Tool", "stop", "Sketcher_StopOperation", ""),
@@ -154,9 +153,9 @@ def return_to_freecad():
     _gui().activateWorkbench(prefs.last_workbench())
 
 
-def focus_parameters():
+def open_parameters():
     from incad.ui import shell
-    shell.focus_parameters()
+    shell.open_parameters()
 
 
 def _target_object():
@@ -175,6 +174,17 @@ def toggle_suppress():
     sketch or one of those pieces means the feature."""
     from incad.core import suppress
     suppress.toggle(_target_object())
+
+
+def break_mirror_link():
+    """A mirrored Solid stops following its original (it keeps its shape); a feature Mirror keeps what it made."""
+    from incad.core import log
+    from incad.features import solid_mirror
+    f = _target_object()
+    if not solid_mirror.is_linked(f):
+        raise ValueError("Break Mirror Link: pick a Mirror Solid or a Mirror row")
+    kept = solid_mirror.break_link(f)
+    log.report("info", "%s keeps its shape and no longer follows the original" % kept.Label)
 
 
 def toggle_constraint_suppressed():
@@ -632,30 +642,14 @@ def _construction_on():
 
 
 def mirror_sketch():
-    """FreeCAD's Mirror (Sketcher_Symmetry: the picked geometry about the last pick), every picked line standing for
-    its whole outline (a polygon from one click on a side); the last pick stays the mirror line."""
-    import FreeCADGui as Gui
-    from incad.core import sketch_offset as so
-    gdoc = Gui.ActiveDocument
-    edit = gdoc.getInEdit() if gdoc is not None else None
-    sk = getattr(edit, "Object", None)
-    if sk is not None and sk.TypeId == "Sketcher::SketchObject":
-        subs = [s for sel in Gui.Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
-                for s in sel.SubElementNames]
-        if len(subs) >= 2:
-            axis, items, names = subs[-1], subs[:-1], []
-            for s in items:
-                whole = [s]
-                if s.startswith("Edge"):
-                    try:
-                        whole = ["Edge%d" % (g + 1) for g in so.outline(sk, int(s[4:]) - 1)[0]]
-                    except (ValueError, IndexError):
-                        pass
-                names += [n for n in whole if n not in names and n != axis]
-            Gui.Selection.clearSelection()
-            for n in names + [axis]:
-                Gui.Selection.addSelection(sk.Document.Name, sk.Name, n)
-    run_std("Sketcher_Symmetry")
+    """Sketch ▸ Mirror (incad.core.sketch_mirror, incad.ui.mirror_tool): select the shapes, Mirror, click the mirror
+    line (as FreeCAD's tool had it); with the mirror line already selected last (an axis, a point, a line apart from
+    the shapes) the copy is made at once."""
+    from incad.ui import shell
+    inst = shell.instance()
+    if inst is None:
+        raise ValueError("InCad is not active")
+    inst.start_mirror_tool()
 
 
 def _text_tool():
@@ -672,6 +666,14 @@ def _offset_tool():
     if inst is None:
         raise ValueError("InCad is not active")
     inst.start_offset_tool()
+
+
+def _symmetric_tool():
+    from incad.ui import shell
+    inst = shell.instance()
+    if inst is None:
+        raise ValueError("InCad is not active")
+    inst.start_symmetric_tool()
 
 
 def _overall_dim_tool():
@@ -1571,7 +1573,8 @@ def commands():
         _std("view.home", "Home View", "home_view"),
         _std("view.style_shaded", "Shaded", "style_shaded"),
         _std("view.style_wireframe", "Wireframe", "style_wireframe"),
-        Command(id="view.parameters", label="Parameters", icon="parameters", handler=focus_parameters),
+        Command(id="view.parameters", label="Parameters", icon="parameters", handler=open_parameters,
+                tooltip="Every parameter in one window: values, formulas, what uses them, Delete Unused"),
         Command(id="view.look_at", label="Look At", icon="look_at", handler=look_at,
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
@@ -1626,6 +1629,9 @@ def commands():
                 tooltip="Turn the constraint off (the parts stay where they are) or back on"),
         Command(id="browser.rename", label="Rename", icon="rename", handler=rename, transactional=True,
                 contexts=frozenset({"browser"})),
+        Command(id="browser.break_mirror", label="Break Mirror Link", icon="mirror_solid", handler=break_mirror_link,
+                transactional=True, contexts=frozenset({"browser"}),
+                tooltip="The mirrored copy keeps its shape and no longer follows the original"),
         Command(id="nav.orbit", label="Orbit", icon="orbit", handler=lambda: toggle_nav_mode("orbit"),
                 checkable=True, is_checked=lambda: nav_mode_is("orbit"), tooltip="Left-drag orbits; click again to stop"),
         Command(id="nav.pan", label="Pan", icon="pan", handler=lambda: toggle_nav_mode("pan"),
@@ -1736,6 +1742,10 @@ def commands():
         Command(id="sketch.text", label="Text", icon="text", handler=_text_tool, contexts=frozenset({"sketch"}),
                 tooltip="Text: click where it goes, or pick a point or a curve of the sketch first (the text runs "
                         "along it); Extrude raises or engraves it"),
+        Command(id="sketch.symmetric", label="Symmetric", icon="symmetric", handler=_symmetric_tool,
+                contexts=frozenset({"sketch"}),
+                tooltip="Click two points, two lines or two circles / arcs, then the mirror line (an axis, a point); "
+                        "the next pair follows, Esc ends"),
         Command(id="sketch.dimension_overall", label="Overall Dimension", icon="dimension_overall",
                 handler=_overall_dim_tool, contexts=frozenset({"sketch"}),
                 tooltip="Between the outer edges of two arcs or circles: click a slot (its overall length), or two "
@@ -1846,6 +1856,10 @@ def commands():
                 handler=lambda: start_feature("circ_pattern"), contexts=frozenset({"part"})),
         Command(id="feature.mirror", label="Mirror", icon="mirror3d", handler=lambda: start_feature("mirror"),
                 contexts=frozenset({"part"})),
+        Command(id="feature.mirror_solid", label="Mirror Solid", icon="mirror_solid",
+                handler=lambda: start_feature("solid_mirror"), contexts=frozenset({"part"}),
+                tooltip="A mirrored copy of a whole Solid as a new Solid: it follows the original until you "
+                        "right-click it ▸ Break Mirror Link"),
         Command(id="work.plane", label="Plane", icon="work_plane", handler=lambda: start_feature("work_plane"),
                 contexts=frozenset({"part"})),
         Command(id="work.axis", label="Axis", icon="work_axis", handler=lambda: start_feature("work_axis"),

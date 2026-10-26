@@ -92,6 +92,9 @@ def test_1b_offset_takes_the_whole_rectangle_and_keeps_sharp_corners():
                                                         tool and len(tool._callbacks),
                                                         open(os.environ["INCAD_LOG"]).read()[-500:])
     assert sorted(shell.instance().slot_tool.chains[0][0]) == sorted(ids)
+    lit = sorted(n for sel in Gui.Selection.getSelectionEx(App.ActiveDocument.Name) if sel.Object is sk
+                 for n in sel.SubElementNames)
+    assert lit == sorted("Edge%d" % (g + 1) for g in ids), ("the whole outline shows caught", lit)  # the user
     _click_sketch(sk, 50, -2)  # 2 below it: the copy outside
     harness.pump(600)
     new = list(range(first + 4, sk.GeometryCount))

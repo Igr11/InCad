@@ -5,6 +5,46 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.12.0
+-----
+Mirror Solid; sketch Mirror that follows its original; InCad's own Symmetric; Parameters window; Split Gap; Report a Bug.
+
+Improvements
+- Mirror Solid (3D Model > Pattern): a mirrored copy of a whole Solid as a new Solid. Select the Solid (with several,
+  click the one), Mirror Solid, then click the mirror plane - an origin or work plane, or a flat face. The copy
+  follows the original - every change, every feature added later - and takes features of its own.
+- Mirror Solid > Result: New Solid, Join (the mirror image joined into the same Solid: a half made whole) or Cut (the
+  image cut out of it). Mirror: Whole, or only the part on One side / the Other side of the plane - a part crossing
+  the plane becomes symmetric with Join.
+- Break Mirror Link (right-click a Mirror Solid row or its Solid): the copy keeps its shape and stops following. On a
+  feature Mirror it keeps the mirrored material as it is.
+- Boolean can use a mirrored Solid as a tool on its own original (Join, Cut, Intersect): the copy then follows the
+  original up to the step before that Boolean.
+- Sketch > Mirror: select the shapes, Mirror, then click the mirror line - any line (also one of the shape's own), the
+  X or Y axis, or a point. The copy keeps the original's size and follows it, and no dimension is copied. Right-click
+  the copy > Break Mirror Link frees it.
+- Sketch > Symmetric is InCad's own: two points, two lines or two circles, then the symmetry line; it never picks a
+  dimension, and stays on until Esc.
+- Shift-click a sketch line: its whole outline is selected at once, and shows selected.
+- Parameters window (View > Windows > Parameters): every parameter with its value, result and the features that use
+  it; add, remove, rename, Find, Delete Unused.
+- Split > Gap (in 0.05 mm steps) and Gap from: Both, This Solid or New Solids.
+- Settings (gear) > Report a Bug: describe the problem, attach the log, and it goes to InCad's issues on GitHub (this
+  build opens GitHub's New Issue page).
+- Right-click menus show only what applies to what is under the pointer; the sketch menu is shorter (Constraints
+  (n)... opens the list).
+- Spur Gears / Worm Gear handles are bigger, coloured by axis, and easier to grab.
+- The manual's Known limits list what Mirror Solid and clearances can't do yet.
+
+Bug fixes
+- The Parameters button only moved the focus to the small panel: it opens the Parameters window now.
+- Symmetric sometimes caught a dimension's point instead of the sketch point.
+- Mirror of a chain failed ("other constraints fight it") when its points lay on the mirror line.
+- Boolean > Cut with a clearance refused a tool that can't be grown (an Emboss, a thread): it is cut with Clearance 0
+  mm now, and the status line says so.
+- Sketch Offset lit only the line clicked, not the whole outline it takes.
+
+
 0.11.4
 -----
 Every plane of a row can be edited and turned; work features on 3D Line points and work points; work feature fixes.

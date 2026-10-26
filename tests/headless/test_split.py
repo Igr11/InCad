@@ -60,6 +60,76 @@ class SplitTest(unittest.TestCase):
         self.assertIs(self.body.Tip, f)
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
 
+    def test_gap_from_both_this_solid_or_the_new_ones(self):
+        """The user: a gap between the pieces, taken from one of them or from both."""
+        for side, want in (("both", [1480.0, 480.0]), ("this", [1460.0, 500.0]), ("new", [1500.0, 460.0])):
+            f = self.make(line_sketch(self.body, ((5, -5), (5, 15)), name="Knife_" + side), gap="0.4 mm",
+                          gap_from=side)
+            self.assertEqual(self.pieces(f), want, side)
+            self.assertAlmostEqual(f.Shape.Volume, want[0], places=6)  # this Solid keeps the largest piece
+            for b in split.piece_bodies(f):
+                split._drop_piece_body(self.doc, b)
+            self.body.removeObject(f)
+            self.doc.removeObject(f.Name)
+            self.body.Tip = self.pad
+            self.doc.recompute()
+
+    def test_gap_is_a_parameter_read_back_and_edited(self):
+        from incad.core import model
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))), gap="0.3 mm", gap_from="new")
+        name = split.param_names(f)["gap"]
+        self.assertIn(name, [p[0] for p in model.feature_parameters(self.doc)])
+        values = split.read(self.doc, f)
+        self.assertEqual((values["gap"], values["gap_from"]), ("0.3 mm", "new"))
+        split.update(self.doc, f, dict(values, gap="0.5 mm", gap_from="both"))
+        self.assertEqual(self.pieces(f), [1475.0, 475.0])
+        self.assertEqual(split.param_names(f)["gap"], name)  # the same parameter, a new value
+        model.set_model_parameter(self.doc, name, "0.1 mm")
+        self.doc.recompute()
+        self.assertEqual(self.pieces(f), [1495.0, 495.0])  # the Parameters list drives it
+
+    def test_gap_steps_by_five_hundredths(self):
+        from incad.ui.feature_dialog import step_text
+        field = next(x for x in split.FIELDS if x.key == "gap")
+        self.assertEqual(field.step({}), 0.05)
+        self.assertEqual(step_text("0.2 mm", 1, "value_length", False, field.step({})), "0.25 mm")
+        self.assertEqual(step_text("0 mm", -1, "value_length", False, field.step({})), "0 mm")  # never below 0
+
+    def test_no_gap_is_no_parameter_and_a_bad_gap_refuses(self):
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+        self.assertEqual(split.param_names(f), {})
+        self.assertEqual(self.pieces(f), [1500.0, 500.0])
+        with self.assertRaises(ValueError):
+            split.update(self.doc, f, dict(split.read(self.doc, f), gap="-1 mm"))
+        with self.assertRaises(ValueError) as ctx:
+            split.update(self.doc, f, dict(split.read(self.doc, f), gap="12 mm", gap_from="new"))
+        self.assertIn("gap", str(ctx.exception).lower())
+
+    def test_gap_along_an_arc_and_with_keep_picked(self):
+        import math
+        f = self.make(line_sketch(self.body, ((0, 0), 6, 0.0, math.pi / 2)), gap="0.4 mm")
+        self.assertEqual(len(split.piece_bodies(f)), 1)
+        quarter = math.pi * 36 / 4 * 10
+        self.assertAlmostEqual(sum(self.pieces(f)), 2000 - math.pi * 6 / 2 * 0.4 * 10, places=2)
+        self.assertLess(min(self.pieces(f)), quarter)
+
+    def test_gap_with_keep_picked_takes_half_from_each_side(self):
+        g = self.make(line_sketch(self.body, ((15, -5), (15, 15))), mode="cut", keep="2 5 5", gap="0.4 mm",
+                      gap_from="this")  # the choice is hidden in Keep picked: half from each side
+        self.assertAlmostEqual(g.Shape.Volume, 1500 - 20, places=4)
+
+    def test_gap_saved_and_reopened(self):
+        f = self.make(line_sketch(self.body, ((5, -5), (5, 15))), gap="0.4 mm", gap_from="this")
+        path = os.path.join(tempfile.mkdtemp(), "gap.FCStd")
+        name = f.Name
+        self.doc.saveAs(path)
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(path)
+        self.doc.recompute()
+        f = self.doc.getObject(name)
+        self.assertEqual(self.pieces(f), [1460.0, 500.0])
+        self.assertEqual(split.read(self.doc, f)["gap_from"], "this")
+
     def test_a_piece_solid_follows_the_sketch(self):
         sk = line_sketch(self.body, ((5, -5), (5, 15)))
         f = self.make(sk)

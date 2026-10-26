@@ -24,7 +24,11 @@ PROPS = {"offset_x": ("OffsetX", "length"), "offset_y": ("OffsetY", "length"), "
          "turn": ("Turn", "angle"), "rotate_x": ("RotateX", "angle"), "rotate_y": ("RotateY", "angle")}
 STEP, FINE = 1.0, 0.01        # mm
 ANGLE_STEP, ANGLE_FINE = 5.0, 0.1
-SIZE = 0.5                    # × the assembly's glyph size for the gear's box: inside the gear (the user: smaller)
+SIZE = 0.38                   # × the gear's width: arrows across three quarters of it (the user: too small to hold;
+                              # still inside the gear, as asked before)
+GRAB_PX = 18                  # logical px around a handle that catch it (the assembly's: 12; the user: hard to hold)
+AXIS_RGB = ((0.90, 0.25, 0.25), (0.25, 0.75, 0.30), (0.25, 0.50, 0.95))  # X red, Y green, Z blue (as Turn rings)
+TURN_AXIS = (2, 0, 1)          # TURNS round the gear's Z, X, Y: their colours
 DIRECT_EVERY = 0.12           # s between recomputes while a selected gear is dragged
 
 
@@ -94,10 +98,11 @@ class GearGizmo:
             return
         try:
             shape = f.AddSubShape if not f.AddSubShape.isNull() else f.Shape
-            diag = shape.BoundBox.DiagonalLength
+            bb = shape.BoundBox
+            width = max(bb.XLength, bb.YLength, bb.ZLength)  # its diameter (a gear is thinner than it is wide)
         except Exception:
-            diag = 40.0
-        self.size = dof.glyph_size(diag) * SIZE
+            width = 40.0
+        self.size = max(width * SIZE, 3.0)
         V = App.Vector
         freedom = SimpleNamespace(slides=[V(1, 0, 0), V(0, 1, 0), V(0, 0, 1)],
                                   turns=[(V(0, 0, 0), V(0, 0, 1)), (V(0, 0, 0), V(1, 0, 0)), (V(0, 0, 0), V(0, 1, 0))])
@@ -116,9 +121,14 @@ class GearGizmo:
                 if self._glyphs is not None:
                     self._glyphs.remove()
                 self._glyphs = DofGlyphs(self.view, getattr(self.shell, "theme", "light"))
-            self._glyphs.set([("gear", self.handles, self.size, True, self.lit)])
+            self._glyphs.set([("gear", self.handles, self.size, True, self.lit, self.colours())])
         except Exception:
             log.logger().exception("gear gizmo")
+
+    def colours(self):
+        """Each handle in its axis's colour (the user: all one colour, hard to tell apart): a slide along X and the
+        turn round X red, Y green, Z (the gear's own Turn) blue."""
+        return [AXIS_RGB[h.index if h.kind == "slide" else TURN_AXIS[h.index]] for h in self.handles]
 
     def key_of(self, handle):
         return (TURNS if handle.kind == "turn" else SLIDES)[handle.index]
@@ -145,7 +155,7 @@ class GearGizmo:
         return out
 
     def hit(self, viewport, x, y):
-        return dh.nearest(self._candidates(viewport), (x, y))
+        return dh.nearest(self._candidates(viewport), (x, y), GRAB_PX)
 
     def dragging(self):
         return self._drag is not None
@@ -182,7 +192,7 @@ class GearGizmo:
         options = []
         for k, polylines in self._candidates(viewport):
             d, direction = dh.segment_toward((x, y), polylines)
-            if d <= dh.HANDLE_PX:
+            if d <= GRAB_PX:
                 options.append((k, d, direction))
         if not options or (self.session is not None and self.session.dialog is None):
             return False

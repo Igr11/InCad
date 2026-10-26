@@ -337,6 +337,12 @@ ICONS.update({
     "mirror3d": ('<path d="M16 3 V29" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
                  '<path d="M4 10 L10 7 L13 9 V22 L7 25 L4 23 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
                  '<path d="M28 10 L22 7 L19 9 V22 L25 25 L28 23 Z" fill="none" stroke="{A}" stroke-width="1.4"/>'),
+    "mirror_solid": ('<path d="M16 3 V29" stroke="{N}" stroke-width="1.4" stroke-dasharray="3 2"/>'
+                     '<path d="M3 11 L9 8 L13 10 V23 L7 26 L3 24 Z" fill="{F}" stroke="{S}" stroke-width="1.4"/>'
+                     '<path d="M3 11 L7 13 L13 10 M7 13 V26" fill="none" stroke="{S}" stroke-width="1.1"/>'
+                     '<path d="M29 11 L23 8 L19 10 V23 L25 26 L29 24 Z" fill="{A}" fill-opacity=".35" stroke="{A}" '
+                     'stroke-width="1.4"/>'
+                     '<path d="M29 11 L25 13 L19 10 M25 13 V26" fill="none" stroke="{A}" stroke-width="1.1"/>'),
     "work_plane": '<path d="M3 20 L13 26 L29 17 L19 11 Z" fill="{D}" fill-opacity=".45" stroke="{D}" stroke-width="1.6"/><path d="M24 4 V12 M20 8 H28" stroke="{A}" stroke-width="2.2"/>',
     "work_axis": '<path d="M5 27 L23 9" stroke="{D}" stroke-width="2.4" stroke-linecap="round"/><path d="M24 2 V10 M20 6 H28" stroke="{A}" stroke-width="2.2"/>',
     "work_point": '<circle cx="14" cy="18" r="4.5" fill="{D}"/><path d="M24 4 V12 M20 8 H28" stroke="{A}" stroke-width="2.2"/>',

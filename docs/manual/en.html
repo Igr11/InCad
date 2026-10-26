@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       An Autodesk Inventor / Alibre style workbench for FreeCAD<br>
-      Version 0.11.4 — test build<br>
+      Version 0.12.0 — test build<br>
       <!--mac-->FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (tested with 1.1.3) · Windows 10 / 11 (x64), test build win-->
     </div>
   </div>
   <div class="foot">
-    This manual describes InCad as it is in build 0.11.4. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes InCad as it is in build 0.12.0. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -131,14 +131,14 @@ brings FreeCAD's own interface back at any time; choose <span class="ui">InCad</
 to come back.</p>
 <p>A file that was not made in InCad opens as well, with every tool: when it comes to the front it becomes a InCad part by itself (its largest Solid is the main one; a STEP opened as it is gets a Solid for each of its shapes, where they are). Save keeps that.</p>
 
-<div class="keep"><h2>This build: 0.11.4, a test build</h2>
-<p>0.11.4 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
+<div class="keep"><h2>This build: 0.12.0, a test build</h2>
+<p>0.12.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, InCad's own sketch Offset and Concentric in
 0.4.0, <b>Text</b> and <b>Emboss</b> in 0.5.0, STEP and STL export in 0.5.1. New in 0.5.2: big parts work much faster
 (recomputing, editing an early feature, clicking a face), and a slot or two arcs can be dimensioned by their
 <b>outer edges</b> (5.3). 0.5.3 makes Text and sketch patterns, deleting, every new or changed value (only the
 features that use it are rebuilt), the first change after opening a file and every feature preview faster, and adds
 <span class="path">⚙ ▸ Show Log File</span>. New in 0.5.4: <b>Emboss on a sphere</b> (6.16) and
-<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7). New in 0.6.0: a <b>Compact</b> ribbon (View ▸ Ribbon Size: icons without names, the lowest ribbon), Work Plane ▸ Three points clicked on marked points as in Section; fixed: Offset and Symmetric on slots, Section on the XY / XZ / YZ plane. New in 0.7.0: Extrude ▸ <b>To</b> any face of any Solid, a curved one too, or any point; Emboss letters past the face run on round onto the faces that go on smoothly from it; End of Part above sketches, Texts and work planes; <b>Full Round Fillet</b> (two edges); Show / Hide All Sketches; a part goes see-through while you sketch on a plane inside it. New in 0.8.0: <b>3D Line</b> drawn on a virtual cube of points (a path for Sweep, 6.18); several work planes in one go (<b>Planes</b>) and turned with rings (<b>Turn</b>); Extrude <b>Extents 2</b> for the second side, and To an edge or a work axis; <b>Full</b> beside Fillet's radius; the Open window shows the file's picture; tips blue, errors red; an <b>Image</b> tab — a photo to sketch over, scaled by a known length; View ▸ <b>Screenshot</b>; the parts' axes in assemblies, to constrain to; fixed: a Sweep's wall stays even when the profile's sketch is flipped on its plane; a Sweep made away from the part no longer sends a dialog round and round. New in 0.9.0: <b>Section in assemblies</b> — every part the plane meets, each in its colour, also STEPs, other programs' files and FreeCAD's own assemblies (8.4); <b>Interference</b>: overlapping parts in bright red; Hide / Show of axes, origin and sketches in assemblies; <b>Open</b> a component's part in its own window (9.9). Fixed in 0.11.4: every plane of a row (<b>Planes</b>) opens its own dialog with a double-click — its offset and Turn — and a click on another plane of the row moves the dialog there; Point fields take a 3D Line's points and work points; Angle around edge and Normal to edge take an axis; Midpoint of edge lies halfway along a curve; Edge meets plane and Two edges meet refuse what does not meet; a 3D Line and a Text hide and show as sketches do. Fixed in 0.11.3: Appearance ▸ <b>Hide Edges</b> works after the Shaded button. New in 0.11.2: Hole ▸ Concentric and Thread on several round edges or faces at once (6.4, 6.10); Apply + keeps the settings; Delete asks to delete what is built on the feature. Fixed in 0.11.1: Work Axis ▸ Axis of a cylinder on a cone or part of a cylinder; every Point field of the work features lights the part's marked points; the view turns while points are picked; Hide / Show no longer rebuilds the part. New in 0.11.0: <b>Spur Gears</b> and <b>Worm Gear</b> — a pair of gears in mesh or a worm and its wheel in one dialog, turning together after Make Assembly (6.17). New in 0.10.0: <b>Hide</b>, <b>Show</b> and <b>Show All</b> said outright, in the ribbon and every right-click menu; in an assembly a part hides and shows in the assembly's tree (9.9); files made outside InCad — a script's, FreeCAD's, a STEP — open with every tool; Save of an assembly puts it and all its parts into a folder of its name (9.9); the assembly gizmo smaller, shown for a couple of seconds on a click; scroll arrows on the file tabs — CHANGES.txt has the
+<span class="path">⚙ ▸ Display Quality</span> (3.8); in 0.5.5 Construction switches only the selected lines (5.7). New in 0.6.0: a <b>Compact</b> ribbon (View ▸ Ribbon Size: icons without names, the lowest ribbon), Work Plane ▸ Three points clicked on marked points as in Section; fixed: Offset and Symmetric on slots, Section on the XY / XZ / YZ plane. New in 0.7.0: Extrude ▸ <b>To</b> any face of any Solid, a curved one too, or any point; Emboss letters past the face run on round onto the faces that go on smoothly from it; End of Part above sketches, Texts and work planes; <b>Full Round Fillet</b> (two edges); Show / Hide All Sketches; a part goes see-through while you sketch on a plane inside it. New in 0.8.0: <b>3D Line</b> drawn on a virtual cube of points (a path for Sweep, 6.18); several work planes in one go (<b>Planes</b>) and turned with rings (<b>Turn</b>); Extrude <b>Extents 2</b> for the second side, and To an edge or a work axis; <b>Full</b> beside Fillet's radius; the Open window shows the file's picture; tips blue, errors red; an <b>Image</b> tab — a photo to sketch over, scaled by a known length; View ▸ <b>Screenshot</b>; the parts' axes in assemblies, to constrain to; fixed: a Sweep's wall stays even when the profile's sketch is flipped on its plane; a Sweep made away from the part no longer sends a dialog round and round. New in 0.9.0: <b>Section in assemblies</b> — every part the plane meets, each in its colour, also STEPs, other programs' files and FreeCAD's own assemblies (8.4); <b>Interference</b>: overlapping parts in bright red; Hide / Show of axes, origin and sketches in assemblies; <b>Open</b> a component's part in its own window (9.9). New in 0.12.0: <b>Mirror Solid</b> — a mirrored copy of a whole Solid that follows the original until Break Mirror Link, or Join / Cut into itself, of the whole Solid or one side of the plane (6.14); sketch <b>Mirror</b> whose copy follows its original without copying dimensions, and InCad's own <b>Symmetric</b>; Shift-click selects a sketch's whole outline; the <b>Parameters</b> window; Split ▸ <b>Gap</b>; ⚙ ▸ <b>Report a Bug</b>; right-click menus list only what applies; bigger, coloured gear handles; a Boolean whose clearance can't be made cuts with 0 mm. Fixed in 0.11.4: every plane of a row (<b>Planes</b>) opens its own dialog with a double-click — its offset and Turn — and a click on another plane of the row moves the dialog there; Point fields take a 3D Line's points and work points; Angle around edge and Normal to edge take an axis; Midpoint of edge lies halfway along a curve; Edge meets plane and Two edges meet refuse what does not meet; a 3D Line and a Text hide and show as sketches do. Fixed in 0.11.3: Appearance ▸ <b>Hide Edges</b> works after the Shaded button. New in 0.11.2: Hole ▸ Concentric and Thread on several round edges or faces at once (6.4, 6.10); Apply + keeps the settings; Delete asks to delete what is built on the feature. Fixed in 0.11.1: Work Axis ▸ Axis of a cylinder on a cone or part of a cylinder; every Point field of the work features lights the part's marked points; the view turns while points are picked; Hide / Show no longer rebuilds the part. New in 0.11.0: <b>Spur Gears</b> and <b>Worm Gear</b> — a pair of gears in mesh or a worm and its wheel in one dialog, turning together after Make Assembly (6.17). New in 0.10.0: <b>Hide</b>, <b>Show</b> and <b>Show All</b> said outright, in the ribbon and every right-click menu; in an assembly a part hides and shows in the assembly's tree (9.9); files made outside InCad — a script's, FreeCAD's, a STEP — open with every tool; Save of an assembly puts it and all its parts into a folder of its name (9.9); the assembly gizmo smaller, shown for a couple of seconds on a click; scroll arrows on the file tabs — CHANGES.txt has the
 full list.</p></div>
 <div class="note"><b>Please:</b> save your work often and work on <b>copies</b> of files that matter to you. If
 something looks wrong, tell us — chapter 11 says what to send.</div>
@@ -372,7 +372,7 @@ sketch on it, a work plane opens its dialog. With <kbd>⇧</kbd> or <kbd>⌘</kb
       not removed: the status line says what uses it. This is how you clean up values left behind by deleted features.</li>
   <li>While a value box or a dialog field is open, click a parameter's name to insert it into the formula.</li>
 </ul>
-<p><span class="ui">View ▸ Windows ▸ Parameters</span> (or the marking menu) moves the keyboard focus to the panel.</p>
+<p><span class="ui">View ▸ Windows ▸ Parameters</span> (or the marking menu) opens the <b>Parameters window</b>: every parameter in one big table you can resize — <span class="ui">Name</span>, <span class="ui">Value</span>, <span class="ui">Result</span> and <span class="ui">Used by</span> (the features, sketches and formulas that use it; «— not used» in grey). It stays open while you work and follows every change. Type a value or a formula in <span class="ui">Value</span>, type a new name over a dimension or a feature value to rename it, <span class="ui">+ Add</span> and <span class="ui">− Remove</span> as in the panel, <span class="ui">Find a name</span> narrows the list, and <span class="ui">Delete Unused</span> removes every value nothing uses (values left behind by deleted features) in one undo step.</p>
 
 <div class="keep"><h2>3.6 Values, units and formulas</h2>
 <p>Wherever InCad asks for a length or an angle you can type:</p></div>
@@ -406,6 +406,9 @@ marking menu) switches the theme in one click. The <span class="ui">⚙</span> m
       by default on Windows (built-in graphics draw Fine more slowly). win--></td></tr>
   <tr><td>Show Log File</td><td class="wrap">Shows InCad's log (InCad.log) selected in the Finder — the file to send
       with a problem report (chapter 11)</td></tr>
+  <tr><td>Report a Bug…</td><td class="wrap">Sends a problem report straight to the public issue list of InCad on
+      GitHub — no GitHub account needed: what happened, the steps, a contact if you want an answer, and the end of the
+      log (your name is taken out of the file paths). The answer comes there (chapter 11)</td></tr>
   <tr><td>Mouse Navigation</td><td class="wrap">On: InCad's mouse (LMB+RMB orbit, right-click menu). Off: FreeCAD's own
       navigation style applies.</td></tr>
 </table>
@@ -462,7 +465,9 @@ chain, as in FreeCAD, instead of opening the menu.</div>
 <p>A right click opens a ring of eight commands around the cursor (north, north-east … north-west) and a short list
 below it. What it offers depends on what is under the cursor — empty space, a face, an edge, a sketch, an assembly part,
 a browser row. Once you know where a command sits, <b>flick</b>: press the right button, drag towards the command and
-release — no need to wait for the menu.</p>
+release — no need to wait for the menu. The list shows only what applies there: Hide on something shown, Show on
+something hidden, Show All only when something is hidden, Thread only on a round face, Make Assembly only with two
+Solids or more, the draw style you are not in; the ring keeps its places.</p>
 <table class="long mm">
   <tr><th>Under the cursor</th><th class="wrap">Ring (N, S, E, W first)</th><th class="wrap">List</th></tr>
   <tr><td>Empty space (part)</td><td class="wrap">N Start 2D Sketch, S Extrude, E Shaded, W Wireframe, NW Undo, NE Redo,
@@ -473,9 +478,10 @@ release — no need to wait for the menu.</p>
   <tr><td>An edge</td><td class="wrap">N Look At, S Zoom Selection, E Fillet, W Chamfer, NW Undo, NE Redo, SE Home View,
       SW Zoom All</td><td class="wrap">Show in Browser, Shaded, Wireframe, Hide / Show</td></tr>
   <tr><td>In a sketch</td><td class="wrap">N Finish Sketch, S Dimension, E Circle, W Undo, NE Line, SE Rectangle,
-      SW 3-Point Arc, NW Trim</td><td class="wrap">Stop Tool, Delete, Show / Hide Constraints, Constraint List, Look At,
-      Construction, Project Geometry, Edit Pattern, Delete Pattern — and, on a line or point, Delete for each of its
-      constraints (section 5.6)</td></tr>
+      SW 3-Point Arc, NW Trim</td><td class="wrap">only what applies: on a line or point Delete, Construction,
+      Show / Hide Constraints and its <b>Constraints (n)…</b> (the Constraint List filtered to it: delete one or all
+      there, section 5.6); Edit / Delete Pattern on a pattern's geometry, Break Mirror Link on a mirrored copy; on empty
+      space Show / Hide Constraints and the Constraint List; Stop Tool first while a tool runs</td></tr>
   <tr><td>Empty space (assembly)</td><td class="wrap">N Place, S Mate, E Rigid, W Create, NW Undo, NE Zoom All, SE Home
       View, SW Ground</td><td class="wrap">Edit, Hide / Show, Suppress, Remove from Assembly, Flush, Insert, Return to
       FreeCAD</td></tr>
@@ -509,7 +515,7 @@ release — no need to wait for the menu.</p>
       Show All Sketches, Hide All Sketches: every sketch and Text of the part, the ones its features use too.</td></tr>
   <tr><td>Assembly Context</td><td class="wrap">In a part opened from an assembly: show or hide the other parts around it (9.9).</td></tr>
   <tr><td>Degrees of Freedom</td><td class="wrap">In an assembly: draw the DOF symbols on every free part (9.7).</td></tr>
-  <tr><td>Parameters</td><td class="wrap">Move the keyboard focus to the Parameters panel.</td></tr>
+  <tr><td>Parameters</td><td class="wrap">Open the Parameters window: every parameter, what uses it, Delete Unused (3.5).</td></tr>
 </table>
 
 <!-- ============================================================ 5 -->
@@ -561,6 +567,14 @@ drawn line by line); <kbd>⌘</kbd>-click adds more shapes. The copy follows the
 sharp, a single line gives one parallel line, a circle or an ellipse gives a ring. One dimension drives the offset and the
 value box opens on it. Geometry selected before the command is taken at once. <span class="ui">Mirror</span> and the
 patterns also take the whole shape from a click on one side.</p>
+<p><b>Whole shapes.</b> <kbd>⇧</kbd>-click a line to select its whole chain or shape at once (it shows selected);
+<kbd>⇧</kbd>-click another to add it. A plain click still selects one line.</p>
+<p><b>Mirror.</b> Select the shapes (a click on one side takes its whole outline, which shows selected), click
+<span class="ui">Mirror</span>, then click the mirror line — any line, also one of the shape's own (a half profile
+mirrored about its closing line joins up), the X or Y axis — or a point. With the mirror line already selected last,
+the copy is made at once. The copy is held to the original by symmetry alone: it keeps the original's size and
+follows every change of it, and no dimension is copied. Right-click the copy ▸ <span class="ui">Break Mirror Link</span>
+frees it: it keeps its shape (its corners stay joined) and no longer follows the original.</p>
 <p><b>Typing values while drawing.</b> While a tool draws, type the length, radius or angle directly; <kbd>Tab</kbd>
 moves to the next field. <kbd>Esc</kbd> or <span class="ui">Stop Tool</span> (marking menu) ends the tool.</p>
 <p><b>Delete</b> geometry or dimensions: select them and press <kbd>⌫</kbd> or <kbd>Del</kbd>.</p>
@@ -595,7 +609,11 @@ or both (d3 = 40).</p>
 <span class="ui">Vertical</span>, <span class="ui">Parallel</span>, <span class="ui">Perpendicular</span>,
 <span class="ui">Tangent</span>, <span class="ui">Equal</span>, <span class="ui">Symmetric</span>,
 <span class="ui">Fix</span> and <span class="ui">List</span> (the Constraint List, 5.5). Select the geometry, then click
-the constraint (or click the constraint, then the geometry).</p></div>
+the constraint (or click the constraint, then the geometry).</p>
+<p><span class="ui">Symmetric</span> takes whole pieces, not only points: click two points, two lines (their ends are
+paired up) or two circles / arcs (their centres, and equal radii), then the mirror line — any line, the X or Y axis — or
+a point. A click near an end or a centre takes that point, otherwise the line under the pointer; dimensions are never
+caught. What you picked shows selected; the tool stays on for the next pair, <kbd>Esc</kbd> ends it.</p></div>
 <p>The status line shows the sketch's degrees of freedom — <b>DOF: 3</b>, or <b>Fully constrained ✓</b>. Click it, or
 <span class="path">Sketch ▸ Format ▸ Show Free Geometry</span>, to select the geometry that can still move.</p>
 <p><span class="path">Sketch ▸ Format ▸ Show / Hide Constraints</span> hides or shows the constraint symbols (dimensions
@@ -986,7 +1004,9 @@ a solid to pick it. As in Inventor, the first click is the base (the solid that 
   <tr><td>Base</td><td class="wrap">The solid that is changed.</td></tr>
   <tr><td>Tools</td><td class="wrap">One or more other solids. A click on the base while picking tools is ignored.</td></tr>
   <tr><td>Operation</td><td class="wrap"><b>Join</b>, <b>Cut</b> (the default) or <b>Intersect</b>.</td></tr>
-  <tr><td>Clearance (per side)</td><td class="wrap">Cut only: a gap left on each side (0.2 mm), for printed parts that must fit.</td></tr>
+  <tr><td>Clearance (per side)</td><td class="wrap">Cut only: a gap left on each side (0.2 mm), for printed parts that must fit.
+      A tool that can't be grown or shrunk (a thread, an Emboss) is cut with 0 mm: the field shows 0 mm and the status
+      line says why.</td></tr>
   <tr><td>Clearance on</td><td class="wrap">Cut only: <b>Cavity</b> (the hole is made larger), <b>Tool</b> (the hole is
       exact; a shrunk copy "&lt;Tool&gt; fit" is made for printing), <b>Split</b> (half on each).</td></tr>
   <tr><td>Keep tool</td><td class="wrap">Off (as it opens): the tool is used up and shows under the Boolean in the
@@ -1003,14 +1023,18 @@ surfaces through the whole part.</p></div>
   <tr><td>Sketch</td><td class="wrap">The sketch whose lines cut the part (select it before the command, or pick it).</td></tr>
   <tr><td>Mode</td><td class="wrap"><b>Keep all</b>: every piece stays; this solid keeps the largest piece and every other
       piece becomes a solid of its own — hide it, work on it, make it a part (Make Assembly). The pieces keep following
-      the sketch. <b>Keep picked</b>: only the pieces you click (<b>Keep</b>) stay.</td></tr>
+      the sketch. <b>Keep picked</b>: only the pieces you click (<b>Keep</b>) stay. <b>Gap</b> leaves the pieces that much apart
+      (its arrows step 0.05 mm; a parameter in the Parameters list); <b>Gap from</b> says which piece gives the material:
+      <b>Both</b> (half each), <b>This Solid</b> (the piece that stays in this Solid) or <b>New Solids</b> (the
+      others). With Keep picked the gap comes half from each side.</td></tr>
 </table>
 <p>Deleting a Split joins its pieces again; InCad asks first and names the solids that go.</p>
 
 <div class="keep"><h2>6.14 Patterns and Mirror</h2>
 <p><span class="path">3D Model ▸ Pattern</span>: <span class="ui">Rectangular</span>, <span class="ui">Circular</span> and
-<span class="ui">Mirror</span> (one split button). They repeat features: pick them in the browser or click one of
-their faces. Picking a fillet, a chamfer or a thread stands for the feature it modifies.</p></div>
+<span class="ui">Mirror</span> (one split button), and <span class="ui">Mirror Solid</span>. They repeat features: pick
+them in the browser or click one of their faces. Picking a fillet, a chamfer or a thread stands for the feature it
+modifies.</p></div>
 <table class="long">
   <tr><th>Feature</th><th class="wrap">Fields</th></tr>
   <tr><td>Rectangular</td><td class="wrap"><b>Features</b>; <b>Include dependent features</b> (also repeat what is built
@@ -1022,7 +1046,22 @@ their faces. Picking a fillet, a chamfer or a thread stands for the feature it m
       (an origin or work axis, a sketch line, a straight or circular edge, a round face — the origin's X, Y and Z show while
       you pick) or <b>Two points</b> (click two points on the part: a hidden work axis through them, drawn as an orange
       dashed line while the dialog is open), <b>Count</b> (4), <b>Angle</b> (360°).</td></tr>
-  <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (a flat face or a plane).</td></tr>
+  <tr><td>Mirror</td><td class="wrap"><b>Features</b>, <b>Include dependent features</b>, <b>Mirror plane</b> (a flat face or a plane).
+      Right-click its row ▸ <b>Break Mirror Link</b>: the mirrored copies keep their shape and no longer follow the
+      features they copy (the features before it still change the part).</td></tr>
+  <tr><td>Mirror Solid</td><td class="wrap">A mirrored copy of a whole Solid as a new Solid, as Mirror works in a sketch:
+      select the Solid (a part with one Solid takes it; with several, click the one), click <b>Mirror Solid</b>, then click
+      the <b>Mirror plane</b> (an origin or work plane, or a flat face). The copy follows the original — every change,
+      every feature added to it later — and takes features of its own. Right-click its row or its Solid ▸ <b>Break
+      Mirror Link</b>: the copy keeps its shape and stops following; both Solids stay. Deleting the original keeps the
+      copy as it is; Make Assembly gives it its own part file. <b>Result</b>: <b>New Solid</b> (the copy above),
+      <b>Join</b> (the mirror image joined into the same Solid: a half made whole) or <b>Cut</b> (the image cut out of
+      it) — a step at the end of that Solid that mirrors everything before it; the Solid must stay one piece.
+      <b>Mirror</b>: <b>Whole</b>, or only the part on <b>One side</b> / the <b>Other side</b> of the plane (a part
+      crossing the plane: with Join it becomes symmetric, the other side's own material replaced by the mirror image). A Solid
+      almost symmetric about the plane gives a copy right on top of itself: pick another plane. A Boolean may use
+      the copy as a tool on its original (Join, Cut, Intersect): the copy then follows the original up to the step
+      before that Boolean.</td></tr>
 </table>
 
 <div class="keep"><h2>6.15 Work features</h2>
@@ -1532,7 +1571,13 @@ win-->
   <li>A test build. Save often and work on copies.</li>
   <li>The interface is in English.</li>
   <li>FreeCAD cannot shell a part that already has a modeled thread (InCad offers to shell before the thread).</li>
-  <li>Some offsets (clearances) fail on threads and other complex shapes; the dialog says so.</li>
+  <li>Some offsets fail on threads and other complex shapes (an Emboss). A Boolean's clearance then falls back to
+      0 mm (the field and the status line say so); a fit copy is not made.</li>
+  <li>Mirror Solid ▸ Join / Cut and Boolean need a result in one piece: a mirror image crossing the part in many
+      places can leave separate pieces (the dialog says so — try another plane, One side / Other side, or New
+      Solid). A part almost symmetric about the plane gives a copy right on top of itself.</li>
+  <li>A mirrored Solid used as a tool by a Boolean on its own original follows the original only up to the step
+      before that Boolean. Make Assembly keeps mirrored Solids as they are (no link between part files).</li>
   <li>Move Face moves flat faces along their own direction and straight round walls outward / inward. In Inventor
       mode it cannot follow a neighbour that is round across the move yet (use Step or Together); Together inward next
       to fillets or chamfers on a round wall is refused for now.</li>
@@ -1595,7 +1640,7 @@ win-->
   <tr><td>3D Model</td><td>Sketch</td><td class="wrap">Start 2D Sketch · 3D Line</td></tr>
   <tr><td></td><td>Create</td><td class="wrap">Extrude · Revolve · Hole · Sweep | Loft | Coil · Spur Gears | Worm Gear · Emboss</td></tr>
   <tr><td></td><td>Modify</td><td class="wrap">Fillet | Full Round Fillet | Chamfer · Shell | Draft · Thread · Threads (Threads Off / On) · Boolean · Split · Move Face</td></tr>
-  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror</td></tr>
+  <tr><td></td><td>Pattern</td><td class="wrap">Rectangular | Circular | Mirror · Mirror Solid</td></tr>
   <tr><td></td><td>Work Features</td><td class="wrap">Plane | Axis | Point</td></tr>
   <tr><td></td><td>Assemble</td><td class="wrap">Make Assembly</td></tr>
   <tr><td>Inspect</td><td>Measure</td><td class="wrap">Measure | Distance | Angle | Length | Area · Mass Properties</td></tr>

@@ -11,7 +11,7 @@ LAYOUT = {
                       ["Modify", [["feature.fillet", "feature.full_round", "feature.chamfer"], ["feature.shell", "feature.draft"],
                                   "feature.thread", "feature.threads_toggle", "feature.combine", "feature.split",
                                   "feature.move_face"]],
-                      ["Pattern", [["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"]]],
+                      ["Pattern", [["feature.rect_pattern", "feature.circ_pattern", "feature.mirror"], "feature.mirror_solid"]],
                       ["Work Features", [["work.plane", "work.axis", "work.point"]]],
                       ["Assemble", ["file.make_assembly"]]]],
         ["Sketch", []],

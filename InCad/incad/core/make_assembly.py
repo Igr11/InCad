@@ -173,6 +173,9 @@ def _finish_copy(path, point, body_name=None):
         _detach_all(d)
         from incad.features import combine, gear, split
         gear.bake_all(d)  # a gear meshing with one in another Solid stands on its own: its file holds it alone
+        from incad.features import solid_mirror
+        for m in solid_mirror.copies(d):  # a mirrored Solid too: kept as it is
+            solid_mirror.break_link(m)
         used = combine.used_up_names(d)
         probe = Part.Vertex(point)
         candidates = [b for b in document.bodies(d) if not b.Shape.isNull() and b.Name not in used]

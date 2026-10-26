@@ -19,7 +19,9 @@ STAGE="$(mktemp -d)"  # built on the system disk: an external (exFAT) disk adds 
 trap 'rm -rf "$STAGE"' EXIT
 export COPYFILE_DISABLE=1
 mkdir -p "$STAGE/$NAME"
-rsync -a --exclude "__pycache__" --exclude "._*" --exclude ".DS_Store" --exclude "*.pyc" InCad/ "$STAGE/$NAME/InCad/"
+rsync -a --exclude "__pycache__" --exclude "._*" --exclude ".DS_Store" --exclude "*.pyc" --exclude "_report_key.py" \
+  InCad/ "$STAGE/$NAME/InCad/"
+python3 -B scripts/write_report_key.py "$STAGE/$NAME/InCad"  # ⚙ ▸ Report a Bug's key, from a file on this Mac
 sed "s/VERSION/$NAME/g" scripts/dist/README.txt > "$STAGE/$NAME/README.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/README_ru.txt > "$STAGE/$NAME/README_ru.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES.txt > "$STAGE/$NAME/CHANGES.txt"

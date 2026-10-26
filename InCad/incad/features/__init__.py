@@ -5,9 +5,10 @@ Loaded on first use, so widget code can import incad.features.common without Fre
 def kinds():
     from incad.features import (asm_combine, combine, constraints, dressup, emboss, extrude, full_round, gear, hole,
                                 line3d, picture_scale,
-                                move_face, patterns, revolve, shapes, sketch_patterns, sketch_text, split, thread, work)
+                                move_face, patterns, revolve, shapes, sketch_patterns, sketch_text, solid_mirror, split,
+                                thread, work)
     return [extrude, revolve, hole, dressup.FILLET, dressup.CHAMFER, dressup.SHELL, patterns.RECT, patterns.CIRC,
-            patterns.MIRROR, work.PLANE, work.AXIS, work.POINT, thread, combine, split, move_face, emboss,
+            patterns.MIRROR, solid_mirror, work.PLANE, work.AXIS, work.POINT, thread, combine, split, move_face, emboss,
             full_round, line3d, picture_scale] \
         + list(constraints.KINDS) \
         + [asm_combine] + list(shapes.KINDS) + list(gear.KINDS) + list(sketch_patterns.KINDS) + [sketch_text.TEXT]

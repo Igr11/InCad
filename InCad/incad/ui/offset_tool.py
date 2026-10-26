@@ -40,6 +40,9 @@ class OffsetTool:
             except Exception:
                 pass
             self._preview = None
+        if self.chains:
+            self.chains = []
+            self._show_taken()  # the taken outlines' selection goes with the tool
         if self._on_finish is not None:
             self._on_finish(self)
 
@@ -115,7 +118,20 @@ class OffsetTool:
             return False
         if not any(set(chain[0]) & set(c[0]) for c in self.chains):
             self.chains.append(chain)
+        self._show_taken()
         return True
+
+    def _show_taken(self):
+        """The whole outlines taken show selected, not only the line clicked (the user: the colour should show the
+        chain was caught)."""
+        try:
+            import FreeCADGui as Gui
+            Gui.Selection.clearSelection()
+            for chain, _closed in self.chains:
+                for g in chain:
+                    Gui.Selection.addSelection(self.sketch.Document.Name, self.sketch.Name, "Edge%d" % (g + 1))
+        except Exception:
+            pass
 
     def click(self, pt, tol=1.0, adding=False):
         """A click: picking an outline (nothing picked yet, or Cmd/Ctrl held), else placing the offset there."""

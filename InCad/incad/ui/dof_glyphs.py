@@ -30,17 +30,21 @@ class DofGlyphs:
         view.getSceneGraph().addChild(self.node)
 
     def set(self, items):
-        """items: [(name, handles, size, highlight, lit)] — dof.handles output per part, its size, the tip colour
-        (accent) and the index of the handle under the pointer (accent and thicker; None: none)."""
+        """items: [(name, handles, size, highlight, lit[, colours])] — dof.handles output per part, its size, the tip
+        colour (accent) and the index of the handle under the pointer (accent and thicker; None: none); colours: an
+        (r, g, b) per handle (the gear gizmo: X red, Y green, Z blue), the one under the pointer brighter and
+        thicker."""
         from pivy import coin
         self.clear()
         palette = themes.PALETTES[self.theme]
-        for name, handles, size, highlight, lit in items:
+        for item in items:
+            name, handles, size, highlight, lit = item[:5]
+            colours = item[5] if len(item) > 5 else None
             sep = coin.SoSeparator()
             color = coin.SoBaseColor()
             color.rgb.setValue(*_rgb(palette["accent" if highlight else "marker_end"]))
             style = coin.SoDrawStyle()
-            style.lineWidth = 3
+            style.lineWidth = 4 if colours else 3
             sep.addChild(color)
             sep.addChild(style)
             h = size * HEAD
@@ -48,11 +52,16 @@ class DofGlyphs:
                 one = coin.SoSeparator()
                 if k == lit:
                     c = coin.SoBaseColor()
-                    c.rgb.setValue(*(GRABBED if self.grabbed else _rgb(palette["accent"])))
+                    lit_rgb = tuple(min(1.0, v * 1.25 + 0.15) for v in colours[k]) if colours else _rgb(palette["accent"])
+                    c.rgb.setValue(*(GRABBED if self.grabbed else lit_rgb))
                     st = coin.SoDrawStyle()
                     st.lineWidth = 8 if self.grabbed else 6
                     one.addChild(c)
                     one.addChild(st)
+                elif colours:
+                    c = coin.SoBaseColor()
+                    c.rgb.setValue(*colours[k])
+                    one.addChild(c)
                 pts = handle.line
                 coords = coin.SoCoordinate3()
                 coords.point.setValues(0, len(pts), [(p.x, p.y, p.z) for p in pts])

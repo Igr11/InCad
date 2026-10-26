@@ -74,6 +74,14 @@ def test_0_a_gear_dialog_shows_the_gizmo():
     assert len(gizmo().handles) == 6, gizmo().handles  # X, Y, Z arrows; arcs round Z (Turn), X, Y
     f = s().feature_session.feature
     assert gizmo().size < f.Shape.BoundBox.XLength / 2, "smaller than the gear (the user)"
+    from incad.ui import gear_gizmo as gg
+    colours = gizmo().colours()  # the user: all one colour, too small, hard to hold
+    assert len({colours[i] for i in range(3)}) == 3, colours  # X, Y, Z arrows in three colours
+    assert {colours[3], colours[4], colours[5]} == {colours[0], colours[1], colours[2]}, colours  # arcs: their axes
+    width = max(f.Shape.BoundBox.XLength, f.Shape.BoundBox.YLength)
+    assert gg.GRAB_PX > 12 and gizmo().size > 0.3 * width, (gizmo().size, width)  # big enough to hold
+    if os.environ.get("INNCAD_SHOT"):
+        Gui.ActiveDocument.ActiveView.saveImage(os.environ["INNCAD_SHOT"], 1000, 700, "Current")
     # the long dialog fits the view: its fields scroll, the ▲▼ stay in sight, OK is on screen (the user)
     d = dialog()
     area = d._fields_area

@@ -152,6 +152,9 @@ def _delete(obj):
         if users:  # its Boolean would lose its tool ('No source shape linked')
             raise ValueError("%s is used by %s (Boolean): delete or edit that first"
                              % (obj.Label, ", ".join(f.Label for f in users)))
+        from incad.features import solid_mirror
+        for m in solid_mirror.users_of(obj):  # its mirrored copies keep their shape (nothing left to follow)
+            solid_mirror.break_link(m)
         piece = obj.BaseFeature
         obj.removeObjectsFromDocument()
         doc.removeObject(obj.Name)
@@ -166,6 +169,16 @@ def _delete(obj):
             if obj in refs:
                 doc.removeObject(j.Name)
         doc.removeObject(obj.Name)
+        return
+    from incad.features import solid_mirror
+    if solid_mirror.is_mirror_solid(obj):  # the copy was its Solid: the Solid goes with it, unless built on
+        body = obj.getParentGeoFeatureGroup()
+        _remove_feature(obj)
+        origin = [body.Origin] + list(body.Origin.OriginFeatures) if body is not None and body.Origin else []
+        if body is not None and not [o for o in body.Group if o not in origin] \
+                and body is not document.primary_body(doc):
+            body.removeObjectsFromDocument()
+            doc.removeObject(body.Name)
         return
     from incad.core import regions
     if obj.TypeId == "Sketcher::SketchObject" and any(

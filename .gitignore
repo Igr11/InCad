@@ -6,3 +6,6 @@ Distrib/
 docs/manual/out/
 docs/manual/*_windows.html
 docs/whats_new/out/
+
+# the bug-report key the dist scripts write into a build (never committed: GitHub revokes keys it finds)
+InCad/incad/_report_key.py

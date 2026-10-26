@@ -470,9 +470,6 @@ class ModelBrowser(QtWidgets.QWidget):
         if column == 0 and item is not None and (item.data(NAME_ROLE) or item.text()):
             self.parameterClicked.emit(item.data(NAME_ROLE) or item.text())
 
-    def focus_parameters(self):
-        self.params.setFocus()
-
     def set_theme(self, theme):
         self._theme = theme
         self.set_nodes(self._nodes)

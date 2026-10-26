@@ -93,19 +93,22 @@ def test_5_right_click_on_a_line_lists_its_constraints():
     harness.pump(300)
     menu = s.open_sketch_menu_for_test()
     labels = menu.list_labels()
-    assert "Delete Vertical" in labels, labels
-    assert any(lb.startswith("Delete all constraints (") for lb in labels), labels
-    assert "Constraints…" in labels, labels
-    n = len(sk().Constraints)
-    menu.extra_button("Delete Vertical").click()
+    # one entry for the line's constraints (the user: a Delete row per constraint made the menu too long)
+    counted = [lb for lb in labels if lb.startswith("Constraints (")]
+    assert counted, labels
+    assert not [lb for lb in labels if lb.startswith("Delete ") and lb != "Delete"], labels
+    assert "Delete" in labels and "Construction" in labels, labels
+    for gone in ("Look At", "Project Geometry", "Constraint List", "Edit Pattern", "Delete Pattern", "Stop Tool"):
+        assert gone not in labels, (gone, labels)  # elsewhere, or not for this line / without a tool
+    menu.extra_button(counted[0]).click()
     harness.pump(600)
-    assert len(sk().Constraints) == n - 1
+    assert panel() is not None and panel().header_text().startswith("Picked: Line"), panel().header_text()
     Gui.Selection.clearSelection()
     harness.pump(300)
     empty = s.open_sketch_menu_for_test()
     labels = empty.list_labels()
-    assert "Constraints…" not in labels and not [lb for lb in labels if lb.startswith("Delete all constraints")], labels
-    assert "Delete Pattern" in labels  # the menu's own list is still there
+    assert not [lb for lb in labels if lb.startswith("Constraints (")], labels
+    assert "Constraint List" in labels and "Delete" not in labels, labels  # on empty space: the whole list
     empty.close()
 
 
@@ -156,7 +159,7 @@ def test_6c_constraints_entry_opens_filtered_to_the_element_under_the_cursor():
     Gui.Selection.setPreselection(sk(), edge)
     harness.pump(200)
     menu = s.open_sketch_menu_for_test()
-    menu.extra_button("Constraints…").click()
+    menu.extra_button(next(lb for lb in menu.list_labels() if lb.startswith("Constraints ("))).click()
     harness.pump(600)
     assert panel() is not None and panel().header_text().startswith("Picked: Line"), panel().header_text()
 

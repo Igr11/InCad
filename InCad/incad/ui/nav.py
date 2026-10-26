@@ -139,6 +139,8 @@ class Navigator(QtCore.QObject):
                 if kind == "move" and event.buttons() == QtCore.Qt.NoButton:
                     self._call_handle("hover", view, obj, pos.x(), pos.y())
             if event.button() == QtCore.Qt.LeftButton:
+                if kind == "press":
+                    self.press_modifiers = event.modifiers()  # the click hook's Shift-click (a chain in a sketch)
                 taken = kind == "press" and machine.state == "idle" and self.click_hook is not None \
                     and self.click_hook(view, obj, pos.x(), pos.y())
                 if taken == "drag":  # off the markers: the press goes on to the gesture rules (left drag orbits)

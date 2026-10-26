@@ -350,6 +350,7 @@ class Shell(QtCore.QObject):
         self._constraints_seen = {}  # (document, sketch) -> (constraint count, geometry count) at the last change
         self.section_panel = None
         self.constraints_panel = None  # the sketch's Constraint List window
+        self.parameters_window = None  # the Parameters button's window (incad.ui.parameters_window)
         self._constraints_owner = None
         self._constraints_subs = []
         self._point_pick = None  # waiting for three clicks on the section markers
@@ -805,6 +806,7 @@ class Shell(QtCore.QObject):
         self.stop_slot_tool()
         self._stop_measuring()
         self.close_constraints_window()
+        self.close_parameters_window()
         self.stop_section(keep_cut=False)
         self._cancel_point_pick()
         self._cancel_region_pick()
@@ -884,6 +886,7 @@ class Shell(QtCore.QObject):
             act.setChecked(prefs.display_quality() == value)
             act.triggered.connect(lambda _=False, v=value: self.set_display_quality(v))
         menu.addAction("Show Log File").triggered.connect(lambda _=False: self._show_log())
+        menu.addAction("Report a Bug…").triggered.connect(lambda _=False: self.report_bug())
         nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
         nav_act.setCheckable(True)
         nav_act.setChecked(prefs.navigation_enabled())
@@ -909,6 +912,39 @@ class Shell(QtCore.QObject):
             log.report("info", "InCad's log: %s" % path)
         except Exception as e:
             log.report("warning", "Could not show the log (%s): %s" % (path, e))
+
+    REPORT_PAUSE = 60  # s between two reports sent from here (a stuck button never floods the Issues)
+
+    def report_bug(self, exec_dialog=True):
+        """⚙ ▸ Report a Bug: the report straight into the Issues on GitHub (incad.core.bugreport); a build without the
+        sending key opens GitHub's filled-in page in the browser instead. Returns the dialog (tests: not run)."""
+        from incad.core import bugreport
+        from incad.ui.bugreport_dialog import BugReportDialog
+        direct = bugreport.key() is not None
+
+        def send(what, steps, contact, attach):
+            try:
+                title, body = bugreport.compose(what, steps, contact, attach)
+            except ValueError as e:
+                return False, str(e), None
+            if not direct:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(bugreport.browser_url(title, body)))
+                return True, "GitHub's page is open in your browser: press Submit new issue there", None
+            last = getattr(self, "_report_sent_at", 0.0)
+            if time.time() - last < self.REPORT_PAUSE:
+                return False, "One report a minute: wait a moment and Send again", None
+            try:
+                url = bugreport.send(title, body)
+            except ValueError as e:
+                log.logger().warning("Bug report not sent: %s", e)
+                return False, str(e), None
+            self._report_sent_at = time.time()
+            log.logger().info("Bug report sent: %s", url)
+            return True, "Sent, thank you", url
+        dlg = BugReportDialog("%s %s" % bugreport.product(), send, self.theme, self.mw, direct)
+        if exec_dialog:
+            dlg.exec()
+        return dlg
 
     def _set_theme_pref(self, value):
         prefs.set_theme(value)
@@ -939,6 +975,8 @@ class Shell(QtCore.QObject):
             log.logger().warning("Wireframe lines: %s", e)
         if self.constraints_panel is not None:
             self.constraints_panel.set_theme(self.theme)
+        if self.parameters_window is not None:
+            self.parameters_window.set_theme(self.theme)
         qss = themes.stylesheet(self.theme)
         for w in self._widgets:
             w.setStyleSheet(qss)
@@ -1020,9 +1058,19 @@ class Shell(QtCore.QObject):
                      "pan": "Pan: drag with the left button (click Pan again to stop)"}
             self.status.set_prompt(hints.get(mode, "Ready"))
 
-    def _show_marking_menu(self, kind, global_pos, flick=False, extras=(), top=None):
-        """top: a command that takes the N slot (the open dialog's finish: Move Face's Finish move)."""
+    def _show_marking_menu(self, kind, global_pos, flick=False, extras=(), top=None, drop=()):
+        """top: a command that takes the N slot (the open dialog's finish: Move Face's Finish move); drop: list
+        entries that don't apply here."""
         slots, items = marking_layout.resolve(kind, self.registry)
+        drop = set(drop)
+        if kind != "sketch":  # the sketch menu has its own (_sketch_menu)
+            try:
+                import FreeCAD as App
+                from incad.ui import menu_rules
+                drop |= menu_rules.inapplicable(kind, App.ActiveDocument)
+            except Exception:
+                log.logger().exception("Right-click menu rules")
+        items = [c for c in items if c.id not in drop]
         if top and self.registry.has(top):
             slots = [("N", self.registry.get(top))] + [(d, c) for d, c in slots if d != "N"]
         if not slots and not items and not extras:
@@ -1045,7 +1093,7 @@ class Shell(QtCore.QObject):
         import FreeCADGui as Gui
         from incad.core import context, document
         if self.sketches.editing() is not None:
-            return self._show_marking_menu("sketch", global_pos, flick, extras=self._constraint_menu_items())
+            return self._sketch_menu(global_pos, flick)
         doc = App.ActiveDocument
         info = view.getObjectInfo(to_coin(viewport, local.x(), local.y())) if doc is not None else None
         context.set_target(None)
@@ -1446,6 +1494,90 @@ class Shell(QtCore.QObject):
         self.slot_tool = OverallDimTool(gdoc.ActiveView, sk, on_finish=self._slot_tool_done,
                                         on_placed=lambda s, name: self.open_value_box(s, name))
         self.slot_tool.start(picked)
+        self.schedule_refresh()
+        return self.slot_tool
+
+    def start_mirror_tool(self):
+        """Sketch ▸ Mirror: the selected shapes (a click on a side stands for its whole outline). The mirror line
+        selected last — an axis, the origin, or a line or point outside the shapes — makes the copy at once;
+        otherwise the tool waits for a click on it (the user: select, Mirror, then the line)."""
+        import FreeCADGui as Gui
+        from incad.core import safe, sketch_mirror, sketch_symmetric as sym
+        from incad.core import sketch_offset as so
+        from incad.features import common
+        from incad.ui.mirror_tool import MirrorTool
+        sk = self.sketches.editing()
+        if sk is None:
+            raise ValueError("Open a sketch first")
+        picks = []
+        for sel in common.selection_ex(sk.Document.Name):
+            if sel.Object is sk:
+                for sub in sel.SubElementNames or ():
+                    pick = sym.from_subname(sk, sub)
+                    if pick is not None and pick not in picks:
+                        picks.append(pick)
+
+        def outlines(items):
+            geos = []
+            for pick in items:
+                if pick[1] < 0:
+                    continue
+                whole = [pick[1]]
+                if pick[0] == "edge":
+                    try:
+                        whole = so.outline(sk, pick[1])[0]
+                    except (ValueError, IndexError):
+                        pass
+                geos += [g for g in whole if g not in geos]
+            return geos
+        axis = None
+        if len(picks) >= 2:
+            last, rest = picks[-1], outlines(picks[:-1])
+            if last[1] < 0 or last[1] not in rest:  # clearly no shape of the ones picked: the mirror line
+                axis, picks = last, picks[:-1]
+        geos = outlines(picks)
+        if not geos:
+            raise ValueError("Mirror: select the shapes first (click them or drag a box), then Mirror, then click "
+                             "the mirror line")
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")
+        if axis is not None:
+            r = safe.run_safely("Mirror", lambda: sketch_mirror.mirror(sk, geos, axis), sk.Document, only=[sk])
+            if not r.ok:
+                raise ValueError(r.error)
+            Gui.Selection.clearSelection()
+            for g in r.value:
+                Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Edge%d" % (g + 1))
+            log.report("info", "Mirrored %d: the copy follows its original (right-click it ▸ Break Mirror Link "
+                               "frees it)" % len(r.value))
+            self.schedule_refresh()
+            return None
+        self.slot_tool = MirrorTool(Gui.ActiveDocument.ActiveView, sk, geos, on_finish=self._slot_tool_done)
+        self.slot_tool.start()
+        self.schedule_refresh()
+        return self.slot_tool
+
+    def start_symmetric_tool(self):
+        """Sketch ▸ Symmetric (incad.ui.symmetric_tool) in the slot tool's place: what is selected now comes first."""
+        import FreeCADGui as Gui
+        from incad.core import sketch_symmetric as sym
+        from incad.features import common
+        from incad.ui.symmetric_tool import SymmetricTool
+        sk = self.sketches.editing()
+        if sk is None:
+            raise ValueError("Open a sketch first")
+        picked = []
+        for sel in common.selection_ex(sk.Document.Name):
+            if sel.Object is sk:
+                for sub in sel.SubElementNames or ():
+                    pick = sym.from_subname(sk, sub)
+                    if pick is not None and pick not in picked:
+                        picked.append(pick)
+        self.stop_slot_tool()
+        Gui.runCommand("Sketcher_StopOperation")  # no FreeCAD tool fighting for the clicks
+        Gui.Selection.clearSelection()
+        self.slot_tool = SymmetricTool(Gui.ActiveDocument.ActiveView, sk, on_finish=self._slot_tool_done)
+        self.slot_tool.start(picked[:3])
         self.schedule_refresh()
         return self.slot_tool
 
@@ -1974,7 +2106,8 @@ class Shell(QtCore.QObject):
         doc = self._doc()
         if doc is not None:
             from incad.core import model
-            safe.run_safely("Rename %s" % old, lambda: model.rename_model_parameter(doc, old, new), doc)
+            self._parameters_said(safe.run_safely("Rename %s" % old,
+                                                  lambda: model.rename_model_parameter(doc, old, new), doc))
         self.schedule_refresh()
 
     def _on_parameter_clicked(self, name):
@@ -2030,6 +2163,13 @@ class Shell(QtCore.QObject):
     def _click_hook(self, view, viewport, x, y):
         if self._point_pick is not None:
             return self._point_clicked(viewport, x, y)
+        mods = getattr(self.navigator, "press_modifiers", None)
+        if mods is None:
+            mods = QtWidgets.QApplication.keyboardModifiers()
+        if mods & QtCore.Qt.ShiftModifier and self.sketches.editing() is not None \
+                and self.feature_session is None and self.value_box is None and self.slot_tool is None \
+                and not self._sketch_tool_active() and self._select_chain_at(view, viewport, x, y, True):
+            return True  # Shift-click: the whole chain or shape, added to the selection
         if self.value_box is None and self.feature_session is None:
             return False
         if self.feature_session is not None and self.feature_session.unpick_under_cursor():
@@ -2102,6 +2242,40 @@ class Shell(QtCore.QObject):
         if name is None:
             return False
         self.open_value_box(sk, name)
+        return True
+
+    CHAIN_PICK_PX = 8  # logical px around the pointer that count as a Shift-click on a line
+
+    def _select_chain_at(self, view, viewport, x, y, adding):
+        """Shift-click: the whole chain or shape of the sketch line at the click selected, coloured at once (the user:
+        a shape should show it is caught right when it is selected; a double-click on a thin line was hard).
+        adding: kept beside what is selected. One plain click still selects one line. Returns True on a line."""
+        import FreeCADGui as Gui
+        from incad.core import sketch_offset as so
+        from incad.core import sketch_symmetric as sym
+        from incad.ui.overall_dim_tool import OverallDimTool
+        sk = self.sketches.editing()
+        if sk is None or view is None or viewport is None:
+            return False
+        probe = OverallDimTool(view, sk)
+        cx, cy = to_coin(viewport, x, y)
+        pt = probe.to_sketch(cx, cy)
+        dpr = viewport.devicePixelRatioF()
+        far = probe.to_sketch(cx + self.CHAIN_PICK_PX * dpr, cy)
+        if pt is None or far is None:
+            return False
+        pick = sym.pick_at(sk, pt, 0.0, (far - pt).Length)
+        if pick is None or pick[0] != "edge" or pick[1] < 0:
+            return False
+        try:
+            chain = so.outline(sk, pick[1])[0]
+        except (ValueError, IndexError):
+            chain = [pick[1]]
+        if not adding:
+            Gui.Selection.clearSelection()
+        for g in chain:
+            Gui.Selection.addSelection(sk.Document.Name, sk.Name, "Edge%d" % (g + 1))
+        log.report("info", "Selected the whole shape (%d lines): Mirror, Offset or a pattern takes it" % len(chain))
         return True
 
     # ----- features -----
@@ -2912,6 +3086,7 @@ class Shell(QtCore.QObject):
         self.browser.set_parameters(document.list_parameters(doc) if is_part or is_asm else [],
                                     sketches.model_parameters(doc) if is_part or is_asm else [])
         self.browser.set_parameters_enabled(is_part or is_asm)
+        self.refresh_parameters_window(doc if is_part or is_asm else None)
         self.status.set_units(document.part_units(doc) if is_part or is_asm else None)
         self.status.set_dof(editing.DoF if editing is not None else None)
         if is_part:
@@ -3836,6 +4011,70 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
 
 
+    # ----- Parameters window -----
+    def open_parameters_window(self):
+        """The Parameters button: its window (every parameter, what uses it, Delete Unused); a second click brings
+        the open one to the front."""
+        from incad.ui.parameters_window import ParametersWindow
+        if self.parameters_window is None:
+            w = ParametersWindow(self.theme, self.mw)
+            w.parameterSet.connect(self._on_parameter_set)
+            w.parameterRenamed.connect(self._on_parameter_renamed)
+            w.parameterRemoved.connect(self._on_parameter_removed)
+            w.parameterClicked.connect(self._on_parameter_clicked)
+            w.deleteUnusedRequested.connect(self._delete_unused_parameters)
+            w.closed.connect(self._parameters_window_closed)
+            self.parameters_window = w
+            self.refresh_parameters_window(self._doc())
+        self.parameters_window.show()
+        self.parameters_window.raise_()
+        self.parameters_window.activateWindow()
+
+    def refresh_parameters_window(self, doc):
+        """doc: the open part or assembly, None for anything else (the window lists nothing, adds nothing)."""
+        w = self.parameters_window
+        if w is None:
+            return
+        from incad.core import param_table
+        try:
+            rows = param_table.rows(doc) if doc is not None else []
+        except Exception:
+            log.logger().exception("Parameters window rows")
+            rows = []
+        w.title.setText("Parameters — %s" % doc.Label if doc is not None else "Parameters")
+        w.set_rows(rows, doc is not None)
+
+    def _parameters_said(self, r):
+        """A change made from the window or the panel: its error shown in the window too."""
+        if self.parameters_window is not None:
+            self.parameters_window.set_message("" if r.ok else r.error)
+
+    def _delete_unused_parameters(self):
+        from incad.core import param_table, safe
+        doc = self._doc()
+        if doc is None:
+            return
+        r = safe.run_safely("Delete Unused Parameters", lambda: param_table.delete_unused(doc), doc)
+        if self.parameters_window is not None:
+            if r.ok:
+                text = ("Deleted %d: %s" % (len(r.value), ", ".join(r.value))) if r.value else "Nothing unused"
+                self.parameters_window.set_message(text, ok=True)
+            else:
+                self.parameters_window.set_message(r.error)
+        self.schedule_refresh()
+
+    def _parameters_window_closed(self):
+        w, self.parameters_window = self.parameters_window, None
+        if w is not None:
+            QtCore.QTimer.singleShot(0, lambda: dispose(w))
+
+    def close_parameters_window(self):
+        if self.parameters_window is not None:
+            try:
+                self.parameters_window.close()
+            except RuntimeError:
+                self.parameters_window = None
+
     # ----- sketch Constraint List -----
     def open_constraints_window(self, subs=None):
         """subs: the line or point to filter by (the right-click entry: the one under the cursor), picked for it."""
@@ -3966,12 +4205,73 @@ class Shell(QtCore.QObject):
         self.refresh_constraints_window()
 
     def _constraint_menu_items(self):
-        """Per-constraint Delete entries for the line or point under the cursor (else the picked one)."""
-        import FreeCADGui as Gui
+        """The sketch menu's own entries for the line or point under the cursor (else the picked one): its
+        Constraints (n)… — the Constraint List filtered to it, where one or all of them are deleted (the user: a
+        Delete row per constraint made the menu too long) — and Break Mirror Link on a mirrored copy."""
         from incad.core import sketch_constraints as sc
         sk = self.sketches.editing()
-        if sk is None:
+        subs, geo = self._sketch_menu_element(sk)
+        if not subs:
             return []
+        items = []
+        rows = sc.for_elements(sk, subs)
+        if rows:
+            items.append(("Constraints (%d)…" % len(rows), "constraints_window",
+                          lambda picked=list(subs): self.open_constraints_window(picked)))
+        copy = self._mirror_copy_under(sk, geo)
+        if copy:
+            items.append(("Break Mirror Link", "mirror", lambda geos=copy: self._break_mirror(sk, geos)))
+        return items
+
+    @staticmethod
+    def _mirror_copy_under(sk, geo):
+        """The whole mirrored copy (its outline) when geometry `geo` is one made with Mirror, else []."""
+        from incad.core import sketch_mirror
+        from incad.core import sketch_offset as so
+        if geo is None or geo < 0:
+            return []
+        try:
+            whole = so.outline(sk, geo)[0]
+        except (ValueError, IndexError):
+            whole = [geo]
+        return whole if sketch_mirror.is_linked(sk, whole) else []
+
+    def _break_mirror(self, sk, geos):
+        """Right-click ▸ Break Mirror Link: the copy keeps its shape and stops following its original."""
+        from incad.core import safe, sketch_mirror
+        r = safe.run_safely("Break Mirror Link", lambda: sketch_mirror.break_link(sk, geos), sk.Document, only=[sk])
+        if r.ok:
+            log.report("info", "The copy is free now: it keeps its shape and no longer follows the original")
+        self.schedule_refresh()
+
+    def open_sketch_menu_for_test(self):
+        """The sketch right-click menu at the view's centre, as a right click opens it (GUI tests)."""
+        view = self._mdi().viewport()
+        return self._sketch_menu(view.mapToGlobal(view.rect().center()), False)
+
+    def _sketch_menu(self, global_pos, flick):
+        """The sketch's right-click menu with only what applies (the user: too many buttons): on a line or point
+        Delete, Construction, its Constraints (n)…, Edit / Delete Pattern on a pattern's geometry, Break Mirror Link
+        on a mirrored copy; on empty space the Constraint List; Stop Tool while a tool runs."""
+        from incad.core import sketch_patterns
+        sk = self.sketches.editing()
+        subs, geo = self._sketch_menu_element(sk)
+        drop = set()
+        if subs:
+            drop.add("sketch.constraints_window")  # its own Constraints (n)… instead, filtered to it
+            if geo is None or geo < 0 or not sketch_patterns.pattern_of(sk, geo):
+                drop |= {"sketch.edit_pattern", "sketch.delete_pattern"}
+        else:
+            drop |= {"edit.delete", "sketch.construction", "sketch.edit_pattern", "sketch.delete_pattern"}
+        if self.slot_tool is None and not self._sketch_tool_active():
+            drop.add("sketch.stop")
+        return self._show_marking_menu("sketch", global_pos, flick, extras=self._constraint_menu_items(), drop=drop)
+
+    def _sketch_menu_element(self, sk):
+        """(selection names, geometry) of the line or point under the cursor, else the picked one; ([], None)."""
+        import FreeCADGui as Gui
+        if sk is None:
+            return [], None
         try:
             pre = Gui.Selection.getPreselection()
             pre_subs = [n for n in (getattr(pre, "SubElementNames", ()) or ()) if n and not n.startswith("Constraint")] \
@@ -3980,34 +4280,12 @@ class Shell(QtCore.QObject):
             pre_subs = []
         subs = pre_subs[:1] or self._picked_sketch_elements(sk)[:1]
         if not subs:
-            return []
-        rows = sc.for_elements(sk, subs)
-        if not rows:
-            return []
+            return [], None
         try:
             geo, _pos = self._element(sk, subs[0])
         except (ValueError, IndexError):
-            return []
-        items = []
-        if len(rows) <= 8:
-            for r in rows:
-                others = [sc.element_name(sk, g, p) for g, p in r.ties if g != geo]
-                label = "Delete %s" % r.type + (" (%s)" % ", ".join(others) if others else "")
-                if r.value:
-                    label += " %s = %s" % (r.name, r.value)
-                items.append((label, "delete", lambda i=r.index: self._delete_constraints([i])))
-        free = sc.deletable(rows)  # a sketch pattern's ties stay: they would refuse the whole delete
-        if free:
-            items.append(("Delete all constraints (%d)" % len(free), "delete",
-                          lambda ids=free: self._delete_constraints(ids)))
-        items.append(("Constraints…", "constraints_window", lambda picked=list(subs): self.open_constraints_window(picked)))
-        return items
-
-    def open_sketch_menu_for_test(self):
-        """The sketch right-click menu at the view's centre, as a right click opens it (GUI tests)."""
-        view = self._mdi().viewport()
-        return self._show_marking_menu("sketch", view.mapToGlobal(view.rect().center()), False,
-                                       extras=self._constraint_menu_items())
+            return subs, None
+        return subs, geo
 
     def _start_measuring(self, mode):
         """Measure stays live, as in Inventor: every change of the selection measures again (Esc finishes)."""
@@ -4080,9 +4358,10 @@ class Shell(QtCore.QObject):
         if doc is not None:
             from incad.core import model
             if model.is_model_parameter(doc, name):
-                safe.run_safely("Set %s" % name, lambda: model.set_model_parameter(doc, name, text), doc)
+                r = safe.run_safely("Set %s" % name, lambda: model.set_model_parameter(doc, name, text), doc)
             else:
-                safe.run_safely("Set %s" % name, lambda: document.set_parameter(doc, name, text), doc)
+                r = safe.run_safely("Set %s" % name, lambda: document.set_parameter(doc, name, text), doc)
+            self._parameters_said(r)
         self.schedule_refresh()
 
     def _on_parameter_removed(self, name):
@@ -4091,7 +4370,7 @@ class Shell(QtCore.QObject):
         if doc is not None:
             from incad.core import model
             remove = model.remove_model_parameter if model.is_model_parameter(doc, name) else document.remove_parameter
-            safe.run_safely("Remove %s" % name, lambda: remove(doc, name), doc)
+            self._parameters_said(safe.run_safely("Remove %s" % name, lambda: remove(doc, name), doc))
         self.schedule_refresh()
 
 
@@ -4119,9 +4398,9 @@ def apply_theme():
         _shell.apply_theme()
 
 
-def focus_parameters():
+def open_parameters():
     if _shell is not None and _shell.active:
-        _shell.browser.focus_parameters()
+        _shell.open_parameters_window()
 
 
 SAVE_ASK = None  # tests: callable(files) -> ("save" | "discard" | "cancel", [names]) instead of the dialog

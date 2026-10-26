@@ -3,7 +3,10 @@ through the whole part into a surface of zero thickness; these knives divide the
 Keep all (Inventor's Split Solid): this Solid keeps the largest piece and every other piece becomes a Solid of its own
 (a body on a SplitPiece that follows the Split), so each can be hidden, worked on and made a part of its own.
 Keep picked: only the pieces at the stored points (a spot picked on each) stay, the nearest piece to each point on
-every recompute."""
+every recompute.
+Gap (a model parameter, 0.05 mm steps; the user: a gap between the pieces, from one of them or from both): each piece
+loses its material within its share of the gap from the cut lines — Both: half from every piece; This Solid: all of
+it from this Solid's piece; New Solids: all of it from the other pieces."""
 import json
 
 import FreeCAD as App
@@ -23,7 +26,11 @@ FIELDS = (
     Field("sketch", "Sketch", "pick", pick="sketch"),
     Field("mode", "Mode", "choice", (("split", "Keep all"), ("cut", "Keep picked")), "split"),
     Field("keep", "Keep", "picks", pick="piece", show_if=("mode", ("cut",))),
+    Field("gap", "Gap", "value_length", default="0 mm", step=lambda values: GAP_STEP),
+    Field("gap_from", "Gap from", "choice", (("both", "Both"), ("this", "This Solid"), ("new", "New Solids")), "both",
+          show_if=("mode", ("split",))),
 )
+GAP_STEP = 0.05  # mm: the Gap's arrows and wheel (the user: fits in 0.05 mm)
 
 
 def _knives(sk, body, bb):
@@ -45,6 +52,37 @@ def _slice(base, knives):
     from BOPTools import SplitAPI
     out = SplitAPI.slice(base, knives, "Split")
     return sorted(out.Solids, key=lambda s: -s.Volume)
+
+
+def _slab(knives, half):
+    """Everything within `half` of the knives, through the part: each knife face grown both ways."""
+    out = None
+    for k in knives:
+        grown = k.makeOffsetShape(half, 1e-6, fill=True).fuse(k.makeOffsetShape(-half, 1e-6, fill=True))
+        out = grown if out is None else out.fuse(grown)
+    return out
+
+
+def _gapped(pieces, knives, gap, gap_from, main):
+    """The pieces with the gap taken off where they were cut: `main` (this Solid's piece) loses all of it (This
+    Solid), none (New Solids) or half (Both), every other piece the rest."""
+    if gap <= 0 or not pieces:
+        return pieces
+    share = {"this": (gap, 0.0), "new": (0.0, gap)}.get(gap_from, (gap / 2.0, gap / 2.0))
+    slabs = {}
+    out = []
+    for p in pieces:
+        amount = share[0] if p is main else share[1]
+        if amount <= 0:
+            out.append(p)
+            continue
+        if amount not in slabs:
+            slabs[amount] = _slab(knives, amount)
+        left = p.cut(slabs[amount]).Solids
+        if not left:
+            raise ValueError("The gap takes a whole piece away: make it smaller")
+        out.append(max(left, key=lambda s: s.Volume))
+    return sorted(out, key=lambda s: -s.Volume)
 
 
 def _nearest(solids, point):
@@ -74,7 +112,8 @@ class SplitFeature:
     """The proxy. FreeCAD saves its module path (incad.features.split) and class name in the file."""
     def __init__(self, obj):
         for prop, kind in (("Sketch", "App::PropertyLink"), ("Mode", "App::PropertyString"),
-                           ("Keep", "App::PropertyVectorList"), ("ShowAll", "App::PropertyBool")):
+                           ("Keep", "App::PropertyVectorList"), ("ShowAll", "App::PropertyBool"),
+                           ("Gap", "App::PropertyLength"), ("GapFrom", "App::PropertyString")):
             if prop not in obj.PropertiesList:
                 obj.addProperty(kind, prop, "Split", "")
         obj.setPropertyStatus("ShowAll", ["Hidden", "Transient"])
@@ -85,9 +124,7 @@ class SplitFeature:
         if base is None or base.Shape.isNull() or obj.Sketch is None:
             return
         before = len(base.Shape.Solids)
-        pieces = _slice(base.Shape, _knives(obj.Sketch, obj.getParentGeoFeatureGroup(), base.Shape.BoundBox))
-        if len(pieces) <= before:
-            raise ValueError("The sketch does not cut the part")
+        pieces = all_pieces(obj, before)
         import Part
         if obj.Keep and (obj.Mode == "split" or not obj.ShowAll):  # Keep all: this Solid's piece; Keep picked
             kept = []
@@ -301,6 +338,7 @@ def _build(doc, f, values):
     if not sk.Shape.Edges:
         raise ValueError("The sketch has no lines")
     f.Sketch = sk
+    _set_gap(doc, f, values)
     was = f.Mode
     f.Mode = values.get("mode") or "split"
     if f.Mode == "cut":
@@ -309,8 +347,42 @@ def _build(doc, f, values):
         f.Keep = []  # Keep all: _sync_pieces gives this Solid the largest piece
     # the picks as typed ('Split:Face7', named on every piece shown while Keep is picked): edit reads them back, so a
     # click adds to them instead of replacing them
-    _store(f, {"sketch": sk.Name, "mode": f.Mode, "keep": (values.get("keep") or "") if f.Mode == "cut" else ""})
+    _store(f, {"sketch": sk.Name, "mode": f.Mode, "keep": (values.get("keep") or "") if f.Mode == "cut" else "",
+               "gap_from": f.GapFrom})
     return f
+
+
+def _gap_mm(text):
+    try:
+        q = App.Units.Quantity((text or "0 mm").strip())
+    except Exception:
+        raise ValueError("Gap: enter a length such as 0.2 mm")
+    if str(q.Unit) == str(App.Units.Quantity("1").Unit):  # a plain number: mm
+        q = App.Units.Quantity("%s mm" % q.Value)
+    if q.Value < 0:
+        raise ValueError("Gap: 0 mm or more")
+    return q.Value
+
+
+def _set_gap(doc, f, values):
+    """Gap: a model parameter (named in the Parameters list) once it is above 0; 0 with none keeps none."""
+    from incad.core import model
+    for prop, kind in (("Gap", "App::PropertyLength"), ("GapFrom", "App::PropertyString")):
+        if prop not in f.PropertiesList:  # a Split saved before Gap
+            f.addProperty(kind, prop, "Split", "")
+    text = (values.get("gap") or "0 mm").strip()
+    gap = _gap_mm(text)
+    name = model.bound_parameter(f, "Gap")
+    if name is None and gap > 0:
+        name = model.new_feature_parameter(doc, text, "length")
+        model.bind(f, "Gap", name)
+    elif name is not None and model.parameter_text(doc, name) != text:
+        model.set_model_parameter(doc, name, text, everything=False)
+    elif name is None:
+        f.Gap = 0
+    gap_from = values.get("gap_from") or "both"
+    if f.GapFrom != gap_from:
+        f.GapFrom = gap_from
 
 
 def create(doc, body, profile, values):
@@ -350,6 +422,10 @@ def read(doc, f):
     if mode == "cut":  # Keep all keeps its own piece's point in Keep: that is no pick of the user's
         keep = data.get("keep") or ", ".join("%r %r %r" % (p.x, p.y, p.z) for p in f.Keep)
     values.update(sketch=data.get("sketch", getattr(f.Sketch, "Name", "")), mode=mode, keep=keep)
+    from incad.core import model
+    name = model.bound_parameter(f, "Gap") if hasattr(f, "Gap") else None
+    values["gap"] = model.parameter_text(doc, name) if name else "0 mm"
+    values["gap_from"] = getattr(f, "GapFrom", "") or data.get("gap_from") or "both"
     return values
 
 
@@ -363,9 +439,25 @@ def update(doc, f, values):
     return f
 
 
-def pieces(f):
+def all_pieces(f, before=None):
+    """The pieces the sketch cuts the part before the Split into, the gap taken off (largest first)."""
     base = f.BaseFeature
-    return _slice(base.Shape, _knives(f.Sketch, f.getParentGeoFeatureGroup(), base.Shape.BoundBox))
+    knives = _knives(f.Sketch, f.getParentGeoFeatureGroup(), base.Shape.BoundBox)
+    cut = _slice(base.Shape, knives)
+    if before is not None and len(cut) <= before:
+        raise ValueError("The sketch does not cut the part")
+    gap = f.Gap.Value if hasattr(f, "Gap") else 0.0  # a Split saved before Gap has none
+    if gap <= 0:
+        return cut
+    main = cut[0]
+    if f.Mode == "split" and f.Keep:
+        main = _nearest(cut, f.Keep[0])
+    side = (getattr(f, "GapFrom", "") or "both") if f.Mode == "split" else "both"  # Keep picked: no choice shown
+    return _gapped(cut, knives, gap, side, main)
+
+
+def pieces(f):
+    return all_pieces(f)
 
 
 def keep_piece(f, point):
@@ -386,4 +478,6 @@ def picking(f, active):
 
 
 def param_names(f):
-    return {}
+    from incad.core import model
+    name = model.bound_parameter(f, "Gap") if hasattr(f, "Gap") else None
+    return {"gap": name} if name else {}

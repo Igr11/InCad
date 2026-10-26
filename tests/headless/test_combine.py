@@ -56,6 +56,36 @@ class CombineTest(unittest.TestCase):
         self.assertEqual(len(fit), 1)
         self.assertAlmostEqual(fit[0].Shape.Volume, math.pi * 3.8 ** 2 * 19.6, places=1)
 
+    def test_a_tool_that_cant_be_grown_is_cut_without_clearance(self):
+        """The user's Cut 'did not work': the mirrored Solid (an Emboss on it) can't be offset. The cut is made with
+        Clearance 0 mm, the dialog is told, nothing of the failed clearance stays."""
+        real = combine._check_helpers
+
+        def failing(doc, helpers, tools):
+            if any(mine for mine in helpers.values()):
+                raise ValueError("Couldn't grow Pin by the clearance (threads and other complex shapes can't be "
+                                 "offset): use Clearance 0 mm")
+            return real(doc, helpers, tools)
+        combine._check_helpers = failing
+        try:
+            names = {o.Name for o in self.doc.Objects}
+            params = set(model.feature_parameters(self.doc))
+            for apply_to in ("cavity", "tool", "split"):
+                f = self.make(operation="cut", clearance="0.2 mm", apply_to=apply_to)
+                self.assertNotIn("Invalid", f.State)
+                self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 16 * 10, places=1)
+                self.assertEqual(combine.adjusted(self.doc, f), {"clearance": "0 mm"})
+                self.assertEqual(self.fit(), [])
+                left = {o.Name for o in self.doc.Objects} - names - {f.Name, "InCadModel"}
+                self.assertEqual(left, set(), apply_to)  # no offset or fit copy left behind
+                self.assertEqual(set(model.feature_parameters(self.doc)), params)
+                combine.delete(self.doc, f)
+                self.doc.recompute()
+        finally:
+            combine._check_helpers = real
+        f = self.make(operation="cut", clearance="0.2 mm")
+        self.assertEqual(combine.adjusted(self.doc, f), {})  # a clearance that works is kept
+
     def test_split(self):
         f = self.make(operation="cut", clearance="0.2 mm", apply_to="split")
         self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.1 ** 2 * 10, places=1)
@@ -137,16 +167,19 @@ class CombineReviewTest(CombineTest):
         self.doc.recompute()
         self.assertEqual(self.fit(), [])
 
-    def test_offset_failure_is_said_plainly(self):
+    def test_a_threaded_tool_is_cut_without_clearance(self):
         from incad.features import thread
         top = [i + 1 for i, fc in enumerate(self.pin.Shape.Faces) if fc.Surface.TypeId == "Part::GeomCylinder"][0]
         t = thread.create(self.doc, self.tool, None, dict(thread.defaults(self.doc, self.tool, None),
                                                           face="%s:Face%d" % (self.pin.Name, top), size="M8"))
         self.doc.recompute()
         self.assertIs(self.tool.Tip, t)
-        with self.assertRaises(ValueError) as ctx:
-            self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")
-        self.assertIn("clearance", str(ctx.exception).lower())
+        names = {o.Name for o in self.doc.Objects}
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")  # a threaded tool can't be grown:
+        self.assertNotIn("Invalid", f.State)                                     # cut with Clearance 0 mm, said
+        self.assertEqual(combine.adjusted(self.doc, f), {"clearance": "0 mm"})
+        self.assertEqual(combine.read(self.doc, f)["clearance"], "0 mm")
+        self.assertEqual({o.Name for o in self.doc.Objects} - names - {f.Name, "InCadModel"}, set())
 
     def test_dependency_loop_is_refused(self):
         self.make(operation="cut", clearance="0 mm")

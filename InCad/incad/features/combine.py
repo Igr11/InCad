@@ -166,13 +166,39 @@ def _remove(doc, name):
     return True
 
 
+class _NoClearance(ValueError):
+    pass
+
+
 def _build(doc, f, base, values):
+    """The Boolean as the values say; a clearance its tool can't be grown or shrunk by (an Emboss, a thread: the
+    user's Cut 'doesn't work') is left out: the cut is made with Clearance 0 mm, and the status line says so."""
+    try:
+        return _build_with(doc, f, base, values)
+    except _NoClearance as e:
+        from incad.core import log
+        made = _build_with(doc, f, base, dict(values, clearance="0 mm"), fallback=True)
+        log.report("warning", "%s: made with Clearance 0 mm — %s" % (f.Label, e))
+        return made
+
+
+def adjusted(doc, f):
+    """The dialog shows Clearance 0 mm when the clearance asked for could not be made."""
+    return {"clearance": "0 mm"} if _load(f).get("clearance_fallback") else {}
+
+
+def _build_with(doc, f, base, values, fallback=False):
     from incad.core import model
     tools = _bodies(doc, values.get("tools"))
     if not tools:
         raise ValueError("Pick at least one other solid as a tool")
     if base in tools:
         raise ValueError("The base can't be a tool: pick the other solid(s) as tools")
+    from incad.features import solid_mirror
+    for m in solid_mirror.stop_before(base, f.BaseFeature):
+        from incad.core import log
+        log.report("info", "%s now mirrors %s as it is before %s" % (m.getParentGeoFeatureGroup().Label, base.Label,
+                                                                        f.Label))
     for tool in tools:
         if base in tool.OutListRecursive:
             raise ValueError("%s already depends on %s (they were combined): pick another base or tool"
@@ -220,12 +246,39 @@ def _build(doc, f, base, values):
         if old.get("fit_shape") and old.get("fit_shape") != mine.get("fit_shape") and not kept_fit and \
                 doc.getObject(old["fit_shape"]) is not None:
             doc.removeObject(old["fit_shape"])
-    _check_helpers(doc, helpers, tools)
+    try:
+        _check_helpers(doc, helpers, tools)
+    except ValueError as e:
+        if clearance <= 0:
+            raise
+        _drop_attempt(doc, f, old_helpers, helpers, data.get("clearance_param"), name)
+        raise _NoClearance(str(e).split(" (")[0].replace("Couldn't", "couldn't"))
     _store(f, {"base": base.Name, "tools": [t.Name for t in tools], "operation": op, "apply_to": apply_to,
                "clearance_param": name or data.get("clearance_param"),
                "clearance": values.get("clearance") or "0.2 mm", "helpers": helpers,
-               "keep_tool": bool(values.get("keep_tool"))})
+               "keep_tool": bool(values.get("keep_tool")), "clearance_fallback": fallback})
     return f
+
+
+def _drop_attempt(doc, f, old_helpers, helpers, old_param, param):
+    """What a failed clearance made goes again: its new offsets and fit copies, and a parameter made for it."""
+    f.Group = []
+    kept = {n for mine in old_helpers.values() for n in mine.values()}
+    for mine in helpers.values():
+        for key in ("fit", "grown", "fit_shape"):
+            n = mine.get(key)
+            if n and n not in kept and doc.getObject(n) is not None:
+                obj = doc.getObject(n)
+                if obj.TypeId == "PartDesign::Body":
+                    obj.BaseFeature = None
+                    obj.removeObjectsFromDocument()
+                doc.removeObject(n)
+    if param and param != old_param:
+        from incad.core import model
+        try:
+            model.remove_model_parameter(doc, param)
+        except ValueError:
+            pass
 
 
 def delete(doc, f):
