@@ -344,11 +344,10 @@ def origin_visibility(flag):
 
 
 def sketches_visibility(flag):
-    """Show All / Hide All Sketches: every sketch and Text of every Solid (not the ones InCad keeps for itself: a
+    """Show All / Hide All Sketches: every sketch, Text and 3D Line of every Solid (not the ones InCad keeps for itself: a
     Hole's centre, an area's copy, a Sweep wall's profile), the user's choice for each, one undo step."""
     import FreeCAD as App
     from incad.core import document, regions
-    from incad.features import sketch_text
     from incad.core import assembly
     doc = App.ActiveDocument
     is_asm = doc is not None and assembly.is_assembly(doc)
@@ -356,7 +355,7 @@ def sketches_visibility(flag):
         raise ValueError("Open a part first")
     docs = _component_docs(doc) if is_asm else [doc]  # an assembly: its parts' sketches, set in their files
     items = [o for d in docs for o in d.Objects
-             if (o.TypeId == "Sketcher::SketchObject" or sketch_text.is_text(o)) and document.body_of(o) is not None
+             if document.is_sketch_like(o) and document.body_of(o) is not None
              and not getattr(o, "InCadHelperOf", None) and not regions.is_profile(o)
              and not hasattr(o, "InCadPicks")]  # a Hole's centre sketch
     if not items:
@@ -438,7 +437,8 @@ def edit_feature():
         from incad.core import log
         log.report("info", "Double-click a plane to start a sketch on it")
         return
-    if obj.TypeId in _PLANES:  # double-click a plane: a new sketch on it (Inventor)
+    if obj.TypeId == "App::Plane":  # double-click an origin plane: a new sketch on it (Inventor); a work plane
+        # opens its dialog (the user: only the first plane of a row could be turned), New Sketch is on right-click
         from incad.ui import shell
         shell.sketch_session().start_on(obj)
         return

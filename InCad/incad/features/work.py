@@ -40,7 +40,24 @@ def _element(obj, sub):
     shape = getattr(obj, "Shape", None)
     if shape is None:
         return None
-    return shape.Faces[0] if shape.Faces else (shape.Edges[0] if shape.Edges else shape)
+    if shape.Faces:
+        return shape.Faces[0]
+    if shape.Edges:
+        return shape.Edges[0]
+    return shape.Vertexes[0] if shape.Vertexes else shape  # a work point: its vertex (.Point)
+
+
+def _line_ends(edge):
+    """Two points of a straight edge: its ends, or for an origin axis (an endless line, no vertices) its point and
+    one step along it."""
+    if edge is None or not hasattr(edge, "Curve"):
+        raise ValueError("Pick a straight edge or an axis")
+    if len(edge.Vertexes) >= 2:
+        return edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+    c = edge.Curve
+    if not hasattr(c, "Direction"):
+        raise ValueError("Pick a straight edge or an axis")
+    return App.Vector(c.Location), App.Vector(c.Location) + App.Vector(c.Direction)
 
 
 def _store(f, data):
@@ -64,15 +81,56 @@ def _attach(doc, f, refs, mode, offset=None):
     for path in (".AttachmentOffset.Base.z", "AttachmentOffset.Base.z"):
         if model.bound_parameter(f, path) is not None:
             f.setExpression(path, None)
+    _same_solid(f, refs)
     f.AttachmentOffset = App.Placement()
-    f.AttachmentSupport = refs
-    f.MapMode = mode
-    doc.recompute([f])
+    try:
+        f.AttachmentSupport = refs
+        f.MapMode = mode
+        doc.recompute([f])
+    except Exception as e:  # FreeCAD's own refusal ("Unknown C++ exception" on two equal points)
+        raise ValueError(_plain(str(e)))
     if "Invalid" in f.State:
-        raise ValueError("These picks don't define the work feature (%s)" % f.getStatusString())
+        raise ValueError(_plain(f.getStatusString()))
     if offset is not None:
         f.AttachmentOffset = offset(App.Placement(f.Placement))
         doc.recompute([f])
+
+
+_PLAIN = (("infinite radius", "Pick a round edge (a circle or an arc)"),
+          ("don't intersect", "These do not meet (parallel?): pick ones that cross"),
+          ("collinear", "The three points lie in a line: pick three that make a triangle"),
+          ("coincident", "Pick two different points"))
+
+
+def _plain(status):
+    """FreeCAD's attacher message in the user's words, where known."""
+    low = (status or "").lower()
+    for key, words in _PLAIN:
+        if key in low:
+            return words
+    return "These picks don't define the work feature (%s)" % status
+
+
+def _same_solid(f, refs):
+    """Picks in the work feature's own Solid (or outside every Solid: origin of the part, a 3D line): another
+    Solid's face or work plane was read in the wrong Solid's coordinates, with no error."""
+    own = f.getParentGeoFeatureGroup()
+    for obj, _ in refs:
+        group = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+        while group is not None and group.TypeId != "PartDesign::Body":  # an origin plane: its Origin's Solid
+            group = group.getParentGeoFeatureGroup() if hasattr(group, "getParentGeoFeatureGroup") else None
+        if group is not None and own is not None and group is not own:
+            raise ValueError("%s is in %s: pick in %s, the Solid this work feature is in" % (
+                obj.Label, group.Label, own.Label))
+
+
+def _straight(doc, text, what):
+    """A straight edge (or an origin / work axis) for an axis along it, else a plain refusal."""
+    pick = _first(doc, text, what)
+    el = _element(*pick)
+    if el is None or not hasattr(el, "Curve") or el.Curve.TypeId != "Part::GeomLine":
+        raise ValueError("Pick a straight edge (for a circle's axis use Axis of a cylinder)")
+    return pick
 
 
 def _bound_offset(f):
@@ -116,12 +174,22 @@ _PLANE_MODES = (("offset", "Offset from plane"), ("parallel_point", "Parallel th
 def _plane_apply(doc, body, f, values):
     mode = values.get("mode") or "offset"
     old = _load(f)
+    if mode != "offset" and series(doc, f):  # the first plane of a row takes another method: the rest stay where
+        _release_row(doc, f)                 # they are, as planes of their own
     if mode == "offset":
         pname = _bound_offset(f)
         _attach(doc, f, [_first(doc, values.get("base"), "a plane or a flat face")], "FlatFace")
         _offset_param(doc, f, values.get("offset") or "10 mm", pname)
         _turn(doc, f, values)
-        _sync_series(doc, f, _plane_count(values.get("count")), values.get("base") or "")
+        owner = _row_owner(doc, f, old, values)
+        count = _plane_count(values.get("count"))
+        if owner is f:
+            _sync_series(doc, f, count, values.get("base") or "")
+        elif count != 1 + len(series(doc, owner)):  # Planes on the 2nd, 3rd... plane: the whole row's count
+            k = old.get("k") or 2
+            if count < k:
+                raise ValueError("This is plane %d of its row: Planes can't be below %d" % (k, k))
+            _sync_series(doc, owner, count, _load(owner).get("base") or "")
     elif mode == "parallel_point":
         base = _first(doc, values.get("base"), "a plane or a flat face")
         free = _is_free(values.get("point"))
@@ -142,6 +210,8 @@ def _plane_apply(doc, body, f, values):
             z = p0.Rotation.multVec(App.Vector(0, 0, 1))
             if fb is None or fb.ShapeType != "Face" or abs(abs(z.dot(fb.normalAt(0, 0))) - 1) > 1e-6:
                 raise ValueError("The two planes must be parallel for a midplane")
+            if abs((fb.Surface.Position - p0.Base).dot(z)) < 1e-6:
+                raise ValueError("The two planes are the same: pick two different ones")
             return App.Placement(App.Vector(0, 0, (fb.Surface.Position - p0.Base).dot(z) / 2.0), App.Rotation())
         _attach(doc, f, [a], "FlatFace", mid)
     elif mode == "angle":
@@ -151,7 +221,8 @@ def _plane_apply(doc, body, f, values):
 
         def turn(p0):
             inv = p0.inverse()
-            l1, l2 = inv.multVec(edge.Vertexes[0].Point), inv.multVec(edge.Vertexes[-1].Point)
+            a, b = _line_ends(edge)
+            l1, l2 = inv.multVec(a), inv.multVec(b)
             if abs(l1.z) > 1e-6 or abs(l2.z) > 1e-6:
                 raise ValueError("The edge must lie in the plane it turns")
             axis = l2 - l1
@@ -169,7 +240,9 @@ def _plane_apply(doc, body, f, values):
             _place_through(doc, body, f, [_point_of(doc, body, i) for i in items])
     elif mode == "normal_edge":
         if _is_free(values.get("point")):  # a marked point that is no corner: fixed where it is now
-            edge = _element(*_first(doc, values.get("edge"), "an edge"))
+            pick = _first(doc, values.get("edge"), "an edge")
+            _same_solid(f, [pick])
+            edge = _element(*pick)
             p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
             u = edge.Curve.parameter(p)
             _set_fixed(doc, f, App.Placement(p, App.Rotation(App.Vector(0, 0, 1), edge.tangentAt(u))))
@@ -178,7 +251,9 @@ def _plane_apply(doc, body, f, values):
                              _first(doc, values.get("point"), "a point")], "NormalToEdge")
     elif mode == "tangent":
         if _is_free(values.get("point")):
-            face = _element(*_first(doc, values.get("face"), "a curved face"))
+            pick = _first(doc, values.get("face"), "a curved face")
+            _same_solid(f, [pick])
+            face = _element(*pick)
             p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
             u, v = face.Surface.parameter(p)
             _set_fixed(doc, f, App.Placement(face.Surface.value(u, v),
@@ -263,6 +338,38 @@ def series(doc, f):
     return sorted(out, key=lambda o: _load(o).get("k") or 0)
 
 
+def _row_owner(doc, f, data, values):
+    """The first plane of the row f stays in: its first plane while f is still offset from the same base (what
+    _plane_apply keeps it in the row for), else f itself."""
+    owner = doc.getObject(data.get("series_of") or "")
+    if owner is None or (values.get("mode") or "offset") != "offset" or (values.get("base") or "") != data.get("base"):
+        return f
+    return owner
+
+
+def _release_row(doc, f):
+    """f's row planes become planes of their own: out of the row, each offset frozen at its value now (it was a
+    formula of f's offset, which f no longer has)."""
+    from incad.core import model
+    for o in series(doc, f):
+        name = _bound_offset(o)
+        if name:
+            model.set_model_parameter(doc, name, "%.12g mm" % o.AttachmentOffset.Base.z, everything=False)
+        data = _load(o)
+        data.pop("series_of", None)
+        data.pop("k", None)
+        _store(o, data)
+
+
+def row_mate(doc, f, obj):
+    """obj when it is another plane of f's row (the first plane or one its Planes count made), else None: clicking
+    it while f's dialog is open moves the dialog and its rings there (the user)."""
+    if f is None or obj is None or obj is f or obj.TypeId != "PartDesign::Plane":
+        return None
+    owner = doc.getObject(_load(f).get("series_of") or "") or f
+    return obj if obj is owner or obj in series(doc, owner) else None
+
+
 def _sync_series(doc, f, count, base):
     """Planes 2..count of f's series at 2x, 3x... its offset from the same base, each with its own value (a formula of
     f's: 'd5 * 2'), so a changed offset spaces them all and one plane can still be moved on its own."""
@@ -312,16 +419,23 @@ def format_point_picks(body, base, points):
     """Clicked marker points (global) as the Points field's text: a corner of the part's own shape as its
     vertex (the plane follows it), anything else (an edge middle, a circle centre, another Solid's corner, a
     sketch point) as '@x y z', global."""
+    from incad.features import line3d
     out = []
-    shape = base.Shape if base is not None and not base.Shape.isNull() else None
+    owners = [base] if base is not None and not base.Shape.isNull() else []
+    if body is not None:  # a 3D line's corner in the same Solid: the feature follows the line too (the user)
+        owners += [o for o in body.Group if line3d.claims(o) and not o.Shape.isNull()]
     g = _to_global(body)
+    marks = [o for o in body.Group if o.TypeId == "PartDesign::Point"] if body is not None else []
     for p in points:
-        item = None
-        if shape is not None:
-            for i, v in enumerate(shape.Vertexes):
+        item = next((o.Name for o in marks if (g.multVec(o.Placement.Base) - p).Length < 1e-6), None)  # a work
+        for owner in owners if item is None else ():                                                  # point
+
+            for i, v in enumerate(owner.Shape.Vertexes):
                 if (g.multVec(v.Point) - p).Length < 1e-6:
-                    item = "%s:Vertex%d" % (base.Name, i + 1)
+                    item = "%s:Vertex%d" % (owner.Name, i + 1)
                     break
+            if item:
+                break
         out.append(item or "@%.9g %.9g %.9g" % (p.x, p.y, p.z))
     return ",".join(out)
 
@@ -418,7 +532,7 @@ def _plane_read(doc, f):
     pname = model.bound_parameter(f, ".AttachmentOffset.Base.z") or model.bound_parameter(f, "AttachmentOffset.Base.z")
     if pname:
         values["offset"] = model.parameter_text(doc, pname)
-    values["count"] = str(1 + len(series(doc, f)))
+    values["count"] = str(1 + len(series(doc, _row_owner(doc, f, data, values))))
     if values["mode"] == "offset":
         values["turn_ref"] = values.get("turn_ref") or "previous"
         values.update(turn_text(doc, f, values["turn_ref"]))
@@ -437,20 +551,21 @@ PLANE = SimpleNamespace(
             Field("base", "Plane", "pick", pick="plane",
                   show_if=_modes("offset", "parallel_point", "midplane", "angle")),
             Field("base2", "Second plane", "pick", pick="plane", show_if=_modes("midplane")),
-            Field("offset", "Offset", "value_length", default="10 mm", show_if=_modes("offset")),
+            Field("offset", "Offset", "value_length", default="10 mm", show_if=_modes("offset"), signed=True),
             Field("count", "Planes", "value_length", default="1", show_if=_modes("offset")),
             Field("turn_ref", "Turn", "choice", (("previous", "Prev"), ("global", "Global")), "previous",
                   show_if=_modes("offset")),
-            Field("turn_x", "X", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
-            Field("turn_y", "Y", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
-            Field("turn_z", "Z", "value_angle", default="0 °", show_if=_modes("offset"), same_row=True),
-            Field("edge", "Edge", "pick", pick="edge", show_if=_modes("angle", "normal_edge")),
+            Field("turn_x", "X", "value_angle", default="0 °", show_if=_modes("offset"), signed=True, same_row=True),
+            Field("turn_y", "Y", "value_angle", default="0 °", show_if=_modes("offset"), signed=True, same_row=True),
+            Field("turn_z", "Z", "value_angle", default="0 °", show_if=_modes("offset"), signed=True, same_row=True),
+            Field("edge", "Edge", "pick", pick="edge_axis", show_if=_modes("angle", "normal_edge")),
             Field("angle", "Angle", "value_angle", default="90 °", show_if=_modes("angle")),
             Field("face", "Surface", "pick", pick="face", show_if=_modes("tangent")),
             Field("point", "Point", "pick", pick="marked_point",
                   show_if=_modes("parallel_point", "normal_edge", "tangent")),
             Field("points", "Points", "picks", pick="three_points", show_if=_modes("three_points"))),
     defaults=_plane_defaults, create=_plane_create, read=_plane_read, update=_plane_update, _pad_of=lambda f: f,
+    switch_to=row_mate,
     overlay=lambda shell, session: __import__("incad.ui.plane_turn", fromlist=["x"]).plane_overlay(shell, session))
 
 
@@ -463,7 +578,7 @@ _AXIS_MODES = (("edge", "On edge"), ("two_points", "Two points"), ("intersection
 def _axis_apply(doc, body, f, values):
     mode = values.get("mode") or "edge"
     if mode == "edge":
-        _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "TwoPointLine")
+        _attach(doc, f, [_straight(doc, values.get("edge"), "an edge")], "TwoPointLine")
     elif mode == "two_points":
         items = [i.strip() for i in (values.get("points") or "").split(",") if i.strip()]
         if len(items) != 2:
@@ -478,7 +593,9 @@ def _axis_apply(doc, body, f, values):
                          _first(doc, values.get("base2"), "the second plane")], "IntersectionLine")
     elif mode == "normal_plane":
         if _is_free(values.get("point")):
-            face = _element(*_first(doc, values.get("base"), "a plane or a flat face"))
+            pick = _first(doc, values.get("base"), "a plane or a flat face")
+            _same_solid(f, [pick])
+            face = _element(*pick)
             p = _local(doc, body or f.getParentGeoFeatureGroup(), values["point"])
             _set_fixed(doc, f, App.Placement(p, App.Rotation(App.Vector(0, 0, 1),
                                                              face.normalAt(*face.Surface.parameter(p)))))
@@ -500,7 +617,7 @@ def _axis_apply(doc, body, f, values):
         def through(p0):
             local = p0.inverse().multVec(at)
             return App.Placement(App.Vector(local.x, local.y, 0), App.Rotation())
-        _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "TwoPointLine", through)
+        _attach(doc, f, [_straight(doc, values.get("edge"), "an edge")], "TwoPointLine", through)
     else:
         raise ValueError("Unknown work axis method %r" % mode)
     _store(f, {k: values.get(k, "") for k in ("mode", "edge", "points", "base", "base2", "point", "face")})
@@ -603,17 +720,45 @@ def _point_apply(doc, body, f, values):
             _attach(doc, f, [_first(doc, values.get("vertex"), "a point")], "Vertex")
     elif mode == "center":
         _attach(doc, f, [_first(doc, values.get("edge"), "a round edge")], "CenterOfCurvature")
-    elif mode == "midpoint":
-        _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "CenterOfMass")
+    elif mode == "midpoint":  # halfway along the edge (CenterOfMass was the centroid: off an arc, inside it)
+        f.MapPathParameter = 0.5
+        _attach(doc, f, [_first(doc, values.get("edge"), "an edge")], "OnEdge")
     elif mode == "edge_plane":
-        _attach(doc, f, [_first(doc, values.get("edge"), "an edge"),
-                         _first(doc, values.get("base"), "a plane")], "ProximityPoint1")
+        edge, base = _first(doc, values.get("edge"), "an edge"), _first(doc, values.get("base"), "a plane")
+        _attach(doc, f, [edge, base], "ProximityPoint1")
+        _check_meets(f, [edge], [base], "The edge does not cross the plane")
     elif mode == "two_edges":
-        _attach(doc, f, [_first(doc, values.get("edge"), "the first edge"),
-                         _first(doc, values.get("edge2"), "the second edge")], "ProximityPoint1")
+        a = _first(doc, values.get("edge"), "the first edge")
+        b = _first(doc, values.get("edge2"), "the second edge")
+        _attach(doc, f, [a, b], "ProximityPoint1")
+        _check_meets(f, [a, b], [], "The two edges do not meet")
     else:
         raise ValueError("Unknown work point method %r" % mode)
     _store(f, {k: values.get(k, "") for k in ("mode", "vertex", "edge", "edge2", "base")})
+
+
+def _check_meets(f, curves, planes, words):
+    """ProximityPoint1 gives the nearest point even where nothing meets: the point must lie on every edge (a
+    straight one taken endless, as the edge meets the plane past its end too) and on every plane (endless)."""
+    import Part
+    p, tol = f.Placement.Base, 1e-6  # in the body, as the picks' shapes
+    for obj, sub in curves:
+        el = _element(obj, sub)
+        if el is None or not hasattr(el, "Curve"):
+            continue
+        if el.Curve.TypeId == "Part::GeomLine":
+            d = App.Vector(el.Curve.Direction).normalize()
+            off = p - App.Vector(el.Curve.Location)
+            off_line = (off - d * off.dot(d)).Length
+        else:
+            off_line = Part.Vertex(p).distToShape(el)[0]
+        if off_line > tol:
+            raise ValueError(words)
+    for obj, sub in planes:
+        el = _element(obj, sub)
+        if el is not None and hasattr(el, "Surface") and hasattr(el.Surface, "Position"):
+            if abs((p - App.Vector(el.Surface.Position)).dot(el.normalAt(0, 0))) > tol:
+                raise ValueError(words)
 
 
 def _point_create(doc, body, profile, values):

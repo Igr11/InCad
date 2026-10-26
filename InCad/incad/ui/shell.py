@@ -1052,7 +1052,7 @@ class Shell(QtCore.QObject):
         if info:
             obj = doc.getObject(info["Object"]) if info.get("Document") == doc.Name else None
             datum = obj is not None and (obj.TypeId in document.ORIGIN_TYPES or obj.TypeId in document.DATUM_TYPES)
-            if obj is not None and (datum or obj.TypeId == "Sketcher::SketchObject"):
+            if obj is not None and (datum or document.is_sketch_like(obj)):
                 # a shown plane, axis or point (origin or work feature), or a shown sketch: the object's own menu
                 # (as from its tree row); the tree's old selection steps aside so Hide / Show acts on what is
                 # under the cursor
@@ -1060,7 +1060,7 @@ class Shell(QtCore.QObject):
                 self.browser.tree.clearSelection()
                 Gui.Selection.clearSelection()
                 Gui.Selection.addSelection(doc.Name, obj.Name)
-                kind = "origin" if datum else "browser"
+                kind = "origin" if obj.TypeId in document.ORIGIN_TYPES else "browser"  # a work plane: Edit too
                 return self._show_marking_menu(kind, global_pos, flick, top=self._session_finish())
             comp = info.get("Component", "")
             kind = "edge" if comp.startswith("Edge") else "vertex" if comp.startswith("Vertex") else "face"
@@ -1176,7 +1176,7 @@ class Shell(QtCore.QObject):
                 document.set_visibility([obj], True, record=False)  # a look, not a choice
             except Exception:
                 pass
-        elif obj.TypeId == "Sketcher::SketchObject" or obj.TypeId in document.DATUM_TYPES:
+        elif document.is_sketch_like(obj) or obj.TypeId in document.DATUM_TYPES:
             if obj.Visibility:
                 return
             self._peeked = (obj.Document.Name, obj.Name, [(obj, False)])
@@ -1984,6 +1984,27 @@ class Shell(QtCore.QObject):
         elif self.feature_session is not None:
             self.feature_session.insert(name)
 
+    def _edit_plane_at(self, view, viewport, x, y):
+        """A double-click on a work plane in the view: its Work Plane dialog (the user: not a sketch, and not
+        FreeCAD's own attachment panel). What is under the pointer, as the right-click menu finds it (the
+        preselection names the Body, and is empty when no hover reached the view)."""
+        import FreeCAD as App
+        if self.feature_session is not None:
+            return False
+        doc = App.ActiveDocument
+        try:
+            info = view.getObjectInfo(to_coin(viewport, x, y)) if doc is not None else None
+            obj = doc.getObject(info["Object"]) if info and info.get("Document") == doc.Name else None
+            if obj is None or obj.TypeId != "PartDesign::Plane":
+                return False
+        except (RuntimeError, KeyError):  # the object under the pointer was just deleted
+            return False
+        try:
+            self.edit_feature(obj)
+        except ValueError as e:
+            log.report("warning", str(e))
+        return True
+
     @staticmethod
     def _preselected_dimension():
         """(sketch, name) of the dimension under the cursor, or (None, None)."""
@@ -2067,7 +2088,7 @@ class Shell(QtCore.QObject):
 
     def _dblclick_hook(self, view, viewport, x, y):
         if self.sketches.editing() is None:
-            return False
+            return self._edit_plane_at(view, viewport, x, y)
         sk, name = self._preselected_pattern_copy()  # a copy opens its pattern; the original keeps its meaning
         if name is not None:
             try:

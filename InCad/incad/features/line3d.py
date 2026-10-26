@@ -80,6 +80,18 @@ class Line3DFeature:
         return None
 
 
+def marker_points(f):
+    """[(kind, global point)] a Point field offers on the 3D line (the user: a plane at its start for a loft): its
+    ends and every point it passes through (a spline on control points passes only through its ends)."""
+    s = settings(f)
+    pts = [App.Vector(*p) for p in s.get("points") or []]
+    if (s.get("shape") or "polyline") == "spline":
+        pts = pts[:1] + pts[-1:]
+    group = f.getParentGeoFeatureGroup()
+    g = group.getGlobalPlacement().multiply(f.Placement) if group is not None else f.Placement
+    return [("corner", g.multVec(p)) for p in pts]
+
+
 def defaults(doc, body, profile=None):
     return {f.key: f.default for f in FIELDS if f.key != "points"} | {"points": ""}
 

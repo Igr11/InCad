@@ -10,6 +10,13 @@ rc=0
 for f in $files; do
   TMP="$(mktemp -d)"; OUT="$TMP/result.json"
   echo "== ${f:t}"
+  # the pointer out of the way, on the menu bar: resting over the 3D view, its hover took a test's simulated click
+  # on a dialog button (OK did nothing) — InnCad Plus's test_in_app.sh does the same
+  /usr/bin/python3 -c "import ctypes as c
+g = c.cdll.LoadLibrary('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
+class P(c.Structure): _fields_ = [('x', c.c_double), ('y', c.c_double)]
+g.CGWarpMouseCursorPosition.argtypes = [P]; g.CGWarpMouseCursorPosition(P(g.CGDisplayPixelsWide(g.CGMainDisplayID()) / 2, 3))" \
+    2>/dev/null
   FREECAD_USER_TEMP="$TMP" INCAD_REPO="$REPO" INCAD_GUI_OUT="$OUT" INCAD_LOG="$TMP/incad.log" PYTHONDONTWRITEBYTECODE=1 \
     "$FC" -u "$TMP/user.cfg" "${f:A}" >"$TMP/fc.log" 2>&1 &
   pid=$!

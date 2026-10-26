@@ -117,6 +117,7 @@ class FeatureSession(QtCore.QObject):
         self._applied = None
         self._closed = False
         self._again = False
+        self._then = None  # what opens once this dialog is committed (another plane of the row clicked)
         self._committed = False
         self._base_shown = None  # the base feature shown instead of the preview while picking geometry
         self._extra = []  # other documents this dialog changes (assembly cuts): one undo step in each
@@ -250,9 +251,10 @@ class FeatureSession(QtCore.QObject):
                     self.dialog.set_options(f.key, items)
 
     # ----- picking from the 3D view -----
-    _GEOMETRY = ("edge", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "round", "hole_face", "limit",
+    _GEOMETRY = ("edge", "edge_axis", "face", "vertex", "axis", "rot_axis", "plane", "circular_edge", "round", "hole_face", "limit",
                  "to_face", "direction", "emboss_face")
     _PICK_WORDS = {"direction": "a flat face or a straight edge",  # 'Select … for First'; else the pick's own name
+                   "edge_axis": "an edge or an axis",
                    "to_face": "a face, a plane or a point",
                    "rot_axis": "an axis, a straight or circular edge, or a round face",
                    "emboss_face": "a round (cylinder, cone or sphere) or a flat face",
@@ -590,6 +592,27 @@ class FeatureSession(QtCore.QObject):
             return base
         return self.body.Tip if self.body is not None else None
 
+    def _pick_base(self):
+        """What picks are named on and must lie on: the expected base; for a work feature being edited (it has no
+        BaseFeature) its Solid as it stands at the feature: corners re-clicked on its Edit were fixed points, the
+        plane no longer followed the part, and another Solid's picks were taken."""
+        if self.feature is not None and self.feature.TypeId in self._DATUMS:
+            return self._solid_before(self.feature)
+        return self._expected_base()
+
+    def _solid_before(self, f):
+        """The Solid's shape as it stands at f: the last solid feature before f in its Solid (the Tip if none)."""
+        body = f.getParentGeoFeatureGroup()
+        if body is None or body.TypeId != "PartDesign::Body":
+            return None
+        before = None
+        for o in body.Group:
+            if o is f:
+                break
+            if hasattr(o, "BaseFeature") and o.TypeId not in self._DATUMS and not o.Shape.isNull():
+                before = o
+        return before or body.Tip
+
     def _retarget_body(self, pairs):
         """A pick on another Solid of the part before the feature exists: the feature goes to that Solid (a box
         drawn away from the part is its own Solid; Shell on its face hollows the box). A box left in the part's
@@ -658,7 +681,7 @@ class FeatureSession(QtCore.QObject):
                 values[key] = common.format_picks([changed.get(pr, pr) for pr in parsed])
 
     def _off_base(self, pairs):
-        base = self._expected_base()
+        base = self._pick_base()
         if base is None:
             return []
         return [o for o, el in pairs if el and o is not base and o.TypeId.startswith("PartDesign::")
@@ -673,9 +696,44 @@ class FeatureSession(QtCore.QObject):
     def setSelection(self, doc):
         QtCore.QTimer.singleShot(0, self._selection_changed)
 
+    def _switch_to_picked(self):
+        """A click on another feature of the same set (a plane of the row): this one is kept as the dialog shows it
+        (OK) and that one's dialog opens, its rings on it."""
+        hook = getattr(self.kind, "switch_to", None)
+        if hook is None or self.feature is None or self._then is not None:
+            return False
+        other = None
+        for obj, _ in self._selection():
+            other = hook(self.doc, self.feature, obj)
+            if other is not None:
+                break
+        if other is None:
+            return False
+        name, doc_name = other.Name, self.doc_name
+
+        def reopen():
+            import FreeCAD as App
+            from incad.ui import shell
+            doc = App.getDocument(doc_name) if doc_name in App.listDocuments() else None
+            obj = doc.getObject(name) if doc is not None else None
+            if obj is not None:
+                try:
+                    import FreeCADGui as Gui
+                    Gui.Selection.clearSelection()
+                    shell.edit_feature(obj)
+                except Exception as e:
+                    log.report("warning", "%s: %s" % (self.kind.TITLE, e))
+        self._then = reopen
+        self.ok()
+        if not self._closed and not self._previewing:  # OK refused (an error shows): stay on this one
+            self._then = None
+        return True
+
     def _selection_changed(self):
         from incad.features import common
         if self._closed or self.dialog is None or self._seeding:
+            return
+        if self._switch_to_picked():
             return
         key = self.dialog.active_pick()
         if key is None:
@@ -703,7 +761,7 @@ class FeatureSession(QtCore.QObject):
             pairs = [(o, el) for o, el in pairs if o.Name not in taken]
         pairs = self._retarget_body(pairs)
         if f.pick in self._GEOMETRY and f.pick not in self._ANYWHERE and self._off_base(pairs):
-            self.dialog.set_error("Pick on the current shape (%s)" % self._expected_base().Label)
+            self.dialog.set_error("Pick on the current shape (%s)" % self._pick_base().Label)
             return
         ok = common.whole(f.pick, [p for p in pairs if common.accepts(f.pick, *p)])
         if pairs and not ok:
@@ -757,7 +815,7 @@ class FeatureSession(QtCore.QObject):
         # the result drawn over the part as outlines whenever the part is shown for a pick (Fillet / Chamfer's
         # preview, and Move Face, Draft… whose result was not on screen at all while faces were picked)
         self._sync_ghost(bool(key) and (self._previewing_picks(key) or self._base_shown is not None))
-        self._peek_axes(bool(key) and self.dialog.field_def(key).pick in ("axis", "rot_axis"))
+        self._peek_axes(bool(key) and self.dialog.field_def(key).pick in ("axis", "rot_axis", "edge_axis"))
         if seed and key:
             self._seed_selection(key)
         self._sync_point_pick(key)
@@ -878,6 +936,7 @@ class FeatureSession(QtCore.QObject):
     def _marker_points(self, pick):
         """[(kind, point)] to click: the base and the profile for an axis; for a work plane, as in Section, every
         Solid of the part that is shown, and the shown sketches."""
+        import FreeCAD as App
         from incad.core import document, section
         base = self._expected_base()
         if pick in ("three_points", "axis_points", "marked_point") and self.body is not None:  # global, as drawn
@@ -892,12 +951,24 @@ class FeatureSession(QtCore.QObject):
         else:
             shapes = [base.Shape if base is not None else None,
                       self.profile.Shape if self.profile is not None else None]
-        points = []
+        found = []
         for shape in shapes:
             if shape is not None and not shape.isNull():
-                for kind, p in section.snap_points(shape):
-                    if not any((p - q).Length < 1e-6 for _, q in points):
-                        points.append((kind, p))
+                found += section.snap_points(shape)
+        if pick in ("three_points", "axis_points", "marked_point"):
+            from incad.features import line3d  # a 3D line's ends and the points it passes through (the user)
+            for o in self.doc.Objects:
+                if line3d.claims(o) and document.is_shown(o):
+                    found += line3d.marker_points(o)
+                elif o.TypeId == "PartDesign::Point" and o is not self.feature and document.is_shown(o) \
+                        and "Invalid" not in o.State:  # a work point (an axis through two of them)
+                    group = o.getParentGeoFeatureGroup()
+                    g = group.getGlobalPlacement() if group is not None else App.Placement()
+                    found.append(("corner", g.multVec(o.Placement.Base)))
+        points = []
+        for kind, p in found:
+            if not any((p - q).Length < 1e-6 for _, q in points):
+                points.append((kind, p))
         return points
 
     def _points_picked(self, key, points):
@@ -907,7 +978,7 @@ class FeatureSession(QtCore.QObject):
             return
         if self.dialog.field_def(key).pick in ("three_points", "axis_points", "marked_point"):
             from incad.features import work
-            text = work.format_point_picks(self.body, self._expected_base(), points)
+            text = work.format_point_picks(self.body, self._pick_base(), points)
         else:
             text = revolve.format_points(points)
         self.dialog.set_pick(key, text)  # emits changed: the preview follows
@@ -1732,7 +1803,7 @@ class FeatureSession(QtCore.QObject):
             return
         for sk in self.doc.Objects:
             text = getattr(sk, "InCadText", None) is not None  # a Text an Extrude used: its letters hidden too
-            if (sk.TypeId != "Sketcher::SketchObject" and not text) or not sk.Visibility and \
+            if (not document.is_sketch_like(sk) and not text) or not sk.Visibility and \
                     not getattr(sk, document.SHOWN_PROP, False):
                 continue
             try:
@@ -1762,6 +1833,9 @@ class FeatureSession(QtCore.QObject):
                 self.dialog = None
             if self._on_close is not None:
                 self._on_close(self)
+            then, self._then = self._then, None
+            if then is not None and self._committed:
+                QtCore.QTimer.singleShot(0, then)
 
     def _finish_steps(self, commit):
         self._committed = commit

@@ -118,7 +118,7 @@ def profile_of(feature):
     return _profile(feature)
 
 
-_PLURAL = {"edge": "edges", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
+_PLURAL = {"edge": "edges", "edge_axis": "edges or axes", "face": "faces", "feature": "features", "vertex": "points", "axis": "axes",
            "plane": "planes", "sketch": "sketches", "path": "paths", "circular_edge": "edges", "cylinder": "faces", "body": "solids", "element": "items", "component": "components",
            "direction": "faces or edges", "move_to": "items"}
 
@@ -338,6 +338,10 @@ def accepts(kind, obj, sub):
         return _accepts_sketch(kind, obj, sub)
     el = _element(obj, sub)
     if kind == "edge":
+        return sub.startswith("Edge") and el is not None
+    if kind == "edge_axis":  # a work plane's edge: any edge, or an origin / work axis (turn a plane about X)
+        if not sub:
+            return tid in ("App::Line", "PartDesign::Line")
         return sub.startswith("Edge") and el is not None
     if kind == "circular_edge":
         return sub.startswith("Edge") and el is not None and safe.curve_type(el) == "Part::GeomCircle"

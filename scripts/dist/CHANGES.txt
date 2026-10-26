@@ -5,6 +5,39 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.11.4
+-----
+Every plane of a row can be edited and turned; work features on 3D Line points and work points; work feature fixes.
+
+Improvements
+- Double-click a work plane (in the browser or in the view), or Edit on its menu: its Work Plane dialog opens. New
+  Sketch on a work plane is on its right-click menu; a right-click on a work plane in the view gives its browser row's
+  menu.
+- Planes: every plane of a row has its own dialog - its offset along its normal and its own Turn, rings on it. With a
+  row's dialog open, a click on another plane of the row keeps what was set and moves the dialog and the rings there.
+- Point fields offer a 3D Line's ends and the points it passes through, and work points. Normal to edge at point on a
+  segment of a 3D Line and its end gives the plane for a loft along it. A corner of a 3D Line or a work point is kept
+  as that point: the work feature follows it.
+- Work Plane > Angle around edge and Normal to edge at point take an origin or work axis as the edge.
+- Offset and Turn step below zero with the arrows and the mouse wheel.
+
+Bug fixes
+- Only the first plane of a row could be turned: the others had no dialog (a double-click started a sketch).
+- Planes typed on the second or third plane of a row made a second row on top; it now sets the whole row's count.
+- The first plane of a row switched to another method kept the others tied to it; they now stay where they are, as
+  planes of their own.
+- Angle around edge about an origin axis failed.
+- Corners clicked again in a work feature's Edit became fixed points: the feature no longer followed the part.
+- On Edit, a work feature took a pick in another Solid and landed in the wrong place; it now says so.
+- Work Point > Midpoint of edge on an arc or a curve was off the edge; it is halfway along the edge now.
+- Work Point > Edge meets plane and Two edges meet put a point even where nothing meets; they now say so.
+- Work Axis > On edge took a circle and placed a meaningless axis; it asks for a straight edge.
+- A 3D Line (and a sketch's Text) could not be hidden ("Nothing to hide or show"): Hide / Show, Show All /
+  Hide All Sketches and the browser treat them as sketches; a 3D Line a Sweep uses hides, as a used sketch does.
+- Midplane between a face and itself was accepted.
+- Picks that cannot work (parallel planes, three points in a line, the same point twice) are refused in plain words.
+
+
 0.11.3
 -----
 Hide Edges works after the Shaded button.

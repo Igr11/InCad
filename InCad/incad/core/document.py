@@ -613,7 +613,7 @@ def show_result(body):
         except Exception:
             pass
     for o in body.Group:  # profile sketches shouldn't linger in the model view after a tip move; an unused
-        if o.TypeId == "Sketcher::SketchObject":  # sketch follows the user's choice, else its shape
+        if _follows_sketch_rule(o):  # a sketch or 3D Line follows the user's choice, else its shape
             try:
                 _set_visible(o, sketch_shown(o))
             except Exception:
@@ -633,9 +633,27 @@ ORIGIN_TYPES = ("App::Plane", "App::Line", "App::Point")
 DATUM_TYPES = ("PartDesign::Plane", "PartDesign::Line", "PartDesign::Point")  # work planes, axes, points
 
 
+def is_line3d(o):
+    from incad.features import line3d
+    return getattr(o, "TypeId", "") == "Part::Part2DObjectPython" and line3d.claims(o)
+
+
+def is_sketch_like(o):
+    """A sketch, a sketch's Text or a 3D Line: hidden and shown as sketches are (the user: a 3D Line could not be
+    hidden, it should be treated as a regular sketch)."""
+    from incad.features import sketch_text
+    return getattr(o, "TypeId", "") == "Sketcher::SketchObject" or sketch_text.is_text(o) or is_line3d(o)
+
+
+def _follows_sketch_rule(o):
+    """What the part view shows by the sketch rule (used: hidden; unused: an open path shown): sketches and 3D
+    Lines (always an open path). A Text keeps its own rule; only a Hide / Show choice of the user's applies to it."""
+    return getattr(o, "TypeId", "") == "Sketcher::SketchObject" or is_line3d(o)
+
+
 def is_unused_sketch(sk):
     from incad.features import common
-    return getattr(sk, "TypeId", "") == "Sketcher::SketchObject" and not common.consumers(sk)
+    return _follows_sketch_rule(sk) and not common.consumers(sk)
 
 
 def sketch_shown(sk):
@@ -648,7 +666,7 @@ def sketch_shown(sk):
         return bool(getattr(sk, SHOWN_PROP))
     if not is_unused_sketch(sk):
         return False
-    return sketches.is_open_contour(sk)
+    return is_line3d(sk) or sketches.is_open_contour(sk)
 
 
 def origin_items(body):
@@ -691,9 +709,8 @@ def prepare_choice(objects):
     the transaction, so the step changes a value FreeCAD can restore (a property added inside the step would be
     removed by undo, taking the previous state with it)."""
     for o in list(objects) + [s for s in (_solid_of(x) for x in objects) if s is not None]:
-        if SHOWN_PROP not in o.PropertiesList and (o.TypeId in ORIGIN_TYPES + DATUM_TYPES
-                                                    or o.TypeId in ("Sketcher::SketchObject", "PartDesign::Body",
-                                                                    "App::Link")):
+        if SHOWN_PROP not in o.PropertiesList and (o.TypeId in ORIGIN_TYPES + DATUM_TYPES or is_sketch_like(o)
+                                                    or o.TypeId in ("PartDesign::Body", "App::Link")):
             _record_choice(o, is_shown(o))
 
 
@@ -739,10 +756,14 @@ def apply_visibility(doc):
             if not chosen:
                 continue
             want = bool(getattr(o, SHOWN_PROP)) and not rolled_back_by_end(o)
-        elif o.TypeId == "Sketcher::SketchObject":
+        elif _follows_sketch_rule(o):
             if not chosen and is_unused_sketch(o):
                 continue
             want = sketch_shown(o)
+        elif is_sketch_like(o):  # a Text: only the user's choice
+            if not chosen:
+                continue
+            want = bool(getattr(o, SHOWN_PROP)) and not rolled_back_by_end(o)
         elif o.TypeId in ("PartDesign::Body", "App::Link") and chosen:  # a Solid / component hidden by choice
             want = bool(getattr(o, SHOWN_PROP))
             _tip_follows(o, want)
@@ -790,7 +811,7 @@ def _solid_of(o):
 def visibility_targets(objects):
     """What Hide / Show acts on for the picked objects: sketches, planes, axes and points as they are; anything of a
     Solid (a face, a feature) means that whole Solid; an assembly's component means the component."""
-    targets = [o for o in objects if o.TypeId == "Sketcher::SketchObject" or o.TypeId in ORIGIN_TYPES
+    targets = [o for o in objects if is_sketch_like(o) or o.TypeId in ORIGIN_TYPES
                or o.TypeId in DATUM_TYPES or hasattr(o, "InCadMeshReference")  # InnCad Plus: an STL Reference,
                or hasattr(o, "InCadImportedSurfaces")]  # an STL's surfaces
     targets += [s for s in dict.fromkeys(_solid_of(o) for o in objects if o not in targets) if s is not None]

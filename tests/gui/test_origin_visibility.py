@@ -216,14 +216,15 @@ def test_7_right_click_on_a_work_plane_in_the_view_offers_hide_show():
     _send("press", pos, QtCore.Qt.RightButton, QtCore.Qt.RightButton)
     _send("release", pos, QtCore.Qt.RightButton, QtCore.Qt.NoButton)
     harness.pump(300)
-    assert sh.menu_kind == "origin", sh.menu_kind
+    assert sh.menu_kind == "browser", sh.menu_kind  # its tree row's menu: Edit, Hide, Show...
     assert context.target() == wp.Name
     from incad.ui import marking_layout
     _, items = marking_layout.resolve(sh.menu_kind, commands.REGISTRY)
-    assert any(c.id == "view.toggle_visibility" for c in items), [c.id for c in items]
+    ids = [c.id for c in items]
+    assert "browser.edit" in ids and "view.hide" in ids and "view.show" in ids, ids
     sh.marking_menu.close()
     harness.pump(200)
-    r = commands.REGISTRY.run("view.toggle_visibility")
+    r = commands.REGISTRY.run("view.hide")
     assert r.ok, r.error
     harness.pump(400)
     assert not wp.Visibility and not document.is_shown(wp)
