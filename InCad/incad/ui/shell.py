@@ -10,7 +10,7 @@ import traceback
 from incad import host
 from incad.core import commands, log, perf, prefs
 from incad.qt import dispose, QAction, QtCore, QtGui, QtWidgets
-from incad.ui import ribbon_layout
+from incad.ui import fresh_redraw, ribbon_layout
 from incad.ui import theme as themes
 from incad.ui.browser import ModelBrowser
 from incad.ui.ribbon import Ribbon
@@ -385,7 +385,7 @@ class Shell(QtCore.QObject):
         self._hover_watch = None
         self._polygons_from = {}
         self._rects_from = {}  # per sketch: where the geometry drawn since it was opened starts
-        self._rects_done = {}  # per sketch: the rectangles given their diagonals (geometry ids)
+        self._rects_done = {}  # per sketch: the rectangles given their centre point (geometry ids)
         self._rects_pending = []  # the sketch whose rectangle check waits for a quiet moment
         self.marking_menu = None
         self.menu_kind = None
@@ -1973,7 +1973,7 @@ class Shell(QtCore.QObject):
                 self._polygons_from[key] = sk.GeometryCount
                 return
             if sketches.pin_polygon_centres(sk, first):
-                sk.Document.recompute()
+                sk.Document.recompute([sk])  # the open sketch only: the part follows when it closes
             self._polygons_from[key] = sk.GeometryCount
         except Exception as e:
             log.report("warning", "Could not keep the polygon's centre constraint: %s" % e)
@@ -1986,15 +1986,15 @@ class Shell(QtCore.QObject):
             timer = self._rects_timer = QtCore.QTimer()
             timer.setSingleShot(True)
             timer.setInterval(350)
-            timer.timeout.connect(lambda: self._rects_pending and self._diagonals_for_new_rectangles(
+            timer.timeout.connect(lambda: self._rects_pending and self._centres_for_new_rectangles(
                 self._rects_pending.pop()) if self._rects_pending else None)
         self._rects_pending = [sk]
         timer.start()
 
-    def _diagonals_for_new_rectangles(self, sk):
-        """A rectangle drawn since the sketch was opened gets its diagonals and centre point as construction (the
-        user: for orientation, later connections and one-constraint symmetry). Every change looks again — FreeCAD's
-        tool adds the lines before their corner ties — and each rectangle is handled once."""
+    def _centres_for_new_rectangles(self, sk):
+        """A rectangle drawn since the sketch was opened gets a construction centre point (the user: one-constraint
+        symmetry). Every change looks again — FreeCAD's tool adds the lines before their corner ties — and each
+        rectangle is handled once."""
         from incad.core import sketch as sketches
         if not _alive(sk) or self.sketches.editing() is not sk:
             return
@@ -2006,11 +2006,11 @@ class Shell(QtCore.QObject):
             ours = self.__dict__.setdefault("_rects_ours", {}).setdefault(key, set())  # our centre points
             changed = sketches.drop_doubled_centres(sk, ours) if ours else 0
             if sk.GeometryCount > first:
-                changed += sketches.add_rectangle_diagonals(sk, first, self._rects_done.setdefault(key, set()), ours)
+                changed += sketches.add_rectangle_centres(sk, first, self._rects_done.setdefault(key, set()), ours)
             if changed:
-                sk.Document.recompute()
+                sk.Document.recompute([sk])  # the open sketch only (the whole part took long: a thread)
         except Exception as e:
-            log.report("warning", "Could not add the rectangle's diagonals: %s" % e)
+            log.report("warning", "Could not add the rectangle's centre point: %s" % e)
 
     def _apply_from_box(self, name, text):
         """The value box applies to its own sketch's document; returns (ok, error) so the box can stay red."""
@@ -2791,6 +2791,7 @@ class Shell(QtCore.QObject):
         if prefs.navigation_enabled():
             params.write(themes.VIEW_GROUP, NAV_VALUES)
             self.navigator.attach_all()
+        fresh_redraw.attach_all()  # a sketch's view keeps up with the mouse
 
     def _remove_hooks(self):
         import FreeCAD as App
@@ -2804,6 +2805,7 @@ class Shell(QtCore.QObject):
                 pass
         if self.navigator is not None:
             self.navigator.detach_all()
+        fresh_redraw.detach_all()
         log.set_reporter(None)
         from incad.core import safe
         safe.set_refused_hook(None)
@@ -3174,6 +3176,7 @@ class Shell(QtCore.QObject):
             act.setEnabled(commands.ANY in ctx or mode in ctx)
         if self.navigator is not None and prefs.navigation_enabled():
             self.navigator.attach_all()
+        fresh_redraw.attach_all()  # new views too
         if self.strip is not None:
             self.strip.refresh_checks()
         self._raise_overlays()

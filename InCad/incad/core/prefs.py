@@ -201,3 +201,12 @@ def assembly_axes():
 
 def set_assembly_axes(value):
     _s().set("bool", "AssemblyAxes", bool(value))
+
+
+def pick_radius_widened():
+    """incad.ui.pick_radius has doubled FreeCAD's pick radius for a Retina screen (once: a value set later stays)."""
+    return bool(_s().get("bool", "PickRadiusWidened", False))
+
+
+def set_pick_radius_widened(value):
+    _s().set("bool", "PickRadiusWidened", bool(value))

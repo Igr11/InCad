@@ -8,6 +8,8 @@ def close_edit(gdoc):
     under FreeCAD's Dimension tool crashed FreeCAD every time (DrawSketchHandlerDimension::deactivated solves the
     sketch and ViewProviderSketch::slotSolverUpdate reads a view that is gone)."""
     import FreeCADGui as Gui
+    from incad.ui import rectangle_preview
+    rectangle_preview.stop()
     vp = gdoc.getInEdit()
     if sketch.is_sketch(getattr(vp, "Object", None)):
         try:

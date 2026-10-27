@@ -683,11 +683,12 @@ def pin_polygon_centres(sk, first=0):
 def _rectangles(sk, first=0):
     """New rectangles: four non-construction line segments from index `first` on, each end tied (Coincident) to the
     next one's start in a closed loop, making a rectangle or a parallelogram. Returns [[(geo, pos) of each corner, in loop order]]."""
-    lines = [i for i in range(first, sk.GeometryCount)
-             if sk.Geometry[i].TypeId == "Part::GeomLineSegment" and not sk.getConstruction(i)]
+    geo = sk.Geometry  # once: each read copies every element
+    lines = [i for i in range(first, len(geo)) if geo[i].TypeId == "Part::GeomLineSegment" and not sk.getConstruction(i)]
+    known = set(lines)
     ends = {}  # (geo, pos) -> the (geo, pos) it is tied to
     for c in sk.Constraints:
-        if c.Type == "Coincident" and c.First in lines and c.Second in lines:
+        if c.Type == "Coincident" and c.First in known and c.Second in known:
             ends[(c.First, c.FirstPos)] = (c.Second, c.SecondPos)
             ends[(c.Second, c.SecondPos)] = (c.First, c.FirstPos)
     out, used = [], set()
@@ -704,7 +705,7 @@ def _rectangles(sk, first=0):
         if len(loop) != 4 or (geo, pos) != (start, 1) or len({g for g, _p in loop}) != 4:
             continue
         if not _right_angled([sk.getPoint(g, p_) for g, p_ in loop]):
-            continue  # a general quadrilateral: no diagonals
+            continue  # a general quadrilateral: no centre point
         used |= {g for g, _p in loop}
         out.append(loop)
     return out
@@ -715,11 +716,11 @@ def _rounded_rectangles(sk, first=0):
     rectangle (FreeCAD's Rounded Rectangle). Returns [[(arc, 3) of each corner centre, in loop order]]."""
     import itertools
     import math
-    arcs = [i for i in range(first, sk.GeometryCount)
-            if sk.Geometry[i].TypeId == "Part::GeomArcOfCircle" and not sk.getConstruction(i)]
+    geo = sk.Geometry  # once: each read copies every element
+    arcs = [i for i in range(first, len(geo)) if geo[i].TypeId == "Part::GeomArcOfCircle" and not sk.getConstruction(i)]
     by_radius = {}
     for i in arcs:
-        by_radius.setdefault(round(sk.Geometry[i].Radius, 6), []).append(i)
+        by_radius.setdefault(round(geo[i].Radius, 6), []).append(i)
     out, used = [], set()
     for group in by_radius.values():
         if len(group) < 4 or len(group) > 12:
@@ -747,68 +748,85 @@ def _right_angled(pts):
     return (sides[0] + sides[2]).Length < 1e-6 * max(size, 1.0) and (sides[1] + sides[3]).Length < 1e-6 * max(size, 1.0)
 
 
-def add_rectangle_diagonals(sk, first=0, done=None, ours=None):
-    """The user: a new rectangle shows its two diagonals as construction lines, left in the sketch for orientation
-    and later connections, and a construction point where they cross, so one constraint (that point on the origin)
-    makes the rectangle symmetric. A Rounded Rectangle's diagonals join its corner arcs' centres. The diagonals' ends
-    are Coincident with the corners (centres) and the point is Symmetric between two of them, so all follow the
-    rectangle; FreeCAD's Center Rectangle has its own centre point, so it gets no second one. done: a set of the
-    rectangles handled (their elements' permanent geometry ids): each is handled once, so what the user deletes
-    afterwards stays deleted. Returns the elements added."""
+def add_rectangle_centres(sk, first=0, done=None, ours=None):
+    """The user: a new rectangle gets a construction point in its middle, so one constraint (that point on the origin)
+    makes it symmetric. The point is Symmetric between two opposite corners (a Rounded Rectangle's: its corner arcs'
+    centres), so it follows the rectangle; FreeCAD's Center Rectangle has its own, so it gets none. The diagonals
+    show only while the rectangle is drawn (incad.ui.rectangle_preview): the user's choice, over construction
+    diagonals kept in the sketch.
+    done: a set of the rectangles handled (their elements' permanent geometry ids): each is handled once, so a point
+    the user deletes stays deleted. All points come in one call and one solve (one at a time, FreeCAD solves the
+    whole sketch after each).
+    Returns the points added."""
     import Part
     import Sketcher
     done = set() if done is None else done
-    added = 0
+    geo = sk.Geometry  # once: each read copies every element
+    points = [(i, App.Vector(g.X, g.Y, g.Z)) for i, g in enumerate(geo) if g.TypeId == "Part::GeomPoint"]
+    base = len(geo)
+    new, ties, theirs = [], [], []
     for loop in _rectangles(sk, first) + _rounded_rectangles(sk, first):
         ident = frozenset(sk.getGeometryId(g) for g, _p in loop)
         if ident in done:
             continue
         done.add(ident)
-        corners = [sk.getPoint(g, p) for g, p in loop]
-        for a, b in ((0, 2), (1, 3)):
-            pa, pb = corners[a], corners[b]
-            if any(sk.getConstruction(i) and sk.Geometry[i].TypeId == "Part::GeomLineSegment"
-                   and _joins(sk.Geometry[i], pa, pb) for i in range(sk.GeometryCount)):
-                continue
-            d = sk.addGeometry(Part.LineSegment(pa, pb), True)
-            sk.addConstraint(Sketcher.Constraint("Coincident", d, 1, loop[a][0], loop[a][1]))
-            sk.addConstraint(Sketcher.Constraint("Coincident", d, 2, loop[b][0], loop[b][1]))
-            added += 1
-        centre = (corners[0] + corners[2]) * 0.5
-        if not any(sk.Geometry[i].TypeId == "Part::GeomPoint" and _same(sk.getPoint(i, 1), centre)
-                   for i in range(sk.GeometryCount)):
-            c = sk.addGeometry(Part.Point(centre), True)
-            sk.addConstraint(Sketcher.Constraint("Symmetric", loop[0][0], loop[0][1], loop[2][0], loop[2][1], c, 1))
-            if ours is not None:
-                ours.add(sk.getGeometryId(c))
-            added += 1
-    return added
+        a, b = sk.getPoint(*loop[0]), sk.getPoint(*loop[2])
+        centre = (a + b) * 0.5
+        there = next((i for i, p in points if _same(p, centre)), None)
+        if there is not None:
+            if there < base:
+                theirs.append(there)  # a Center Rectangle's own: its Symmetric icon hides too
+            continue
+        points.append((base + len(new), centre))
+        ties.append((loop[0], loop[2], base + len(new)))
+        new.append(Part.Point(centre))
+    if new:
+        sk.addGeometry(new, True)
+        sk.addConstraint([Sketcher.Constraint("Symmetric", g1, p1, g2, p2, c, 1) for (g1, p1), (g2, p2), c in ties])
+        sk.solve()  # a list added is not solved: the solver kept the sketch from before, and a drag lost the points
+        if ours is not None:
+            ours.update(sk.getGeometryId(base + k) for k in range(len(new)))
+    hide_symmetric_icons(sk, theirs + [base + k for k in range(len(new))])
+    return len(new)
+
+
+def hide_symmetric_icons(sk, points):
+    """FreeCAD draws a Symmetric constraint's icon on its middle point, where it took the clicks meant for the point
+    (the user could not put a rectangle's centre point on an axis: the click picked the constraint). The Symmetric
+    constraints whose middle is one of `points` go to virtual space: they still hold, their icon is not drawn."""
+    points = set(points)
+    hide = [n for n, c in enumerate(sk.Constraints)
+            if c.Type == "Symmetric" and c.Third in points and c.ThirdPos == 1 and not sk.getVirtualSpace(n)]
+    if hide:
+        sk.setVirtualSpace(hide, True)
+    return len(hide)
 
 
 def drop_doubled_centres(sk, ours):
     """A centre point of ours that another point now shares (FreeCAD's Center Rectangle adds its own a moment after
     the lines) goes: the rectangle keeps one centre point. ours: our points' permanent geometry ids. Returns the
     number removed."""
-    removed = 0
-    for i in reversed(range(sk.GeometryCount)):
-        if sk.Geometry[i].TypeId != "Part::GeomPoint" or sk.getGeometryId(i) not in ours:
-            continue
-        here = sk.getPoint(i, 1)
-        if any(j != i and sk.Geometry[j].TypeId == "Part::GeomPoint" and sk.getGeometryId(j) not in ours
-               and _same(sk.getPoint(j, 1), here) for j in range(sk.GeometryCount)):
-            ours.discard(sk.getGeometryId(i))
-            sk.delGeometry(i)
-            removed += 1
-    return removed
+    if not ours:
+        return 0
+    geo = sk.Geometry  # once: each read copies every element
+    pts = [i for i, g in enumerate(geo) if g.TypeId == "Part::GeomPoint"]
+    gone = [i for i in pts if sk.getGeometryId(i) in ours
+            and any(j != i and sk.getGeometryId(j) not in ours and _same(sk.getPoint(j, 1), sk.getPoint(i, 1))
+                    for j in pts)]
+    for i in gone:
+        ours.discard(sk.getGeometryId(i))
+    if gone:  # the point that stays (the Center Rectangle's own) shows no icon either
+        keep = [j for j in pts if sk.getGeometryId(j) not in ours and j not in gone
+                and any(_same(sk.getPoint(j, 1), sk.getPoint(i, 1)) for i in gone)]
+        hide_symmetric_icons(sk, keep)
+        sk.delGeometries(gone)
+    return len(gone)
 
 
 def _same(a, b, tol=1e-6):
     """Two sketch points at one place (a distance: rounding can split two equal points across a boundary)."""
     return (a - b).Length < tol
 
-
-def _joins(line, a, b):
-    return (_same(line.StartPoint, a) and _same(line.EndPoint, b)) or (_same(line.StartPoint, b) and _same(line.EndPoint, a))
 
 
 GEO_UNDEF = -2000

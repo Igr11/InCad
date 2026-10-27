@@ -1,7 +1,8 @@
-"""Rectangles get two construction diagonals and a construction centre point (the user: orientation, later
-connections, symmetry with one constraint): a plain rectangle; a Center Rectangle keeps FreeCAD's own centre point
-(no second one); a Rounded Rectangle's diagonals join its corner arcs' centres. All follow the rectangle, a handled
-rectangle is not handled again, and lines that make no rectangle get nothing."""
+"""Rectangles get a construction centre point (the user: symmetry with one constraint; the diagonals show only
+while a rectangle is drawn): a plain rectangle; a Center Rectangle
+keeps FreeCAD's own centre point (no second one); a Rounded Rectangle's point sits between its corner arcs' centres.
+The point follows the rectangle, its Symmetric icon is hidden (virtual space: the icon sat on the point and took
+the clicks), a handled rectangle is not handled again, and lines that make no rectangle get nothing."""
 import math
 import unittest
 
@@ -42,7 +43,7 @@ def rounded(k, x0, y0, x1, y1, r):
     return arcs, lines
 
 
-class RectangleDiagonalsTest(unittest.TestCase):
+class RectangleCentresTest(unittest.TestCase):
     def setUp(self):
         self.doc = App.newDocument("RD")
         self.k = self.doc.addObject("Sketcher::SketchObject", "Sk")
@@ -57,52 +58,54 @@ class RectangleDiagonalsTest(unittest.TestCase):
         k = self.k
         ids = rect(k, -30, 5, 10, 25)
         done = set()
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, done), 3)
-        self.assertEqual(len(self.construction("Part::GeomLineSegment")), 2)
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, done), 1)
+        self.assertEqual(self.construction("Part::GeomLineSegment"), [], "no construction lines")
         pt = self.construction("Part::GeomPoint")
         self.assertEqual(len(pt), 1)
         self.assertEqual(k.solve(), 0)
         c = k.getPoint(pt[0], 1)
         self.assertAlmostEqual(c.x, -10)
         self.assertAlmostEqual(c.y, 15)
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, done), 0, "handled once")
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, done), 0, "handled once")
+        sym = [n for n, c in enumerate(k.Constraints) if c.Type == "Symmetric"]
+        self.assertTrue(sym and all(k.getVirtualSpace(n) for n in sym), "its icon took the clicks meant for the point")
         k.addConstraint(Sketcher.Constraint("Coincident", pt[0], 1, -1, 1))  # one constraint: centred
         self.assertEqual(k.solve(), 0)
         xs = sorted(round(k.getPoint(i, 1).x, 6) for i in ids)
         self.assertEqual(xs[0], -xs[-1])
+
+    def test_several_at_once(self):
+        k = self.k
+        rect(k, 0, 0, 10, 10)
+        rect(k, 20, 0, 40, 10)
+        ours = set()
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set(), ours), 2)
+        self.assertEqual(len(ours), 2)
+        self.assertEqual(k.solve(), 0)
 
     def test_center_rectangle_keeps_its_own_centre_point(self):
         k = self.k
         ids = rect(k, 20, -20, 40, -10)
         own = k.addGeometry(Part.Point(V(30, -15, 0)), True)  # FreeCAD's Center Rectangle makes this one
         k.addConstraint(Sketcher.Constraint("Symmetric", ids[0], 1, ids[1], 2, own, 1))
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 2)  # the diagonals only
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set()), 0)
         self.assertEqual(self.construction("Part::GeomPoint"), [own])
+        self.assertTrue(k.getVirtualSpace(len(k.Constraints) - 1), "FreeCAD's own Symmetric icon hides too")
         self.assertEqual(k.solve(), 0)
 
-    def test_rounded_rectangle_joins_the_arc_centres(self):
+    def test_rounded_rectangle_between_the_arc_centres(self):
         k = self.k
-        arcs, _lines = rounded(k, -20, -10, 20, 10, 3)
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 3)
-        centres = {(round(k.getPoint(a, 3).x, 6), round(k.getPoint(a, 3).y, 6)) for a in arcs}
-        for d in self.construction("Part::GeomLineSegment"):
-            g = k.Geometry[d]
-            ends = {(round(g.StartPoint.x, 6), round(g.StartPoint.y, 6)), (round(g.EndPoint.x, 6), round(g.EndPoint.y, 6))}
-            self.assertTrue(ends <= centres, ends)
+        rounded(k, -20, -10, 20, 10, 3)
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set()), 1)
         pt = self.construction("Part::GeomPoint")[0]
         self.assertAlmostEqual(k.getPoint(pt, 1).Length, 0, places=6)
         self.assertEqual(k.solve(), 0)
 
-    def test_they_follow_the_rectangle(self):
+    def test_it_follows_the_rectangle(self):
         k = self.k
         ids = rect(k, 0, 0, 20, 10)
-        sketches.add_rectangle_diagonals(k, 0, set())
+        sketches.add_rectangle_centres(k, 0, set())
         k.moveGeometry(ids[1], 2, V(40, 30, 0), False)  # a corner dragged out
-        corners = {(round(k.getPoint(i, p).x, 6), round(k.getPoint(i, p).y, 6)) for i in ids for p in (1, 2)}
-        for d in self.construction("Part::GeomLineSegment"):
-            g = k.Geometry[d]
-            self.assertTrue({(round(g.StartPoint.x, 6), round(g.StartPoint.y, 6)),
-                             (round(g.EndPoint.x, 6), round(g.EndPoint.y, 6))} <= corners)
         pt = self.construction("Part::GeomPoint")[0]
         mid = (k.getPoint(ids[0], 1) + k.getPoint(ids[2], 1)) * 0.5  # the middle of the corners as they are now
         self.assertAlmostEqual((k.getPoint(pt, 1) - mid).Length, 0, places=6)
@@ -116,7 +119,7 @@ class RectangleDiagonalsTest(unittest.TestCase):
             k.addConstraint(Sketcher.Constraint("Coincident", ids[i], 2, ids[(i + 1) % 4], 1))
         k.addConstraint(Sketcher.Constraint("Parallel", ids[0], ids[2]))
         k.addConstraint(Sketcher.Constraint("Parallel", ids[1], ids[3]))
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 3)
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set()), 1)
         self.assertEqual(k.solve(), 0)
 
     def test_a_kite_gets_nothing(self):
@@ -125,14 +128,14 @@ class RectangleDiagonalsTest(unittest.TestCase):
         ids = [k.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4])) for i in range(4)]
         for i in range(4):
             k.addConstraint(Sketcher.Constraint("Coincident", ids[i], 2, ids[(i + 1) % 4], 1))
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 0)
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set()), 0)
 
-    def test_no_rectangle_no_diagonals(self):
+    def test_no_rectangle_nothing(self):
         k = self.k
         a = k.addGeometry(Part.LineSegment(V(0, 0, 0), V(10, 0, 0)))
         b = k.addGeometry(Part.LineSegment(V(10, 0, 0), V(10, 10, 0)))
         k.addConstraint(Sketcher.Constraint("Coincident", a, 2, b, 1))
-        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 0)
+        self.assertEqual(sketches.add_rectangle_centres(k, 0, set()), 0)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,11 @@ class InCadWorkbench(Gui.Workbench):
             quality.set_defaults()  # ⚙ ▸ Display Quality for every shape made from now on
         except Exception:
             pass
+        try:
+            from incad.ui import pick_radius
+            pick_radius.widen()  # points easy to catch on a Retina screen
+        except Exception:
+            pass
         shell.activate()
 
     def Deactivated(self):

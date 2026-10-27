@@ -82,6 +82,8 @@ def run_sketch_tool(name, mode=None):
     run_std(name)
     if mode:
         set_tool_mode(mode)
+    from incad.ui import rectangle_preview
+    rectangle_preview.start(name)  # a rectangle's diagonals while it is drawn
 
 
 def _gui():
@@ -90,6 +92,9 @@ def _gui():
 
 
 def run_std(name, index=0):
+    if name.startswith("Sketcher_"):
+        from incad.ui import rectangle_preview
+        rectangle_preview.stop()  # another Sketcher tool: no rectangle's diagonals over its edit curve
     _gui().runCommand(name, index)
 
 
