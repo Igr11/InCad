@@ -386,6 +386,7 @@ class Shell(QtCore.QObject):
         self._polygons_from = {}
         self._rects_from = {}  # per sketch: where the geometry drawn since it was opened starts
         self._rects_done = {}  # per sketch: the rectangles given their diagonals (geometry ids)
+        self._rects_pending = []  # the sketch whose rectangle check waits for a quiet moment
         self.marking_menu = None
         self.menu_kind = None
 
@@ -1635,7 +1636,7 @@ class Shell(QtCore.QObject):
             # these follow-ups on the half-restored document crashed the Sketcher (external geometry)
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
-        QtCore.QTimer.singleShot(0, lambda: self._diagonals_for_new_rectangles(sk))
+        self._rects_later(sk)  # once the tool's step is over: its own centre point comes a moment later
         QtCore.QTimer.singleShot(0, lambda: self._settle_constraints(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
         QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
@@ -1977,6 +1978,19 @@ class Shell(QtCore.QObject):
         except Exception as e:
             log.report("warning", "Could not keep the polygon's centre constraint: %s" % e)
 
+    def _rects_later(self, sk):
+        """The rectangle check waits until the sketch has been quiet for a moment: FreeCAD's Center Rectangle adds its
+        centre point after the lines, and a check in between gave the rectangle a second one."""
+        timer = self.__dict__.get("_rects_timer")
+        if timer is None:
+            timer = self._rects_timer = QtCore.QTimer()
+            timer.setSingleShot(True)
+            timer.setInterval(350)
+            timer.timeout.connect(lambda: self._rects_pending and self._diagonals_for_new_rectangles(
+                self._rects_pending.pop()) if self._rects_pending else None)
+        self._rects_pending = [sk]
+        timer.start()
+
     def _diagonals_for_new_rectangles(self, sk):
         """A rectangle drawn since the sketch was opened gets its diagonals and centre point as construction (the
         user: for orientation, later connections and one-constraint symmetry). Every change looks again — FreeCAD's
@@ -1989,8 +2003,11 @@ class Shell(QtCore.QObject):
             first = self._rects_from.setdefault(key, sk.GeometryCount)
             if sk.GeometryCount < first:  # older geometry deleted: what was drawn moved down
                 self._rects_from[key] = first = sk.GeometryCount
-            if sk.GeometryCount > first and sketches.add_rectangle_diagonals(sk, first,
-                                                                           self._rects_done.setdefault(key, set())):
+            ours = self.__dict__.setdefault("_rects_ours", {}).setdefault(key, set())  # our centre points
+            changed = sketches.drop_doubled_centres(sk, ours) if ours else 0
+            if sk.GeometryCount > first:
+                changed += sketches.add_rectangle_diagonals(sk, first, self._rects_done.setdefault(key, set()), ours)
+            if changed:
                 sk.Document.recompute()
         except Exception as e:
             log.report("warning", "Could not add the rectangle's diagonals: %s" % e)

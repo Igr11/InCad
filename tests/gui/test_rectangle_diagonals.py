@@ -85,7 +85,8 @@ def test_1_every_rectangle_tool():
                            ("sketch.rectangle_center", (V(30, -20, 0), V(40, -10, 0)), (2, 1)),  # FreeCAD's point
                            ("sketch.rectangle_3pt", (V(-50, 20, 0), V(-25, 30, 0), V(-30, 45, 0)), (2, 1)),
                            ("sketch.rectangle_center_3pt", (V(30, 30, 0), V(45, 36, 0), V(40, 48, 0)), (2, 1)),
-                           ("sketch.rectangle_rounded", (V(-45, -45, 0), V(-15, -30, 0)), (2, 1))):
+                           # Rounded: FreeCAD's own two corner points + our centre point
+                           ("sketch.rectangle_rounded", (V(-45, -45, 0), V(-15, -30, 0), V(-42, -42, 0)), (2, 3))):
         drawn, d, p = draw(cmd, *pts)
         assert len(drawn) >= 4, (cmd, "not drawn", drawn)
         assert (d, p) == want, (cmd, "diagonals, points", d, p)

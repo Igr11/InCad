@@ -682,7 +682,7 @@ def pin_polygon_centres(sk, first=0):
 
 def _rectangles(sk, first=0):
     """New rectangles: four non-construction line segments from index `first` on, each end tied (Coincident) to the
-    next one's start in a closed loop, at right angles. Returns [[(geo, pos) of each corner, in loop order]]."""
+    next one's start in a closed loop, making a rectangle or a parallelogram. Returns [[(geo, pos) of each corner, in loop order]]."""
     lines = [i for i in range(first, sk.GeometryCount)
              if sk.Geometry[i].TypeId == "Part::GeomLineSegment" and not sk.getConstruction(i)]
     ends = {}  # (geo, pos) -> the (geo, pos) it is tied to
@@ -704,7 +704,7 @@ def _rectangles(sk, first=0):
         if len(loop) != 4 or (geo, pos) != (start, 1) or len({g for g, _p in loop}) != 4:
             continue
         if not _right_angled([sk.getPoint(g, p_) for g, p_ in loop]):
-            continue  # not right-angled: a general quadrilateral is not a rectangle
+            continue  # a general quadrilateral: no diagonals
         used |= {g for g, _p in loop}
         out.append(loop)
     return out
@@ -738,14 +738,16 @@ def _rounded_rectangles(sk, first=0):
 
 
 def _right_angled(pts):
+    """A parallelogram (FreeCAD's 3-Point Rectangle draws one from three corners; a rectangle is one too): opposite
+    sides equal and opposite. Its diagonals cross in the middle, so the centre point works the same."""
     sides = [pts[(k + 1) % 4] - pts[k] for k in range(4)]
-    if any(v.Length < 1e-9 for v in sides):
+    size = max(v.Length for v in sides)
+    if size < 1e-9 or min(v.Length for v in sides) < 1e-9:
         return False
-    units = [v * (1.0 / v.Length) for v in sides]
-    return all(abs(units[k].dot(units[(k + 1) % 4])) < 1e-3 for k in range(4))
+    return (sides[0] + sides[2]).Length < 1e-6 * max(size, 1.0) and (sides[1] + sides[3]).Length < 1e-6 * max(size, 1.0)
 
 
-def add_rectangle_diagonals(sk, first=0, done=None):
+def add_rectangle_diagonals(sk, first=0, done=None, ours=None):
     """The user: a new rectangle shows its two diagonals as construction lines, left in the sketch for orientation
     and later connections, and a construction point where they cross, so one constraint (that point on the origin)
     makes the rectangle symmetric. A Rounded Rectangle's diagonals join its corner arcs' centres. The diagonals' ends
@@ -766,24 +768,47 @@ def add_rectangle_diagonals(sk, first=0, done=None):
         for a, b in ((0, 2), (1, 3)):
             pa, pb = corners[a], corners[b]
             if any(sk.getConstruction(i) and sk.Geometry[i].TypeId == "Part::GeomLineSegment"
-                   and {_key(sk.Geometry[i].StartPoint), _key(sk.Geometry[i].EndPoint)} == {_key(pa), _key(pb)}
-                   for i in range(sk.GeometryCount)):
+                   and _joins(sk.Geometry[i], pa, pb) for i in range(sk.GeometryCount)):
                 continue
             d = sk.addGeometry(Part.LineSegment(pa, pb), True)
             sk.addConstraint(Sketcher.Constraint("Coincident", d, 1, loop[a][0], loop[a][1]))
             sk.addConstraint(Sketcher.Constraint("Coincident", d, 2, loop[b][0], loop[b][1]))
             added += 1
         centre = (corners[0] + corners[2]) * 0.5
-        if not any(sk.Geometry[i].TypeId == "Part::GeomPoint" and _key(sk.getPoint(i, 1)) == _key(centre)
+        if not any(sk.Geometry[i].TypeId == "Part::GeomPoint" and _same(sk.getPoint(i, 1), centre)
                    for i in range(sk.GeometryCount)):
             c = sk.addGeometry(Part.Point(centre), True)
             sk.addConstraint(Sketcher.Constraint("Symmetric", loop[0][0], loop[0][1], loop[2][0], loop[2][1], c, 1))
+            if ours is not None:
+                ours.add(sk.getGeometryId(c))
             added += 1
     return added
 
 
-def _key(p):
-    return (round(p.x, 6), round(p.y, 6))
+def drop_doubled_centres(sk, ours):
+    """A centre point of ours that another point now shares (FreeCAD's Center Rectangle adds its own a moment after
+    the lines) goes: the rectangle keeps one centre point. ours: our points' permanent geometry ids. Returns the
+    number removed."""
+    removed = 0
+    for i in reversed(range(sk.GeometryCount)):
+        if sk.Geometry[i].TypeId != "Part::GeomPoint" or sk.getGeometryId(i) not in ours:
+            continue
+        here = sk.getPoint(i, 1)
+        if any(j != i and sk.Geometry[j].TypeId == "Part::GeomPoint" and sk.getGeometryId(j) not in ours
+               and _same(sk.getPoint(j, 1), here) for j in range(sk.GeometryCount)):
+            ours.discard(sk.getGeometryId(i))
+            sk.delGeometry(i)
+            removed += 1
+    return removed
+
+
+def _same(a, b, tol=1e-6):
+    """Two sketch points at one place (a distance: rounding can split two equal points across a boundary)."""
+    return (a - b).Length < tol
+
+
+def _joins(line, a, b):
+    return (_same(line.StartPoint, a) and _same(line.EndPoint, b)) or (_same(line.StartPoint, b) and _same(line.EndPoint, a))
 
 
 GEO_UNDEF = -2000

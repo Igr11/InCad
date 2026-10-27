@@ -107,6 +107,26 @@ class RectangleDiagonalsTest(unittest.TestCase):
         mid = (k.getPoint(ids[0], 1) + k.getPoint(ids[2], 1)) * 0.5  # the middle of the corners as they are now
         self.assertAlmostEqual((k.getPoint(pt, 1) - mid).Length, 0, places=6)
 
+    def test_a_parallelogram_too(self):
+        """FreeCAD's 3-Point Rectangle draws a parallelogram from three corners (Parallel sides, no right angles)."""
+        k = self.k
+        pts = [V(0, 0, 0), V(20, 5, 0), V(25, 20, 0), V(5, 15, 0)]
+        ids = [k.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4])) for i in range(4)]
+        for i in range(4):
+            k.addConstraint(Sketcher.Constraint("Coincident", ids[i], 2, ids[(i + 1) % 4], 1))
+        k.addConstraint(Sketcher.Constraint("Parallel", ids[0], ids[2]))
+        k.addConstraint(Sketcher.Constraint("Parallel", ids[1], ids[3]))
+        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 3)
+        self.assertEqual(k.solve(), 0)
+
+    def test_a_kite_gets_nothing(self):
+        k = self.k
+        pts = [V(0, 0, 0), V(10, -5, 0), V(20, 0, 0), V(10, 15, 0)]
+        ids = [k.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4])) for i in range(4)]
+        for i in range(4):
+            k.addConstraint(Sketcher.Constraint("Coincident", ids[i], 2, ids[(i + 1) % 4], 1))
+        self.assertEqual(sketches.add_rectangle_diagonals(k, 0, set()), 0)
+
     def test_no_rectangle_no_diagonals(self):
         k = self.k
         a = k.addGeometry(Part.LineSegment(V(0, 0, 0), V(10, 0, 0)))
