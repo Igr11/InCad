@@ -31,9 +31,9 @@ sed "s/VERSION/$NAME/g" scripts/dist/CHANGES_ru.txt > "$D/CHANGES_ru.txt"
 cp LICENSE "$D/LICENSE.txt"
 for f in manual presentation; do  # the Windows editions (Ctrl, install.bat, %LOCALAPPDATA%), under the usual names
   for suffix in "" _ru; do
-    src=scripts/dist/InCad-$f-windows$suffix.pdf
+    src=scripts/dist/ProstoCAD-FreeCAD-$f-windows$suffix.pdf
     [[ -f $src ]] || { echo "ERROR: $src is missing (scripts/print_manual.sh, scripts/make_presentation.sh)"; exit 1; }
-    cp $src "$D/InCad-$f$suffix.pdf"
+    cp $src "$D/ProstoCAD-FreeCAD-$f$suffix.pdf"
   done
 done
 for f in "$D"/*.bat "$D"/*.ps1 "$D"/*.txt; do perl -pi -e 's/\r?\n/\r\n/' "$f"; done
