@@ -1647,8 +1647,15 @@ class FeatureSession(QtCore.QObject):
         if self._pick_in_another_solid(values):
             return True
         before, after = getattr(self, "_created_with", None), values.get("operation")
+        if before == after:
+            return False
         structural = getattr(self.kind, "STRUCTURAL", ("new_solid", "intersect"))
-        return before != after and (before in structural or after in structural)
+        if before in structural or after in structural:
+            return True
+        # a Join that did not touch the part was made as its own Solid: swapped in place, Cut cut only that empty
+        # Solid (the user: Cut did nothing the first time); and a Join from a Cut must be able to go there
+        owner = self.feature.getParentGeoFeatureGroup() if _feature_alive(self.feature) else None
+        return owner is not self.body or after == "join"
 
     def _pick_in_another_solid(self, values):
         """The kind's feature belongs where its pick is (kind.BODY_FROM: Emboss on the picked face's Solid, its

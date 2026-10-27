@@ -5,6 +5,25 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.13.1
+-----
+Smooth sketching; Extrude Cut off the part cuts at once.
+
+Improvements
+- While a sketch is open, the view keeps up with the mouse: drawing a rectangle, a line or anything else no longer
+  lags behind the pointer (FreeCAD put off redrawing while the mouse kept moving).
+- Points are easier to catch on a Mac's Retina screen: the pick radius is doubled once (Preferences > Display > 3D
+  View > Pick radius; a value you set yourself stays).
+- While a rectangle is drawn, its two diagonals show dashed, for orientation. The finished rectangle gets a
+  construction point in its middle: put it on the origin and the rectangle is centred.
+
+Bug fixes
+- Extrude > Cut did nothing the first time when the profile lay off the part (it went into its own empty Solid, and
+  Cut cut only that); Intersect and then Cut was needed. Cut now cuts the part at once.
+- A rectangle's centre point could not be put on an axis: the click took the point's constraint icon. That icon is
+  hidden now, also on FreeCAD's Center Rectangle.
+
+
 0.13.0
 -----
 InCad is now ProstoCAD for FreeCAD: a new name, the same workbench.
