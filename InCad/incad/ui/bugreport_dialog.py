@@ -17,7 +17,7 @@ class BugReportDialog(QtWidgets.QDialog):
         head.setObjectName("InCadDialogTitle")
         col.addWidget(head)
         note = QtWidgets.QLabel(
-            "Your report goes to the public issue list of InCad on GitHub%s. Your name is taken out of the "
+            "Your report goes to the public issue list of ProstoCAD on GitHub%s. Your name is taken out of the "
             "file paths; don't write anything private." % ("" if direct else " (GitHub opens in your browser to "
                                                             "send it)"))
         note.setWordWrap(True)

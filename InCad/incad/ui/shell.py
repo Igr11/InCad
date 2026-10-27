@@ -384,6 +384,8 @@ class Shell(QtCore.QObject):
         self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
         self._hover_watch = None
         self._polygons_from = {}
+        self._rects_from = {}  # per sketch: where the geometry drawn since it was opened starts
+        self._rects_done = {}  # per sketch: the rectangles given their diagonals (geometry ids)
         self.marking_menu = None
         self.menu_kind = None
 
@@ -566,9 +568,10 @@ class Shell(QtCore.QObject):
     def _show_wait_notice(self):
         """Other FreeCAD tasks keep their OK/Cancel: say plainly why InCad's interface isn't there yet."""
         if self._wait_notice is None:
-            box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Information, "InCad",
-                                        "Finish or cancel the current FreeCAD task (OK or Cancel in its panel).\n"
-                                        "InCad opens as soon as it is closed.", QtWidgets.QMessageBox.Ok, self.mw)
+            box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Information, host.app_name(),
+                                        host.brand("Finish or cancel the current FreeCAD task (OK or Cancel in its "
+                                                   "panel).\nInCad opens as soon as it is closed."),
+                                        QtWidgets.QMessageBox.Ok, self.mw)
             box.setObjectName("InCadWaitNotice")
             box.setWindowModality(QtCore.Qt.NonModal)
             self._wait_notice = box
@@ -668,7 +671,7 @@ class Shell(QtCore.QObject):
     def _build(self):
         mw = self.mw
         self.theme = themes.current()
-        top = QtWidgets.QToolBar("InCad", mw)
+        top = QtWidgets.QToolBar(host.app_name(), mw)
         top.setObjectName("InCadTop")
         self._setup_bar(top)
         self._widgets.append(top)
@@ -694,7 +697,7 @@ class Shell(QtCore.QObject):
         self.browser = ModelBrowser(self.theme)
         dock.setWidget(self.browser)
         mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
-        bottom = QtWidgets.QToolBar("InCad Status", mw)
+        bottom = QtWidgets.QToolBar(host.app_name() + " Status", mw)
         bottom.setObjectName("InCadStatusBar")
         self._setup_bar(bottom)
         self._widgets.append(bottom)
@@ -1632,6 +1635,7 @@ class Shell(QtCore.QObject):
             # these follow-ups on the half-restored document crashed the Sketcher (external geometry)
         QtCore.QTimer.singleShot(0, lambda: self._name_dimensions(sk))
         QtCore.QTimer.singleShot(0, lambda: self._pin_new_polygons(sk))
+        QtCore.QTimer.singleShot(0, lambda: self._diagonals_for_new_rectangles(sk))
         QtCore.QTimer.singleShot(0, lambda: self._settle_constraints(sk))
         QtCore.QTimer.singleShot(0, lambda: self._update_area_profiles(sk))
         QtCore.QTimer.singleShot(0, lambda: self._adopt_projections(sk))
@@ -1928,6 +1932,8 @@ class Shell(QtCore.QObject):
         self._geometry_counts[(sk.Document.Name, sk.Name)] = sk.GeometryCount
         self._dim_known[(sk.Document.Name, sk.Name)] = sketches.dimension_snapshot(sk)
         self._polygons_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+        self._rects_from[(sk.Document.Name, sk.Name)] = sk.GeometryCount
+        self._rects_done[(sk.Document.Name, sk.Name)] = set()
 
     def _update_area_profiles(self, sk):
         """Features built on an area of this sketch follow its edits (the area holding the remembered point)."""
@@ -1970,6 +1976,24 @@ class Shell(QtCore.QObject):
             self._polygons_from[key] = sk.GeometryCount
         except Exception as e:
             log.report("warning", "Could not keep the polygon's centre constraint: %s" % e)
+
+    def _diagonals_for_new_rectangles(self, sk):
+        """A rectangle drawn since the sketch was opened gets its diagonals and centre point as construction (the
+        user: for orientation, later connections and one-constraint symmetry). Every change looks again — FreeCAD's
+        tool adds the lines before their corner ties — and each rectangle is handled once."""
+        from incad.core import sketch as sketches
+        if not _alive(sk) or self.sketches.editing() is not sk:
+            return
+        try:
+            key = (sk.Document.Name, sk.Name)
+            first = self._rects_from.setdefault(key, sk.GeometryCount)
+            if sk.GeometryCount < first:  # older geometry deleted: what was drawn moved down
+                self._rects_from[key] = first = sk.GeometryCount
+            if sk.GeometryCount > first and sketches.add_rectangle_diagonals(sk, first,
+                                                                           self._rects_done.setdefault(key, set())):
+                sk.Document.recompute()
+        except Exception as e:
+            log.report("warning", "Could not add the rectangle's diagonals: %s" % e)
 
     def _apply_from_box(self, name, text):
         """The value box applies to its own sketch's document; returns (ok, error) so the box can stay red."""
@@ -3113,7 +3137,7 @@ class Shell(QtCore.QObject):
                                    "%d components · Constrain (C), Joint (J), Ground" % comps)
         else:
             self.status.set_stats(None, None)
-            self.status.set_prompt("Create or open a part" if doc is None else "This file was not made in InCad")
+            self.status.set_prompt("Create or open a part" if doc is None else host.brand("This file was not made in InCad"))
         if doc is not None and self._point_pick is None:
             self._purge_old_markers(doc)
         if self._region_pick is not None:
@@ -3673,7 +3697,7 @@ class Shell(QtCore.QObject):
         from incad.core import document, safe
         if document.is_incad_part(doc):
             return False
-        r = safe.run_safely("Open as InCad Part", lambda: document.adopt_foreign(doc, units or prefs.default_units()),
+        r = safe.run_safely(host.brand("Open as InCad Part"), lambda: document.adopt_foreign(doc, units or prefs.default_units()),
                             doc)
         if not r.ok or r.value is None:
             return False
@@ -4255,6 +4279,7 @@ class Shell(QtCore.QObject):
         on a mirrored copy; on empty space the Constraint List; Stop Tool while a tool runs."""
         from incad.core import sketch_patterns
         sk = self.sketches.editing()
+        picked = self._sketch_menu_pick(sk)
         subs, geo = self._sketch_menu_element(sk)
         drop = set()
         if subs:
@@ -4262,10 +4287,32 @@ class Shell(QtCore.QObject):
             if geo is None or geo < 0 or not sketch_patterns.pattern_of(sk, geo):
                 drop |= {"sketch.edit_pattern", "sketch.delete_pattern"}
         else:
-            drop |= {"edit.delete", "sketch.construction", "sketch.edit_pattern", "sketch.delete_pattern"}
+            drop |= {"sketch.construction", "sketch.edit_pattern", "sketch.delete_pattern"}
+        if not picked:
+            drop.add("edit.delete")  # the user: Delete for selected lines AND dimensions
         if self.slot_tool is None and not self._sketch_tool_active():
             drop.add("sketch.stop")
         return self._show_marking_menu("sketch", global_pos, flick, extras=self._constraint_menu_items(), drop=drop)
+
+    def _sketch_menu_pick(self, sk):
+        """What the menu's Delete acts on: a line, point or dimension under the cursor that is not selected becomes
+        the selection (Inventor); one that is part of the selection keeps it. Returns the sketch's selected names."""
+        import FreeCADGui as Gui
+        if sk is None:
+            return []
+        doc = sk.Document.Name
+        selected = [n for sel in Gui.Selection.getSelectionEx(doc) if sel.Object is sk for n in sel.SubElementNames if n]
+        try:
+            pre = Gui.Selection.getPreselection()
+            under = [n for n in (getattr(pre, "SubElementNames", ()) or ()) if n] if getattr(pre, "Object", None) is sk \
+                else []
+        except RuntimeError:  # the preselected object was just deleted (a stale preselection)
+            under = []
+        if under and under[0] not in selected:
+            Gui.Selection.clearSelection()
+            Gui.Selection.addSelection(doc, sk.Name, under[0])
+            selected = [under[0]]
+        return selected
 
     def _sketch_menu_element(self, sk):
         """(selection names, geometry) of the line or point under the cursor, else the picked one; ([], None)."""
@@ -4345,7 +4392,7 @@ class Shell(QtCore.QObject):
         from incad.core import document, safe
         doc = self._doc()
         if action == "convert" and doc is not None:
-            safe.run_safely("Convert to InCad Part",
+            safe.run_safely(host.brand("Convert to InCad Part"),
                             lambda: document.convert_to_part(doc, prefs.default_units()), doc)
             self.schedule_refresh()
         elif action == "freecad":
@@ -4365,11 +4412,20 @@ class Shell(QtCore.QObject):
         self.schedule_refresh()
 
     def _on_parameter_removed(self, name):
-        from incad.core import document, safe
+        from incad.core import document, safe, sketch
         doc = self._doc()
         if doc is not None:
             from incad.core import model
-            remove = model.remove_model_parameter if model.is_model_parameter(doc, name) else document.remove_parameter
+            sk, index = sketch.find_dimension(doc, name)
+            if sk is not None:  # the user: a dimension can be deleted from Parameters too (Constraint List's rules)
+                from incad.core import sketch_constraints
+
+                def remove(doc, name):
+                    sketch_constraints.delete(sk, [index])
+                    doc.recompute()
+            else:
+                remove = model.remove_model_parameter if model.is_model_parameter(doc, name) \
+                    else document.remove_parameter
             self._parameters_said(safe.run_safely("Remove %s" % name, lambda: remove(doc, name), doc))
         self.schedule_refresh()
 

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds the macOS (Apple Silicon) test build: Distrib/InCad-<version>-<date>-<commit>-macOS-arm64/
+# Builds the macOS (Apple Silicon) test build: Distrib/ProstoCAD-FreeCAD-<version>-<date>-<commit>-macOS-arm64/
 # with the InCad module, README.txt, CHANGES.txt, the presentation and the user manual (English and Russian files),
 # and the .zip of that folder next to it.
 # Only the module goes in: no tests, docs, caches or macOS metadata files.
@@ -7,7 +7,7 @@ set -e
 REPO="${0:A:h:h}"
 cd "$REPO"
 VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' InCad/incad/__init__.py)
-NAME="InCad-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-macOS-arm64"
+NAME="ProstoCAD-FreeCAD-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-macOS-arm64"
 for f in scripts/dist/CHANGES.txt scripts/dist/CHANGES_ru.txt; do  # every build says what changed
   grep -qx "$VER" "$f" || { echo "ERROR: $f has no section for $VER: add its improvements and bug fixes first"; exit 1; }
 done
@@ -27,7 +27,7 @@ sed "s/VERSION/$NAME/g" scripts/dist/README_ru.txt > "$STAGE/$NAME/README_ru.txt
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES.txt > "$STAGE/$NAME/CHANGES.txt"
 sed "s/VERSION/$NAME/g" scripts/dist/CHANGES_ru.txt > "$STAGE/$NAME/CHANGES_ru.txt"
 cp LICENSE "$STAGE/$NAME/LICENSE.txt"
-for f in InCad-presentation.pdf InCad-presentation_ru.pdf InCad-manual.pdf InCad-manual_ru.pdf; do  # one language each
+for f in ProstoCAD-FreeCAD-presentation.pdf ProstoCAD-FreeCAD-presentation_ru.pdf ProstoCAD-FreeCAD-manual.pdf ProstoCAD-FreeCAD-manual_ru.pdf; do  # one language each
   [[ -f scripts/dist/$f ]] || { echo "ERROR: scripts/dist/$f is missing (scripts/make_presentation.sh, scripts/print_manual.sh)"; exit 1; }
   cp scripts/dist/$f "$STAGE/$NAME/"
 done

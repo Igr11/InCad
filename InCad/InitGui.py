@@ -4,8 +4,8 @@ import FreeCADGui as Gui
 class InCadWorkbench(Gui.Workbench):
     """Inventor/Alibre-style modeling. The whole UI is built by incad.ui.shell when the workbench activates."""
 
-    MenuText = "InCad"
-    ToolTip = "Inventor-style part and assembly modeling"
+    MenuText = "ProstoCAD"  # InCad before 0.13: the workbench's own name (InCadWorkbench) stays
+    ToolTip = "Parametric parts and assemblies for 3D printing"
 
     def __init__(self):
         import os

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>InCad: руководство</title>
+<title>ProstoCAD for FreeCAD: руководство</title>
 <style>
 @page { size: A4; margin: 18mm 16mm; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
@@ -71,17 +71,17 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
 
 <section class="cover">
   <div>
-    <div class="brand">In<span>Cad</span></div>
+    <div class="brand">Prosto<span>CAD</span></div>
     <div class="sub">Руководство пользователя</div>
     <div class="bar"></div>
     <div class="meta">
-      Верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
-      Версия 0.12.0 — тестовая сборка<br>
+      ProstoCAD for FreeCAD (прежде InCad): верстак для FreeCAD в стиле Autodesk Inventor / Alibre<br>
+      Версия 0.13.0 — тестовая сборка<br>
       <!--mac-->FreeCAD 1.1 (проверено на 1.1.3) · macOS на Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (проверено на 1.1.3) · Windows 10 / 11 (x64), тестовая сборка win-->
     </div>
   </div>
   <div class="foot">
-    Руководство описывает InCad в сборке 0.12.0. Интерфейс InCad и FreeCAD назван по-английски, так, как он выглядит на
+    Руководство описывает ProstoCAD в сборке 0.13.0. Интерфейс ProstoCAD и FreeCAD назван по-английски, так, как он выглядит на
     экране (вкладки ленты, кнопки, поля диалогов). Если FreeCAD у вас на другом языке, пункты его меню называются иначе,
     но стоят на тех же местах. Что менялось от сборки к сборке — в файле CHANGES_ru.txt, краткая установка — в
     README_ru.txt. Октябрь 2026.
@@ -91,9 +91,9 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
 <section class="toc">
   <h1>Содержание</h1>
   <ol>
-    <li><span class="n">1</span><span><a class="t" href="#about">Что такое InCad</a><br><span class="d">Как InCad устроен поверх FreeCAD и что значит «тестовая сборка» для ваших файлов.</span></span></li>
+    <li><span class="n">1</span><span><a class="t" href="#about">Что такое ProstoCAD</a><br><span class="d">Как ProstoCAD устроен поверх FreeCAD и что значит «тестовая сборка» для ваших файлов.</span></span></li>
     <li><span class="n">2</span><span><a class="t" href="#install">Установка</a><br><span class="d">Требования, установка через Addon Manager или вручную, первый запуск, обновление, удаление.</span></span></li>
-    <li><span class="n">3</span><span><a class="t" href="#window">Окно InCad</a><br><span class="d">Лента, дерево модели, параметры, строка состояния, темы, настройки, отмена.</span></span></li>
+    <li><span class="n">3</span><span><a class="t" href="#window">Окно ProstoCAD</a><br><span class="d">Лента, дерево модели, параметры, строка состояния, темы, настройки, отмена.</span></span></li>
     <li><span class="n">4</span><span><a class="t" href="#mouse">Мышь, виды и меню-жесты</a><br><span class="d">Вращение, сдвиг и масштаб вида, меню по правой кнопке, вкладка View.</span></span></li>
     <li><span class="n">5</span><span><a class="t" href="#sketch">Эскизы</a><br><span class="d">Создание эскиза, инструменты рисования, размеры и формулы, зависимости и Constraint List, проецирование, массивы в эскизе.</span></span></li>
     <li><span class="n">6</span><span><a class="t" href="#features">Операции детали</a><br><span class="d">Как устроены диалоги, затем каждая операция: Extrude, Revolve, Hole, Fillet, Chamfer, Shell, Draft, Move Face, Thread, Sweep, Loft, Coil, Spur Gears, Worm Gear, Boolean, Split, массивы, рабочие элементы.</span></span></li>
@@ -102,17 +102,17 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <li><span class="n">9</span><span><a class="t" href="#assembly">Сборки</a><br><span class="d">Вставка деталей, связи и соединения, степени свободы, перемещение деталей, правка детали в контексте сборки, Make Assembly, Boolean между деталями.</span></span></li>
     <li><span class="n">10</span><span><a class="t" href="#printing">Советы для 3D-печати</a><br><span class="d">Зазоры для печати, сохранение инструмента, печать детали частями.</span></span></li>
     <li><span class="n">11</span><span><a class="t" href="#trouble">Если что-то не так и как сообщить о проблеме</a><br><span class="d">Что попробовать сначала, файл журнала, что прислать, известные ограничения.</span></span></li>
-    <li><span class="n">A</span><span><a class="t" href="#keys">Горячие клавиши</a><br><span class="d">Все клавиши, на которые отвечает InCad.</span></span></li>
+    <li><span class="n">A</span><span><a class="t" href="#keys">Горячие клавиши</a><br><span class="d">Все клавиши, на которые отвечает ProstoCAD.</span></span></li>
     <li><span class="n">B</span><span><a class="t" href="#ribbon">Карта ленты</a><br><span class="d">Все вкладки, группы и команды ленты в каждом режиме.</span></span></li>
   </ol>
 </section>
 
 <!-- ============================================================ 1 -->
-<h1 class="chapter" id="about"><span class="num">1</span>Что такое InCad</h1>
-<p class="lead">InCad придаёт FreeCAD вид и привычки работы Autodesk Inventor и Alibre Design.</p>
+<h1 class="chapter" id="about"><span class="num">1</span>Что такое ProstoCAD</h1>
+<p class="lead">ProstoCAD придаёт FreeCAD вид и привычки работы Autodesk Inventor и Alibre Design.</p>
 
-<p>InCad — это <b>верстак</b> (workbench) для FreeCAD: модуль, который FreeCAD загружает так же, как свои верстаки Part
-Design или Sketcher. Когда InCad включён, он заменяет панели инструментов FreeCAD интерфейсом в стиле Inventor:</p>
+<p>ProstoCAD — это <b>верстак</b> (workbench) для FreeCAD: модуль, который FreeCAD загружает так же, как свои верстаки Part
+Design или Sketcher. Когда ProstoCAD включён, он заменяет панели инструментов FreeCAD интерфейсом в стиле Inventor:</p>
 <ul>
   <li><b>лента</b> команд, вкладки которой меняются вместе с тем, что вы делаете (деталь, эскиз, сборка);</li>
   <li><b>дерево модели</b> (Model Browser) с единой историей всей детали, эскизами под операциями, которые их
@@ -125,44 +125,44 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 </ul>
 
 <div class="keep"><h2>Внутри — FreeCAD</h2>
-<p>Всё, что создаёт InCad, — обычная геометрия FreeCAD: деталь — это тело Part Design, эскиз — эскиз Sketcher, сборка
+<p>Всё, что создаёт ProstoCAD, — обычная геометрия FreeCAD: деталь — это тело Part Design, эскиз — эскиз Sketcher, сборка
 использует собственные соединения (joints) верстака Assembly. Ваши файлы остаются обычными файлами <b>.FCStd</b>,
-которые FreeCAD открывает и с InCad, и без него.</p></div>
+которые FreeCAD открывает и с ProstoCAD, и без него.</p></div>
 <p>Кнопка <span class="ui">FreeCAD</span> в правом верхнем углу окна (<span class="ui">Return to FreeCAD</span>) в любой
-момент возвращает обычный интерфейс FreeCAD; чтобы вернуться в InCad, выберите <span class="ui">InCad</span> в списке
+момент возвращает обычный интерфейс FreeCAD; чтобы вернуться в ProstoCAD, выберите <span class="ui">ProstoCAD</span> в списке
 верстаков.</p>
-<p>Файл, сделанный не в InCad, тоже откроется — со всеми инструментами: когда он оказывается впереди, он сам становится деталью InCad (главным становится самое большое тело; STEP, открытый как есть, получает Solid для каждого своего тела, на их местах). Save сохраняет это.</p>
+<p>Файл, сделанный не в ProstoCAD, тоже откроется — со всеми инструментами: когда он оказывается впереди, он сам становится деталью ProstoCAD (главным становится самое большое тело; STEP, открытый как есть, получает Solid для каждого своего тела, на их местах). Save сохраняет это.</p>
 
-<div class="keep"><h2>Эта сборка: 0.12.0, тестовая</h2>
-<p>0.12.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
+<div class="keep"><h2>Эта сборка: 0.13.0, тестовая</h2>
+<p>0.13.0 — тестовая сборка. Сборки появились в 0.2.0, Move Face — в 0.3.0, собственный Offset и Concentric — в 0.4.0,
 <b>текст</b> и <b>Emboss</b> — в 0.5.0, экспорт в STEP и STL — в 0.5.1. Новое в 0.5.2: большие детали работают намного
 быстрее (пересчёт, правка ранней операции, щелчок по грани), а паз или две дуги можно образмерить по <b>внешним
 краям</b> (5.3). В 0.5.3 быстрее текст и массивы эскиза, удаление, каждое новое или изменённое значение
 (перестраиваются только операции, которые его используют), первое изменение после открытия файла и каждый
 предпросмотр операции, и появился пункт <span class="path">⚙ ▸ Show Log File</span>. Новое в 0.5.4: <b>Emboss на
-сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё. Новое в 0.8.0: <b>3D Line</b> по виртуальному кубу точек (путь для Sweep, 6.18); несколько рабочих плоскостей сразу (<b>Planes</b>) и их поворот кольцами (<b>Turn</b>); у Extrude <b>Extents 2</b> для второй стороны и To до ребра или рабочей оси; <b>Full</b> рядом с радиусом Fillet; окно Open показывает картинку файла; подсказки синие, ошибки красные; вкладка <b>Image</b> — фото-подложка, масштаб по известной длине; View ▸ <b>Screenshot</b>; оси деталей в сборке — для привязок; исправлено: стенка Sweep ровная и тогда, когда эскиз профиля перевёрнут на своей плоскости; Sweep в стороне от детали больше не зацикливает окно операции. Новое в 0.9.0: <b>сечение сборки</b> — все детали, которые пересекает плоскость, каждая в своём цвете, а также STEP, файлы из других программ и сборки FreeCAD (8.4); <b>Interference</b>: пересечения деталей ярко-красным; Hide / Show осей, начала координат и эскизов в сборке; <b>Open</b> детали в отдельном окне (9.9). Новое в 0.12.0: <b>Mirror Solid</b> — зеркальная копия целого тела, следующая за оригиналом до Break Mirror Link, или Join / Cut с самим собой, целиком или одной стороной от плоскости (6.14); <b>Mirror</b> в эскизе, копия которого следует за оригиналом без копирования размеров, и собственный <b>Symmetric</b> InCad; Shift-клик выделяет весь контур эскиза; окно <b>Parameters</b>; Split ▸ <b>Gap</b>; ⚙ ▸ <b>Report a Bug</b>; меню правой кнопки показывают только то, что применимо; ручки шестерён крупнее и цветные; Boolean, зазор которого не строится, вырезает с 0 мм. Исправлено в 0.11.4: каждая плоскость ряда (<b>Planes</b>) открывает свой диалог двойным щелчком — её отступ и Turn, — а щелчок по другой плоскости ряда переносит туда диалог; поля Point берут точки 3D Line и рабочие точки; Angle around edge и Normal to edge принимают ось; Midpoint of edge — середина по длине кривой; Edge meets plane и Two edges meet отказывают, если ничего не пересекается; 3D Line и Text прячутся и показываются, как эскизы. Исправлено в 0.11.3: Appearance ▸ <b>Hide Edges</b> работает после кнопки Shaded. Новое в 0.11.2: Hole ▸ Concentric и Thread сразу по нескольким круглым рёбрам или граням (6.4, 6.10); Apply + помнит настройки; Delete предлагает удалить то, что построено на элементе. Исправлено в 0.11.1: Work Axis ▸ Axis of a cylinder на конусе и части цилиндра; все поля Point рабочих элементов подсвечивают отмеченные точки детали; вид вращается при выборе точек; Hide / Show больше не перестраивает деталь. Новое в 0.11.0: <b>Spur Gears</b> и <b>Worm Gear</b> — пара колёс в зацеплении или червяк с колесом в одном диалоге, после Make Assembly вращаются вместе (6.17). Новое в 0.10.0: явные <b>Hide</b>, <b>Show</b> и <b>Show All</b> на ленте и во всех меню правой кнопки; в сборке деталь прячется и показывается в дереве сборки (9.9); файлы не из InCad — из скрипта, FreeCAD, STEP — открываются со всеми инструментами; Save сборки кладёт её и все детали в папку с её именем (9.9); гизмо в сборке меньше и появляется по щелчку на пару секунд; стрелки прокрутки у вкладок файлов — полный
+сфере</b> (6.16) и <span class="path">⚙ ▸ Display Quality</span> (3.8); в 0.5.5 Construction переключает только выбранные линии (5.7). Новое в 0.6.0: компактная лента <b>Compact</b> (View ▸ Ribbon Size: значки без подписей, самая низкая лента), Work Plane ▸ Three points по отмеченным точкам, как в разрезе; исправлено: Offset и Symmetric на пазах, разрез по плоскости XY / XZ / YZ. Новое в 0.7.0: Extrude ▸ <b>To</b> до любой грани любого тела, и кривой, или до любой точки; буквы Emboss за краем грани переходят на плавно продолжающие её грани; End of Part выше эскизов, Text и рабочих плоскостей; <b>Full Round Fillet</b> (по двум рёбрам); Show / Hide All Sketches; деталь становится полупрозрачной, пока вы рисуете эскиз на плоскости внутри неё. Новое в 0.8.0: <b>3D Line</b> по виртуальному кубу точек (путь для Sweep, 6.18); несколько рабочих плоскостей сразу (<b>Planes</b>) и их поворот кольцами (<b>Turn</b>); у Extrude <b>Extents 2</b> для второй стороны и To до ребра или рабочей оси; <b>Full</b> рядом с радиусом Fillet; окно Open показывает картинку файла; подсказки синие, ошибки красные; вкладка <b>Image</b> — фото-подложка, масштаб по известной длине; View ▸ <b>Screenshot</b>; оси деталей в сборке — для привязок; исправлено: стенка Sweep ровная и тогда, когда эскиз профиля перевёрнут на своей плоскости; Sweep в стороне от детали больше не зацикливает окно операции. Новое в 0.9.0: <b>сечение сборки</b> — все детали, которые пересекает плоскость, каждая в своём цвете, а также STEP, файлы из других программ и сборки FreeCAD (8.4); <b>Interference</b>: пересечения деталей ярко-красным; Hide / Show осей, начала координат и эскизов в сборке; <b>Open</b> детали в отдельном окне (9.9). Новое в 0.13.0: новое имя — InCad теперь называется <b>ProstoCAD for FreeCAD</b> (сайт prostocad.com); больше ничего не меняется. Новое в 0.12.0: <b>Mirror Solid</b> — зеркальная копия целого тела, следующая за оригиналом до Break Mirror Link, или Join / Cut с самим собой, целиком или одной стороной от плоскости (6.14); <b>Mirror</b> в эскизе, копия которого следует за оригиналом без копирования размеров, и собственный <b>Symmetric</b> ProstoCAD; Shift-клик выделяет весь контур эскиза; окно <b>Parameters</b>; Split ▸ <b>Gap</b>; ⚙ ▸ <b>Report a Bug</b>; меню правой кнопки показывают только то, что применимо; ручки шестерён крупнее и цветные; Boolean, зазор которого не строится, вырезает с 0 мм. Исправлено в 0.11.4: каждая плоскость ряда (<b>Planes</b>) открывает свой диалог двойным щелчком — её отступ и Turn, — а щелчок по другой плоскости ряда переносит туда диалог; поля Point берут точки 3D Line и рабочие точки; Angle around edge и Normal to edge принимают ось; Midpoint of edge — середина по длине кривой; Edge meets plane и Two edges meet отказывают, если ничего не пересекается; 3D Line и Text прячутся и показываются, как эскизы. Исправлено в 0.11.3: Appearance ▸ <b>Hide Edges</b> работает после кнопки Shaded. Новое в 0.11.2: Hole ▸ Concentric и Thread сразу по нескольким круглым рёбрам или граням (6.4, 6.10); Apply + помнит настройки; Delete предлагает удалить то, что построено на элементе. Исправлено в 0.11.1: Work Axis ▸ Axis of a cylinder на конусе и части цилиндра; все поля Point рабочих элементов подсвечивают отмеченные точки детали; вид вращается при выборе точек; Hide / Show больше не перестраивает деталь. Новое в 0.11.0: <b>Spur Gears</b> и <b>Worm Gear</b> — пара колёс в зацеплении или червяк с колесом в одном диалоге, после Make Assembly вращаются вместе (6.17). Новое в 0.10.0: явные <b>Hide</b>, <b>Show</b> и <b>Show All</b> на ленте и во всех меню правой кнопки; в сборке деталь прячется и показывается в дереве сборки (9.9); файлы не из ProstoCAD — из скрипта, FreeCAD, STEP — открываются со всеми инструментами; Save сборки кладёт её и все детали в папку с её именем (9.9); гизмо в сборке меньше и появляется по щелчку на пару секунд; стрелки прокрутки у вкладок файлов — полный
 список в CHANGES_ru.txt.</p></div>
 <div class="note"><b>Пожалуйста:</b> сохраняйте работу почаще и работайте с <b>копиями</b> важных файлов. Если что-то
 выглядит странно — напишите нам; что прислать, сказано в главе 11.</div>
 
 <!-- ============================================================ 2 -->
 <h1 class="chapter" id="install"><span class="num">2</span>Установка</h1>
-<!--mac--><p class="lead">InCad ставится один раз через Addon Manager в FreeCAD; обновление — те же несколько шагов.</p><!--/mac--><!--win <p class="lead">InCad ставится файлом <b>install.bat</b> из архива; новая сборка ставится так же, а <b>uninstall.bat</b> удаляет InCad.</p> win-->
+<!--mac--><p class="lead">ProstoCAD ставится один раз через Addon Manager в FreeCAD; обновление — те же несколько шагов.</p><!--/mac--><!--win <p class="lead">ProstoCAD ставится файлом <b>install.bat</b> из архива; новая сборка ставится так же, а <b>uninstall.bat</b> удаляет ProstoCAD.</p> win-->
 
 <!--mac-->
 <div class="keep"><h2>Требования</h2>
 <ul>
   <li>Mac на Apple Silicon (M1, M2, M3, M4 …).</li>
-  <li>FreeCAD 1.1 для macOS Apple Silicon (InCad проверен на FreeCAD 1.1.3), с сайта
+  <li>FreeCAD 1.1 для macOS Apple Silicon (ProstoCAD проверен на FreeCAD 1.1.3), с сайта
       <b>www.freecad.org/downloads.php</b>.</li>
 </ul></div>
 <p>Mac на Intel, Windows и Linux эта сборка не поддерживает.</p>
 
 <div class="keep"><h2>Установка через Addon Manager (рекомендуется)</h2>
 <ol>
-  <li>Распакуйте архив InCad. Получится папка с README, CHANGES и этим руководством, а внутри неё — папка <b>InCad</b>.
+  <li>Распакуйте архив ProstoCAD. Получится папка с README, CHANGES и этим руководством, а внутри неё — папка <b>ProstoCAD</b>.
       Положите распакованную папку туда, где она пока полежит, например в «Загрузки».</li>
-  <li>Скопируйте путь к папке <b>InCad</b> — той, что <i>внутри</i> распакованной папки: выделите её в Finder и нажмите
+  <li>Скопируйте путь к папке <b>ProstoCAD</b> — той, что <i>внутри</i> распакованной папки: выделите её в Finder и нажмите
       <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd> («Скопировать путь»). Путь должен заканчиваться на <code>…/InCad</code>, а
       не на <code>.zip</code> и не на <code>…-macOS-arm64</code>.</li>
   <li>Запустите FreeCAD и откройте <span class="path">FreeCAD ▸ Settings…</span> (Preferences…). Слева в списке выберите
@@ -170,9 +170,9 @@ Design или Sketcher. Когда InCad включён, он заменяет �
   <li>В разделе <span class="ui">Custom repositories</span> нажмите <span class="ui">+</span>. В поле
       <span class="ui">Repository URL</span> вставьте путь из шага 2. Поле <span class="ui">Branch</span> не трогайте.
       Нажмите <span class="ui">OK</span>, затем ещё раз <span class="ui">OK</span>, чтобы закрыть настройки.</li>
-  <li>Откройте <span class="path">Tools ▸ Addon Manager</span>. Найдите в списке <b>InCad</b>, выделите и нажмите
+  <li>Откройте <span class="path">Tools ▸ Addon Manager</span>. Найдите в списке <b>ProstoCAD</b>, выделите и нажмите
       <span class="ui">Install</span>.</li>
-  <li>Перезапустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+  <li>Перезапустите FreeCAD и выберите <b>ProstoCAD</b> в списке верстаков.</li>
 </ol></div>
 <p>После установки распакованная папка больше не нужна.</p>
 
@@ -182,9 +182,9 @@ Design или Sketcher. Когда InCad включён, он заменяет �
   <li>В Finder выберите <span class="path">Переход ▸ Переход к папке…</span> (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>G</kbd>) и
       вставьте <code>~/Library/Application Support/FreeCAD/v1-1/Mod</code>. Если папки <b>Mod</b> нет, перейдите в
       <code>…/FreeCAD/v1-1</code> и создайте там папку с именем <b>Mod</b>.</li>
-  <li>Скопируйте папку <b>InCad</b> из распакованного архива в эту папку <b>Mod</b>. Должно получиться
+  <li>Скопируйте папку <b>ProstoCAD</b> из распакованного архива в эту папку <b>Mod</b>. Должно получиться
       <code>…/FreeCAD/v1-1/Mod/InCad/InitGui.py</code>, а не <code>…/Mod/InCad/InCad/InitGui.py</code>.</li>
-  <li>Запустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+  <li>Запустите FreeCAD и выберите <b>ProstoCAD</b> в списке верстаков.</li>
 </ol></div>
 
 <!--/mac-->
@@ -192,9 +192,9 @@ Design или Sketcher. Когда InCad включён, он заменяет �
 <div class="keep"><h2>Требования</h2>
 <ul>
   <li>Windows 10 или Windows 11, 64-бит (x64).</li>
-  <li>FreeCAD 1.1 для Windows (InCad сделан под FreeCAD 1.1.3), с сайта <b>www.freecad.org/downloads.php</b>.</li>
+  <li>FreeCAD 1.1 для Windows (ProstoCAD сделан под FreeCAD 1.1.3), с сайта <b>www.freecad.org/downloads.php</b>.</li>
 </ul></div>
-<div class="note"><b>Первая тестовая сборка.</b> InCad разрабатывается на Mac; эту сборку для Windows пробовали только
+<div class="note"><b>Первая тестовая сборка.</b> ProstoCAD разрабатывается на Mac; эту сборку для Windows пробовали только
 на одном компьютере с Windows 11. Возможны ошибки: работайте с <b>копиями</b> файлов и присылайте журнал с каждым
 сообщением (глава 11).</div>
 
@@ -204,10 +204,10 @@ Design или Sketcher. Когда InCad включён, он заменяет �
   <li>Распакуйте архив (правая кнопка ▸ <span class="ui">Извлечь все…</span>). Ничего не запускайте прямо из
       zip.</li>
   <li>В распакованной папке дважды щёлкните <b>install.bat</b>. Он находит FreeCAD, спрашивает у него папку дополнений
-      и копирует туда папку <b>InCad</b>. Прежний InCad в этом месте сначала переносится в <b>InCad-backups</b>, ничего
+      и копирует туда папку <b>ProstoCAD</b>. Прежний ProstoCAD в этом месте сначала переносится в <b>InCad-backups</b>, ничего
       не удаляется. Если Windows скажет «Система Windows защитила ваш компьютер»: <span class="ui">Подробнее</span> ▸
       <span class="ui">Выполнить в любом случае</span>.</li>
-  <li>Запустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+  <li>Запустите FreeCAD и выберите <b>ProstoCAD</b> в списке верстаков.</li>
 </ol></div>
 <p>FreeCAD установлен в необычное место? В командной строке в распакованной папке:
 <code>install.bat -FreeCAD "D:\Apps\FreeCAD 1.1"</code>, или укажите папку дополнений сами:
@@ -218,14 +218,14 @@ Design или Sketcher. Когда InCad включён, он заменяет �
   <li>Закройте FreeCAD.</li>
   <li>Вставьте <code>%APPDATA%\FreeCAD\v1-1\Mod</code> в адресную строку Проводника. Если папки <b>Mod</b> нет,
       перейдите в <code>…\FreeCAD\v1-1</code> и создайте там папку <b>Mod</b>.</li>
-  <li>Скопируйте папку <b>InCad</b> из распакованного архива в эту папку <b>Mod</b>. Должно получиться
-      <code>…\Mod\InCad\InitGui.py</code>, а не <code>…\Mod\InCad\InCad\InitGui.py</code>.</li>
-  <li>Запустите FreeCAD и выберите <b>InCad</b> в списке верстаков.</li>
+  <li>Скопируйте папку <b>ProstoCAD</b> из распакованного архива в эту папку <b>Mod</b>. Должно получиться
+      <code>…\Mod\ProstoCAD\InitGui.py</code>, а не <code>…\Mod\ProstoCAD\ProstoCAD\InitGui.py</code>.</li>
+  <li>Запустите FreeCAD и выберите <b>ProstoCAD</b> в списке верстаков.</li>
 </ol></div>
 win-->
 
 <div class="keep"><h2>Первый запуск</h2>
-<p>При первом запуске InCad спросит, что создать и в каких единицах: <span class="ui">Part</span> (один файл детали) или
+<p>При первом запуске ProstoCAD спросит, что создать и в каких единицах: <span class="ui">Part</span> (один файл детали) или
 <span class="ui">Assembly</span> (вставка и связывание файлов деталей), <span class="ui">Millimeters</span> (мм, первыми в
 списках идут резьбы ISO) или <span class="ui">Inches</span> (дюймы, первыми идут UNC/UNF). Если отметить
 <span class="ui">Remember my choice</span>, команда <span class="ui">New</span> в следующий раз сразу создаст файл того же
@@ -233,45 +233,45 @@ win-->
 <p>Чтобы вопрос снова появлялся, включите на ленте <span class="path">Tools ▸ Options ▸ Ask on New</span> или выберите
 <span class="path">⚙ ▸ Units for New Files ▸ Ask every time</span>.</p>
 
-<div class="keep"><h2>Чтобы FreeCAD запускался сразу в InCad</h2>
-<p><span class="path">FreeCAD ▸ Settings… ▸ Workbenches ▸ Available Workbenches ▸ Startup ▸ Default workbench: InCad</span>.
+<div class="keep"><h2>Чтобы FreeCAD запускался сразу в ProstoCAD</h2>
+<p><span class="path">FreeCAD ▸ Settings… ▸ Workbenches ▸ Available Workbenches ▸ Startup ▸ Default workbench: ProstoCAD</span>.
 (В FreeCAD 1.1 эта настройка находится в разделе Workbenches, а не General.)</p></div>
 
 <!--mac-->
 <div class="keep"><h2>Обновление до новой сборки</h2>
 <ol>
-  <li><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>InCad</b> ▸ <span class="ui">Uninstall</span>. Закройте FreeCAD.</li>
-  <li>Распакуйте новую сборку и скопируйте путь к её папке <b>InCad</b> (<kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd>).</li>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>ProstoCAD</b> ▸ <span class="ui">Uninstall</span>. Закройте FreeCAD.</li>
+  <li>Распакуйте новую сборку и скопируйте путь к её папке <b>ProstoCAD</b> (<kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>C</kbd>).</li>
   <li><span class="path">FreeCAD ▸ Settings… ▸ Addon Manager ▸ Custom repositories</span>: выделите старый путь, удалите его
       кнопкой <span class="ui">−</span> и добавьте новый кнопкой <span class="ui">+</span>.</li>
-  <li><span class="path">Tools ▸ Addon Manager</span> ▸ <b>InCad</b> ▸ <span class="ui">Install</span>, затем перезапустите FreeCAD.</li>
+  <li><span class="path">Tools ▸ Addon Manager</span> ▸ <b>ProstoCAD</b> ▸ <span class="ui">Install</span>, затем перезапустите FreeCAD.</li>
 </ol></div>
 <p>Если ставили вручную: закройте FreeCAD, замените папку <code>Mod/InCad</code>, запустите FreeCAD.</p>
 
 <div class="keep"><h2>Удаление</h2>
-<p><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>InCad</b> ▸ <span class="ui">Uninstall</span>, затем
+<p><span class="path">Tools ▸ Addon Manager</span> ▸ выделите <b>ProstoCAD</b> ▸ <span class="ui">Uninstall</span>, затем
 перезапустите FreeCAD. Если ставили вручную: закройте FreeCAD и удалите папку <code>Mod/InCad</code>. Можно удалить и
 файл журнала <code>~/Library/Logs/InCad.log</code>. Ваши файлы .FCStd продолжат открываться в обычном FreeCAD.</p></div>
 
 <!--/mac-->
 <!--win
 <div class="keep"><h2>Обновление до новой сборки</h2>
-<p>Закройте FreeCAD, распакуйте новую сборку и дважды щёлкните её <b>install.bat</b>. Установленный раньше InCad сначала
+<p>Закройте FreeCAD, распакуйте новую сборку и дважды щёлкните её <b>install.bat</b>. Установленный раньше ProstoCAD сначала
 переносится в <b>InCad-backups</b> (рядом с папкой Mod).</p></div>
 
 <div class="keep"><h2>Удаление</h2>
-<p>Закройте FreeCAD и дважды щёлкните <b>uninstall.bat</b>: папка InCad переносится в <b>InCad-backups</b>; удалите эту
-папку сами, когда она станет не нужна. Папка журналов InCad — <code>%LOCALAPPDATA%\InCad</code> (её тоже можно
+<p>Закройте FreeCAD и дважды щёлкните <b>uninstall.bat</b>: папка ProstoCAD переносится в <b>InCad-backups</b>; удалите эту
+папку сами, когда она станет не нужна. Папка журналов ProstoCAD — <code>%LOCALAPPDATA%\ProstoCAD</code> (её тоже можно
 удалить). Ваши файлы .FCStd продолжат открываться в обычном FreeCAD.</p></div>
 win-->
 
 <!-- ============================================================ 3 -->
-<h1 class="chapter" id="window"><span class="num">3</span>Окно InCad</h1>
+<h1 class="chapter" id="window"><span class="num">3</span>Окно ProstoCAD</h1>
 <p class="lead">Короткая экскурсия: для чего какая часть окна.</p>
 
 <figure>
-  <img src="img/1_overview.jpg" alt="Окно InCad с деталью">
-  <figcaption>Рис. 1. Окно InCad: сверху полоса заголовка и лента, слева дерево модели и панель Parameters, в центре
+  <img src="img/1_overview.jpg" alt="Окно ProstoCAD с деталью">
+  <figcaption>Рис. 1. Окно ProstoCAD: сверху полоса заголовка и лента, слева дерево модели и панель Parameters, в центре
   модель, справа ViewCube и панель навигации, внизу строка состояния.</figcaption>
 </figure>
 
@@ -279,12 +279,12 @@ win-->
 <p>В самой верхней полосе — быстрые кнопки <span class="ui">New</span>, <span class="ui">Open</span>,
 <span class="ui">Save</span>, <span class="ui">Undo</span>, <span class="ui">Redo</span> и <span class="ui">Update</span>,
 имя файла, а справа <span class="ui">Light / Dark</span>, <span class="ui">FreeCAD</span> (Return to FreeCAD) и
-<span class="ui">⚙</span> (настройки InCad).</p></div>
+<span class="ui">⚙</span> (настройки ProstoCAD).</p></div>
 <p><span class="ui">Update</span> пересчитывает модель и перерисовывает дерево и вид. Нажмите её, если вид или дерево
 вдруг разошлись с моделью; в сборке она ещё и подтягивает изменившиеся детали (см. <a href="#asm-update">9.10</a>).</p>
 
 <div class="keep"><h2>3.2 Меню</h2>
-<p>Меню у InCad короткое: <span class="ui">File</span> (New, New Assembly, Open, Save, Save As, Close, Quit),
+<p>Меню у ProstoCAD короткое: <span class="ui">File</span> (New, New Assembly, Open, Save, Save As, Close, Quit),
 <span class="ui">Edit</span> (Undo, Redo) и <span class="ui">View</span> (Light / Dark, Zoom All, Home View, Shaded,
 Wireframe, Assembly Context, Parameters, Return to FreeCAD, Ribbon Size). Всё остальное — на ленте и в меню-жестах.</p></div>
 
@@ -292,7 +292,7 @@ Wireframe, Assembly Context, Parameters, Return to FreeCAD, Ribbon Size). Всё
 <p>Вкладки ленты зависят от того, что открыто:</p></div>
 <table>
   <tr><th>Режим</th><th>Вкладки</th></tr>
-  <tr><td>Нет файла или файл не из InCad</td><td class="wrap"><b>Get Started</b> (New, New Assembly, Open), View</td></tr>
+  <tr><td>Нет файла или файл не из ProstoCAD</td><td class="wrap"><b>Get Started</b> (New, New Assembly, Open), View</td></tr>
   <tr><td>Деталь</td><td class="wrap"><b>3D Model</b>, <b>Inspect</b>, <b>Tools</b>, <b>View</b></td></tr>
   <tr><td>Правка эскиза</td><td class="wrap"><b>Sketch</b>, <b>View</b></td></tr>
   <tr><td>Сборка</td><td class="wrap"><b>Assemble</b>, <b>View</b></td></tr>
@@ -341,11 +341,11 @@ Size</span>) переключает размер ленты: <span class="ui">Co
       <span class="ui">Show in Browser</span> (правый клик по грани в виде), раскрывает дерево на операции, создавшей эту
       грань.</li>
   <li><span class="ui">Suppress / Unsuppress</span> выключает операцию, не удаляя её. Резьба подавляется вместе со
-      вспомогательными шагами, которые InCad для неё сделал; эскиз профиля операции означает саму операцию.</li>
-  <li><span class="ui">Delete</span> удаляет операцию вместе со всем, что InCad для неё создал (профили резьбы,
+      вспомогательными шагами, которые ProstoCAD для неё сделал; эскиз профиля операции означает саму операцию.</li>
+  <li><span class="ui">Delete</span> удаляет операцию вместе со всем, что ProstoCAD для неё создал (профили резьбы,
       вспомогательные элементы Boolean, вырезы в сборке), одним шагом отмены. <kbd>⌫</kbd> или <kbd>Del</kbd> удаляют
       выделенное. Если удаление затрагивает больше, чем одну строку, — тело, которое использует Boolean, главное тело,
-      Split с частями, — InCad сначала спросит и скажет, что исчезнет.</li>
+      Split с частями, — ProstoCAD сначала спросит и скажет, что исчезнет.</li>
   <li><span class="ui">Hide</span>, <span class="ui">Show</span> и <span class="ui">Show All</span> (View ▸ Visual Style ▸
       Hide / Show и меню правой кнопки) прячут или показывают выбранное тело, деталь сборки, плоскость или ось Origin,
       Center Point или эскиз; спрятанное выбирается его строкой в браузере. <b>Show All</b> возвращает все спрятанные
@@ -370,13 +370,14 @@ Size</span>) переключает размер ленты: <span class="ui">Co
   <li>Измените значение в столбце Value — модель обновится.</li>
   <li><span class="ui">−</span> удаляет выделенный параметр. Значение, которое ещё где-то используется (операцией или
       формулой), не удаляется: строка состояния скажет, кто его использует. Так удобно убирать значения, оставшиеся от
-      удалённых операций.</li>
+      удалённых операций. Размер эскиза (d1, d2…) удаляется так же — из своего эскиза; размер, который использует
+      формула, остаётся.</li>
   <li>Пока открыто поле ввода размера или поле диалога, щелчок по имени параметра вставляет это имя в формулу.</li>
 </ul>
 <p><span class="ui">View ▸ Windows ▸ Parameters</span> (или меню-жест) открывает <b>окно Parameters</b>: все параметры в одной большой таблице, размер окна меняется, — <span class="ui">Name</span>, <span class="ui">Value</span>, <span class="ui">Result</span> и <span class="ui">Used by</span> (операции, эскизы и формулы, которые его используют; «— not used» серым). Окно остаётся открытым во время работы и показывает каждое изменение. Введите значение или формулу в <span class="ui">Value</span>, введите новое имя поверх размера или значения операции, чтобы переименовать его, <span class="ui">+ Add</span> и <span class="ui">− Remove</span> — как на панели, <span class="ui">Find a name</span> сужает список, а <span class="ui">Delete Unused</span> одним шагом отмены удаляет все значения, которые ничем не используются (оставшиеся от удалённых операций).</p>
 
 <div class="keep"><h2>3.6 Значения, единицы и формулы</h2>
-<p>Везде, где InCad просит длину или угол, можно ввести:</p></div>
+<p>Везде, где ProstoCAD просит длину или угол, можно ввести:</p></div>
 <ul>
   <li>число в единицах файла (<code>12</code>) или с единицами (<code>12 mm</code>, <code>0.5 in</code>,
       <code>30°</code>);</li>
@@ -394,7 +395,7 @@ features</b>).</p></div>
 
 <div class="keep"><h2>3.8 Светлая и тёмная тема, меню настроек</h2>
 <p><span class="ui">Light / Dark</span> на полосе заголовка (а также <span class="path">View ▸ Appearance</span> и
-меню-жест) переключает тему одним щелчком. В меню <span class="ui">⚙</span> собраны настройки InCad:</p></div>
+меню-жест) переключает тему одним щелчком. В меню <span class="ui">⚙</span> собраны настройки ProstoCAD:</p></div>
 <table>
   <tr><th>Меню ⚙</th><th class="wrap">Варианты</th></tr>
   <tr><td>Theme</td><td class="wrap">Match macOS (как в системе), Light, Dark</td></tr>
@@ -405,12 +406,12 @@ features</b>).</p></div>
       мелко рисуются круглые грани. С Fine блик на шаре или скруглении не показывает грани; меняется только отрисовка,
       не деталь, и файл не помечается изменённым. <!--mac-->На Mac по умолчанию Fine.<!--/mac--><!--win В Windows по
       умолчанию Normal (встроенная графика рисует Fine медленнее). win--></td></tr>
-  <tr><td>Show Log File</td><td class="wrap">Показывает журнал InCad (InCad.log) выделенным в Finder — этот файл
+  <tr><td>Show Log File</td><td class="wrap">Показывает журнал ProstoCAD (InCad.log) выделенным в Finder — этот файл
       нужно прислать с сообщением о проблеме (глава 11)</td></tr>
-  <tr><td>Report a Bug…</td><td class="wrap">Отправляет сообщение о проблеме прямо в открытый список задач InCad на
+  <tr><td>Report a Bug…</td><td class="wrap">Отправляет сообщение о проблеме прямо в открытый список задач ProstoCAD на
       GitHub — аккаунт GitHub не нужен: что случилось, шаги, контакт, если нужен ответ, и конец журнала (ваше имя
       убирается из путей к файлам). Ответ появится там же (глава 11)</td></tr>
-  <tr><td>Mouse Navigation</td><td class="wrap">Включено: мышь InCad (вращение левой+правой кнопкой, меню по правой).
+  <tr><td>Mouse Navigation</td><td class="wrap">Включено: мышь ProstoCAD (вращение левой+правой кнопкой, меню по правой).
       Выключено: действует собственный стиль навигации FreeCAD.</td></tr>
 </table>
 
@@ -436,7 +437,7 @@ features</b>).</p></div>
 
 <!-- ============================================================ 4 -->
 <h1 class="chapter" id="mouse"><span class="num">4</span>Мышь, виды и меню-жесты</h1>
-<p class="lead">В InCad мышь работает как в Inventor: левая кнопка выделяет, две кнопки вместе вращают вид, правая
+<p class="lead">В ProstoCAD мышь работает как в Inventor: левая кнопка выделяет, две кнопки вместе вращают вид, правая
 открывает меню-жесты.</p>
 
 <div class="keep"><h2>4.1 Мышь</h2>
@@ -453,7 +454,7 @@ features</b>).</p></div>
 </table></div>
 <p>Нет средней кнопки? <span class="ui">Orbit</span> и <span class="ui">Pan</span> на панели навигации (у правого края
 вида) или на вкладке View превращают левую кнопку во вращение или сдвиг; чтобы выйти, щёлкните кнопку ещё раз.</p>
-<p><span class="path">⚙ ▸ Mouse Navigation</span> выключает обработку мыши InCad; тогда действует собственный стиль
+<p><span class="path">⚙ ▸ Mouse Navigation</span> выключает обработку мыши ProstoCAD; тогда действует собственный стиль
 навигации FreeCAD.</p>
 <div class="tip"><b>Инструменты эскиза:</b> пока инструмент линии (ломаной) или сплайна FreeCAD рисует, щелчок правой
 кнопкой заканчивает цепочку, как в FreeCAD, а не открывает меню.</div>
@@ -479,7 +480,8 @@ features</b>).</p></div>
   <tr><td>Ребро</td><td class="wrap">N Look At, S Zoom Selection, E Fillet, W Chamfer, NW Undo, NE Redo, SE Home View,
       SW Zoom All</td><td class="wrap">Show in Browser, Shaded, Wireframe, Hide / Show</td></tr>
   <tr><td>В эскизе</td><td class="wrap">N Finish Sketch, S Dimension, E Circle, W Undo, NE Line, SE Rectangle,
-      SW 3-Point Arc, NW Trim</td><td class="wrap">только то, что к месту: на линии или точке Delete, Construction,
+      SW 3-Point Arc, NW Trim</td><td class="wrap">только то, что к месту: Delete для всего выделенного — линий, точек и размеров (правый клик по невыделенному
+      сначала выделяет его); на линии или точке Construction,
       Show / Hide Constraints и её <b>Constraints (n)…</b> (список зависимостей, отобранный по ней: там удаляется одна
       или все, раздел 5.6); Edit / Delete Pattern на геометрии массива, Break Mirror Link на зеркальной копии; на пустом
       месте Show / Hide Constraints и Constraint List; Stop Tool первым, пока работает инструмент</td></tr>
@@ -529,7 +531,7 @@ features</b>).</p></div>
   <li>Выделите плоскую грань детали или плоскость (в виде или в дереве) — или ничего не выделяйте.</li>
   <li>Нажмите <kbd>S</kbd>, или <span class="path">3D Model ▸ Sketch ▸ Start 2D Sketch</span>, или правый клик ▸
       <span class="ui">Start 2D Sketch</span> (N в меню-жесте).</li>
-  <li>Если ничего не выделено, InCad покажет плоскости Origin и маленькую панель <span class="ui">New sketch on</span> с
+  <li>Если ничего не выделено, ProstoCAD покажет плоскости Origin и маленькую панель <span class="ui">New sketch on</span> с
       кнопками <span class="ui">XY · Top</span>, <span class="ui">XZ · Front</span> и <span class="ui">YZ · Right</span>:
       нажмите кнопку или щёлкните плоскость или плоскую грань в виде. <kbd>Esc</kbd> или <span class="ui">Cancel</span> —
       отказаться.</li>
@@ -554,7 +556,10 @@ features</b>).</p></div>
   <tr><td>Circle</td><td class="wrap">Circle (центр и радиус), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
   <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
   <tr><td>Rectangle</td><td class="wrap">Rectangle (угол, ширина, высота), Center Rectangle, 3-Point Rectangle, 3-Point
-      Center Rect., Rounded Rectangle</td><td><kbd>R</kbd></td></tr>
+      Center Rect., Rounded Rectangle. У каждого прямоугольника появляются две диагонали — вспомогательные линии — и
+      вспомогательная точка на их пересечении (у Rounded Rectangle диагонали соединяют центры скруглений; у Center
+      Rectangle своя центральная точка): одна связь — эта точка на начале координат — ставит прямоугольник по центру.
+      Они следуют за прямоугольником, удаляются как любые линии.</td><td><kbd>R</kbd></td></tr>
   <tr><td>Slot</td><td class="wrap">Center-to-Center Slot, Overall Slot (два крайних конца, затем ширина), Center Point
       Slot (центр, центр одного конца, затем ширина), Arc Slot, Flat-End Arc Slot</td><td></td></tr>
   <tr><td>Polygon</td><td class="wrap">Hexagon, Triangle, Square, Pentagon, Octagon, Polygon (N sides)</td><td></td></tr>
@@ -563,7 +568,7 @@ features</b>).</p></div>
 <p><span class="path">Sketch ▸ Modify</span>: <span class="ui">Fillet</span> и <span class="ui">Chamfer</span> (скругление и
 фаска углов эскиза), <span class="ui">Trim</span> (<kbd>X</kbd>), <span class="ui">Extend</span>, <span class="ui">Offset</span>.
 В <span class="path">Sketch ▸ Pattern</span> — массивы в эскизе (5.9) и <span class="ui">Mirror</span>.</p>
-<p><b>Offset</b> (собственный InCad): щёлкните линию — берётся вся фигура, в которую она входит (прямоугольник,
+<p><b>Offset</b> (собственный ProstoCAD): щёлкните линию — берётся вся фигура, в которую она входит (прямоугольник,
 многоугольник, цепочка из отдельных линий); <kbd>⌘</kbd>-клик добавляет фигуры. Копия идёт за курсором, клик ставит её.
 Углы остаются острыми, одна линия даёт одну параллельную линию, окружность или эллипс — кольцо. Смещение задаёт один
 размер, на нём открывается поле значения. Геометрия, выделенная до команды, берётся сразу. <span class="ui">Mirror</span>
@@ -615,7 +620,8 @@ Dimension</span> сразу ставит общий размер: щёлкнит
 <p><span class="ui">Symmetric</span> берёт не только точки: щёлкните две точки, две линии (их концы подбираются в пары)
 или две окружности / дуги (их центры и равные радиусы), затем линию симметрии — любую линию, ось X или Y — или точку.
 Щелчок рядом с концом или центром берёт эту точку, иначе линию под курсором; размеры не захватываются никогда.
-Выбранное подсвечивается; инструмент остаётся включённым для следующей пары, <kbd>Esc</kbd> завершает его.</p></div>
+Выбранное подсвечивается. Как только пара готова, инструмент завершается — пару можно сразу тянуть мышью (она
+двигается зеркально); для следующей пары нажмите Symmetric ещё раз. <kbd>Esc</kbd> отменяет выбор.</p></div>
 <p>В строке состояния видно, сколько у эскиза степеней свободы: <b>DOF: 3</b> или <b>Fully constrained ✓</b>. Щелчок по
 этой надписи или <span class="path">Sketch ▸ Format ▸ Show Free Geometry</span> выделяет геометрию, которая ещё может
 двигаться.</p>
@@ -757,7 +763,7 @@ Emboss оборачивает их вокруг цилиндра или кону
       (<span class="ui">Select…</span>), чтобы следующий выбор шёл в него. Пока вы выбираете, деталь показана такой, какой
       была до этой операции, — так можно добраться до любой грани.</li>
   <li><b>Профиль.</b> Extrude и Revolve сами берут единственный законченный эскиз, который ещё не использует ни одна
-      операция; если таких несколько, выделите нужный. Если в эскизе пересекаются линии, InCad покажет его области:
+      операция; если таких несколько, выделите нужный. Если в эскизе пересекаются линии, ProstoCAD покажет его области:
       щёлкните нужную.</li>
   <li><b>Предпросмотр.</b> Любое изменение сразу видно на модели. Пока вы выбираете рёбра или грани, Fillet, Chamfer и
       Move Face рисуют поверх детали оранжевым новые рёбра результата. Полная проверка геометрии результата выполняется
@@ -818,7 +824,7 @@ Emboss оборачивает их вокруг цилиндра или кону
   <tr><td>Extents</td><td class="wrap"><b>Full</b> (360°), <b>Angle</b> (с <b>Flip</b> — в другую сторону), <b>Two
       angles</b> (<b>Angle</b> и <b>Angle 2</b>, по углу в каждую сторону). Углы по умолчанию 90°.</td></tr>
 </table>
-<p>Для спроецированной линии или двух точек InCad хранит под операцией скрытую ось <b>Revolve axis</b>; она удаляется
+<p>Для спроецированной линии или двух точек ProstoCAD хранит под операцией скрытую ось <b>Revolve axis</b>; она удаляется
 вместе с операцией.</p>
 
 <div class="keep"><h2>6.4 Hole <kbd>H</kbd> — отверстие</h2>
@@ -942,7 +948,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
 </table>
 <p>Другие сообщения: <i>The move is too large: a neighbouring face would vanish</i> (например, грань вдавлена глубже, чем
 ширина фаски рядом с ней; ничего не меняется) и <i>A face to move is no longer there</i> (предыдущая операция убрала грань;
-строка Move Face становится красной); грань другого Solid не принимается: <i>The faces must be on this Solid</i>. InCad
+строка Move Face становится красной); грань другого Solid не принимается: <i>The faces must be on this Solid</i>. ProstoCAD
 находит грани заново по геометрии, а не по именам: в их плоскости или — если более раннее изменение их сдвинуло — в
 ближайшей параллельной плоскости, где они перекрываются, поэтому Move Face продолжает работать, когда меняют более раннюю
 операцию, например делают брусок выше. Цель To хранится по имени, как ссылки других операций.</p>
@@ -1041,7 +1047,7 @@ Shell <b>до</b> резьбы; можно и самому перетащить 
       материал: <b>Both</b> (по половине), <b>This Solid</b> (часть, которая остаётся в этом теле) или <b>New
       Solids</b> (остальные). С Keep picked зазор снимается поровну с обеих сторон.</td></tr>
 </table>
-<p>Удаление Split снова соединяет части; InCad сначала спросит и назовёт тела, которые исчезнут.</p>
+<p>Удаление Split снова соединяет части; ProstoCAD сначала спросит и назовёт тела, которые исчезнут.</p>
 
 <div class="keep"><h2>6.14 Массивы и зеркало</h2>
 <p><span class="path">3D Model ▸ Pattern</span>: <span class="ui">Rectangular</span>, <span class="ui">Circular</span> и
@@ -1311,9 +1317,9 @@ Sand, в настоящем размере на любой детали, — и 
   <li><span class="ui">New</span> (<kbd>⌘</kbd> <kbd>N</kbd>) тоже создаёт сборку, если вы выбрали Assembly с отметкой
       <span class="ui">Remember my choice</span>. <span class="path">Tools ▸ Options ▸ Ask on New</span> возвращает вопрос.</li>
 </ul></div>
-<p>Сборка ссылается на файлы деталей, поэтому её нужно сохранить до вставки первой детали. InCad делает это сам: при
+<p>Сборка ссылается на файлы деталей, поэтому её нужно сохранить до вставки первой детали. ProstoCAD делает это сам: при
 вставке первой детали новая сборка сохраняется рядом с этой деталью под своим именем; если файл с таким именем там уже
-есть, InCad спросит имя и папку. <span class="ui">Create</span> сначала попросит сохранить сборку.</p>
+есть, ProstoCAD спросит имя и папку. <span class="ui">Create</span> сначала попросит сохранить сборку.</p>
 
 <div class="keep"><h2>9.2 Вставка и создание деталей</h2>
 <ol>
@@ -1396,7 +1402,7 @@ Sand, в настоящем размере на любой детали, — и 
 местах. Вернуть связь, которую уже нельзя выполнить, не получится — команда будет отклонена.</p></div>
 
 <div class="keep"><h2>9.7 Степени свободы</h2>
-<p>Степени свободы детали — это то, как она ещё может двигаться: до трёх сдвигов и трёх поворотов. InCad считает их
+<p>Степени свободы детали — это то, как она ещё может двигаться: до трёх сдвигов и трёх поворотов. ProstoCAD считает их
 относительно того, что держит деталь (остальные свободные детали на время подсчёта удерживаются на месте):</p></div>
 <ul>
   <li>в строке детали написано <b>grounded</b>, <b>DOF n</b> или <b>DOF ?</b> (9.3);</li>
@@ -1462,7 +1468,7 @@ All Origin</b> (начало координат сборки и деталей) 
 отверстии), — не пересечение. Перерисовывается, когда детали двигаются; повторный щелчок выключает.</p></div>
 
 <div class="keep"><h2 id="asm-update">9.10 Обновление сборки после изменения детали</h2>
-<p>Когда вы возвращаетесь во вкладку сборки после изменения детали, InCad спрашивает: <span class="ui">Parts of … changed.
+<p>Когда вы возвращаетесь во вкладку сборки после изменения детали, ProstoCAD спрашивает: <span class="ui">Parts of … changed.
 Update the assembly now?</span></p></div>
 <ul>
   <li><span class="ui">Yes</span> — изменения подтягиваются в сборку.</li>
@@ -1502,7 +1508,7 @@ Update the assembly now?</span></p></div>
   <li>Исходная деталь не меняется.</li>
   <li>Если запустить Make Assembly для той же детали ещё раз, появится <span class="ui">Replace existing files</span> (с
       именами уже существующих файлов): файлы прошлого запуска перезаписываются, и новые имена придумывать не нужно. Саму
-      деталь InCad не заменяет никогда. Если какой-то из этих файлов открыт с несохранёнными изменениями, InCad сначала
+      деталь ProstoCAD не заменяет никогда. Если какой-то из этих файлов открыт с несохранёнными изменениями, ProstoCAD сначала
       спросит.</li>
   <li>Деталь из одного куска даёт сборку из одного компонента (например, одно колесо). Чтобы компонентов было несколько,
       сначала разделите её (Split ▸ Keep all) или сделайте части как New Solid. Колёса пары (6.17) ложатся каждое в свой
@@ -1532,7 +1538,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 
 <!-- ============================================================ 10 -->
 <h1 class="chapter" id="printing"><span class="num">10</span>Советы для 3D-печати</h1>
-<p class="lead">InCad делался с расчётом на печатные детали. Несколько привычек избавят от лишних перепечаток.</p>
+<p class="lead">ProstoCAD делался с расчётом на печатные детали. Несколько привычек избавят от лишних перепечаток.</p>
 <ul>
   <li><b>Резьба, которая свинчивается.</b> У Thread и Hole ▸ Tapped есть <b>Print clearance (on diameter)</b>, по
       умолчанию 0,2 мм (0,3 мм для резьбы Print-friendly). Проверьте на маленьком пробнике на своём принтере: если напечатанный винт идёт туго — увеличьте,
@@ -1557,7 +1563,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 
 <div class="keep"><h2>Когда что-то не работает</h2>
 <ol>
-  <li><b>Прочитайте строку состояния</b> и красный текст в диалоге: InCad объясняет, почему команда отклонена и что надо
+  <li><b>Прочитайте строку состояния</b> и красный текст в диалоге: ProstoCAD объясняет, почему команда отклонена и что надо
       выбрать.</li>
   <li>Открыт диалог? Команды вроде Save и Undo ждут <span class="ui">OK</span> или <span class="ui">Cancel</span>.</li>
   <li>Операция в дереве <b>красная</b>: наведите указатель, чтобы увидеть причину, и исправьте её (двойной щелчок).</li>
@@ -1579,7 +1585,7 @@ Boolean или изменённая Threads Off / On, — это отдельн�
 <!--/mac-->
 <!--win
   <li>версию Windows и версию FreeCAD (<span class="path">Help ▸ About FreeCAD</span>);</li>
-  <li>папку <code>%LOCALAPPDATA%\InCad</code> с файлами InCad.log и install.log — <span class="path">⚙ ▸ Show Log
+  <li>папку <code>%LOCALAPPDATA%\ProstoCAD</code> с файлами InCad.log и install.log — <span class="path">⚙ ▸ Show Log
       File</span> откроет её в Проводнике с выделенным журналом (поиск Windows в эту скрытую папку не заглядывает);</li>
 win-->
   <li>по возможности файл .FCStd, с которым вы работали;</li>
@@ -1591,8 +1597,8 @@ win-->
 <ul>
 <!--mac-->  <li>Только macOS на Apple Silicon; FreeCAD 1.1 (проверено на 1.1.3).</li><!--/mac--><!--win   <li>Windows 10 / 11 (x64): первая тестовая сборка, проверенная на одном компьютере; FreeCAD 1.1 (сделан под 1.1.3).</li> win-->
   <li>Тестовая сборка. Сохраняйтесь почаще и работайте с копиями.</li>
-  <li>Интерфейс InCad только на английском.</li>
-  <li>FreeCAD не делает оболочку (Shell) детали, в которой уже есть моделированная резьба (InCad предлагает сделать Shell
+  <li>Интерфейс ProstoCAD только на английском.</li>
+  <li>FreeCAD не делает оболочку (Shell) детали, в которой уже есть моделированная резьба (ProstoCAD предлагает сделать Shell
       до резьбы).</li>
   <li>Некоторые смещения не строятся на резьбе и других сложных формах (Emboss). Зазор Boolean тогда становится 0 мм
       (поле и строка состояния об этом скажут); копия fit не делается.</li>
@@ -1608,7 +1614,7 @@ win-->
 
 <!-- ============================================================ A -->
 <h1 class="chapter" id="keys"><span class="num">A</span>Горячие клавиши</h1>
-<p class="lead">Одиночные клавиши работают в указанном режиме.<!--mac--> На Mac сочетания с Ctrl у InCad — это сочетания с ⌘.<!--/mac--><!--win  win--></p>
+<p class="lead">Одиночные клавиши работают в указанном режиме.<!--mac--> На Mac сочетания с Ctrl у ProstoCAD — это сочетания с ⌘.<!--/mac--><!--win  win--></p>
 <div class="cols2">
 <table>
   <tr><th>Клавиша</th><th class="wrap">Команда</th></tr>

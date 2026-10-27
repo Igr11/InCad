@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds the Windows test build: Distrib/InCad-<version>-<date>-<commit>-Windows-x64/ with the InCad module,
+# Builds the Windows test build: Distrib/ProstoCAD-FreeCAD-<version>-<date>-<commit>-Windows-x64/ with the InCad module,
 # install.bat / uninstall.bat (+ their .ps1 and the FreeCAD probe), the Windows README, CHANGES and the manuals,
 # and the .zip of that folder next to it.
 # Text files for Windows get CRLF line ends (cmd.exe needs them in .bat files).
@@ -7,7 +7,7 @@ set -e
 REPO="${0:A:h:h}"
 cd "$REPO"
 VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' InCad/incad/__init__.py)
-NAME="InCad-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-Windows-x64"
+NAME="ProstoCAD-FreeCAD-${VER}-$(date +%Y-%m-%d)-$(git rev-parse --short HEAD)-Windows-x64"
 for f in scripts/dist/CHANGES.txt scripts/dist/CHANGES_ru.txt; do  # every build says what changed
   grep -qx "$VER" "$f" || { echo "ERROR: $f has no section for $VER: add its improvements and bug fixes first"; exit 1; }
 done

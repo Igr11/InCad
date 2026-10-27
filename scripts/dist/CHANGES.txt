@@ -1,8 +1,29 @@
-InCad for FreeCAD - what changed
+ProstoCAD for FreeCAD (formerly InCad) - what changed
 ================================
 
 This build: VERSION
 Newest build first. The build name is the name of the zip file.
+
+
+0.13.0
+-----
+InCad is now ProstoCAD for FreeCAD: a new name, the same workbench.
+
+Improvements
+- InCad has a new name: ProstoCAD for FreeCAD (the workbench shows as ProstoCAD). Nothing else changes: the same
+  tools, and every file made before opens as it did.
+- The new home page: https://prostocad.com. The project's GitHub address is now https://github.com/Igr11/ProstoCAD
+  (the old address still leads there).
+- Install as before: the module folder is still called InCad, so an existing installation is simply replaced.
+- The sketch's right-click menu offers Delete for whatever is selected: lines, points and dimensions. A right-click on
+  something not selected selects it first, so Delete removes exactly that.
+- Parameters: - deletes a sketch dimension (d1, d2...) from its sketch; one that a formula uses stays, and the status
+  line says which formula.
+
+Bug fixes
+- After Symmetric the lines could not be dragged: the tool stayed on, waiting for another pair, and took every click.
+  It now ends once the pair is made.
+- Messages said "an InCad part"; they now read "a ProstoCAD part".
 
 
 0.12.0

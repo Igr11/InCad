@@ -254,9 +254,11 @@ def build(doc):
     if assembly.is_assembly(doc):
         return _assembly(doc)
     if not document.is_incad_part(doc):
-        out = [Node("message", "Not an InCad part", tooltip="This file was made outside InCad.")]
+        from incad import host
+        out = [Node("message", host.brand("Not an InCad part"),
+                    tooltip=host.brand("This file was made outside InCad."))]
         if len(document.bodies(doc)) == 1:
-            out.append(Node("action", "Convert to InCad Part", "convert"))
+            out.append(Node("action", host.brand("Convert to InCad Part"), "convert"))
         out.append(Node("action", "Open in FreeCAD", "freecad"))
         return out
     primary = document.primary_body(doc)

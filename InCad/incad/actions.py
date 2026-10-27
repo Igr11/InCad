@@ -1901,9 +1901,11 @@ SHORT = {"view.section_points": "Section", "feature.threads_toggle": "Threads", 
 
 
 def register_all(registry=REGISTRY):
+    from incad import host
     import dataclasses
     for cmd in commands():
         if cmd.id in SHORT and not cmd.short:
             cmd = dataclasses.replace(cmd, short=SHORT[cmd.id])
+        cmd = dataclasses.replace(cmd, label=host.brand(cmd.label), tooltip=host.brand(cmd.tooltip))
         if not registry.has(cmd.id):
             registry.register(cmd)

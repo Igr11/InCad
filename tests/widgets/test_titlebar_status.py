@@ -46,7 +46,7 @@ class TitleStripTest(unittest.TestCase):
     def test_shows_the_version(self):
         """The user: the add-on's version shows somewhere in InCad."""
         import incad
-        self.assertEqual(self.ts.version_text(), "InCad %s" % incad.__version__)
+        self.assertEqual(self.ts.version_text(), "ProstoCAD %s" % incad.__version__)  # InCad's name since 0.13
 
     def test_document_name(self):
         self.ts.set_document_name("Bracket")

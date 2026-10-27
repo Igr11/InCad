@@ -1,11 +1,11 @@
-InCad for FreeCAD
-=================
+ProstoCAD for FreeCAD (formerly InCad)
+======================================
 
 Build: VERSION
 What changed in this build (improvements and bug fixes): CHANGES.txt
-How to use every feature: InCad-manual.pdf (the user manual). A short tour: InCad-presentation.pdf
+How to use every feature: ProstoCAD-FreeCAD-manual.pdf (the user manual). A short tour: ProstoCAD-FreeCAD-presentation.pdf
 
-InCad is a workbench for FreeCAD that gives it an Autodesk Inventor / Alibre style
+ProstoCAD is a workbench for FreeCAD that gives it an Autodesk Inventor / Alibre style
 interface: a ribbon, a model browser with one history and End of Part, feature dialogs
 with live preview, right-click marking menus and Inventor-like sketching.
 Your files stay ordinary FreeCAD files (.FCStd).
@@ -43,9 +43,9 @@ Install (with FreeCAD's Addon Manager)
    step 2. Leave "Branch" as it is. Click OK, then OK again to close Settings.
 5. Open Tools > Addon Manager. Find "InCad" in the list, select it and click Install.
 6. Restart FreeCAD and choose "InCad" in the workbench selector.
-   The first time, InCad asks Part or Assembly and the units: choose and click Create.
-   To make InCad the workbench FreeCAD starts with: FreeCAD > Settings... > Workbenches >
-   Available Workbenches > Startup > Default workbench: InCad.
+   The first time, ProstoCAD asks Part or Assembly and the units: choose and click Create.
+   To make ProstoCAD the workbench FreeCAD starts with: FreeCAD > Settings... > Workbenches >
+   Available Workbenches > Startup > Default workbench: ProstoCAD.
 
 After the install the unzipped folder is no longer needed.
 
@@ -96,5 +96,5 @@ Please send:
 If FreeCAD crashed, macOS shows a crash report: please copy its text as well.
 
 LICENSE
-InCad is free software under the GNU LGPL 2.1 or later (LICENSE.txt), as FreeCAD:
-https://github.com/Igr11/InCad. It is an independent project, not made or endorsed by the FreeCAD project.
+ProstoCAD is free software under the GNU LGPL 2.1 or later (LICENSE.txt), as FreeCAD:
+https://github.com/Igr11/ProstoCAD. It is an independent project, not made or endorsed by the FreeCAD project.

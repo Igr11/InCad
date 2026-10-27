@@ -1,11 +1,11 @@
-InCad для FreeCAD
+ProstoCAD для FreeCAD
 =================
 
 Сборка: VERSION
 Что изменилось в этой сборке (улучшения и исправления): CHANGES_ru.txt
-Как пользоваться всеми функциями: InCad-manual_ru.pdf (руководство). Краткий обзор: InCad-presentation_ru.pdf
+Как пользоваться всеми функциями: ProstoCAD-FreeCAD-manual_ru.pdf (руководство). Краткий обзор: ProstoCAD-FreeCAD-presentation_ru.pdf
 
-InCad - это верстак (workbench) для FreeCAD с интерфейсом в стиле Autodesk Inventor /
+ProstoCAD - это верстак (workbench) для FreeCAD с интерфейсом в стиле Autodesk Inventor /
 Alibre: лента команд, дерево модели с единой историей и маркером End of Part, диалоги
 операций с предпросмотром, контекстные меню-жесты по правой кнопке и эскизы как в Inventor.
 Ваши файлы остаются обычными файлами FreeCAD (.FCStd).
@@ -21,7 +21,7 @@ Alibre: лента команд, дерево модели с единой ис�
 ввода размера.
 Работайте с копиями важных для вас файлов.
 
-Интерфейс InCad и FreeCAD в этой инструкции назван по-английски, как он выглядит на экране.
+Интерфейс ProstoCAD и FreeCAD в этой инструкции назван по-английски, как он выглядит на экране.
 Если FreeCAD у вас на другом языке, пункты меню называются иначе, но стоят на тех же местах.
 
 
@@ -47,9 +47,9 @@ Alibre: лента команд, дерево модели с единой ис�
    настройки.
 5. Откройте Tools > Addon Manager. Найдите в списке "InCad", выделите и нажмите Install.
 6. Перезапустите FreeCAD и выберите "InCad" в списке верстаков.
-   При первом запуске InCad спросит Part или Assembly и единицы измерения: выберите и
-   нажмите Create. Чтобы FreeCAD сразу запускался с InCad: FreeCAD > Settings... > Workbenches >
-   Available Workbenches > Startup > Default workbench: InCad.
+   При первом запуске ProstoCAD спросит Part или Assembly и единицы измерения: выберите и
+   нажмите Create. Чтобы FreeCAD сразу запускался с ProstoCAD: FreeCAD > Settings... > Workbenches >
+   Available Workbenches > Startup > Default workbench: ProstoCAD.
 
 После установки распакованная папка больше не нужна.
 
@@ -100,5 +100,5 @@ Tools > Addon Manager > выделите "InCad" > Uninstall, затем пер�
 Если FreeCAD упал, macOS покажет отчёт о сбое: скопируйте, пожалуйста, и его текст.
 
 ЛИЦЕНЗИЯ
-InCad — свободная программа под GNU LGPL 2.1 или новее (LICENSE.txt), как и FreeCAD:
-https://github.com/Igr11/InCad. Это независимый проект, его не делает и не одобряет проект FreeCAD.
+ProstoCAD — свободная программа под GNU LGPL 2.1 или новее (LICENSE.txt), как и FreeCAD:
+https://github.com/Igr11/ProstoCAD. Это независимый проект, его не делает и не одобряет проект FreeCAD.

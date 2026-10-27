@@ -8,6 +8,27 @@ WINDOWS = sys.platform == "win32"
 MAC = sys.platform == "darwin"
 OS_NAME = "Windows" if WINDOWS else "macOS" if MAC else "system"
 ADD_KEY = "Cmd" if MAC else "Ctrl"   # the key that adds to a selection (Qt's ControlModifier on every system)
+APP_NAME = "ProstoCAD"  # the name users see (InCad before 0.13); the code's own names (incad, InCad… properties
+# saved in the user's files, the InCadWorkbench) stay, so every file made before still opens
+
+
+def app_name():
+    return APP_NAME
+
+
+def version():
+    import incad
+    return incad.__version__
+
+
+def brand(text):
+    """User-facing text with the add-on's name: InCad -> ProstoCAD (whole words only: InCadModel stays)."""
+    if not text:
+        return text
+    import re
+    if APP_NAME[0].lower() not in "aeiou":  # "an InCad part" -> "a ProstoCAD part"
+        text = re.sub(r"\b([Aa])n (?=InCad\b)", r"\1 ", text)
+    return re.sub(r"\bInCad\b", APP_NAME, text)
 
 
 def log_path():

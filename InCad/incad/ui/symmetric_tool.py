@@ -1,7 +1,8 @@
 """Sketch ▸ Symmetric, InCad's own tool (incad.core.sketch_symmetric; the user: choosing the points was hard, and a click
 sometimes took a dimension's point). Two clicks pick what to mirror — a point near the click (an end, a centre, the
 origin) wins over the line or curve under it — the third the mirror line, an axis or a point; each pick shows
-selected. One undo step per pair, then the next pair (Esc ends). Clicks reach only the sketch's geometry: dimensions
+selected. One undo step, and the tool ends: the pair can be dragged at once (the user: after Symmetric the lines
+could not be moved — the tool, waiting for a next pair, took every click). Clicks reach only the sketch's geometry: dimensions
 and constraint symbols can't be caught. What was selected before the command is taken first (three: done at once)."""
 from incad.core import log, safe, sketch_symmetric as sym
 from incad.ui.overall_dim_tool import OverallDimTool
@@ -28,7 +29,8 @@ class SymmetricTool:
         self._input.start()
         for pick in preselected:
             self.take(pick)
-        self._prompt()
+        if self._input is not None:  # three picked beforehand made the pair and ended the tool: nothing to ask
+            self._prompt()
 
     def stop(self):
         if self._input is not None:
@@ -84,9 +86,8 @@ class SymmetricTool:
         if not r.ok:
             log.report("warning", "Symmetric: %s" % r.error)  # the two stay picked: click another mirror
             return None
-        self.picked = []
-        self._highlight()
-        log.report("info", "Symmetric — next pair: click the first point, line, circle or arc (Esc ends)")
+        log.report("info", "Symmetric: done — drag them freely; Symmetric again for another pair")
+        self.stop()
         return r.value
 
     def _highlight(self):

@@ -5,6 +5,7 @@ to rename one), then the user's own. + adds a parameter, − removes the selecte
 value nothing uses, Find narrows the list. Rows come in as plain tuples (kind, name, value, result, used by); the
 shell applies the edits by the same rules as the panel under the browser. No FreeCAD here."""
 from incad.qt import QtCore, QtGui, QtWidgets, Signal
+from incad import host
 from incad.ui import theme as themes
 
 NAME_ROLE = QtCore.Qt.UserRole        # the saved name (a rename compares with it)
@@ -151,7 +152,8 @@ class ParametersWindow(QtWidgets.QDialog):
         self._enabled = enabled
         for b in (self.add_button, self.remove_button, self.unused_button):
             b.setEnabled(enabled)
-        self.add_button.setToolTip("Add a parameter" if enabled else "Open or create an InCad part to add parameters")
+        self.add_button.setToolTip("Add a parameter" if enabled
+                                   else host.brand("Open or create an InCad part to add parameters"))
 
     def set_message(self, text, ok=False):
         p = themes.PALETTES[self._theme]

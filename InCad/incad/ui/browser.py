@@ -414,7 +414,9 @@ class ModelBrowser(QtWidgets.QWidget):
         self._params_enabled = enabled
         self.add_button.setEnabled(enabled)
         self.remove_button.setEnabled(enabled)
-        self.add_button.setToolTip("Add parameter" if enabled else "Open or create an InCad part to add parameters")
+        from incad import host
+        self.add_button.setToolTip("Add parameter" if enabled
+                                   else host.brand("Open or create an InCad part to add parameters"))
         self.params.setEditTriggers(EDIT_TRIGGERS if enabled else QtWidgets.QAbstractItemView.NoEditTriggers)
 
     def add_parameter_row(self):

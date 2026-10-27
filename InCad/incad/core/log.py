@@ -34,6 +34,7 @@ def set_reporter(fn):
 
 def report(level, message, detail=""):
     """level: 'info' | 'warning' | 'error'. Always logged; shown to the user when a reporter is set."""
+    message = host.brand(message)
     log = logger()
     write = {"info": log.info, "warning": log.warning}.get(level, log.error)
     write(message + ("\n" + detail if detail else ""))

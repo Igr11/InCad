@@ -247,7 +247,7 @@ class ParametersTypingTest(unittest.TestCase):
         qtapp.app()
         b = ModelBrowser("light")
         b.set_parameters_enabled(False)
-        self.assertIn("InCad part", b.add_button.toolTip())
+        self.assertIn("a ProstoCAD part", b.add_button.toolTip())  # InCad's name since 0.13
         b.set_parameters_enabled(True)
         self.assertEqual(b.add_button.toolTip(), "Add parameter")
 

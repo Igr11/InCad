@@ -680,6 +680,112 @@ def pin_polygon_centres(sk, first=0):
     return pinned
 
 
+def _rectangles(sk, first=0):
+    """New rectangles: four non-construction line segments from index `first` on, each end tied (Coincident) to the
+    next one's start in a closed loop, at right angles. Returns [[(geo, pos) of each corner, in loop order]]."""
+    lines = [i for i in range(first, sk.GeometryCount)
+             if sk.Geometry[i].TypeId == "Part::GeomLineSegment" and not sk.getConstruction(i)]
+    ends = {}  # (geo, pos) -> the (geo, pos) it is tied to
+    for c in sk.Constraints:
+        if c.Type == "Coincident" and c.First in lines and c.Second in lines:
+            ends[(c.First, c.FirstPos)] = (c.Second, c.SecondPos)
+            ends[(c.Second, c.SecondPos)] = (c.First, c.FirstPos)
+    out, used = [], set()
+    for start in lines:
+        if start in used:
+            continue
+        loop, pos, geo = [], 1, start
+        for _ in range(4):
+            loop.append((geo, pos))
+            nxt = ends.get((geo, 3 - pos))  # this line's other end, tied to the next line's corner
+            if nxt is None:
+                break
+            geo, pos = nxt
+        if len(loop) != 4 or (geo, pos) != (start, 1) or len({g for g, _p in loop}) != 4:
+            continue
+        if not _right_angled([sk.getPoint(g, p_) for g, p_ in loop]):
+            continue  # not right-angled: a general quadrilateral is not a rectangle
+        used |= {g for g, _p in loop}
+        out.append(loop)
+    return out
+
+
+def _rounded_rectangles(sk, first=0):
+    """New rounded rectangles: four non-construction arcs from index `first` on, of one radius, whose centres make a
+    rectangle (FreeCAD's Rounded Rectangle). Returns [[(arc, 3) of each corner centre, in loop order]]."""
+    import itertools
+    import math
+    arcs = [i for i in range(first, sk.GeometryCount)
+            if sk.Geometry[i].TypeId == "Part::GeomArcOfCircle" and not sk.getConstruction(i)]
+    by_radius = {}
+    for i in arcs:
+        by_radius.setdefault(round(sk.Geometry[i].Radius, 6), []).append(i)
+    out, used = [], set()
+    for group in by_radius.values():
+        if len(group) < 4 or len(group) > 12:
+            continue
+        for four in itertools.combinations(group, 4):
+            if used & set(four):
+                continue
+            centres = {i: sk.getPoint(i, 3) for i in four}
+            mid = sum(centres.values(), centres[four[0]] * 0) * 0.25
+            loop = sorted(four, key=lambda i: math.atan2(centres[i].y - mid.y, centres[i].x - mid.x))
+            pts = [centres[i] for i in loop]
+            if _right_angled(pts):
+                used |= set(four)
+                out.append([(i, 3) for i in loop])
+    return out
+
+
+def _right_angled(pts):
+    sides = [pts[(k + 1) % 4] - pts[k] for k in range(4)]
+    if any(v.Length < 1e-9 for v in sides):
+        return False
+    units = [v * (1.0 / v.Length) for v in sides]
+    return all(abs(units[k].dot(units[(k + 1) % 4])) < 1e-3 for k in range(4))
+
+
+def add_rectangle_diagonals(sk, first=0, done=None):
+    """The user: a new rectangle shows its two diagonals as construction lines, left in the sketch for orientation
+    and later connections, and a construction point where they cross, so one constraint (that point on the origin)
+    makes the rectangle symmetric. A Rounded Rectangle's diagonals join its corner arcs' centres. The diagonals' ends
+    are Coincident with the corners (centres) and the point is Symmetric between two of them, so all follow the
+    rectangle; FreeCAD's Center Rectangle has its own centre point, so it gets no second one. done: a set of the
+    rectangles handled (their elements' permanent geometry ids): each is handled once, so what the user deletes
+    afterwards stays deleted. Returns the elements added."""
+    import Part
+    import Sketcher
+    done = set() if done is None else done
+    added = 0
+    for loop in _rectangles(sk, first) + _rounded_rectangles(sk, first):
+        ident = frozenset(sk.getGeometryId(g) for g, _p in loop)
+        if ident in done:
+            continue
+        done.add(ident)
+        corners = [sk.getPoint(g, p) for g, p in loop]
+        for a, b in ((0, 2), (1, 3)):
+            pa, pb = corners[a], corners[b]
+            if any(sk.getConstruction(i) and sk.Geometry[i].TypeId == "Part::GeomLineSegment"
+                   and {_key(sk.Geometry[i].StartPoint), _key(sk.Geometry[i].EndPoint)} == {_key(pa), _key(pb)}
+                   for i in range(sk.GeometryCount)):
+                continue
+            d = sk.addGeometry(Part.LineSegment(pa, pb), True)
+            sk.addConstraint(Sketcher.Constraint("Coincident", d, 1, loop[a][0], loop[a][1]))
+            sk.addConstraint(Sketcher.Constraint("Coincident", d, 2, loop[b][0], loop[b][1]))
+            added += 1
+        centre = (corners[0] + corners[2]) * 0.5
+        if not any(sk.Geometry[i].TypeId == "Part::GeomPoint" and _key(sk.getPoint(i, 1)) == _key(centre)
+                   for i in range(sk.GeometryCount)):
+            c = sk.addGeometry(Part.Point(centre), True)
+            sk.addConstraint(Sketcher.Constraint("Symmetric", loop[0][0], loop[0][1], loop[2][0], loop[2][1], c, 1))
+            added += 1
+    return added
+
+
+def _key(p):
+    return (round(p.x, 6), round(p.y, 6))
+
+
 GEO_UNDEF = -2000
 
 

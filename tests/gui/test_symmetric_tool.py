@@ -1,6 +1,6 @@
 """Sketch ▸ Symmetric with real clicks (the user: choosing the points was hard, a click sometimes took a dimension's
-point): two lines clicked anywhere along them, then the Y axis; the next pair (two circles by their rims, the X axis)
-without starting again; a click a few pixels off a line's end takes the end; a click on a dimension's value takes
+point): two lines clicked anywhere along them, then the Y axis — the tool ends and the pair can be dragged at once
+(the user: after Symmetric the lines could not be moved); the next pair (two circles by their rims, the X axis); a click a few pixels off a line's end takes the end; a click on a dimension's value takes
 nothing; Esc ends the tool."""
 import os
 import sys
@@ -86,10 +86,39 @@ def test_1_two_lines_then_the_y_axis():
     assert sk().solve() == 0
     assert mirrored(sk().getPoint(ST["left"], 1), sk().getPoint(ST["right"], 2), sym.V_AXIS), \
         "the left line's start should mirror the right line's end (nearest its mirror image)"
-    assert s().slot_tool is tool and tool.picked == [], "the tool should wait for the next pair"
+    assert s().slot_tool is None, "the tool ends: the user drags the pair next"
+
+
+def test_1b_the_pair_drags_together():
+    """A real drag of the right line after Symmetric moves it, and the left one mirrors it."""
+    from PySide6.QtTest import QTest
+    from incad.qt import QtCore
+    from incad.ui import dof_handles as dh
+    view = Gui.ActiveDocument.ActiveView
+    vp = view.graphicsView().viewport()
+    before = sk().getPoint(ST["right"], 1).x
+    line = sk().Geometry[ST["right"]]
+    mid = (line.StartPoint + line.EndPoint) * 0.5  # where the line is now: Symmetric moved both a little
+    a = dh.screen(view, vp, mid)
+    b = dh.screen(view, vp, mid + V(8, 0, 0))
+    p0, p1 = (QtCore.QPoint(int(round(x)), int(round(y))) for x, y in (a, b))
+    QTest.mouseMove(vp, p0)
+    harness.pump(200)
+    QTest.mousePress(vp, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p0)
+    harness.pump(100)
+    for k in range(1, 9):
+        QTest.mouseMove(vp, QtCore.QPoint(p0.x() + (p1.x() - p0.x()) * k // 8, p0.y()))
+        harness.pump(60)
+    QTest.mouseRelease(vp, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p1)
+    harness.pump(600)
+    after = sk().getPoint(ST["right"], 1).x
+    assert abs(after - before) > 1.0, ("the right line did not move", before, after)
+    assert mirrored(sk().getPoint(ST["left"], 1), sk().getPoint(ST["right"], 2), sym.V_AXIS)
 
 
 def test_2_next_pair_circles_about_the_x_axis():
+    commands.REGISTRY.run("sketch.symmetric")  # again, for the next pair
+    harness.pump(500)
     tool = s().slot_tool
     c1, c2 = sk().Geometry[ST["c1"]], sk().Geometry[ST["c2"]]
     click_at(c1.Center + V(c1.Radius, 0, 0))   # on the rim
@@ -103,6 +132,8 @@ def test_2_next_pair_circles_about_the_x_axis():
 
 
 def test_3_near_an_end_takes_the_point():
+    commands.REGISTRY.run("sketch.symmetric")
+    harness.pump(500)
     tool = s().slot_tool
     end = sk().getPoint(ST["far"], 2)
     click_at(end, dx=5, dy=-3)  # a few pixels off the end
@@ -137,5 +168,6 @@ def test_9_cleanup():
     App.closeDocument(App.ActiveDocument.Name)
 
 
-harness.run([test_0_sketch, test_1_two_lines_then_the_y_axis, test_2_next_pair_circles_about_the_x_axis,
+harness.run([test_0_sketch, test_1_two_lines_then_the_y_axis, test_1b_the_pair_drags_together,
+             test_2_next_pair_circles_about_the_x_axis,
              test_3_near_an_end_takes_the_point, test_4_a_dimension_is_never_taken, test_5_esc_ends, test_9_cleanup])

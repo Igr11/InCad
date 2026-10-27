@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-REPO = "Igr11/InCad"
+REPO = "Igr11/ProstoCAD"  # renamed from Igr11/InCad (GitHub keeps the old address for web links)
 API = "https://api.github.com/repos/%s/issues" % REPO
 NEW_ISSUE = "https://github.com/%s/issues/new" % REPO
 LOG_LINES = 150
