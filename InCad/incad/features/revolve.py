@@ -1,7 +1,8 @@
 """Revolve (Inventor) = PartDesign Revolution (Join) / Groove (Cut) around an axis chosen one of five ways: the
 sketch's vertical or horizontal axis, a construction line of the sketch (listed), a line / axis / edge picked in
 the view (a line of the sketch, an origin or work axis, a straight edge of the solid), or two points clicked on
-the part — a hidden Work Axis through them, owned by the revolve (shown under it, deleted with it)."""
+the part — a hidden Work Axis through them, owned by the revolve (shown under it, deleted with it). New Solid: the
+revolve in a Solid of its own, for a Boolean later (as Extrude's)."""
 import json
 
 import FreeCAD as App
@@ -18,7 +19,7 @@ AXIS_MODES = (("V_Axis", "Sketch vertical"), ("H_Axis", "Sketch horizontal"),
               ("construction", "Construction / projected line"), ("reference", "Line, axis or edge"),
               ("two_points", "Two points"))
 FIELDS = (
-    Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut")), "join"),
+    Field("operation", "Operation", "choice", (("join", "Join"), ("cut", "Cut"), ("new_solid", "New Solid")), "join"),
     Field("axis_mode", "Axis", "combo", AXIS_MODES, "V_Axis"),
     Field("axis_construction", "Line", "combo", (), "", show_if=("axis_mode", ("construction",))),
     Field("axis_ref", "Pick", "pick", pick="axis", show_if=("axis_mode", ("reference",))),
@@ -307,7 +308,14 @@ def _apply(doc, f, values):
 
 
 def create(doc, body, profile, values):
-    f = body.newObject(_type(values.get("operation", "join")), "Revolve")
+    target = body
+    if values.get("operation") == "new_solid":  # the profile goes along into the new Solid (as Extrude's)
+        from incad.core import document
+        target = document.new_solid(doc)
+        body.removeObject(profile)
+        target.addObject(profile)
+        document.settle_support(profile, target)  # on a face of the part: not the whole part in the new Solid
+    f = target.newObject(_type(values.get("operation", "join")), "Revolve")
     f.Profile = profile
     _apply(doc, f, values)
     return f
@@ -316,7 +324,12 @@ def create(doc, body, profile, values):
 def read(doc, f):
     angle = value_text(doc, f, "Angle") or "90 °"
     extent = "two_angles" if f.Type == "TwoAngles" else ("full" if abs(f.Angle.Value - 360) < 1e-9 else "angle")
-    values = {"operation": "cut" if f.TypeId == "PartDesign::Groove" else "join", "extent": extent,
+    from incad.core import document
+    operation = "cut" if f.TypeId == "PartDesign::Groove" else "join"
+    body = f.getParentGeoFeatureGroup()
+    if operation == "join" and body is not None and document.primary_body(doc) is not body:
+        operation = "new_solid"
+    values = {"operation": operation, "extent": extent,
               "angle": angle, "angle2": value_text(doc, f, "Angle2") or "90 °", "flip": bool(f.Reversed),
               "axis_mode": "V_Axis", "axis_construction": "", "axis_ref": "", "axis_points": ""}
     ref = f.ReferenceAxis

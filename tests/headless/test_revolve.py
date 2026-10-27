@@ -45,3 +45,18 @@ class RevolveTest(unittest.TestCase):
         f = revolve.update(self.doc, f, dict(revolve.read(self.doc, f), angle="180"))
         self.doc.recompute()
         self.assertAlmostEqual(f.Angle.Value, 180)
+
+    def test_new_solid_is_a_revolve_in_a_solid_of_its_own(self):
+        """New Solid (the user: instead of Auto, for a Boolean later): the profile and its revolve in a new Solid."""
+        from incad.core import document
+        f = revolve.create(self.doc, self.body, self.sk,
+                           dict(revolve.defaults(self.doc, self.body, self.sk), operation="new_solid"))
+        self.doc.recompute()
+        owner = f.getParentGeoFeatureGroup()
+        self.assertEqual(f.TypeId, "PartDesign::Revolution")
+        self.assertIsNot(owner, self.body)
+        self.assertIs(self.sk.getParentGeoFeatureGroup(), owner)
+        self.assertIs(document.primary_body(self.doc), self.body)
+        self.assertAlmostEqual(f.Shape.Volume, math.pi * (6 ** 2 - 2 ** 2) * 4, places=2)
+        self.assertEqual(revolve.read(self.doc, f)["operation"], "new_solid")
+        self.assertNotIn("auto", [c[0] for c in revolve.FIELDS[0].choices])

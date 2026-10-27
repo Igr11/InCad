@@ -69,6 +69,10 @@ def _broken(obj, check_shape, deep=True):
     if check_shape and obj.TypeId.startswith("PartDesign::"):
         shape = getattr(obj, "Shape", None)
         if deep and shape is not None and not shape.isNull() and not shape.isValid():
+            from incad.core import thread_order
+            if obj.TypeId in thread_order.KINDS and _has_modeled_thread(getattr(obj, "BaseFeature", None)):
+                return ("%s crosses a modeled (helical) thread, which FreeCAD's kernel can't cut or join through: "
+                        "put it before the thread in the tree" % obj.Label)
             if obj.TypeId in ("PartDesign::Groove", "PartDesign::Revolution"):
                 return ("%s: the revolve couldn't form a valid shape — the axis must lie IN the profile's plane "
                         "and not cross or touch the profile (draw the profile on a plane through the axis)" % obj.Label)

@@ -1386,6 +1386,7 @@ class FeatureSession(QtCore.QObject):
             else:
                 self.feature = self.kind.update(self.doc, self.feature, values)
             self._recompute()
+            self._before_thread()
         except Exception as e:
             self._recover_deleted_feature()  # a type-swapping update() may have deleted it then failed
             if self.creating and self.feature is None:
@@ -1425,6 +1426,19 @@ class FeatureSession(QtCore.QObject):
                 self.on_previewed()
             except Exception:
                 log.logger().exception("%s overlay", self.kind.TITLE)
+
+    def _before_thread(self):
+        """A cut or join through a modeled thread breaks in the kernel: it goes before the thread, which is made after
+        it (incad.core.thread_order; the user's slot revolved over a tapped Hole)."""
+        if self.feature is None or not _feature_alive(self.feature) or self._extra:
+            return
+        from incad.core import thread_order
+        thread = thread_order.settle(self.feature)
+        if thread:
+            self._moved_before_thread = True
+            log.report("info", "%s crosses %s's thread, which FreeCAD can't cut or join through: placed before %s, "
+                       "the thread is made after it" % (self.feature.Label, thread, thread))
+            self._recompute()
 
     def _later(self):
         """The solid features after this one in its body, its own helpers aside (a new feature at the end: none).
@@ -1528,6 +1542,8 @@ class FeatureSession(QtCore.QObject):
         for o, visible in saved:
             if _feature_alive(o):
                 self._set_visible(o, visible)
+        if commit and getattr(self, "_moved_before_thread", False) and self.body is not None:
+            document.show_result(self.body)  # it was the last step when the view was saved: the part is now
 
     def _show_adjusted(self):
         """A kind may change a value itself (Move Face: a chamfer picked with its face means Together): the dialog
