@@ -62,6 +62,9 @@ def test_1_join_then_cut_cuts_the_part():
     Gui.Selection.addSelection(doc().Name, ST["sk"].Name)
     commands.REGISTRY.run("feature.extrude")
     harness.pump(1000)
+    if dialog().values()["operation"] == "auto":  # ProstoCAD opens with Auto: this is about Join
+        dialog().field("operation").button("join").click()
+        harness.pump(800)
     assert dialog().values()["operation"] == "join", dialog().values()
     assert len(solids()) == ST["solids"] + 1, "a Join off the part is its own Solid"
     dialog().field("operation").button("cut").click()
@@ -84,8 +87,11 @@ def test_1_join_then_cut_cuts_the_part():
 
 
 def test_2_back_to_join_is_its_own_solid_again():
+    from incad.features import extrude
     commands.REGISTRY.run("edit.undo")
     harness.pump(800)
+    if hasattr(extrude, "_turn_if_idle"):
+        return  # ProstoCAD: a Join that would touch nothing turns toward the part instead
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(doc().Name, ST["sk"].Name)
     commands.REGISTRY.run("feature.extrude")
@@ -100,9 +106,36 @@ def test_2_back_to_join_is_its_own_solid_again():
     harness.pump(800)
 
 
+def test_3_join_to_a_face_of_the_part_joins_it():
+    """The user: "a sketch on a plane extruded To: the part is not a single part, a Boolean was needed". The Join
+    (ProstoCAD: Auto) first went into its own Solid (its default length did not reach the part); To the part's top
+    face it is made again, in the part, and the part is one solid."""
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, ST["sk"].Name)
+    commands.REGISTRY.run("feature.extrude")
+    harness.pump(1000)
+    pad = [o for o in ST["body"].Group if o.TypeId == "PartDesign::Pad"][0]
+    top = [i + 1 for i, f in enumerate(pad.Shape.Faces) if abs(f.CenterOfMass.z - 5) < 1e-6
+           and f.Surface.TypeId == "Part::GeomPlane"][0]
+    d = dialog()
+    d.set_values({"extent": "to", "to_face": "%s:Face%d" % (pad.Name, top)})
+    d._emit()
+    harness.pump(1500)
+    assert not d.error_text(), d.error_text()
+    f = s().feature_session.feature
+    assert f.getParentGeoFeatureGroup() is ST["body"], "To the part's face: it joins the part"
+    assert len(solids()) == ST["solids"], "no Solid of its own left"
+    QTest.mouseClick(d.ok_button, QtCore.Qt.LeftButton)
+    harness.pump(1200)
+    body = ST["body"]
+    assert len(body.Shape.Solids) == 1, len(body.Shape.Solids)
+    peg = 3.141592653589793 * 2 * 2 * 3  # from z 8 down to the top at z 5
+    assert abs(body.Shape.Volume - ST["volume"] - peg) < 0.05, (ST["volume"], body.Shape.Volume)
+
+
 def test_9_cleanup():
     App.closeDocument(doc().Name)
 
 
 harness.run([test_0_part_and_a_profile_above_it, test_1_join_then_cut_cuts_the_part,
-             test_2_back_to_join_is_its_own_solid_again, test_9_cleanup])
+             test_2_back_to_join_is_its_own_solid_again, test_3_join_to_a_face_of_the_part_joins_it, test_9_cleanup])

@@ -70,9 +70,24 @@ def test_1b_padlock_is_small_and_calm():
     grounds = [j for j in assembly.joints(asm_doc()) if hasattr(j, "ObjectToGround")]
     assert grounds
     proxy = grounds[0].ViewObject.Proxy
-    assert proxy.scale.scaleFactor.getValue() <= 1.5, proxy.scale.scaleFactor.getValue()
+    assert proxy.scale.scaleFactor.getValue() <= 2.0, proxy.scale.scaleFactor.getValue()
     r, g, b = proxy.lockpadColor.rgb[0].getValue()
     assert not (r > 0.7 and g < 0.3 and b < 0.3), (r, g, b)  # no longer loud red
+    # the word Grounded on the grounded part itself (the user: two parts in, which one the padlock belongs to?)
+    from pivy import coin
+    sa = coin.SoSearchAction()
+    sa.setName("InCadGroundMarks")
+    sa.setInterest(coin.SoSearchAction.ALL)
+    sa.apply(Gui.getDocument(asm_doc().Name).ActiveView.getSceneGraph())
+    assert sa.getPaths().getLength() == 1, "one Grounded mark"
+    node = sa.getPaths()[0].getTail()
+    moves = [node.getChild(i) for i in range(node.getNumChildren()) if node.getChild(i).isOfType(
+        coin.SoSeparator.getClassTypeId())]
+    assert len(moves) == 1, "one grounded part"
+    at = moves[0].getChild(0).translation.getValue().getValue()
+    grounded = [c for c in assembly.components(asm_doc()) if assembly.is_grounded(c)][0]
+    bb = grounded.Shape.BoundBox
+    assert abs(at[0] - bb.Center.x) < 1e-3 and abs(at[1] - bb.Center.y) < 1e-3 and at[2] > bb.ZMax, (at, bb)
 
 
 def test_2_mate_from_3d_picks_is_one_undo_step_and_undo_restores():

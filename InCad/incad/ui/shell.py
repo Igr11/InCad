@@ -382,6 +382,7 @@ class Shell(QtCore.QObject):
         self._dof_hover = None    # (document name, part name) under the pointer (the tip)
         self._dof_linger = None   # (document name, part name, until) a part just dragged keeps its gizmo a while
         self._contexts = {}       # part document name -> AssemblyContext (Edit from an assembly: the parts around it)
+        self.start_page = None    # the recent files, while no file is open (incad.ui.start_page)
         self._hover_watch = None
         self._polygons_from = {}
         self._rects_from = {}  # per sketch: where the geometry drawn since it was opened starts
@@ -795,12 +796,22 @@ class Shell(QtCore.QObject):
         if self._dof_glyphs is not None:
             self._dof_glyphs.remove()
             self._dof_glyphs = None
+        if getattr(self, "_ground_marks", None) is not None:
+            self._ground_marks.remove()
+            self._ground_marks = None
         if self._axis_lines is not None:
             self._axis_lines.remove()
             self._axis_lines = None
         for ctx in self._contexts.values():
             ctx.remove()
         self._contexts = {}
+        if self.start_page is not None:
+            try:
+                self.start_page.hide()
+                self.start_page.deleteLater()
+            except RuntimeError:
+                pass
+            self.start_page = None
         self._peeked = None
         if self.asm_drag is not None and self.asm_drag.active():
             self.asm_drag.finish(moved_ok=False)
@@ -3107,7 +3118,8 @@ class Shell(QtCore.QObject):
         if self.sketches.picking and self.sketches.pick_doc != getattr(doc, "Name", None):
             self.sketches.cancel_pick()  # another tab in front: the plane pick was for the part left behind
         mode = "sketch" if editing is not None else "part" if is_part else "assembly" if is_asm else "empty"
-        self.ribbon.set_mode(mode)
+        self.ribbon.set_mode("part_edit" if mode == "part" and self._active_context() is not None else mode)
+        self._sync_start_page(doc is None)
         if self.plane_panel is not None:
             if self.sketches.picking and not self.plane_panel.isVisible():
                 self.plane_panel.adjustSize()
@@ -3144,6 +3156,7 @@ class Shell(QtCore.QObject):
                 self.status.set_prompt("Ready")
         elif is_asm:
             self._tame_padlocks(doc)
+            self._mark_grounded(doc)
             if self.feature_session is None:
                 from incad.core import asm_cut
                 try:
@@ -3746,7 +3759,59 @@ class Shell(QtCore.QObject):
         except Exception:
             log.logger().exception("Assembly context")
             return
+        self._contexts[part.Name].add_bar(link.Label, lambda n=part.Name: self._return_from(n))
         log.report("info", "Editing %s in %s: the other parts are shown for reference" % (link.Label, asm.Label))
+
+    def return_to_assembly(self):
+        """File ▸ Return to Assembly (the bar on a part edited from its assembly): the part saved, the assembly
+        brought up to date and shown; the part's picture of the parts around it goes."""
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        if doc is None or doc.Name not in self._contexts:
+            raise ValueError("This part was not opened with Edit from an assembly")
+        self._return_from(doc.Name)
+
+    def _return_from(self, name):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+        ctx = self._contexts.pop(name, None)
+        part = App.getDocument(name) if name in App.listDocuments() else None
+        asm = App.getDocument(ctx.asm_name) if ctx is not None and ctx.asm_name in App.listDocuments() else None
+        if ctx is not None:
+            ctx.remove()
+        if part is not None and part.FileName:
+            if part.Recomputing:
+                return QtCore.QTimer.singleShot(200, lambda: self._return_from(name))
+            part.recompute()
+            part.save()
+            gdoc = Gui.getDocument(name)
+            if gdoc is not None:
+                gdoc.Modified = False
+        if asm is None:
+            log.report("warning", "The assembly is no longer open: the part is saved")
+            return
+        asm.recompute()
+        self._back_to(asm)
+        log.report("info", "Back in %s: %s saved, the assembly brought up to date"
+                   % (asm.Label, part.Label if part is not None else "the part"))
+        self.schedule_refresh()
+
+    def _sync_start_page(self, on):
+        """The recent files over the empty window while no file is open; gone as soon as one is."""
+        try:
+            mdi = self._mdi()
+            if mdi is None:
+                return
+            if on and self.start_page is None:
+                from incad.ui.start_page import StartPage
+                self.start_page = StartPage(mdi.viewport(), self.theme)
+            if self.start_page is not None:
+                self.start_page.set_theme(self.theme)
+                self.start_page.show_now(on)
+        except RuntimeError:  # the window went
+            self.start_page = None
+        except Exception:
+            log.logger().exception("Start page")
 
     def _active_context(self):
         import FreeCAD as App
@@ -3764,13 +3829,29 @@ class Shell(QtCore.QObject):
         ctx = self._active_context()
         return ctx is not None and ctx.shown
 
-    PADLOCK_SCALE = 1.2
+    PADLOCK_SCALE = 2.0
+
+    def _mark_grounded(self, doc):
+        """The word Grounded on the grounded part itself (incad.ui.ground_marks), in this assembly's view."""
+        import FreeCADGui as Gui
+        from incad.ui import ground_marks
+        try:
+            view = Gui.getDocument(doc.Name).ActiveView
+            marks = getattr(self, "_ground_marks", None)
+            if marks is None or marks.view is not view:
+                if marks is not None:
+                    marks.remove()
+                marks = self._ground_marks = ground_marks.GroundMarks(view)
+            marks.set(ground_marks.points(doc), themes.PALETTES[self.theme]["accent"])
+        except Exception:
+            log.logger().exception("Grounded marks")
 
     def _tame_padlocks(self, doc):
-        """FreeCAD draws the grounded padlock big (scale 3) and in loud red: smaller and in the theme's tone."""
+        """FreeCAD draws the grounded padlock big (scale 3) and in loud red: smaller and in the theme's accent — not
+        grey (the user: in an assembly it was not clear which part is grounded)."""
         from incad.core import assembly
         p = themes.PALETTES[self.theme]
-        c = QtGui.QColor(p["text_dim"])
+        c = QtGui.QColor(p["accent"])
         for j in assembly.joints(doc):
             proxy = getattr(getattr(j, "ViewObject", None), "Proxy", None)
             scale = getattr(proxy, "scale", None)
@@ -4765,6 +4846,10 @@ def interference_shown():
 
 def toggle_assembly_context():
     return _active().toggle_assembly_context()
+
+
+def return_to_assembly():
+    return _active().return_to_assembly()
 
 
 def assembly_context_shown():

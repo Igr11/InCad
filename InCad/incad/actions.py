@@ -293,6 +293,11 @@ def toggle_assembly_context():
     shell.toggle_assembly_context()
 
 
+def return_to_assembly():
+    from incad.ui import shell
+    shell.return_to_assembly()
+
+
 def assembly_context_shown():
     from incad.ui import shell
     return shell.assembly_context_shown()
@@ -1433,6 +1438,15 @@ def open_file():
     if not path:
         return None
     App.ParamGet("User parameter:BaseApp/Preferences/General").SetString("FileOpenSavePath", os.path.dirname(path))
+    return open_path(path)
+
+
+def open_path(path):
+    """Open a file as File ▸ Open does (the start page's recent files too): shown if it is open already."""
+    import os
+    import FreeCAD as App
+    if not os.path.isfile(path):
+        raise ValueError("%s is no longer there" % os.path.basename(path))
     for d in App.listDocuments().values():
         if d.FileName and os.path.abspath(d.FileName) == os.path.abspath(path):
             _gui().setActiveDocument(d.Name)  # already open: shown, not opened twice
@@ -1450,7 +1464,10 @@ def _remember_recent(path):
     import os
     import FreeCAD as App
     p = App.ParamGet("User parameter:BaseApp/Preferences/RecentFiles")
-    most = p.GetInt("RecentFiles", 4) or 4
+    from incad.ui import start_page
+    most = max(p.GetInt("RecentFiles", 4) or 4, start_page.MOST)  # the start page shows a dozen
+    if p.GetInt("RecentFiles", 4) < most:
+        p.SetInt("RecentFiles", most)
     old = [p.GetString("MRU%d" % i, "") for i in range(most)]
     files = [path] + [f for f in old if f and os.path.abspath(f) != os.path.abspath(path)]
     for i, f in enumerate(files[:most]):
@@ -1678,6 +1695,8 @@ def commands():
         Command(id="assembly.suppress", label="Suppress", icon="suppress", handler=lambda: _assembly("suppress"),
                 contexts=frozenset({"assembly"}),
                 tooltip="Suppress the selected component (hidden, its constraints off) or bring it back"),
+        Command(id="assembly.return", label="Return", icon="finish", handler=return_to_assembly,
+                contexts=frozenset({"part"}), tooltip="Save this part and go back to the assembly it was opened from (Edit)"),
         Command(id="assembly.edit", label="Edit", icon="part", handler=lambda: _assembly("edit"),
                 contexts=frozenset({"assembly"}),
                 tooltip="Edit the selected component's part in its tab, the other parts shown around it; Return "

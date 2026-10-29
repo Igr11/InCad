@@ -83,6 +83,19 @@ LAYOUT = {
 }
 
 
+def tabs_of(mode, layout=None):
+    """The tabs of a mode. 'part_edit', a part opened with Edit from its assembly, is 'part' with Return first on
+    3D Model (Inventor: Return; the user found no way to finish editing the part — at the end of the tab it was cut
+    off on a narrower screen)."""
+    layout = LAYOUT if layout is None else layout
+    if mode != "part_edit":
+        return layout.get(mode, [])
+    tabs = [[name, list(groups)] for name, groups in layout.get("part", [])]
+    if tabs:
+        tabs[0][1].insert(0, ["Return", ["assembly.return"]])
+    return tabs
+
+
 def add_group(mode, tab, group, cmd_ids, layout=None):
     """Append a group of commands to a tab (the tab is created at the end if missing)."""
     layout = LAYOUT if layout is None else layout

@@ -60,6 +60,46 @@ class SplitTest(unittest.TestCase):
         self.assertIs(self.body.Tip, f)
         self.assertFalse([o.Name for o in self.doc.Objects if "Invalid" in o.State])
 
+    def test_a_sketch_in_the_empty_first_solid_splits_the_solid_it_cuts(self):
+        """The user: the sketch in the empty Solid1, the part (a rebuilt STL) in another Solid — Split said
+        "'NoneType' object has no attribute 'Shape'". It splits the Solid its lines cut, the sketch going there."""
+        doc = util.new_doc("SpEmpty")
+        try:
+            first = document.make_part(doc)
+            other = document.new_solid(doc)
+            pad = util.add_pad(other, util.add_rect_sketch(other, 20, 10, "Base"), 10)
+            other.Tip = pad
+            doc.recompute()
+            sk = line_sketch(first, ((5, -5), (5, 15)))
+            doc.recompute()
+            f = split.create(doc, first, None, dict(split.defaults(doc, first, None), sketch=sk.Name))
+            doc.recompute()
+            self.assertIs(f.getParentGeoFeatureGroup(), other)
+            self.assertIs(sk.getParentGeoFeatureGroup(), other)
+            self.assertNotIn("Invalid", f.State, f.getStatusString())
+            self.assertAlmostEqual(f.Shape.Volume, 1500, places=4)
+            self.assertEqual(len(split.piece_bodies(f)), 1)
+        finally:
+            App.closeDocument(doc.Name)
+
+    def test_make_assembly_after_ok_only_when_ticked(self):
+        """The user: after a Split, an option to make an assembly. Ticked (Keep all), OK opens Make Assembly; not
+        ticked, or Keep picked, it does not; an edit opens with it off (a second assembly is never made by itself)."""
+        from incad import actions
+        calls = []
+        saved = actions.make_assembly
+        actions.make_assembly = lambda: calls.append(1)
+        try:
+            f = self.make(line_sketch(self.body, ((5, -5), (5, 15))))
+            split.after_ok(self.doc, f, dict(split.read(self.doc, f), assembly=True))
+            split.after_ok(self.doc, f, dict(split.read(self.doc, f), assembly=False))
+            split.after_ok(self.doc, f, dict(split.read(self.doc, f), assembly=True, mode="cut"))
+        finally:
+            actions.make_assembly = saved
+        self.assertEqual(calls, [1])
+        self.assertFalse(split.read(self.doc, f)["assembly"])
+        self.assertIn("assembly", [fd.key for fd in split.FIELDS])
+
     def test_gap_from_both_this_solid_or_the_new_ones(self):
         """The user: a gap between the pieces, taken from one of them or from both."""
         for side, want in (("both", [1480.0, 480.0]), ("this", [1460.0, 500.0]), ("new", [1500.0, 460.0])):
@@ -112,6 +152,19 @@ class SplitTest(unittest.TestCase):
         quarter = math.pi * 36 / 4 * 10
         self.assertAlmostEqual(sum(self.pieces(f)), 2000 - math.pi * 6 / 2 * 0.4 * 10, places=2)
         self.assertLess(min(self.pieces(f)), quarter)
+
+    def test_gap_round_a_bend_leaves_no_sliver(self):
+        """The user (Windows): a strange sliver where an L-shaped cut line bends — each knife's slab alone left a
+        wedge outside the bend. Every piece now stands its share of the gap off the whole line, bend included."""
+        sk = line_sketch(self.body, ((8, 15), (8, 4)), ((8, 4), (25, 1)))
+        f = self.make(sk, gap="1 mm")
+        line = Part.Wire(Part.__sortEdges__(sk.Shape.Edges)[0])
+        solids = list(f.Shape.Solids) + [s for b in split.piece_bodies(f) for s in b.Shape.Solids]
+        self.assertEqual(len(solids), 2)
+        for s in solids:
+            for v in s.Vertexes:
+                p = App.Vector(v.Point.x, v.Point.y, 0)
+                self.assertGreater(line.distToShape(Part.Vertex(p))[0], 0.5 - 1e-4, (v.Point, s.Volume))
 
     def test_gap_with_keep_picked_takes_half_from_each_side(self):
         g = self.make(line_sketch(self.body, ((15, -5), (15, 15))), mode="cut", keep="2 5 5", gap="0.4 mm",

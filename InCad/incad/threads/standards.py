@@ -8,10 +8,12 @@ from dataclasses import dataclass
 
 IN = 25.4
 
-STANDARDS = [
-    ("iso", "ISO metric"), ("iso_fine", "ISO metric fine"), ("unc", "UNC"), ("unf", "UNF"), ("g", "G / BSP"),
-    ("npt", "NPT"), ("tr", "Trapezoidal"), ("acme", "ACME"), ("print", "Print-friendly"), ("custom", "Custom"),
+STANDARDS = [  # DIN named where it is the same thread (the user was asked "why is there no DIN")
+    ("iso", "ISO metric (DIN 13)"), ("iso_fine", "ISO metric fine (DIN 13)"), ("unc", "UNC"), ("unf", "UNF"),
+    ("g", "G / BSP (ISO 228)"), ("npt", "NPT"), ("tr", "Trapezoidal (DIN 103)"), ("acme", "ACME"),
+    ("rd", "Round (DIN 405)"), ("s", "Buttress (DIN 513)"), ("print", "Print-friendly"), ("custom", "Custom"),
 ]
+CUSTOM_PROFILES = (("triangle", "Triangle"), ("trapezoid", "Trapezoid"), ("semicircle", "Semicircle"))
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,9 @@ class ThreadSpec:
     crest_int: float
     taper: float = 0.0
     crest_drop: float = 0.0  # external crest below the nominal major (radial), e.g. print-friendly
+    shape: str = "v"         # "v" (flanks and flats), "round" (DIN 405), "semicircle", "buttress" (DIN 513)
+    radius: float = 0.0      # round: the crest and root radius; semicircle: the groove's radius
+    back: float = 0.0        # buttress: the second flank's angle to the radial line (the first is angle / 2)
 
 
 _ISO = [("M1", 0.25), ("M1.2", 0.25), ("M1.4", 0.3), ("M1.6", 0.35), ("M2", 0.4), ("M2.5", 0.45), ("M3", 0.5),
@@ -53,6 +58,14 @@ _NPT = [("1/16", 27, 0.3125), ("1/8", 27, 0.405), ("1/4", 18, 0.540), ("3/8", 18
         ("3/4", 14, 1.050), ("1", 11.5, 1.315), ("1-1/4", 11.5, 1.660), ("1-1/2", 11.5, 1.900), ("2", 11.5, 2.375)]
 _TR = [(8, 1.5), (10, 2), (12, 3), (14, 3), (16, 4), (18, 4), (20, 4), (22, 5), (24, 5), (26, 5), (28, 5), (30, 6),
        (32, 6), (36, 6), (40, 7)]
+# DIN 405 round thread: (nominal mm, threads per inch)
+_RD = [(8, 10), (9, 10), (10, 8), (12, 8), (14, 8), (16, 8), (18, 8), (20, 8), (22, 8), (24, 8), (26, 8), (28, 8),
+       (30, 8), (32, 8), (36, 8), (38, 8), (40, 6), (42, 6), (44, 6), (46, 6), (48, 6), (50, 6), (52, 6), (55, 6),
+       (60, 6), (65, 6), (70, 6), (75, 6), (80, 6), (85, 6), (90, 6), (95, 6), (100, 6), (110, 4), (120, 4),
+       (130, 4), (140, 4), (150, 4), (160, 4), (170, 4), (180, 4), (190, 4), (200, 4)]
+# DIN 513 buttress thread: (nominal mm, pitch mm)
+_S = [(10, 2), (12, 3), (14, 3), (16, 4), (18, 4), (20, 4), (22, 5), (24, 5), (26, 5), (28, 5), (30, 6), (32, 6),
+      (36, 6), (40, 7), (44, 7), (48, 8), (52, 8), (60, 9), (70, 10), (80, 10), (90, 12), (100, 12)]
 _ACME = [("1/4", 16), ("5/16", 14), ("3/8", 12), ("7/16", 12), ("1/2", 10), ("5/8", 8), ("3/4", 6), ("7/8", 6),
          ("1", 5), ("1-1/4", 5), ("1-1/2", 4), ("2", 4)]
 
@@ -96,6 +109,10 @@ def sizes(std):
         return ["%s-%d" % (n, t) for n, t in _ACME]
     if std == "print":
         return [n for n, p in _ISO if p >= 0.5]
+    if std == "rd":
+        return ["Rd%d" % d for d, _ in _RD]
+    if std == "s":
+        return ["S%sx%s" % (_fmt(d), _fmt(p)) for d, p in _S]
     return []
 
 
@@ -142,13 +159,35 @@ def spec(std, size, custom=None):
         depth = 0.25 * p / math.tan(math.radians(30))
         return ThreadSpec(std, size, float(size[1:]), p, 60.0, depth, 0.54127 * p, p / 4.0, p / 4.0, 0.0,
                           0.10825 * p)
+    if std == "rd":
+        d = float(size[2:])
+        p = IN / dict(_RD)[int(d)]
+        # DIN 405: 30° flanks, crest and root rounded with R = 0.23851 P, depth 0.5 P
+        return ThreadSpec(std, size, d, p, 30.0, 0.5 * p, 0.5 * p, 0.0, 0.0, shape="round", radius=0.23851 * p)
+    if std == "s":
+        d, p = (float(v) for v in size[1:].split("x"))
+        # DIN 513: the load flank 3° to the radial line, the other 30°; depth 0.868 P (the bolt's), 0.75 P (the nut's)
+        flat = 0.11777 * p
+        return ThreadSpec(std, size, d, p, 6.0, 0.86777 * p, 0.75 * p, flat, flat, shape="buttress", back=30.0)
     if std == "custom":
         c = dict(custom or {})
         major, p, angle, depth = (float(c[k]) for k in ("major", "pitch", "angle", "depth"))
-        flat = (p - 2 * depth * math.tan(math.radians(angle / 2))) / 2
-        if p <= 0 or depth <= 0 or flat < 0:
+        kind = c.get("profile") or "triangle"
+        if p <= 0 or depth <= 0:
+            raise ValueError("The pitch and the depth must be more than 0")
+        if kind == "semicircle":  # a round groove of that radius (jar lids): its width is twice the depth
+            if 2 * depth > p - min(0.04, 0.1 * p):
+                raise ValueError("A semicircle this deep is wider than the pitch: make the depth at most half the pitch")
+            return ThreadSpec(std, size or "Custom", major, p, 0.0, depth, depth, 0.0, 0.0, shape="semicircle",
+                              radius=depth)
+        slack = p - 2 * depth * math.tan(math.radians(angle / 2))
+        if slack < 0:
             raise ValueError("That depth is too large for this pitch and flank angle")
-        return ThreadSpec(std, size or "Custom", major, p, angle, depth, depth, flat, flat)
+        # triangle: what is left of the pitch shared by the crest and the root; trapezoid: the tooth's tip cut off
+        # by all of it, the root a sharp V (the user: "a triangle with its end cut off")
+        crest = slack if kind == "trapezoid" else slack / 2
+        return ThreadSpec(std, size or "Custom", major, p, angle, depth, depth, crest, crest,
+                          shape="trapezoid" if kind == "trapezoid" else "v")
     raise ValueError("Unknown thread standard %r" % std)
 
 

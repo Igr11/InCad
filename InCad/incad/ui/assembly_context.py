@@ -68,6 +68,31 @@ class AssemblyContext:
         p = themes.PALETTES.get(theme, themes.PALETTES["light"])
         self.material.diffuseColor.setValue(*_rgb(p["context"]))
         self.material.transparency.setValue(TRANSPARENCY)
+        bar = getattr(self, "bar", None)
+        if bar is not None:
+            try:
+                bar.set_theme(theme)
+            except RuntimeError:
+                pass
+
+    def add_bar(self, part_label, on_return):
+        """The bar on the part's view (the user: "no option to close the editing and return to the assembly"):
+        what is edited, and Return to Assembly."""
+        try:
+            from incad.qt import viewport_of
+            vp = viewport_of(self.view)
+        except Exception:
+            self.bar = None
+            return None
+        self.bar = ReturnBar(part_label, self.asm_label(), on_return, vp)
+        return self.bar
+
+    def asm_label(self):
+        import FreeCAD as App
+        try:
+            return App.getDocument(self.asm_name).Label
+        except Exception:
+            return self.asm_name or "the assembly"
 
     def set_visible(self, on):
         root = self.view.getSceneGraph()
@@ -84,3 +109,54 @@ class AssemblyContext:
             self.set_visible(False)
         except Exception:
             pass
+        bar, self.bar = getattr(self, "bar", None), None
+        if bar is not None:
+            try:
+                bar.hide()
+                bar.deleteLater()
+            except RuntimeError:
+                pass
+
+
+class ReturnBar:
+    """A small floating bar at the top of the part's view: "Editing <part> in <assembly>" and Return to Assembly."""
+
+    def __new__(cls, part_label, asm_label, on_return, viewport, theme=None):
+        from incad.qt import QtCore, QtWidgets
+
+        class _Bar(QtWidgets.QFrame):
+            def __init__(self):
+                super().__init__(viewport)
+                self.setObjectName("InCadReturnBar")
+                row = QtWidgets.QHBoxLayout(self)
+                row.setContentsMargins(12, 6, 6, 6)
+                self.label = QtWidgets.QLabel("Editing %s in %s" % (part_label, asm_label))
+                row.addWidget(self.label)
+                self.button = QtWidgets.QPushButton("Return to Assembly")
+                self.button.setObjectName("InCadReturnToAssembly")
+                self.button.setDefault(True)
+                self.button.clicked.connect(lambda: on_return())
+                row.addWidget(self.button)
+                viewport.installEventFilter(self)
+                self.set_theme(theme or themes.current())
+                self.adjustSize()
+                self._place()
+                self.show()
+                self.raise_()
+
+            def set_theme(self, name):
+                p = themes.PALETTES.get(name, themes.PALETTES["light"])
+                self.setStyleSheet(
+                    "QFrame#InCadReturnBar {{ background: {panel}; border: 1px solid {border}; border-radius: 9px; }}"
+                    " QLabel {{ color: {text}; }} QPushButton {{ background: {accent}; color: {selection_text};"
+                    " border: none; border-radius: 6px; padding: 4px 12px; font-weight: 600; }}".format(**p))
+
+            def _place(self):
+                self.move(max(8, (viewport.width() - self.width()) // 2), 10)
+
+            def eventFilter(self, obj, ev):
+                if ev.type() == QtCore.QEvent.Type.Resize:
+                    self._place()
+                return False
+
+        return _Bar()

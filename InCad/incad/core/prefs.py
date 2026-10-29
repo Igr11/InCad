@@ -166,6 +166,21 @@ def thread_clearance():
     return value if 0 <= value <= 2 else 0.2
 
 
+def thread_preset():
+    """Thread ▸ Save for the next part: the settings a new thread starts with ({} when none were saved)."""
+    import json
+    try:
+        data = json.loads(_s().get("str", "ThreadPreset", "") or "{}")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def set_thread_preset(values):
+    import json
+    _s().set("str", "ThreadPreset", json.dumps(values or {}, sort_keys=True))
+
+
 def set_thread_clearance(value):
     value = float(value)
     if not 0 <= value <= 2:

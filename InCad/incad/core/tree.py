@@ -231,7 +231,7 @@ def _assembly(doc):
     counts = dof.last(doc) or {}
     for c in assembly.components(doc):
         f = counts.get(c.Name)
-        detail = "grounded" if assembly.is_grounded(c) else "" if assembly.is_suppressed(c) or f is None else \
+        detail = "📌 Grounded" if assembly.is_grounded(c) else "" if assembly.is_suppressed(c) or f is None else \
             "DOF ?" if f.n is None else "DOF %d" % f.n
         tip = f.error if f is not None and f.n is None else (c.LinkedObject.Document.FileName if c.LinkedObject else "")
         root.children.append(Node("component", c.Label, c.Name,

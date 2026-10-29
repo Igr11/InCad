@@ -32,7 +32,12 @@ def inapplicable(kind, doc):
         targets = document.visibility_targets(actions._visibility_targets())
     except Exception:
         targets = []
-    shown = [t for t in targets if document.is_shown(t)]
+    from incad.ui import shell
+    inst = shell.instance()
+    peeked = inst._peeked[1] if inst is not None and getattr(inst, "_peeked", None) else None
+    # a hidden sketch or plane is shown for a moment while its row is selected: hidden all the same (the user: the
+    # menu of a hidden sketch offered only Hide)
+    shown = [t for t in targets if document.is_shown(t) and t.Name != peeked]
     if not shown:
         out.add("view.hide")
     if len(shown) == len(targets):  # nothing of it hidden (or nothing picked)

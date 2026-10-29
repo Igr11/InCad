@@ -134,6 +134,28 @@ class SafeTest(unittest.TestCase):
         found = safe.problems(self.doc, before, {pad.Name})
         self.assertTrue(any("Pad" in p for p in found), found)
 
+    def test_a_loose_piece_in_the_profile_is_found(self):
+        """The user's half-section Revolve failed with FreeCAD's "Wire is not closed": one 0.2 mm line was left as
+        normal geometry. The message says where it is, in the sketch's coordinates."""
+        import Part
+        from incad.features import revolve
+        body = document.make_part(self.doc)
+        sk = body.newObject("Sketcher::SketchObject", "Half")
+        sk.AttachmentSupport = [(util.xy_plane(body), "")]
+        sk.MapMode = "FlatFace"
+        V = App.Vector
+        pts = [V(0, 0, 0), V(10, 0, 0), V(10, 20, 0), V(0, 20, 0)]
+        for i in range(4):
+            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
+        sk.addGeometry(Part.LineSegment(V(-4, 8, 0), V(-4, 8.2, 0)))  # left over
+        self.doc.recompute()
+        f = revolve.create(self.doc, body, sk, dict(revolve.defaults(self.doc, body, sk), operation="join",
+                                                    axis_mode="V_Axis"))
+        self.doc.recompute()
+        why = safe._broken(f, True)
+        self.assertIn("loose piece, 0.20 mm long, near x -4.00, y 8.10", why)
+        self.assertIn("Delete it or make it Construction", why)
+
     def test_no_document_still_catches(self):
         for name in list(App.listDocuments()):
             App.closeDocument(name)

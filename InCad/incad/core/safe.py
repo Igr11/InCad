@@ -39,6 +39,28 @@ def _status(obj):
         return ""
 
 
+def loose_piece(feature):
+    """Where a feature's profile sketch has a piece that is no part of a closed outline (the user: Revolve failed
+    with "Wire is not closed" — one 0.2 mm line of a half-section left as normal geometry), said in the sketch's
+    own coordinates; '' when there is none."""
+    prof = getattr(feature, "Profile", None)
+    sk = prof[0] if isinstance(prof, (tuple, list)) and prof else prof
+    if sk is None or getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+        return ""
+    try:
+        wires = [w for w in sk.Shape.Wires if not w.isClosed()]
+        if not wires:
+            return ""
+        inv = sk.getGlobalPlacement().inverse()
+        w = min(wires, key=lambda x: x.Length)
+        c = inv.multVec(w.BoundBox.Center)
+        more = " (and %d more)" % (len(wires) - 1) if len(wires) > 1 else ""
+        return ("%s: the sketch %s has a loose piece, %.2f mm long, near x %.2f, y %.2f%s — it is no part of a closed "
+                "outline. Delete it or make it Construction" % (feature.Label, sk.Label, w.Length, c.x, c.y, more))
+    except Exception:
+        return ""
+
+
 def _broken(obj, check_shape, deep=True):
     """Reason text if obj failed to compute or (check_shape) has invalid PartDesign geometry, else ''. deep=False
     leaves out the full geometry check (isValid: 0.6 s on a big threaded part, 2 s on a slow PC, every preview)."""
@@ -62,6 +84,10 @@ def _broken(obj, check_shape, deep=True):
                         "above the thread, make the Shell there, then move End of Part back" % obj.Label)
             return ("%s: FreeCAD couldn't hollow this shape. Try a smaller thickness, or make the Shell earlier "
                     "in the tree, before fillets and chamfers" % obj.Label)
+        if "not closed" in status.lower() or "open wire" in status.lower():
+            loose = loose_piece(obj)
+            if loose:
+                return loose
         if status and status not in ("Valid", "Touched"):
             from incad.core import model
             return "%s: %s" % (obj.Label, model.friendly(status, obj.TypeId))

@@ -4,7 +4,7 @@ import unittest
 class SmokeTest(unittest.TestCase):
     def test_import_incad(self):
         import incad
-        self.assertEqual(incad.__version__, "0.13.1")
+        self.assertEqual(incad.__version__, "0.14.0")
 
     def test_freecad_available(self):
         import FreeCAD

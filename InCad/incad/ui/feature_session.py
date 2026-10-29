@@ -1663,6 +1663,12 @@ class FeatureSession(QtCore.QObject):
         if self._pick_in_another_solid(values):
             return True
         before, after = getattr(self, "_created_with", None), values.get("operation")
+        if after in ("join", "auto") and values != made and _feature_alive(self.feature) \
+                and self.feature.getParentGeoFeatureGroup() is not self.body:
+            # a Join first made off the part (its default length did not reach) went into a Solid of its own: with
+            # any change (To a face of the part) it is made again, and joins the part when it reaches it now (the
+            # user: "extruded To, the part is not a single part; a Boolean was needed")
+            return True
         if before == after:
             return False
         structural = getattr(self.kind, "STRUCTURAL", ("new_solid", "intersect"))
@@ -1859,6 +1865,10 @@ class FeatureSession(QtCore.QObject):
             then, self._then = self._then, None
             if then is not None and self._committed:
                 QtCore.QTimer.singleShot(0, then)
+            after = getattr(self.kind, "after_ok", None)  # what the kind does next (Split ▸ Make Assembly)
+            if after is not None and self._committed and _feature_alive(self.feature):
+                values, feature = dict(self._applied or {}), self.feature
+                QtCore.QTimer.singleShot(0, lambda: after(self.doc, feature, values))
 
     def _finish_steps(self, commit):
         self._committed = commit

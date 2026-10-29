@@ -5,6 +5,37 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.14.0
+-----
+Thread profiles and DIN threads, grown threads, a start page with recent files, Return to Assembly.
+
+Improvements
+- Thread: the list names the DIN threads that are the same (ISO metric = DIN 13, Trapezoidal = DIN 103, G = ISO
+  228) and adds Round (DIN 405, Rd) and Buttress (DIN 513, S) with their sizes.
+- Thread > Custom: the profile is a Triangle (its flank angle), a Trapezoid (a triangle with its tip cut off) or a
+  Semicircle (as on a jar and its lid).
+- Thread: Cut into the surface, or Grow onto it - teeth added on a rod or inside a bore (a jar neck's bead).
+- Thread > Save for the next part: the next thread, in this file or another, starts with these settings.
+- Thread on a hole that runs out into a curved wall: it starts at the hole's round mouth; the far end may be any
+  shape.
+- Revolve: Join, Cut or New Solid (the profile goes into a Solid of its own, for a Boolean later).
+- A start page: with no file open, the window shows the recent files with their pictures; a click opens one.
+- Editing a part from its assembly: a bar on the part's view says what is edited, with Return to Assembly (the part
+  is saved and the assembly shows its changes). Return is also the first button on the 3D Model tab.
+- Assemblies: the grounded part says Grounded over it (the padlock is bigger and in the accent colour; it often sat
+  off the part); Ground still frees it.
+- Split > Make Assembly: tick it and the pieces become an assembly right after OK.
+- Split works from a sketch in another (even empty) Solid: it splits the Solid the sketch's lines cut.
+- A profile with a loose piece (a short line that is no part of a closed outline) says where it is, in the sketch's
+  own coordinates, instead of FreeCAD's "Wire is not closed".
+
+Bug fixes
+- Extrude To a face of the part from a sketch on a work plane made a separate Solid (a Boolean was needed); it joins
+  the part now.
+- Split with a Gap left a thin sliver where the cut line bends.
+- The right-click menu of a hidden sketch whose row was selected offered only Hide; it offers Show.
+
+
 0.13.1
 -----
 Smooth sketching; Extrude Cut off the part cuts at once.

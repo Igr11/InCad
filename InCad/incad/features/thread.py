@@ -15,7 +15,8 @@ from incad.core import safe
 
 TITLE = "Thread"
 ICON = "thread"
-TYPES = ("PartDesign::SubtractiveHelix",)
+TYPES = ("PartDesign::SubtractiveHelix", "PartDesign::AdditiveHelix")  # cut into the surface, or grown onto it
+RECREATE_ON = ("build",)  # cut <-> grow is another kind of helix
 NEEDS_PROFILE = False
 PROPS = {"length": "Height"}
 PRESELECT = {"face": "cylinder"}
@@ -33,14 +34,23 @@ FIELDS = (
     Field("flip", "Flip direction", "bool", default=False),
     Field("standard", "Standard", "combo", tuple(standards.STANDARDS), "iso"),
     Field("size", "Size", "combo", (), ""),
+    Field("custom_profile", "Profile", "choice", standards.CUSTOM_PROFILES, "triangle",
+          show_if=("standard", ("custom",))),  # the user: a triangle (its angle), a trapezoid, a semicircle
     Field("custom_pitch", "Pitch", "value_length", default="1.5 mm", show_if=("standard", ("custom",))),
-    Field("custom_angle", "Flank angle", "value_angle", default="60 °", show_if=("standard", ("custom",))),
+    Field("custom_angle", "Flank angle", "value_angle", default="60 °",
+          show_if=(("standard", ("custom",)), ("custom_profile", ("triangle", "trapezoid")))),
     Field("custom_depth", "Depth", "value_length", default="0.9 mm", show_if=("standard", ("custom",))),
     Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
-    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
-    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm", show_if=("chamfer", ("start", "both"))),
+    Field("build", "Thread", "choice", (("cut", "Cut into"), ("grow", "Grow onto")), "cut"),
+    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none",
+          show_if=("build", ("cut",))),
+    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm",
+          show_if=(("build", ("cut",)), ("chamfer", ("start", "both")))),
     Field("clearance", "Print clearance (on diameter)", "value_length", default="0.2 mm"),
+    Field("remember", "Save for the next part", "bool", default=False),  # the user: not choosing it all again
 )
+PRESET = ("standard", "size", "custom_profile", "custom_pitch", "custom_angle", "custom_depth", "hand", "build",
+          "chamfer", "chamfer_size", "clearance")  # what Save for the next part keeps (never the faces)
 
 
 def claims(feature):
@@ -57,7 +67,20 @@ def defaults(doc, body, profile_=None):
     values = {f.key: f.default for f in FIELDS}
     values.update(face="", start_face="", size="", internal=False)
     values["clearance"] = "%g mm" % default_clearance(values.get("standard"))
+    from incad.core import prefs
+    saved = prefs.thread_preset()  # Save for the next part: a new thread starts as the saved one
+    values.update({k: v for k, v in saved.items() if k in PRESET})
     return values
+
+
+def after_ok(doc, f, values):
+    """Save for the next part ticked: this thread's settings are where the next one starts (in this file or the
+    next); the box itself starts unticked again."""
+    if values.get("remember"):
+        from incad.core import log, prefs
+        prefs.set_thread_preset({k: values.get(k) for k in PRESET if values.get(k) not in (None, "")})
+        log.report("info", "Thread settings saved: the next thread starts with %s" % (
+            values.get("size") or dict(standards.STANDARDS).get(values.get("standard"), "them")))
 
 
 def follow(before, values):
@@ -147,10 +170,12 @@ def _geometry(obj, face, flip, start_plane=None):
     internal = n.dot(radial) < 0
     radial.normalize()
     circles = [e for e in face.Edges if safe.curve_type(e) == "Part::GeomCircle"]
-    if len(circles) < 2:
-        raise ValueError("The face needs two round ends to thread")
+    if not circles:
+        raise ValueError("The face needs a round end to start the thread")
     circles.sort(key=lambda e: (e.Curve.Center - centre).dot(axis))
     ends = [circles[0], circles[-1]]
+    if len(circles) < 2:  # the other end runs out into another face (a hole breaking into a curved wall)
+        ends = _with_cut_end(face, circles[0], centre, axis)
     free = []
     for e, other in ((ends[0], ends[1]), (ends[1], ends[0])):
         out = e.Curve.Center - other.Curve.Center
@@ -176,12 +201,40 @@ def _geometry(obj, face, flip, start_plane=None):
         pick = 0 if ends[0].Curve.Center.Length > ends[1].Curve.Center.Length else 1
     if flip:
         pick = 1 - pick
+    if isinstance(ends[pick], _CutEnd):
+        if flip or start_plane is not None:
+            raise ValueError("The thread starts at the round end of the face (its other end runs into another face)")
+        pick = 1 - pick
     start, other = ends[pick], ends[1 - pick]
     name = next(("Edge%d" % (i + 1) for i, e in enumerate(obj.Shape.Edges) if e.isSame(start)), None)
     if name is None:
         raise ValueError("Could not find the end edge of that face")
     length = abs((other.Curve.Center - start.Curve.Center).dot(axis))
-    return internal, surf.Radius, name, length, other.Curve.Center - start.Curve.Center, free[pick], free[1 - pick]
+    return (internal, surf.Radius, name, length, other.Curve.Center - start.Curve.Center, free[pick], free[1 - pick],
+            not isinstance(other, _CutEnd))
+
+
+class _CutEnd:
+    """The end of a face that runs out into another face (no round edge there): the point of the axis level with
+    the face's farthest reach, for the length and the free-end probe; it has no chamfer or lead-in of its own."""
+    class Curve:
+        pass
+
+    def __init__(self, point):
+        self.Curve = _CutEnd.Curve()
+        self.Curve.Center = point
+
+    def isSame(self, other):
+        return False
+
+
+def _with_cut_end(face, circle, centre, axis):
+    """The two ends of a face with one round end: [near, far] along the axis, the far one a _CutEnd."""
+    at = (circle.Curve.Center - centre).dot(axis)
+    reach = [(p - centre).dot(axis) for e in face.Edges for p in e.discretize(48)]
+    lo, hi = min(reach), max(reach)
+    far = _CutEnd(centre + axis * (hi if hi - at >= at - lo else lo))
+    return [circle, far] if hi - at >= at - lo else [far, circle]
 
 
 _PREP_TOL = 0.05  # mm (radial): a hole this close to the tap size is threaded as it is
@@ -225,13 +278,24 @@ def _fit(spec, internal, radius, clearance):
     return run + max(0.0, rod - R), rod
 
 
-def _spec(values, diameter, internal, clearance):
+def _spec(values, diameter, internal, clearance, grow=False):
     std = values.get("standard") or "iso"
+    if grow and std != "custom":  # the teeth stand on the surface: a rod is the bolt's root, a bore the nut's root
+        size = values.get("size") or ""
+        names = standards.sizes(std)
+        if size not in names and names:
+            def miss(name):
+                s = standards.spec(std, name)
+                return abs(s.major - 2 * s.depth - diameter) if not internal else abs(s.major - diameter)
+            size = min(names, key=miss)
+        s = standards.spec(std, size)
+        return dataclasses.replace(s, major=diameter + 2 * s.depth if not internal else diameter)
     if std == "custom":
         return standards.spec("custom", "Custom", custom={
-            "major": diameter if not internal else diameter + 2 * _mm(values.get("custom_depth"), 0.9) - clearance,
+            "major": (diameter + 2 * _mm(values.get("custom_depth"), 0.9) if grow else diameter) if not internal
+            else (diameter if grow else diameter + 2 * _mm(values.get("custom_depth"), 0.9) - clearance),
             "pitch": _mm(values.get("custom_pitch"), 1.5), "angle": _deg(values.get("custom_angle"), 60.0),
-            "depth": _mm(values.get("custom_depth"), 0.9)})
+            "depth": _mm(values.get("custom_depth"), 0.9), "profile": values.get("custom_profile") or "triangle"})
     size = values.get("size") or ""
     if size not in standards.sizes(std):
         size = standards.suggest(std, diameter, internal, clearance)
@@ -350,18 +414,24 @@ def _build(doc, body, f, values):
     obj, sub, face = _face(doc, values)
     if values.get("start_face"):
         values = dict(values, start_face=_start_face_on(doc, f, obj, values.get("start_face")))
-    internal, radius, edge, face_len, to_other, start_free, end_free = _geometry(
+    internal, radius, edge, face_len, to_other, start_free, end_free, end_round = _geometry(
         obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     clearance = _mm(values.get("clearance"), 0.2)
-    spec = _spec(values, 2 * radius, internal, clearance)
-    runout, hole = _fit(spec, internal, radius, clearance)
-    groove = profile.groove(spec, internal, clearance, runout)
-    half = profile.max_width(groove) / 2.0
+    grow = values.get("build") == "grow"
+    spec = _spec(values, 2 * radius, internal, clearance, grow)
+    if grow:  # teeth on the surface (a jar's bead): they stay on it, half a tooth short of each end
+        groove = profile.tooth(spec, internal, clearance, base=radius)
+        half = profile.max_width(groove) / 2.0
+        hole = radius
+    else:
+        runout, hole = _fit(spec, internal, radius, clearance)
+        groove = profile.groove(spec, internal, clearance, runout)
+        half = profile.max_width(groove) / 2.0
     offset = _mm(values.get("offset"), 0.0)
     # free end: the helix starts/ends a full pitch outside the part, so the thread runs out cleanly (as a die
     # cuts it); closed end (shoulder, floor): stop half a groove short, never cutting into it
-    lead = (-spec.pitch if offset == 0 else half) if start_free else half
-    tail = spec.pitch if end_free else -half
+    lead = (-spec.pitch if offset == 0 else half) if start_free and not grow else half
+    tail = spec.pitch if end_free and not grow else -half
     sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else (f.Profile or None)
     fresh = sk is None
     if fresh:
@@ -391,18 +461,24 @@ def _build(doc, body, f, values):
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
     expr = dict(f.ExpressionEngine).get("Height")
     height = f.evalExpression(expr).Value if expr else f.Height.Value
-    _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
-                       face_len, start_free, end_free, internal, spec.pitch)
-    radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
-    chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free,
-                       values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0))
+    if grow:  # nothing is filled, bored or chamfered under grown teeth
+        _remove_helpers(doc, body, f)
+        chamfer = None
+    else:
+        _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
+                           face_len, start_free, end_free, internal, spec.pitch)
+        radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
+        chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free,
+                           end_free and end_round, values.get("chamfer") or "none",
+                           _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
                "chamfer_feature": chamfer.Name if chamfer is not None else "",
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
                "internal": internal, "custom_pitch": values.get("custom_pitch"),
-               "custom_angle": values.get("custom_angle"), "custom_depth": values.get("custom_depth")})
+               "custom_angle": values.get("custom_angle"), "custom_depth": values.get("custom_depth"),
+               "custom_profile": values.get("custom_profile") or "triangle", "build": "grow" if grow else "cut"})
     doc.recompute()
     if f.Shape.isNull() or not f.Shape.isValid():
         raise ValueError("The thread can't be built with these values (check the size and the clearance)")
@@ -630,7 +706,8 @@ def _create_one(doc, body, values):
     obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
     _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     tip = body.Tip
-    f = body.newObject("PartDesign::SubtractiveHelix", "Thread")
+    f = body.newObject("PartDesign::AdditiveHelix" if values.get("build") == "grow" else "PartDesign::SubtractiveHelix",
+                       "Thread")
     try:
         _build(doc, body, f, values)
     except Exception:

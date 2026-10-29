@@ -29,8 +29,22 @@ FIELDS = (
     Field("gap", "Gap", "value_length", default="0 mm", step=lambda values: GAP_STEP),
     Field("gap_from", "Gap from", "choice", (("both", "Both"), ("this", "This Solid"), ("new", "New Solids")), "both",
           show_if=("mode", ("split",))),
+    Field("assembly", "Make Assembly", "bool", default=False, show_if=("mode", ("split",))),
 )
 GAP_STEP = 0.05  # mm: the Gap's arrows and wheel (the user: fits in 0.05 mm)
+
+
+def after_ok(doc, f, values):
+    """Make Assembly ticked (the user: after a Split, an option to make an assembly): the pieces become part files and
+    an assembly, through Make Assembly's own window (names, where they go)."""
+    if not values.get("assembly") or values.get("mode", "split") != "split":
+        return
+    from incad import actions
+    from incad.core import log
+    try:
+        actions.make_assembly()
+    except Exception as e:
+        log.report("warning", "Make Assembly: %s" % e)
 
 
 def _knives(sk, body, bb):
@@ -54,16 +68,27 @@ def _slice(base, knives):
     return sorted(out.Solids, key=lambda s: -s.Volume)
 
 
-def _slab(knives, half):
-    """Everything within `half` of the knives, through the part: each knife face grown both ways."""
+def _slab(sk, body, bb, half):
+    """Everything within `half` of the sketch's lines, through the part: each knife face grown both ways, and a
+    round post at every end and bend of the lines (the user: a strange sliver at an L-shaped cut: the grown knives
+    alone left a wedge of material uncovered outside the bend)."""
+    import Part
+    pl = sk.getGlobalPlacement()
+    if body is not None:
+        pl = body.getGlobalPlacement().inverse().multiply(pl)
+    n = pl.Rotation.multVec(App.Vector(0, 0, 1))
+    reach = bb.DiagonalLength + (pl.Base - bb.Center).Length + 10.0
     out = None
-    for k in knives:
+    for k in _knives(sk, body, bb):
         grown = k.makeOffsetShape(half, 1e-6, fill=True).fuse(k.makeOffsetShape(-half, 1e-6, fill=True))
         out = grown if out is None else out.fuse(grown)
+    for v in sk.Shape.Vertexes:
+        post = Part.makeCylinder(half, 2 * reach, v.Point - n * reach, n)
+        out = post if out is None else out.fuse(post)
     return out
 
 
-def _gapped(pieces, knives, gap, gap_from, main):
+def _gapped(pieces, sk, body, bb, gap, gap_from, main):
     """The pieces with the gap taken off where they were cut: `main` (this Solid's piece) loses all of it (This
     Solid), none (New Solids) or half (Both), every other piece the rest."""
     if gap <= 0 or not pieces:
@@ -77,7 +102,7 @@ def _gapped(pieces, knives, gap, gap_from, main):
             out.append(p)
             continue
         if amount not in slabs:
-            slabs[amount] = _slab(knives, amount)
+            slabs[amount] = _slab(sk, body, bb, amount)
         left = p.cut(slabs[amount]).Solids
         if not left:
             raise ValueError("The gap takes a whole piece away: make it smaller")
@@ -385,7 +410,50 @@ def _set_gap(doc, f, values):
         f.GapFrom = gap_from
 
 
+def _has_solid(b):
+    try:
+        return b is not None and b.Tip is not None and not b.Shape.isNull() and bool(b.Shape.Solids)
+    except Exception:
+        return False
+
+
+def _target(doc, body, values):
+    """The Solid the sketch splits: its own when that has a solid; else the one its lines cut through (the user: a
+    sketch in the empty first Solid across the rebuilt STL — "'NoneType' object has no attribute 'Shape'"); the
+    sketch goes into that Solid, as an Extrude's profile does for a New Solid."""
+    if _has_solid(body):
+        return body
+    picks = parse_picks(doc, values.get("sketch"))
+    sk = picks[0][0] if picks else None
+    if sk is None or getattr(sk, "TypeId", "") != "Sketcher::SketchObject":
+        return body
+    from incad.core import document
+    import Part
+    found = []
+    for b in document.bodies(doc):
+        if b is body or not _has_solid(b):
+            continue
+        try:
+            knives = Part.makeCompound(_knives(sk, b, b.Shape.BoundBox))
+            if b.Shape.section(knives).Edges:
+                found.append(b)
+        except Exception:
+            continue
+    if not found:
+        raise ValueError("The sketch's lines cut no Solid: draw them across the part")
+    target = max(found, key=lambda b: (document.is_shown(b), b.Shape.Volume))
+    owner = sk.getParentGeoFeatureGroup()
+    if owner is not target:
+        if owner is not None:
+            owner.removeObject(sk)
+        target.addObject(sk)
+        document.settle_support(sk, target)
+        doc.recompute()
+    return target
+
+
 def create(doc, body, profile, values):
+    body = _target(doc, body, values)
     tip = body.Tip
     f = body.newObject("PartDesign::FeaturePython", "Split")
     SplitFeature(f)
@@ -453,7 +521,7 @@ def all_pieces(f, before=None):
     if f.Mode == "split" and f.Keep:
         main = _nearest(cut, f.Keep[0])
     side = (getattr(f, "GapFrom", "") or "both") if f.Mode == "split" else "both"  # Keep picked: no choice shown
-    return _gapped(cut, knives, gap, side, main)
+    return _gapped(cut, f.Sketch, f.getParentGeoFeatureGroup(), base.Shape.BoundBox, gap, side, main)
 
 
 def pieces(f):

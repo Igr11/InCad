@@ -96,7 +96,7 @@ class AssemblyTest(unittest.TestCase):
         root = tree.build(self.doc)[0]
         self.assertEqual(root.kind, "assembly")
         comps = [n for n in root.children if n.kind == "component"]
-        self.assertEqual([(n.label, n.detail) for n in comps], [("Plate", "grounded"), ("Block", "")])
+        self.assertEqual([(n.label, n.detail) for n in comps], [("Plate", "📌 Grounded"), ("Block", "")])
         rel = [n for n in root.children if n.kind == "relationships"][0]
         self.assertEqual([n.label for n in rel.children], ["Mate"])
         # the user: no part's history in the assembly (Inventor shows each component's features under it)

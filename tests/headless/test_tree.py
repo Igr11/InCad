@@ -1,6 +1,8 @@
 import os
 import unittest
 
+from incad import host
+
 import FreeCAD as App
 import Part
 from incad.core import document, nodes, tree
@@ -77,8 +79,9 @@ class TreeTest(unittest.TestCase):
     def test_plain_file_with_one_body(self):
         self.doc.addObject("PartDesign::Body", "Body")
         self.assertEqual([(n.kind, n.label, n.name) for n in tree.build(self.doc)],
-                         [("message", "Not an InCad part", ""), ("action", "Convert to InCad Part", "convert"),
-                          ("action", "Open in FreeCAD", "freecad")])
+                         [("message", host.brand("Not an InCad part"), ""),
+                          ("action", host.brand("Convert to InCad Part"), "convert"),
+                          ("action", "Open in FreeCAD", "freecad")])  # the app's own name (ProstoCAD) in both
 
     def test_plain_empty_file(self):
         self.assertEqual([n.kind for n in tree.build(self.doc)], ["message", "action"])
@@ -327,9 +330,9 @@ class AssemblyRowsTest(unittest.TestCase):
         from incad.core import dof, tree
         dof._CACHE.clear()
         detail = lambda: {n.name: n.detail for n in tree.build(self.doc)[0].children if n.kind == "component"}
-        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: ""})  # not counted yet: nothing shown
+        self.assertEqual(detail(), {self.a.Name: "📌 Grounded", self.b.Name: ""})  # not counted yet: nothing shown
         dof.ensure(self.doc)
-        self.assertEqual(detail(), {self.a.Name: "grounded", self.b.Name: "DOF 6"})
+        self.assertEqual(detail(), {self.a.Name: "📌 Grounded", self.b.Name: "DOF 6"})
         dof._CACHE[self.doc.Name] = (dof.signature(self.doc),
                                      {self.b.Name: dof.Freedom(None, [], [], "Could not count: the solver failed")})
         node = [n for n in tree.build(self.doc)[0].children if n.name == self.b.Name][0]

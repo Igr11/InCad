@@ -70,7 +70,7 @@ def test_0_setup():
 
 
 def test_1_rows_show_dof():
-    assert rows() == {ST["p"]: "grounded", ST["m"]: "DOF 6", ST["t"]: "DOF 6"}, rows()
+    assert rows() == {ST["p"]: "📌 Grounded", ST["m"]: "DOF 6", ST["t"]: "DOF 6"}, rows()
     constrain(C.MATE, fz(obj("m"), 10), fz(obj("t"), 0))  # Top on the free Mid
     assert rows()[ST["t"]] == "DOF 3", rows()
 

@@ -109,6 +109,33 @@ def test_4_new_sketch_only_on_a_plane_row():
     assert any("Sketch" in lb for lb in got), got
 
 
+def test_5_a_hidden_sketch_selected_offers_show():
+    """The user: the menu of a hidden sketch offered only Hide. Its row selected shows it for a moment (a peek):
+    hidden all the same, so the menu offers Show."""
+    import Part
+    sk = body().newObject("Sketcher::SketchObject", "Loose")
+    sk.AttachmentSupport = [([o for o in body().Origin.OriginFeatures if o.Role == "XY_Plane"][0], "")]
+    sk.MapMode = "FlatFace"
+    sk.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(30, 0, 0)))
+    doc().recompute()
+    document.set_visibility([sk], False)
+    harness.pump(300)
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, sk.Name)
+    s()._peek(sk)
+    harness.pump(300)
+    assert sk.Visibility, "shown while its row is selected"
+    context.set_target(sk.Name)
+    got = labels("browser")
+    assert "Show" in got and "Hide" not in got, got
+    commands.REGISTRY.run("view.show")
+    harness.pump(400)
+    Gui.Selection.clearSelection()
+    harness.pump(400)
+    assert sk.Visibility and document.sketch_shown(sk), "shown for good"
+    context.set_target(None)
+
+
 def test_9_cleanup():
     context.set_target(None)
     App.closeDocument(doc().Name)
@@ -116,4 +143,5 @@ def test_9_cleanup():
 
 
 harness.run([test_0_part, test_1_empty_space_of_a_one_solid_part, test_2_flat_and_round_faces,
-             test_3_a_hidden_solid_brings_show_all, test_4_new_sketch_only_on_a_plane_row, test_9_cleanup])
+             test_3_a_hidden_solid_brings_show_all, test_4_new_sketch_only_on_a_plane_row,
+             test_5_a_hidden_sketch_selected_offers_show, test_9_cleanup])

@@ -184,6 +184,38 @@ def test_4_theme_switch_recolours_it():
             harness.pump(800)
 
 
+def test_4b_return_to_assembly():
+    """The user: "editing the part opens in a new window and there is no option to close the editing and return to
+    the assembly". A bar on the part's view says what is edited; Return to Assembly saves the part, brings the
+    assembly up to date and shows it; the picture of the parts around it goes."""
+    from incad.qt import QtWidgets
+    from incad.ui import ribbon_layout
+    part = App.getDocument(ST["part"])
+    assert s().ribbon.button("assembly.return") is not None, "Return on the ribbon of a part opened with Edit"
+    assert ribbon_layout.tabs_of("part_edit")[0][1][0] == ["Return", ["assembly.return"]], "first: never cut off"
+    vp = Gui.getDocument(part.Name).ActiveView.graphicsView().viewport()
+    button = vp.findChild(QtWidgets.QPushButton, "InCadReturnToAssembly")
+    assert button is not None and button.isVisible(), "no Return to Assembly on the part's view"
+    bar = button.parentWidget()
+    assert "Editing Block in" in bar.findChild(QtWidgets.QLabel).text(), bar.findChild(QtWidgets.QLabel).text()
+    box = [o for o in part.Objects if o.TypeId == "PartDesign::Pad"][0]
+    box.Length = 14  # the part changed in its tab
+    part.recompute()
+    button.click()
+    harness.pump(1200)
+    assert App.ActiveDocument.Name == ST["asm"], App.ActiveDocument.Name
+    assert s().ribbon.button("assembly.return") is None, "no Return in the assembly"
+    assert ST["part"] in App.listDocuments(), "the part's tab stays"
+    assert ST["part"] not in s()._contexts and context_node(Gui.getDocument(part.Name).ActiveView) == []
+    assert not Gui.getDocument(part.Name).Modified, "saved"
+    b = asm_doc().getObject(ST["b"])
+    assert abs(b.Shape.BoundBox.ZLength - 14) < 1e-6, b.Shape.BoundBox
+    App.setActiveDocument(part.Name)
+    Gui.ActiveDocument = Gui.getDocument(part.Name)
+    harness.pump(800)
+    assert s().ribbon.button("assembly.return") is None, "nor on the part once it is back to itself"
+
+
 def test_5_closing_the_tab_and_opening_normally_shows_none_edit_rebuilds():
     path = App.getDocument(ST["part"]).FileName
     App.closeDocument(ST["part"])
@@ -257,6 +289,6 @@ def test_7_train_1_solid2_shows_the_hex_around_it():
 
 
 harness.run([test_0_setup, test_1_edit_shows_the_other_part_around_this_one, test_2_clicks_go_through_the_context,
-             test_3_view_assembly_context_hides_and_shows_it, test_4_theme_switch_recolours_it,
+             test_3_view_assembly_context_hides_and_shows_it, test_4_theme_switch_recolours_it, test_4b_return_to_assembly,
              test_5_closing_the_tab_and_opening_normally_shows_none_edit_rebuilds,
              test_6_closing_the_assembly_removes_it, test_7_train_1_solid2_shows_the_hex_around_it])

@@ -98,7 +98,8 @@ class Ribbon(QtWidgets.QWidget):
             self._stack.removeWidget(w)
             dispose(w)
         self._buttons = {}
-        for tab_name, groups in self._layout.get(self._mode, []):
+        from incad.ui.ribbon_layout import tabs_of
+        for tab_name, groups in tabs_of(self._mode, self._layout):
             page = self._build_page(groups)
             if page is not None:
                 self._stack.addWidget(page)

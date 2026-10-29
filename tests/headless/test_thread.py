@@ -413,6 +413,41 @@ class ThreadStartFaceTest(unittest.TestCase):
         self.assertLess(cut.BoundBox.ZMax, 9.5, cut.BoundBox)      # and runs ~6 mm up
         self.assertEqual(thread.read(self.doc, f)["start_face"], "%s:Face%d" % (pad.Name, bottom))
 
+    def test_a_hole_running_into_a_curved_wall_is_threaded_from_its_round_end(self):
+        """The user's clamp: a hole drilled from the end face breaks out into the curved wall of a saddle, so its
+        far end is no circle ("The face needs two round ends to thread"). It is threaded from its round mouth to
+        the far end of its wall."""
+        box = self.body.newObject("PartDesign::AdditiveBox", "Block")
+        box.Length, box.Width, box.Height = 30.0, 20.0, 10.0
+        box.Placement = App.Placement(App.Vector(-15, -10, 0), App.Rotation())
+        saddle = self.body.newObject("PartDesign::SubtractiveCylinder", "Saddle")
+        saddle.Radius, saddle.Height = 8.0, 10.0
+        hole = self.body.newObject("PartDesign::SubtractiveCylinder", "Hole")
+        hole.Radius, hole.Height = 2.5, 15.0  # ends inside the saddle: its far end runs into the curved wall
+        hole.Placement = App.Placement(App.Vector(15, 5, 5), App.Rotation(App.Vector(0, 1, 0), -90))
+        self.body.Tip = hole
+        self.doc.recompute()
+        face = cyl_face(hole, 2.5)
+        edges = hole.Shape.getElement(face.split(":")[1]).Edges
+        self.assertEqual(len([e for e in edges if e.Curve.TypeId == "Part::GeomCircle"]), 1)
+        mouth = [i + 1 for i, fc in enumerate(hole.Shape.Faces)
+                 if fc.Surface.TypeId == "Part::GeomPlane" and abs(fc.CenterOfMass.x - 15) < 1e-6][0]
+        for start in ("", "%s:Face%d" % (hole.Name, mouth)):
+            f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None), face=face,
+                                                               start_face=start, size="M6"))
+            self.doc.recompute()
+            self.assertEqual(f.State, ["Up-to-date"], f.getStatusString())
+            self.assertTrue(self.body.Shape.isValid())
+            cut = hole.Shape.cut(self.body.Shape)
+            self.assertGreater(cut.Volume, 1.0)
+            self.assertGreater(cut.BoundBox.XMax, 14.0, cut.BoundBox)  # from the mouth
+            self.assertLess(cut.BoundBox.XMin, 9.0, cut.BoundBox)      # to where the wall ends
+            thread._discard(self.doc, self.body, f)
+            self.doc.recompute()
+        with self.assertRaises(ValueError):  # the far end has no edge to start from
+            thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None), face=face,
+                                                           flip=True, size="M6"))
+
     def test_start_face_must_touch_the_threaded_face(self):
         pad = shaft(self.doc, self.body)
         other = self.body.newObject("PartDesign::Plane", "Far")
@@ -849,3 +884,124 @@ class ThreadFinTest(unittest.TestCase):
         for z in (0.05, 0.1, 7.9, 7.95):  # both ends of the rod, inside the 0.3 mm chamfers
             pts = [App.Vector(1.2 * math.cos(a), 1.2 * math.sin(a), z) for a in (0.0, 1.6, 3.1, 4.7)]
             self.assertFalse([p for p in pts if self.body.Shape.isInside(p, 1e-7, True)], z)
+
+
+class ThreadProfilesTest(unittest.TestCase):
+    """The user: Custom offers a triangle (its angle), a trapezoid (a triangle with its tip cut off) and a semicircle
+    (jar lids); every thread is cut into the surface or grown onto it; DIN 405 round and DIN 513 buttress threads, and
+    the DIN names on the ones that are the same."""
+
+    def setUp(self):
+        self.doc = util.new_doc("ThProf")
+        self.body = document.make_part(self.doc)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def make(self, face, **values):
+        f = thread.create(self.doc, self.body, None, dict(thread.defaults(self.doc, self.body, None), face=face,
+                                                           **values))
+        self.doc.recompute()
+        return f
+
+    def check(self, f, before, more):
+        self.assertNotIn("Invalid", f.State, f.getStatusString())
+        shape = self.body.Shape
+        self.assertTrue(shape.isValid())
+        self.assertEqual(len(shape.Solids), 1)
+        if more:
+            self.assertGreater(shape.Volume, before + 1.0)
+        else:
+            self.assertLess(shape.Volume, before - 1.0)
+
+    def test_save_for_the_next_part(self):
+        """The user: after a custom thread, a way to keep it for the next part — not picking it all again."""
+        from incad.core import prefs
+        try:
+            v = dict(thread.defaults(self.doc, self.body, None), standard="custom", custom_profile="semicircle",
+                     custom_pitch="4 mm", custom_depth="1.2 mm", build="grow", clearance="0.1 mm", remember=True,
+                     face="Shaft:Face1")
+            thread.after_ok(self.doc, None, v)
+            d = thread.defaults(self.doc, self.body, None)
+            for k in ("standard", "custom_profile", "custom_pitch", "custom_depth", "build", "clearance"):
+                self.assertEqual(d[k], v[k], k)
+            self.assertEqual(d["face"], "", "the faces are never kept")
+            self.assertFalse(d["remember"], "the box starts unticked")
+            thread.after_ok(self.doc, None, dict(d, standard="iso", remember=False))  # not ticked: nothing saved
+            self.assertEqual(thread.defaults(self.doc, self.body, None)["standard"], "custom")
+        finally:
+            prefs.set_thread_preset({})
+        self.assertEqual(thread.defaults(self.doc, self.body, None)["standard"], "iso")
+
+    def test_din_names(self):
+        names = dict(st.STANDARDS)
+        self.assertEqual(names["iso"], "ISO metric (DIN 13)")
+        self.assertEqual(names["tr"], "Trapezoidal (DIN 103)")
+        self.assertIn("rd", names)
+        self.assertIn("s", names)
+        self.assertIn("Rd20", st.sizes("rd"))
+        self.assertIn("S20x4", st.sizes("s"))
+
+    def test_din_405_round_and_din_513_buttress_cut(self):
+        for std, size in (("rd", "Rd20"), ("s", "S20x4")):
+            with self.subTest(size):
+                pad = shaft(self.doc, self.body, radius=10.0, length=30.0, name="Shaft" + std)
+                v = self.body.Shape.Volume
+                f = self.make(cyl_face(pad, 10.0), standard=std, size=size)
+                self.check(f, v, more=False)
+                thread._discard(self.doc, self.body, f)
+                self.body.removeObject(pad)
+                self.doc.removeObject(pad.Name)
+                self.doc.recompute()
+
+    def test_custom_trapezoid_cut(self):
+        pad = shaft(self.doc, self.body, radius=10.0, length=20.0)
+        v = self.body.Shape.Volume
+        f = self.make(cyl_face(pad, 10.0), standard="custom", custom_profile="trapezoid", custom_pitch="2 mm",
+                      custom_angle="60 °", custom_depth="0.8 mm")
+        self.check(f, v, more=False)
+        self.assertEqual(thread.read(self.doc, f)["custom_profile"], "trapezoid")
+
+    def test_jar_neck_grows_a_semicircle_bead_and_the_lid_has_its_groove(self):
+        pad = shaft(self.doc, self.body, radius=15.0, length=20.0, name="Neck")
+        v = self.body.Shape.Volume
+        f = self.make(cyl_face(pad, 15.0), standard="custom", custom_profile="semicircle", custom_pitch="4 mm",
+                      custom_depth="1.2 mm", build="grow", clearance="0 mm")
+        self.check(f, v, more=True)
+        self.assertEqual(f.TypeId, "PartDesign::AdditiveHelix")
+        self.assertLess(self.body.Shape.BoundBox.XMax, 15.0 + 1.2 + 1e-3)  # no higher than the bead
+        self.assertGreater(self.body.Shape.BoundBox.XMax, 15.0 + 1.0)
+        self.assertEqual(thread.read(self.doc, f)["build"], "grow")
+        # the lid: a bore with the semicircle cut into its wall
+        lid = util.new_doc("Lid")
+        try:
+            body = document.make_part(lid)
+            block = shaft(lid, body, radius=20.0, length=20.0, name="Cap")
+            sk = body.newObject("Sketcher::SketchObject", "BoreSk")
+            sk.AttachmentSupport = [(util.xy_plane(body), "")]
+            sk.MapMode = "FlatFace"
+            sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 15.3))
+            bore = body.newObject("PartDesign::Pocket", "Bore")
+            bore.Profile = sk
+            bore.Type = "ThroughAll"
+            bore.Reversed = True
+            body.Tip = bore
+            lid.recompute()
+            v2 = body.Shape.Volume
+            g = thread.create(lid, body, None, dict(thread.defaults(lid, body, None), face=cyl_face(bore, 15.3),
+                                                    standard="custom", custom_profile="semicircle",
+                                                    custom_pitch="4 mm", custom_depth="1.3 mm"))
+            lid.recompute()
+            self.assertNotIn("Invalid", g.State, g.getStatusString())
+            self.assertTrue(body.Shape.isValid())
+            self.assertLess(body.Shape.Volume, v2 - 1.0)
+        finally:
+            App.closeDocument(lid.Name)
+
+    def test_grown_iso_thread_on_a_rod_is_the_bolt(self):
+        pad = shaft(self.doc, self.body, radius=4.0, length=20.0)  # about M10's minor diameter
+        v = self.body.Shape.Volume
+        f = self.make(cyl_face(pad, 4.0), standard="iso", size="M10", build="grow", clearance="0 mm")
+        self.check(f, v, more=True)
+        R = self.body.Shape.BoundBox.XMax
+        self.assertLess(R, 4.0 + st.spec("iso", "M10").depth + 1e-3)
