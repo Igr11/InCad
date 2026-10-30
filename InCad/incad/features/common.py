@@ -23,6 +23,11 @@ class Field:
                              # while it is on the value is not used (greyed)
 
 
+def fine_step(values):
+    """The arrows' step of fillet and chamfer sizes (the user: a tenth of a millimetre, not one)."""
+    return 0.1
+
+
 def shown(field, values):
     """Is the field shown for these values? show_if is (key, values or a test of the value) or a tuple of those
     (all must hold)."""

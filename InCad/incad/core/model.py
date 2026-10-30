@@ -306,7 +306,15 @@ def bind(feature, prop, name):
 def bound_parameter(feature, prop):
     expr = _expression(feature, prop)
     prefix = MODEL_NAME + "."
+    if expr.startswith("min(" + prefix):  # a value held under a limit (a chamfer's Fit step): clamped()
+        m = re.match(r"min\(%s\.(\w+)\s*;\s*[\w.]+\)$" % re.escape(MODEL_NAME), expr)
+        return m.group(1) if m else None
     return expr[len(prefix):] if expr.startswith(prefix) else None
+
+
+def clamped(name, obj_name, prop):
+    """The expression of a value bound to the parameter but never above obj_name.prop (bound_parameter reads it)."""
+    return "min(%s.%s; %s.%s)" % (MODEL_NAME, name, obj_name, prop)
 
 
 def parameter_text(doc, name):

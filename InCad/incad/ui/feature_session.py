@@ -1,4 +1,5 @@
 """One feature dialog: one undo transaction around create/edit + live previews; OK commits, Cancel aborts."""
+import time
 import traceback
 
 from incad.core import document, log, model, perf, safe
@@ -43,8 +44,9 @@ def _new_faces(shape, base):
     from incad.core import feature_faces as ff
     if base is None:
         return list(shape.Faces)
-    return [face for face, (t, p) in zip(shape.Faces, ff._inner_points(shape, "Face"))
-            if not ff._on_any(p, t, base, "Face")]
+    prints = ff._prints(base, "Face")
+    return [face for face, (t, p, fp) in zip(shape.Faces, ff._inner_points(shape, "Face"))
+            if fp not in prints and not ff._on_any(p, t, base, "Face")]
 
 
 def _is_seam(edge, face):
@@ -1381,8 +1383,16 @@ class FeatureSession(QtCore.QObject):
             self._timer.start()  # FreeCAD runs the event loop while it computes: a value changed meanwhile is
             return               # previewed after this one, never re-entered
         self._previewing = True
+        start = time.perf_counter()
         try:
             self._preview_now()
+            took = time.perf_counter() - start
+            if took > 1.0:  # which dialog and feature (the log said only "feature preview took 21012 ms")
+                try:
+                    label = self.feature.Label if self.feature is not None else "-"
+                except Exception:
+                    label = "-"
+                log.logger().info("Slow preview: %s %s, %.1f s", self.kind.TITLE, label, took)
         except Exception as e:  # nothing escapes into the timer slot; the dialog says what went wrong
             log.report("warning", "%s preview: %s" % (self.kind.TITLE, e), traceback.format_exc())
             if self.dialog is not None:

@@ -17,7 +17,7 @@ import math
 import FreeCAD as App
 import Part
 
-from incad.features.common import Field, format_picks, parse_picks, resolve, value_param, value_text
+from incad.features.common import Field, fine_step, format_picks, parse_picks, resolve, value_param, value_text
 from incad.threads import inserts
 
 TYPES = ("PartDesign::FeaturePython",)
@@ -430,7 +430,7 @@ BOSS_FIELDS = (
     Field("hole_to", "Hole depth", "choice", (("boss", "Whole boss"), ("depth", "Depth")), "boss",
           show_if=("hole", ("plain",))),
     Field("hole_depth", "Depth", "value_length", default="6 mm", show_if=(("hole", ("plain",)), ("hole_to", ("depth",)))),
-    Field("fillet", "Fillet at foot", "value_length", default="1 mm"),
+    Field("fillet", "Fillet at foot", "value_length", default="0.5 mm", step=fine_step),
     Field("ribs", "Ribs", "choice", (("0", "None"), ("3", "3"), ("4", "4"), ("6", "6")), "0"),
     Field("rib_thick", "Rib thickness", "value_length", default="1.2 mm", show_if=("ribs", ("3", "4", "6"))),
     Field("rib_length", "Rib length", "value_length", default="4 mm", show_if=("ribs", ("3", "4", "6"))),
@@ -446,7 +446,7 @@ SNAP_FIELDS = (
     Field("thick", "Thickness", "value_length", default="1.5 mm"),
     Field("catch_depth", "Catch depth", "value_length", default="1 mm"),
     Field("catch_length", "Catch length", "value_length", default="2.5 mm"),
-    Field("fillet", "Fillet at the rim", "value_length", default="0.5 mm"),
+    Field("fillet", "Fillet at the rim", "value_length", default="0.5 mm", step=fine_step),
     Field("flip_side", "Catch on the other side", "bool", default=False),
     _FLIP,
 )

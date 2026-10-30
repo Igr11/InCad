@@ -63,9 +63,11 @@ def test_0_setup():
     harness.pump(300)
 
 
-def test_1_a_failing_chamfer_explains_itself_and_keeps_the_part_on_screen():
-    """A distance too big for the edges fails the chamfer: the dialog says it is the chamfer (not a revolve) and
-    the part stays visible (the base shows until the value is valid); Cancel leaves the part shown."""
+def test_1_a_chamfer_past_the_faces_stops_at_their_far_edges():
+    """A distance too big for the faces no longer fails (the user: a 2.5 mm chamfer on a 2 mm face is a 2 mm one):
+    two top edges at a corner of a 40 x 20 x 10 block chamfered by 500 mm stop at the bottom of the 10 mm sides
+    (40·10²/2 + 20·10²/2 less the corner's 10³/3 taken off); the dialog keeps 500 mm; Cancel leaves the part as
+    it was."""
     base = doc().getObject(ST["pad"])
     Gui.Selection.clearSelection()
     for e in top_line_edges(base):
@@ -73,34 +75,25 @@ def test_1_a_failing_chamfer_explains_itself_and_keeps_the_part_on_screen():
     commands.REGISTRY.run("feature.chamfer")
     harness.pump(900)
     assert dialog() is not None and len(dialog().values()["edges"].split(",")) == 2, dialog().values()
+    assert dialog().values()["size"] == "0.5 mm", dialog().values()["size"]
     w = dialog().field("size")
-    w.setText("1 mm")
-    w.editingFinished.emit()
-    harness.pump(800)
-    feature = s().feature_session.feature
-    assert feature is not None and not dialog().error_text(), dialog().error_text()
-    assert feature.Visibility and not base.Visibility, (feature.Visibility, base.Visibility)
     w.setText("500 mm")
     w.editingFinished.emit()
-    harness.pump(900)
-    err = dialog().error_text()
-    assert "chamfer" in err.lower() and "revolve" not in err.lower(), err
-    assert base.Visibility and not feature.Visibility, ("part still shown", base.Visibility, feature.Visibility)
-    w.setText("1 mm")
-    w.editingFinished.emit()
-    harness.pump(900)
+    harness.pump(1200)
     assert not dialog().error_text(), dialog().error_text()
-    assert feature.Visibility and not base.Visibility, (feature.Visibility, base.Visibility)
-    w.setText("500 mm")
-    w.editingFinished.emit()
-    harness.pump(900)
+    shown = body().Tip
+    assert shown is not base and "Invalid" not in shown.State and abs(shown.Shape.Volume - (8000 - 3000 + 1000 / 3.0)) < 0.5, \
+        (shown.Name, shown.State, shown.Shape.Volume)
+    assert shown.Visibility and not base.Visibility, (shown.Visibility, base.Visibility)
+    assert dialog().values()["size"] == "500 mm", dialog().values()["size"]
     QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
     harness.pump(800)
-    assert base.Visibility, "Cancel leaves the part shown"
+    assert body().Tip is base and base.Visibility, ("Cancel leaves the part as it was", body().Tip.Name)
+    assert [o.Name for o in body().Group if "Chamfer" in o.Name] == [], [o.Name for o in body().Group]
     Gui.Selection.clearSelection()
 
 
-def test_2_cancelling_an_edit_that_was_failing_shows_the_feature_again():
+def test_2_an_edit_past_the_faces_and_back():
     base = doc().getObject(ST["pad"])
     Gui.Selection.clearSelection()
     for e in top_line_edges(base):
@@ -111,8 +104,7 @@ def test_2_cancelling_an_edit_that_was_failing_shows_the_feature_again():
     w.setText("1 mm")
     w.editingFinished.emit()
     harness.pump(800)
-    QTest.mouseClick(dialog().ok_button, QtCore.Qt.LeftButton)
-    harness.pump(800)
+    ok()
     chamfer = body().Tip
     assert chamfer.TypeId == "PartDesign::Chamfer" and chamfer.Visibility and not base.Visibility
     shell.edit_feature(chamfer)
@@ -120,13 +112,22 @@ def test_2_cancelling_an_edit_that_was_failing_shows_the_feature_again():
     w = dialog().field("size")
     w.setText("500 mm")
     w.editingFinished.emit()
+    harness.pump(1200)
+    assert not dialog().error_text(), dialog().error_text()
+    ok()
+    tip = body().Tip
+    assert "Invalid" not in tip.State and abs(tip.Shape.Volume - (8000 - 3000 + 1000 / 3.0)) < 0.5, (tip.Name, tip.State, tip.Shape.Volume)
+    shell.edit_feature(chamfer)
     harness.pump(900)
-    assert dialog().error_text() and base.Visibility and not chamfer.Visibility
-    QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
-    harness.pump(900)
-    assert chamfer.Visibility and not base.Visibility, (chamfer.Visibility, base.Visibility)
-    assert "Invalid" not in chamfer.State and chamfer.Shape.Volume > 0
+    assert dialog().values()["size"] == "500 mm", dialog().values()["size"]
+    w = dialog().field("size")
+    w.setText("1 mm")
+    w.editingFinished.emit()
+    harness.pump(1000)
+    ok()
+    tip = body().Tip
+    assert "Invalid" not in tip.State and abs(tip.Shape.Volume - (8000 - 30 + 1 / 3.0)) < 0.1, tip.Shape.Volume
 
 
-harness.run([test_0_setup, test_1_a_failing_chamfer_explains_itself_and_keeps_the_part_on_screen,
-             test_2_cancelling_an_edit_that_was_failing_shows_the_feature_again])
+harness.run([test_0_setup, test_1_a_chamfer_past_the_faces_stops_at_their_far_edges,
+             test_2_an_edit_past_the_faces_and_back])

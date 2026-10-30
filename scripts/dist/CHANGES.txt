@@ -5,6 +5,16 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.16.2
+------
+Improvements
+- A chamfer wider than a face it runs onto stops at that face's far edge instead of failing (a 2.5 mm chamfer on a 2 mm face is a 2 mm one, the face taken whole); the dialog keeps the asked distance, and on a wider face the chamfer takes it again.
+- Fillet and chamfer sizes start at 0.5 mm in every dialog (Fillet, Chamfer, Hole and Thread chamfers, Boss and Snap Fit fillets); their arrows step by 0.1 mm.
+Bug fixes
+- A click on a feature in the tree (an Emboss of a jar's label) hung for 25-30 s: its faces lit on the part were each traced back to their feature again; finding which feature made a face is many times faster on any part.
+- Appearance on many faces (185 letters) took 55 s: every picked face was matched against every coloured face again on each change; now 0.5 s.
+- The log names the dialog and feature of a slow preview.
+
 0.16.1
 ------
 Bug fixes

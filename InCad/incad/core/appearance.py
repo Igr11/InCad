@@ -73,10 +73,11 @@ def _normal(face):
         return None
 
 
-def face_entry(face, color, finish):
+def face_entry(face, color, finish, props=None):
+    """props: the face's (surface type, centre, area, normal) from _face_props, when worked out already."""
+    kind, centre, area, normal = props or (face.Surface.TypeId, face.CenterOfMass, face.Area, _normal(face))
     return {"color": [round(x, 4) for x in color[:3]], "finish": finish,
-            "c": [round(v, 6) for v in face.CenterOfMass], "a": round(face.Area, 6), "n": _normal(face),
-            "t": face.Surface.TypeId}
+            "c": [round(v, 6) for v in centre], "a": round(area, 6), "n": normal, "t": kind}
 
 
 _PROPS = {}  # the faces' hashes -> [(surface type, centre, area, normal)]: worked out once per shape
@@ -224,13 +225,19 @@ def change(body, face_indices, color=None, finish=None, edges=None, reset=False,
     entries = list(rec.get("faces") or [])
     if face_indices:
         picked = [i for i in face_indices if 0 <= i < len(faces)]
-        kept = [e for e in entries if find_face(faces, e, tol) not in picked]
+        chosen = set(picked)
+        where = [find_face(faces, e, tol) for e in entries]  # once: per picked face it took 55 s for 185 letters
+        kept = [e for e, w in zip(entries, where) if w not in chosen]
+        first = {}
+        for e, w in zip(entries, where):
+            first.setdefault(w, e)  # entry_at's answer: the first entry standing for that face
         if not reset:
+            props = _face_props(faces)
             for i in picked:
-                old = entry_at(rec, faces, i, tol) or {}
+                old = first.get(i) or {}
                 c = color or old.get("color") or rec.get("color") or material_color(body.Document)
                 f = finish or old.get("finish") or rec.get("finish") or DEFAULT_FINISH
-                kept.append(face_entry(faces[i], c, f))
+                kept.append(face_entry(faces[i], c, f, props[i]))
         rec["faces"] = kept
     elif reset:
         rec = {}

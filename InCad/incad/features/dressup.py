@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import FreeCAD as App
 import Part
 
-from incad.features.common import Field, link_sub, parse_picks, resolve, value_param, value_text
+from incad.features.common import Field, fine_step, link_sub, parse_picks, resolve, value_param, value_text
 
 
 def _base(doc, text, expected):
@@ -16,8 +16,15 @@ def _base(doc, text, expected):
     return obj, subs
 
 
+def _past_helpers(f, obj):
+    """The part's own feature under f's steps before it (a chamfer's Fit passes the part on unchanged)."""
+    while obj is not None and f is not None and getattr(obj, "InCadHelperOf", None) == f.Name:
+        obj = getattr(obj, "BaseFeature", None)
+    return obj
+
+
 def _expected(f, body=None):
-    base = getattr(f, "BaseFeature", None) if f is not None else None
+    base = _past_helpers(f, getattr(f, "BaseFeature", None) if f is not None else None)
     return base if base is not None else (body.Tip if body is not None else None)
 
 
@@ -25,7 +32,7 @@ def _picks_text(f, prop="Base"):
     link = getattr(f, prop)
     if not link or link[0] is None:
         return ""
-    obj, subs = link[0], link[1]
+    obj, subs = _past_helpers(f, link[0]), link[1]
     return ",".join("%s:%s" % (obj.Name, s) for s in subs)
 
 
@@ -37,15 +44,15 @@ def _fillet_create(doc, body, profile, values):
     obj, subs = _base(doc, values.get("edges"), body.Tip)
     f = body.newObject("PartDesign::Fillet", "Fillet")
     f.Base = (obj, subs)
-    value_param(doc, f, "Radius", values.get("radius") or "1 mm", "length")
+    value_param(doc, f, "Radius", values.get("radius") or "0.5 mm", "length")
     return f
 
 
 def _fillet_read(doc, f):
     from incad.features import full_round
     if full_round.claims(f):
-        return {"edges": full_round.read(doc, f)["edges"], "radius": "1 mm", "full": True}
-    return {"edges": _picks_text(f), "radius": value_text(doc, f, "Radius") or "1 mm", "full": False}
+        return {"edges": full_round.read(doc, f)["edges"], "radius": "0.5 mm", "full": True}
+    return {"edges": _picks_text(f), "radius": value_text(doc, f, "Radius") or "0.5 mm", "full": False}
 
 
 def _fillet_claims(f):
@@ -83,7 +90,7 @@ def _fillet_update(doc, f, values):
         return full_round.update(doc, f, {"edges": values.get("edges")})
     obj, subs = _base(doc, values.get("edges"), _expected(f))
     f.Base = (obj, subs)
-    value_param(doc, f, "Radius", values.get("radius") or "1 mm", "length")
+    value_param(doc, f, "Radius", values.get("radius") or "0.5 mm", "length")
     return f
 
 
@@ -96,8 +103,8 @@ FILLET = SimpleNamespace(
     TANGENT_CHAIN=True,  # a click takes the edge's smooth chain (Inventor / Fusion)
     FACE_EDGES=True,  # a click on a face takes all its edges
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
-            Field("radius", "Radius", "value_length", default="1 mm", toggle=("full", "Full"))),
-    defaults=lambda doc, body, profile: {"edges": "", "radius": "1 mm", "full": False},
+            Field("radius", "Radius", "value_length", default="0.5 mm", toggle=("full", "Full"), step=fine_step)),
+    defaults=lambda doc, body, profile: {"edges": "", "radius": "0.5 mm", "full": False},
     create=_fillet_create, read=_fillet_read, update=_fillet_update, _pad_of=lambda f: f)
 
 
@@ -106,16 +113,17 @@ _CHAMFER = {"equal": "Equal distance", "two": "Two distances", "angle": "Distanc
 
 
 def _chamfer_apply(doc, f, values):
+    from incad.features import chamfer_fit
     obj, subs = _base(doc, values.get("edges"), _expected(f))
-    f.Base = (obj, subs)
     kind = values.get("type", "equal")
     f.ChamferType = _CHAMFER.get(kind, "Equal distance")
     f.FlipDirection = bool(values.get("flip"))
-    value_param(doc, f, "Size", values.get("size") or "1 mm", "length")
+    value_param(doc, f, "Size", values.get("size") or "0.5 mm", "length")
     if kind == "two":
-        value_param(doc, f, "Size2", values.get("size2") or "1 mm", "length")
+        value_param(doc, f, "Size2", values.get("size2") or "0.5 mm", "length")
     if kind == "angle":
         value_param(doc, f, "Angle", values.get("angle") or "45 °", "angle")
+    f.Base = (chamfer_fit.sync(doc, f, obj, subs, values), subs)  # past a face: stops at its far edge
 
 
 def _chamfer_create(doc, body, profile, values):
@@ -126,8 +134,8 @@ def _chamfer_create(doc, body, profile, values):
 
 def _chamfer_read(doc, f):
     kind = {v: k for k, v in _CHAMFER.items()}.get(f.ChamferType, "equal")
-    return {"edges": _picks_text(f), "type": kind, "size": value_text(doc, f, "Size") or "1 mm",
-            "size2": value_text(doc, f, "Size2") or "1 mm", "angle": value_text(doc, f, "Angle") or "45°",
+    return {"edges": _picks_text(f), "type": kind, "size": value_text(doc, f, "Size") or "0.5 mm",
+            "size2": value_text(doc, f, "Size2") or "0.5 mm", "angle": value_text(doc, f, "Angle") or "45°",
             "flip": bool(f.FlipDirection)}
 
 
@@ -143,11 +151,11 @@ CHAMFER = SimpleNamespace(
     FIELDS=(Field("edges", "Edges", "picks", pick="edge"),
             Field("type", "Type", "choice", (("equal", "Distance"), ("two", "Two distances"),
                                              ("angle", "Distance + angle")), "equal"),
-            Field("size", "Distance", "value_length", default="1 mm"),
-            Field("size2", "Distance 2", "value_length", default="1 mm", show_if=("type", ("two",))),
+            Field("size", "Distance", "value_length", default="0.5 mm", step=fine_step),
+            Field("size2", "Distance 2", "value_length", default="0.5 mm", show_if=("type", ("two",)), step=fine_step),
             Field("angle", "Angle", "value_angle", default="45 °", show_if=("type", ("angle",))),
             Field("flip", "Flip", "bool", default=False, show_if=("type", ("two", "angle")))),
-    defaults=lambda doc, body, profile: {"edges": "", "type": "equal", "size": "1 mm", "size2": "1 mm",
+    defaults=lambda doc, body, profile: {"edges": "", "type": "equal", "size": "0.5 mm", "size2": "0.5 mm",
                                          "angle": "45 °", "flip": False},
     create=_chamfer_create, read=_chamfer_read, update=_chamfer_update, _pad_of=lambda f: f)
 

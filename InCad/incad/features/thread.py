@@ -10,7 +10,7 @@ import json
 import FreeCAD as App
 import Part
 
-from incad.features.common import Field, parse_picks, resolve, value_param, value_text
+from incad.features.common import Field, fine_step, parse_picks, resolve, value_param, value_text
 from incad.threads import profile, standards
 from incad.core import safe
 
@@ -45,7 +45,8 @@ FIELDS = (
     Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
     Field("build", "Thread", "choice", (("cut", "Cut into"), ("grow", "Grow onto")), "cut"),
     Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
-    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm", show_if=("chamfer", ("start", "both"))),
+    Field("chamfer_size", "Chamfer size", "value_length", default="0.5 mm", show_if=("chamfer", ("start", "both")),
+          step=fine_step),
     Field("clearance", "Print clearance (on diameter)", "value_length", default="0.2 mm"),
     Field("remember", "Save for the next part", "bool", default=False),  # the user: not choosing it all again
 )
@@ -475,9 +476,9 @@ def _build(doc, body, f, values):
     radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
     chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free,
                        end_free and end_round, values.get("chamfer") or "none",
-                       _mm(values.get("chamfer_size"), 1.0))
+                       _mm(values.get("chamfer_size"), 0.5))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
-               "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
+               "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "0.5 mm",
                "chamfer_feature": chamfer.Name if chamfer is not None else "",
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
@@ -517,7 +518,7 @@ def _build_grown(doc, body, f, values, obj, edge, internal, radius, face_len, to
     def settings(chamfer):
         return {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std,
                "size": spec.size, "flip": bool(values.get("flip")), "chamfer": values.get("chamfer") or "none",
-               "chamfer_size": values.get("chamfer_size") or "1 mm",
+               "chamfer_size": values.get("chamfer_size") or "0.5 mm",
                "chamfer_feature": chamfer.Name if chamfer is not None else "",
                "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
@@ -527,7 +528,7 @@ def _build_grown(doc, body, f, values, obj, edge, internal, radius, face_len, to
     _store(f, settings(None))  # first: the chamfer's recompute computes the thread too
     tall = spec.depth + spec.pitch  # past the teeth's tips: what they leave past the end goes with the corner
     chamfer = _chamfer(doc, body, f, obj, edge, internal, (radius, radius), None, face_len, start_free, end_free,
-                       values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0), to_other,
+                       values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 0.5), to_other,
                        grown=tall)
     _store(f, settings(chamfer))
     key = (doc.Name, f.Name)

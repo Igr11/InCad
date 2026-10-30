@@ -3,7 +3,7 @@ and round faces (a hole at the centre of each; a hidden helper sketch on the fla
 import FreeCAD as App
 import Part
 
-from incad.features.common import Field, parse_picks, resolve, value_param, value_text
+from incad.features.common import Field, fine_step, parse_picks, resolve, value_param, value_text
 from incad.threads import inserts
 
 TITLE = "Hole"
@@ -57,7 +57,8 @@ FIELDS = (
           show_if=("hole_type", ("tapped",))),
     Field("flip", "Flip direction", "bool", default=False),
     Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
-    Field("chamfer_size", "Chamfer size", "value_length", default="0.5 mm", show_if=("chamfer", ("start", "both"))),
+    Field("chamfer_size", "Chamfer size", "value_length", default="0.5 mm", show_if=("chamfer", ("start", "both")),
+          step=fine_step),
 )
 _THREAD_TYPES = {"iso": "ISOMetricProfile", "iso_fine": "ISOMetricFineProfile", "unc": "UNC", "unf": "UNF",
                  "unef": "UNEF", "npt": "NPT", "g": "BSP", "bsw": "BSW", "bsf": "BSF"}

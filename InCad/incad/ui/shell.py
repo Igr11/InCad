@@ -1251,8 +1251,14 @@ class Shell(QtCore.QObject):
                     Gui.Selection.addSelection(doc.getObject(faces[0]), faces[1])  # Inventor: its faces light up
                 else:
                     Gui.Selection.addSelection(doc.Name, n)
+            from incad.features import common as _common
+            self._tree_picked = self._selection_key(_common.selection_ex(doc.Name))
         finally:
             self._syncing = False
+
+    @staticmethod
+    def _selection_key(sels):
+        return tuple(sorted((s.ObjectName, tuple(sorted(s.SubElementNames))) for s in sels))
 
     def show_in_browser(self):
         """Inventor's Find in Browser: the tree opens to the rows of what is selected in the view (a face: the
@@ -1464,6 +1470,10 @@ class Shell(QtCore.QObject):
         names = [s.ObjectName for s in sels]
         if self._peeked is not None and self._peeked[1] not in names:
             self._unpeek()
+        if sels and self._selection_key(sels) == getattr(self, "_tree_picked", None):
+            self.refresh_constraints_window()  # the tree's own pick (a row's faces): mapping every face back to
+            return  # its feature took 25 s on a jar
+        self._tree_picked = None
         rows = []
         from incad.core import feature_faces
         for sel in sels:  # a face or edge of the shown solid: the feature that made it (Inventor)
