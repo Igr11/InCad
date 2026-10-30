@@ -293,9 +293,41 @@ def problems(doc, broken_before, touched, deep=True):
     return [why for _name, why in broken_now(doc, broken_before, touched, deep)]
 
 
+def beyond_end(obj):
+    """Is obj a Solid's step below its End of Part (rolled back: not part of the result, its failure no failure)?"""
+    try:
+        if not obj.isDerivedFrom("PartDesign::Feature") or obj.TypeId == "PartDesign::Body":
+            return False
+        body = obj.getParentGeoFeatureGroup()
+        if body is None or body.TypeId != "PartDesign::Body":
+            return False
+        group = list(body.Group)
+        if obj not in group:
+            return False
+        tip = body.Tip
+        return tip is None or (tip in group and group.index(obj) > group.index(tip))
+    except Exception:
+        return False
+
+
+def rolled_back(obj, _seen=None):
+    """beyond_end, or a helper used only by steps beyond it (a Boolean's grown tool below End of Part)."""
+    if beyond_end(obj):
+        return True
+    seen = _seen if _seen is not None else set()
+    if obj.Name in seen:
+        return False
+    seen.add(obj.Name)
+    users = [u for u in getattr(obj, "InList", []) if u.TypeId not in ("PartDesign::Body", "App::Part")]
+    return bool(users) and all(rolled_back(u, seen) for u in users)
+
+
 def broken_now(doc, broken_before, touched, deep=True):
-    """[(name, reason)] of the objects that were fine (not in broken_before) and are broken now."""
-    found = [(o.Name, _broken(o, o.Name in touched, deep)) for o in doc.Objects if o.Name not in broken_before]
+    """[(name, reason)] of the objects that were fine (not in broken_before) and are broken now — a step below End
+    of Part left out (the user: moving End of Part above the lid's grip ribs was undone, the lid's Boolean below it
+    having lost its tool)."""
+    found = [(o.Name, _broken(o, o.Name in touched, deep)) for o in doc.Objects
+             if o.Name not in broken_before and not beyond_end(o)]
     return [(n, why) for n, why in found if why]
 
 

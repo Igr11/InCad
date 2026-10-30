@@ -109,9 +109,36 @@ def value_param(doc, feature, prop, text, unit_kind, base=None):
 
 
 def value_text(doc, feature, prop):
+    """The dialog's text for a feature's value: its model parameter's, else the feature's own value (a feature made
+    outside ProstoCAD's dialog — a FreeCAD file, an AI's script — showed the dialog's default: 10 mm for a 78 mm
+    Extrude, the user's jar)."""
     from incad.core import model
     name = model.bound_parameter(feature, prop)
-    return model.parameter_text(doc, name) if name else ""
+    if name:
+        return model.parameter_text(doc, name)
+    try:
+        return own_text(getattr(feature, prop))
+    except Exception:
+        return ""
+
+
+def own_text(q):
+    """A property's value as a dialog writes it: 78 mm, 45 °, 3."""
+    import FreeCAD as App
+    try:
+        if hasattr(q, "Unit"):
+            if q.Unit == App.Units.Length:
+                return "%g mm" % q.getValueAs("mm")
+            if q.Unit == App.Units.Angle:
+                return "%g °" % q.getValueAs("deg")
+            return q.UserString
+        if isinstance(q, bool):
+            return ""
+        if isinstance(q, (int, float)):
+            return "%g" % q
+    except Exception:
+        pass
+    return ""
 
 
 def profile_of(feature):

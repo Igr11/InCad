@@ -99,9 +99,25 @@ def test_2_a_new_sketch_leaves_it():
     harness.pump(800)
 
 
+def test_3_a_slow_step_below_end_of_part_is_left_alone():
+    """The user's jar: End of Part moved up, a Chamfer dialog recomputed the letters and the lid below it, 16 s on
+    every value."""
+    from incad.core import safe
+    b = doc().getObject(ST["box"])
+    pad = doc().getObject(ST["pad"])
+    del RUNS[:]
+    body().Tip = b
+    pad.touch()
+    assert safe.beyond_end(pad)
+    from incad.ui import feature_session as fsm
+    fsm._recompute_sound(doc())
+    assert "Touched" in pad.State, "a step below End of Part was recomputed"
+
+
 def test_9_cleanup():
     App.closeDocument(doc().Name)
 
 
 harness.run([test_0_box_and_a_broken_feature_after_the_end, test_1_work_plane_preview_leaves_it,
-             test_2_a_new_sketch_leaves_it, test_9_cleanup])
+             test_2_a_new_sketch_leaves_it,
+             test_3_a_slow_step_below_end_of_part_is_left_alone, test_9_cleanup])

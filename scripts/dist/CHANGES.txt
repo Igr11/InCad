@@ -5,6 +5,15 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.16.1
+------
+Bug fixes
+- An open section follows the part: a change made while it is on (a chamfer) showed as a hole in the cut, as if the new material were a surface.
+- End of Part moved above the Solid another Solid's Boolean cuts with (a lid's grip ribs) was undone: the Boolean below End of Part is left out of the check.
+- A feature made outside ProstoCAD's dialog (a FreeCAD file, an AI's script) opened its dialog with default values (Distance 10 mm for a 78 mm Extrude): it shows its own values.
+- End of Part dropped at the bottom of the tree, below a Boolean's tool Solid (a lid's grip ribs), landed before that Boolean; it goes to the end now.
+- With End of Part moved up, feature dialogs recomputed everything below it (16 s a value on a jar); what lies below End of Part is left alone now.
+
 0.16.0
 ------
 Much faster on big parts (a jar with a thread, a wrapped label and a lid); Interference in a part; Edit from a

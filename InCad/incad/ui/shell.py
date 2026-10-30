@@ -401,6 +401,8 @@ class Shell(QtCore.QObject):
         self._sel_watch = None
         self._section_display = None  # ([SectionDisplay], doc, view, [Caps], [(shape, colour)]) while sectioned
         self._section_base = None  # the picked section plane; the panel offsets/flips it
+        self._section_sig = None  # what the open section was meshed from (_section_signature)
+        self._section_last = None  # where it cuts now
         self._region_pick = None  # waiting for a click on one of a sketch's shown areas
         self._measure = None  # live Measure (a selection observer) while it is on
         self._dim_known = {}  # (doc, sketch) -> dimension snapshot after the last change (replacement tracking)
@@ -3396,6 +3398,7 @@ class Shell(QtCore.QObject):
         if is_asm and fs is None:
             self._schedule_dof(doc)
         self._schedule_interference(doc)  # off where it was not turned on
+        self._section_follow(doc)  # an open section cut again when the part changed
         self.dof_display_changed()  # a tab switch, an undo or a finished drag: glyphs at the parts' new places
 
     # ----- assemblies -----
@@ -4221,9 +4224,23 @@ class Shell(QtCore.QObject):
         from incad.core import section
         from incad.ui.section_display import SectionDisplay
         view = Gui.getDocument(doc.Name).ActiveView
+        self._section_last = placement
+        if self._section_display is not None and self._section_sig != self._section_signature(doc):
+            # the part changed under the open section (the user: a chamfer added while it was on showed as a hole
+            # in the cut): meshed again from what is shown now
+            displays, _doc, old_view = self._section_display[:3]
+            self._section_display = None
+            for display in displays:
+                display.remove()
+            try:
+                old_view.toggleClippingPlane(0)
+            except Exception:
+                pass
+            targets = None
         if self._section_display is None:
             targets = targets if targets is not None else self._section_targets(doc)
-            caps = [section.Caps(sh) for sh, _ in targets]  # meshed once a session: the slider slices in ms
+            caps = [section.Caps(sh) for sh, _ in targets]  # meshed once per shape: the slider slices in ms
+            self._section_sig = self._section_signature(doc)
         else:
             targets, caps = self._section_display[4], self._section_display[3]
         # a plane that misses everything (or leaves nothing) is turned round: a section always shows material
@@ -4255,6 +4272,29 @@ class Shell(QtCore.QObject):
                     display.set_hatch([], shift * 0.5)  # never the previous position's hatch
                 except Exception:
                     pass
+
+    def _section_signature(self, doc):
+        """What the open section was meshed from: every shown Solid (a part) or shown shape (an assembly)."""
+        from incad.core import document, section
+        try:
+            if document.is_incad_part(doc):
+                return tuple((b.Name, b.Shape.hashCode()) for b in document.bodies(doc) if document.is_shown(b))
+            return tuple((o.Name, str(getattr(o, "Placement", "")), getattr(o, "Shape").hashCode())
+                         for o, _shape, _c in section.shown_shapes(doc))
+        except Exception:
+            return None
+
+    def _section_follow(self, doc):
+        """After a change: an open section whose part changed is cut again where it was."""
+        if self._section_display is None or doc is None or self._section_display[1] is not doc \
+                or getattr(doc, "Recomputing", False) or getattr(self, "_section_last", None) is None:
+            return
+        if self._section_sig == self._section_signature(doc):
+            return
+        try:
+            self._show_cut(doc, self._section_last)
+        except Exception as e:
+            log.logger().warning("Section after a change: %s", e)
 
     @staticmethod
     def _compound(shapes):

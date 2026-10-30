@@ -289,10 +289,25 @@ class ModelBrowser(QtWidgets.QWidget):
         return None
 
     def _top_feature(self, item):
-        """The feature row an item belongs to: a direct child of the part row or of a solid-body row."""
-        while item.parent() is not None and item.parent().data(0, KIND_ROLE) not in ("part", "body"):
-            item = item.parent()
+        """The feature row an item belongs to: a direct child of the part row or of a solid-body row — a Solid shown
+        inside a Boolean's row as its tool is no such row: its rows belong to the Boolean (the user: End of Part
+        dropped below a lid's grip ribs, the last rows of the tree, landed before the lid's Boolean)."""
+        while item.parent() is not None:
+            parent = item.parent()
+            kind = parent.data(0, KIND_ROLE)
+            if kind == "part" or (kind == "body" and not self._inside_feature(parent)):
+                break
+            item = parent
         return item
+
+    @staticmethod
+    def _inside_feature(row):
+        q = row.parent()
+        while q is not None:
+            if q.data(0, KIND_ROLE) in ("feature", "sketch"):
+                return True
+            q = q.parent()
+        return False
 
     def drop_end_of_part_on(self, item, above=False):
         """End of Part goes after the row's feature, or before it when dropped on the upper half of the feature's

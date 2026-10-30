@@ -80,7 +80,9 @@ def _recompute_sound(doc):
     if sk is not None:  # Text, sketch patterns: the sketch only, the part follows on Finish Sketch
         doc.recompute([sk])
         return
-    todo = [o for o in doc.Objects if "Touched" in o.State and "Invalid" not in o.State]
+    # nor what lies below End of Part: rolled back, not shown (a Chamfer dialog with End of Part moved up took 16 s
+    # on each value, recomputing the letters and the lid below it)
+    todo = [o for o in doc.Objects if "Touched" in o.State and "Invalid" not in o.State and not safe.rolled_back(o)]
     if todo:
         doc.recompute(todo)
 

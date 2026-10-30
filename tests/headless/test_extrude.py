@@ -44,6 +44,14 @@ class ExtrudeTest(unittest.TestCase):
         v = extrude.read(self.doc, f)
         self.assertEqual((v["distance"], v["direction"], v["taper"], v["operation"]), ("25 mm", "symmetric", "5°", "join"))
 
+    def test_read_back_a_pad_made_outside_the_dialog(self):
+        """The user's jar: a Pad made by a script showed Distance 10 mm (the dialog's default) for its 78 mm."""
+        pad = util.add_pad(self.body, self.sk, 78, "Plain")
+        pad.TaperAngle = 3
+        self.doc.recompute()
+        v = extrude.read(self.doc, pad)
+        self.assertEqual((v["distance"], v["taper"]), ("78 mm", "3 °"))
+
     def test_update_values_and_formulas(self):
         f = self.make()
         document.set_parameter(self.doc, "Width", "40 mm")
