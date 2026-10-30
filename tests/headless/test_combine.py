@@ -167,19 +167,20 @@ class CombineReviewTest(CombineTest):
         self.doc.recompute()
         self.assertEqual(self.fit(), [])
 
-    def test_a_threaded_tool_is_cut_without_clearance(self):
+    def test_a_threaded_tool_gets_its_clearance_too(self):
+        """It was cut with Clearance 0 mm (the grown copy failed with sharp joins); the user's jar lid then would not
+        go on. Round joins grow a threaded tool: the clearance is kept all over."""
         from incad.features import thread
         top = [i + 1 for i, fc in enumerate(self.pin.Shape.Faces) if fc.Surface.TypeId == "Part::GeomCylinder"][0]
         t = thread.create(self.doc, self.tool, None, dict(thread.defaults(self.doc, self.tool, None),
                                                           face="%s:Face%d" % (self.pin.Name, top), size="M8"))
         self.doc.recompute()
         self.assertIs(self.tool.Tip, t)
-        names = {o.Name for o in self.doc.Objects}
-        f = self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")  # a threaded tool can't be grown:
-        self.assertNotIn("Invalid", f.State)                                     # cut with Clearance 0 mm, said
-        self.assertEqual(combine.adjusted(self.doc, f), {"clearance": "0 mm"})
-        self.assertEqual(combine.read(self.doc, f)["clearance"], "0 mm")
-        self.assertEqual({o.Name for o in self.doc.Objects} - names - {f.Name, "InCadModel"}, set())
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")
+        self.assertNotIn("Invalid", f.State)
+        self.assertEqual(combine.adjusted(self.doc, f), {})
+        self.assertEqual(combine.read(self.doc, f)["clearance"], "0.2 mm")
+        self.assertAlmostEqual(self.tool.Shape.distToShape(self.base.Shape)[0], 0.2, places=2)
 
     def test_dependency_loop_is_refused(self):
         self.make(operation="cut", clearance="0 mm")

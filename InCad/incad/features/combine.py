@@ -313,10 +313,18 @@ def _check_helpers(doc, helpers, tools):
             obj = doc.getObject(mine[key]) if mine.get(key) else None
             if obj is None:
                 continue
-            shape = obj.Shape
-            ok = not shape.isNull() and shape.isValid() and shape.Volume > 1e-6 and \
-                ((shape.Volume > volume) if bigger else (shape.Volume < volume))
-            if not ok:
+            def good():
+                shape = obj.Shape
+                return not shape.isNull() and shape.isValid() and shape.Volume > 1e-6 and \
+                    ((shape.Volume > volume) if bigger else (shape.Volume < volume))
+            if not good() and getattr(obj, "Join", "") != "Arc":
+                # sharp corners failed on a grown thread (the user's jar: the lid came out with 0 mm): round ones,
+                # self-intersections removed, grow it right
+                obj.Join = "Arc"
+                obj.Intersection = True
+                obj.touch()
+                doc.recompute()
+            if not good():
                 raise ValueError("Couldn't %s %s by the clearance (threads and other complex shapes can't be "
                                  "offset): use Clearance 0 mm, or put the clearance on the thread itself"
                                  % ("grow" if bigger else "shrink", tool.Label))

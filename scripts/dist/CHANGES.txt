@@ -28,6 +28,8 @@ Improvements
 
 - Sketch > Tangent Circle: a circle tangent to the two or three lines, arcs or circles selected (three fix it).
 Bug fixes
+- Boolean Cut with a clearance on a threaded part (a lid cut from a jar with a grown thread) keeps its clearance:
+  it was cut with 0 mm, and the printed lid did not fit.
 - A part with a modeled thread: Extrude no longer stalls for seconds - switching Join to Cut or pressing Cancel
   no longer rebuilds the whole part, and a preview no longer measures the thread's volume.
 - Thread: the profile's sketch is a few lines and arcs again, not a row of short segments - threads build in a
