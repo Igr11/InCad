@@ -1,7 +1,8 @@
 """Combine (Inventor) = PartDesign Boolean in the base solid; the tool solids are always kept.
 
 Cut can leave a print clearance (a model parameter):
-- on the cavity: the base is cut by the tool grown by the clearance (Part::Offset of the tool body);
+- on the cavity: the base is cut by the tool grown by the clearance ("<Tool> grown": only the tool's piece near the
+  base, its offset kept while that piece stays the same);
 - on the tool: the cavity is exact and a fit copy "<Tool> fit" (a Body on a shrunk Part::Offset) is made to print;
 - split: half on each.
 Settings and helper names live on the Boolean (InCadCombine, JSON)."""
@@ -129,6 +130,102 @@ def _clearance_param(doc, data, text):
     return model.new_feature_parameter(doc, text, "length")
 
 
+NEAR = 5.0  # mm round the base's box: more than any clearance
+
+
+def _near_piece(tool, base_feature):
+    """The tool's piece inside the base feature's box grown by NEAR (what a grown cavity needs), else the whole tool."""
+    import Part
+    shape = tool.Shape if tool is not None else None
+    if shape is None or shape.isNull():
+        return None
+    base = base_feature.Shape if base_feature is not None else None
+    if base is not None and not base.isNull():
+        bb = base.BoundBox
+        box = Part.makeBox(bb.XLength + 2 * NEAR, bb.YLength + 2 * NEAR, bb.ZLength + 2 * NEAR,
+                           App.Vector(bb.XMin - NEAR, bb.YMin - NEAR, bb.ZMin - NEAR))
+        try:
+            solids = shape.common(box).Solids
+            if solids:
+                return solids[0] if len(solids) == 1 else Part.makeCompound(solids)
+        except Exception:
+            pass
+    return shape.copy()
+
+
+def _signature(shape):
+    bb = shape.BoundBox
+    return (round(shape.Volume, 4), round(shape.Area, 4), len(shape.Faces),
+            tuple(round(x, 4) for x in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)))
+
+
+class _Grown:
+    """The tool grown by the clearance for a cavity: only its piece near the base (the user's jar with a wide wrapped
+    label far from the lid could not be offset as a whole), and the offset kept while that piece stays the same — a
+    Part::Offset of the whole jar ran 8 s on every change to the jar, a label far below the lid included."""
+
+    def __init__(self, obj):
+        obj.Proxy = self
+
+    def execute(self, obj):
+        import Part
+        piece = _near_piece(obj.Tool, obj.Base)
+        if piece is None:
+            obj.Shape = Part.Shape()
+            return
+        self.piece_volume = piece.Volume
+        key = (_signature(piece), round(obj.Value.Value, 7), obj.Join, bool(obj.Intersection))
+        cache = getattr(self, "_cache", None)
+        if cache is not None and cache[0] == key:
+            obj.Shape = cache[1]
+            return
+        self.offsets = getattr(self, "offsets", 0) + 1
+        try:
+            grown = piece.makeOffsetShape(obj.Value.Value, 1e-6, inter=bool(obj.Intersection), self_inter=False,
+                                          offsetMode=0, join=2 if obj.Join == "Intersection" else 0, fill=False)
+        except Exception:
+            grown = Part.Shape()  # _check_helpers tries round joins, then no clearance
+        self._cache = (key, grown)
+        obj.Shape = grown
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
+
+
+def _is_grown(obj):
+    return obj is not None and isinstance(getattr(obj, "Proxy", None), _Grown)
+
+
+def _grown(doc, name, label, tool, base_feature, expr):
+    """The cavity's grown tool (a _Grown); an older file's Part::Offset is replaced (the old one goes with the
+    helpers this setup no longer uses)."""
+    obj = doc.getObject(name) if name else None
+    if not _is_grown(obj):
+        obj = doc.addObject("Part::FeaturePython", "CombineGrown")
+        obj.addProperty("App::PropertyLink", "Tool", "InCad", "The tool solid")
+        obj.addProperty("App::PropertyLink", "Base", "InCad", "The base solid's feature before the Boolean")
+        obj.addProperty("App::PropertyDistance", "Value", "InCad", "The clearance")
+        obj.addProperty("App::PropertyEnumeration", "Join", "InCad", "How offset faces meet")
+        obj.Join = ["Arc", "Tangent", "Intersection"]
+        obj.Join = "Intersection"
+        obj.addProperty("App::PropertyBool", "Intersection", "InCad", "Self-intersections removed")
+        _Grown(obj)
+        obj.Visibility = False
+    obj.Label = label
+    obj.Tool = tool
+    obj.Base = base_feature
+    obj.setExpression("Value", expr)
+    return obj
+
+
+def _remove_offset(doc, name):
+    if name and doc.getObject(name) is not None:
+        doc.removeObject(name)
+
+
 def _offset(doc, name, label, source, expr):
     obj = doc.getObject(name) if name else None
     if obj is None:
@@ -162,7 +259,7 @@ def _remove(doc, name):
         if base is not None and doc.getObject(base.Name) is not None:
             doc.removeObject(base.Name)
         return True
-    doc.removeObject(obj.Name)
+    _remove_offset(doc, obj.Name)
     return True
 
 
@@ -203,6 +300,10 @@ def _build_with(doc, f, base, values, fallback=False):
         if base in tool.OutListRecursive:
             raise ValueError("%s already depends on %s (they were combined): pick another base or tool"
                              % (tool.Label, base.Label))
+    from incad.core import faceted
+    for b in [base] + tools:  # an STL's triangles: hours of kernel time, the program frozen (the user's force quit)
+        if faceted.is_faceted(b.Shape):
+            raise ValueError(faceted.refusal(b.Label, b.Shape))
     op = values.get("operation") or "cut"
     data = _load(f)
     old_helpers = data.get("helpers", {})
@@ -219,7 +320,7 @@ def _build_with(doc, f, base, values, fallback=False):
         old = old_helpers.get(tool.Name, {})
         mine = {}
         if apply_to in grow:
-            g = _offset(doc, old.get("grown"), "%s grown" % tool.Label, tool, grow[apply_to])
+            g = _grown(doc, old.get("grown"), "%s grown" % tool.Label, tool, f.BaseFeature, grow[apply_to])
             mine["grown"] = g.Name
             group.append(g)
         else:
@@ -236,6 +337,7 @@ def _build_with(doc, f, base, values, fallback=False):
         helpers[tool.Name] = mine
         tool.Visibility = bool(values.get("keep_tool"))  # off: used up (shown under the Boolean in the tree)
     f.Type = _TYPE.get(op, "Cut")
+    show_result(f)
     f.Group = group
     for tool_name, old in old_helpers.items():  # drop helpers this setup no longer uses
         mine = helpers.get(tool_name, {})
@@ -272,7 +374,9 @@ def _drop_attempt(doc, f, old_helpers, helpers, old_param, param):
                 if obj.TypeId == "PartDesign::Body":
                     obj.BaseFeature = None
                     obj.removeObjectsFromDocument()
-                doc.removeObject(n)
+                    doc.removeObject(n)
+                else:
+                    _remove_offset(doc, n)
     if param and param != old_param:
         from incad.core import model
         try:
@@ -308,11 +412,14 @@ def _check_helpers(doc, helpers, tools):
     doc.recompute()
     for tool in tools:
         mine = helpers.get(tool.Name, {})
-        volume = tool.Shape.Volume if not tool.Shape.isNull() else 0.0
         for key, bigger in (("grown", True), ("fit_shape", False)):
             obj = doc.getObject(mine[key]) if mine.get(key) else None
             if obj is None:
                 continue
+            if _is_grown(obj):  # compared with the piece it grew
+                volume = getattr(obj.Proxy, "piece_volume", 0.0)
+            else:
+                volume = tool.Shape.Volume if not tool.Shape.isNull() else 0.0
             def good():
                 shape = obj.Shape
                 return not shape.isNull() and shape.isValid() and shape.Volume > 1e-6 and \
@@ -373,6 +480,43 @@ def update(doc, f, values):
         raise ValueError("The base can't change on an existing Boolean: cancel and start Boolean on the other "
                          "solid")
     return _build(doc, f, body, values)
+
+
+def show_result(f):
+    """The Boolean drawn as its result: FreeCAD's first display mode, Group, draws its tool Solids instead — a lid whose
+    last step was a Boolean showed nothing once the file was opened again (the user: 'there's no lid')."""
+    try:
+        vo = f.ViewObject
+        if vo is not None and vo.DisplayMode == "Group":
+            vo.DisplayMode = "Flat Lines"
+    except Exception:
+        pass
+
+
+def show_results(doc):
+    """Every InCad Boolean of the file drawn as its result (files saved before show_result)."""
+    for f in doc.Objects:
+        if f.TypeId == "PartDesign::Boolean" and _STORE in f.PropertiesList:
+            show_result(f)
+
+
+def upgrade(doc):
+    """Booleans whose cavity was grown by a Part::Offset of the whole tool (0.15.0) get the near piece kept between
+    changes (the user's jar lid: 8 s on every change to the jar). Returns their labels."""
+    done = []
+    for f in [o for o in doc.Objects if o.TypeId == "PartDesign::Boolean" and _STORE in o.PropertiesList]:
+        grown = [doc.getObject(h.get("grown")) for h in _load(f).get("helpers", {}).values() if h.get("grown")]
+        if not any(g is not None and g.TypeId == "Part::Offset" for g in grown):
+            continue
+        try:
+            update(doc, f, read(doc, f))
+            done.append(f.Label)
+        except Exception as e:
+            from incad.core import log
+            log.logger().warning("Boolean %s kept its old clearance helper: %s", f.Label, e)
+    if done:
+        doc.recompute()
+    return done
 
 
 def used_up_tools(f):

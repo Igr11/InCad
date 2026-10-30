@@ -170,7 +170,8 @@ class OffsetTool:
             for other in dims[1:]:  # one dimension drives them all
                 index = [c.Name for c in sk.Constraints].index(other)
                 sk.setExpression("Constraints[%d]" % index, "Constraints.%s" % dims[0])
-            doc.recompute()
+                sk.setVirtualSpace(index, True)
+            safe.recompute(doc)
             return made, dims
 
         result = safe.run_safely("Offset", go, doc)

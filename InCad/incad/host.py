@@ -98,6 +98,34 @@ def reveal(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)])
 
 
+_esc_reader = None
+
+
+def esc_down():
+    """Is Esc held down right now? Read from the keyboard itself, not from Qt's events: a long computation runs with
+    the event loop stopped, and the user's Esc must still stop it (macOS: Quartz key state; Windows: the async key
+    state). False where it can't be read."""
+    global _esc_reader
+    if _esc_reader is None:
+        _esc_reader = lambda: False
+        try:
+            import ctypes
+            if MAC:
+                quartz = ctypes.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+                quartz.CGEventSourceKeyState.argtypes = [ctypes.c_int32, ctypes.c_uint16]
+                quartz.CGEventSourceKeyState.restype = ctypes.c_bool
+                _esc_reader = lambda: bool(quartz.CGEventSourceKeyState(1, 0x35))  # HID state, kVK_Escape
+            elif WINDOWS:
+                user32 = ctypes.windll.user32
+                _esc_reader = lambda: bool(user32.GetAsyncKeyState(0x1B) & 0x8000)  # VK_ESCAPE
+        except Exception:
+            _esc_reader = lambda: False
+    try:
+        return _esc_reader()
+    except Exception:
+        return False
+
+
 def quiet_process_flags():
     """Popen creationflags: on Windows a console program started from FreeCAD would flash a console window."""
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if WINDOWS else 0

@@ -80,8 +80,9 @@ def _broken(obj, check_shape, deep=True):
             return "%s: the kernel got no solid to hollow (is the face on the part's body?)" % obj.Label
         if obj.TypeId == "PartDesign::Thickness" and "thick solid" in status:
             if _has_modeled_thread(getattr(obj, "BaseFeature", None)):
-                return ("%s: FreeCAD can't hollow a part with a modeled (helical) thread in it. Drag End of Part "
-                        "above the thread, make the Shell there, then move End of Part back" % obj.Label)
+                return ("%s: FreeCAD can't hollow a part with a modeled thread in it: make the Shell before the "
+                        "thread (drag End of Part above the thread, make the Shell there, then move End of Part "
+                        "back)" % obj.Label)
             return ("%s: FreeCAD couldn't hollow this shape. Try a smaller thickness, or make the Shell earlier "
                     "in the tree, before fillets and chamfers" % obj.Label)
         if "not closed" in status.lower() or "open wire" in status.lower():
@@ -132,6 +133,12 @@ def _has_modeled_thread(feature):
         if feature.TypeId.endswith("Helix") or (feature.TypeId == "PartDesign::Hole"
                                                 and getattr(feature, "ModelThread", False)):
             return True
+        try:  # InCad's own threads: cut in, or grown on (the user's jar: Shell after the thread failed, unexplained)
+            from incad.features import thread
+            if thread.claims(feature):
+                return True
+        except Exception:
+            pass
         feature = getattr(feature, "BaseFeature", None)
     return False
 
@@ -191,6 +198,65 @@ def edit_open():
         return False
 
 
+class Stopped(Exception):
+    """The user pressed Esc during a long computation (the user: Escape must cancel any operation)."""
+
+
+_esc = {"seen": 0.0, "since": 0.0, "watching": False}
+
+
+def _watch_esc():
+    """A thread that notes when Esc was last down (checked every 30 ms): a short press during one long step of a loop
+    is still seen afterwards."""
+    import time
+    from incad import host
+    while True:
+        if host.esc_down():
+            _esc["seen"] = time.monotonic()
+        time.sleep(0.03)
+
+
+def watch_esc():
+    """A long computation starts: an Esc pressed from now on stops it (stop_if_esc)."""
+    import time
+    _esc["since"] = time.monotonic()
+    if not _esc["watching"]:
+        _esc["watching"] = True
+        import threading
+        threading.Thread(target=_watch_esc, name="InCad Esc", daemon=True).start()
+
+
+def stop_if_esc(what="the computation"):
+    """Raises Stopped when Esc was pressed since watch_esc(): called inside InCad's long loops, which run with the
+    event loop stopped (a key press is no event then). The step it is part of fails and is rolled back."""
+    from incad import host
+    import time
+    if _esc["watching"] and _esc["seen"] > _esc["since"] or host.esc_down():
+        _esc["since"] = time.monotonic()  # one press stops one computation
+        raise Stopped("Stopped %s (Esc)" % what)
+
+
+def open_sketch(doc):
+    """The sketch open in InCad's sketch editing in `doc` (GUI only), else None."""
+    try:
+        import FreeCAD as App
+        if doc is None or not App.GuiUp:
+            return None
+        import FreeCADGui as Gui
+        gdoc = Gui.getDocument(doc.Name)
+        obj = getattr(gdoc.getInEdit() if gdoc is not None else None, "Object", None)
+        return obj if getattr(obj, "TypeId", "") == "Sketcher::SketchObject" else None
+    except Exception:
+        return None
+
+
+def recompute(doc):
+    """doc.recompute(), but while a sketch is open in `doc` that sketch only: the rest of the part follows on Finish
+    Sketch (the user's jar, a thread and letters wrapped on a curved face after the sketch: 45 s on every click)."""
+    sk = open_sketch(doc)
+    return doc.recompute([sk]) if sk is not None else doc.recompute()
+
+
 def set_busy(label):
     """A feature dialog is open (label) or closed (None): no other model change may start meanwhile."""
     global _busy
@@ -243,7 +309,8 @@ def _relink(doc):
 
 def run_safely(label, fn, doc=None, only=None, quiet_broken=False):
     """Run fn() as one undo step named `label`. Never raises at the outermost level. only: the objects to recompute
-    (an open sketch: the part follows on Finish Sketch), else the whole document. quiet_broken: when the change broke
+    (an open sketch: the part follows on Finish Sketch; or a function of fn's result giving them), else the whole
+    document. quiet_broken: when the change broke
     other objects it is undone without a message, their names in the result's `broken` (the caller asks)."""
     global _depth
     if _depth > 0:
@@ -273,10 +340,15 @@ def run_safely(label, fn, doc=None, only=None, quiet_broken=False):
         doc.UndoMode = 1
     broken_before = snapshot_broken(doc)
     names_before = {o.Name for o in doc.Objects}
+    watch_esc()
     _depth += 1
     doc.openTransaction(label)
     try:
         value = fn()
+        if callable(only):  # the objects to recompute known only from what fn made (a new sketch)
+            only = only(value)
+        if only is None and open_sketch(doc) is not None:  # a sketch tool: the open sketch and what it made only
+            only = [open_sketch(doc)] + [o for o in doc.Objects if o.Name not in names_before]
         touched = {o.Name for o in doc.Objects if "Touched" in o.State or o.Name not in names_before}
         doc.recompute(only) if only else doc.recompute()
         found = broken_now(doc, broken_before, {o.Name for o in only} if only else touched)

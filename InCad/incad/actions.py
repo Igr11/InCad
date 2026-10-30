@@ -79,6 +79,9 @@ def set_tool_mode(text):
 
 
 def run_sketch_tool(name, mode=None):
+    from incad.ui import shell
+    if shell.instance() is not None:  # Project Geometry: a pick on another Solid is copied (FreeCAD can't link it)
+        shell.instance().projecting = name == "Sketcher_Projection"
     run_std(name)
     if mode:
         set_tool_mode(mode)
@@ -472,6 +475,30 @@ def show_in_browser():
 def show_in_window():
     from incad.ui import shell
     shell.instance().show_in_window(_target_object().Name)
+
+
+def edit_solid():
+    from incad.ui import shell
+    shell.instance().edit_solid(_target_object().Name)
+
+
+def edit_picked_feature():
+    """Inventor's Edit Feature on a face or edge picked in the view: the feature that made it opens for editing (the
+    user: a right-click on the lid had no Edit)."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from incad.core import context, feature_faces
+    doc = App.ActiveDocument
+    for sel in Gui.Selection.getSelectionEx(doc.Name) if doc is not None else []:
+        for sub in sel.SubElementNames:
+            obj, name = sel.Object, sub
+            if "." in sub:  # 'Body' + 'Hollow.Face3'
+                parts = sub.split(".")
+                obj, name = doc.getObject(parts[-2]) or obj, parts[-1]
+            if name.startswith(("Face", "Edge")) and obj.isDerivedFrom("PartDesign::Feature"):
+                context.set_target(feature_faces.creator(obj, name).Name)
+                return edit_feature()
+    raise ValueError("Right-click a face or an edge of the part")
 
 
 def edit_feature():
@@ -1628,7 +1655,7 @@ def commands():
                 tooltip="Look straight at the selection, or at the sketch being edited"),
         _std("view.zoom_selection", "Zoom Selection", "zoom_selection"),
         Command(id="view.toggle_visibility", label="Hide / Show", icon="visibility", handler=toggle_visibility,
-                contexts=frozenset({"part", "origin", "browser", "assembly"}),
+                shortcut="Space", contexts=frozenset({"part", "origin", "browser", "assembly"}),
                 tooltip="Hide or show the selected solids (or assembly parts), origin planes, axes, centre point "
                         "and sketches"),
         Command(id="view.dof", label="Degrees of Freedom", icon="rotational", handler=toggle_dof,
@@ -1665,6 +1692,10 @@ def commands():
                 handler=lambda: sketches_visibility(False), contexts=frozenset({"part", "assembly"}),
                 tooltip="Hide every sketch and Text of the part"),
         Command(id="browser.edit", label="Edit", icon="edit", handler=edit_feature, contexts=frozenset({"browser"})),
+        Command(id="browser.edit_solid", label="Edit", icon="edit", handler=edit_solid, contexts=frozenset({"browser"}),
+                tooltip="Work on this Solid with the others see-through (Esc ends)"),
+        Command(id="view.edit_feature", label="Edit Feature", icon="edit", handler=edit_picked_feature,
+                contexts=frozenset({"part"}), tooltip="Edit the feature that made this face or edge"),
         Command(id="view.show_in_browser", label="Show in Browser", icon="zoom_selection", handler=show_in_browser,
                 tooltip="Open the model tree at what is selected (a face: the feature that made it)"),
         Command(id="browser.show_in_window", label="Show in Window", icon="zoom_selection", handler=show_in_window,
@@ -1732,7 +1763,7 @@ def commands():
                 handler=lambda: __import__("incad.ui.shell", fromlist=["toggle_interference"]).toggle_interference(),
                 checkable=True,
                 is_checked=lambda: __import__("incad.ui.shell", fromlist=["interference_shown"]).interference_shown(),
-                contexts=frozenset({"assembly"}),
+                contexts=frozenset({"assembly", "part"}),
                 tooltip="Show where parts go into each other: each overlap in bright red over the parts, the pairs and "
                         "their volumes listed; redrawn as parts move. Click again to turn it off"),
         Command(id="assembly.open", label="Open", icon="open", handler=lambda: _assembly("open"),

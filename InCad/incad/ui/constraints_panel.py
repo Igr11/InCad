@@ -49,7 +49,49 @@ class ConstraintsPanel(QtWidgets.QFrame):
         row.addWidget(self.delete_button)
         col.addLayout(row)
         self._theme = theme
+        self._drag = None
         self.set_theme(theme)
+
+    # ----- moving: the title row (or any bare spot) drags the window inside the view, as a feature dialog -----
+    spot = None  # QPoint where the user last left it, kept for the next sketch
+
+    def mousePressEvent(self, event):
+        child = self.childAt(event.position().toPoint())
+        if event.button() == QtCore.Qt.LeftButton and (child is None or isinstance(child, QtWidgets.QLabel)):
+            self._drag = event.globalPosition().toPoint() - self.pos()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if getattr(self, "_drag", None) is not None:
+            self.move(self.kept_inside(event.globalPosition().toPoint() - self._drag))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if getattr(self, "_drag", None) is not None:
+            self._drag = None
+            self.unsetCursor()
+            ConstraintsPanel.spot = self.pos()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def kept_inside(self, point):
+        """point moved so the title row stays in the view (never dragged out of reach)."""
+        parent = self.parentWidget()
+        if parent is None:
+            return point
+        x = min(max(point.x(), 40 - self.width()), parent.width() - 40)
+        y = min(max(point.y(), 0), parent.height() - 30)
+        return QtCore.QPoint(x, y)
+
+    def place(self):
+        """Where the user last left it (kept inside this view), else the view's top left corner."""
+        self.move(self.kept_inside(ConstraintsPanel.spot) if ConstraintsPanel.spot is not None else QtCore.QPoint(16, 16))
 
     def set_theme(self, theme):
         self._theme = theme

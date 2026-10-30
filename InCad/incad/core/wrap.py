@@ -164,8 +164,10 @@ def _wrap_round(profile_faces, round_face, depth, spread=False, normal=None):
         q = p - pc
         return (u0 + su * q.dot(w) / rc, v0 + sv * q.dot(a))  # up the profile = along the surface (its slant)
 
+    from incad.core import safe
     out = []
     for f in profile_faces:
+        safe.stop_if_esc("the Emboss")
         on = _face_on(surface, f, uv)
         _on_the_face(on, round_face)
         # outward is away from the axis: a part's surface may point inward (its face is then the reversed one)

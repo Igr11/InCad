@@ -96,3 +96,33 @@ class ConstraintsPanelRefreshTest(unittest.TestCase):
         self.p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS, reset=True)
         self.assertEqual(self.p.checked(), [])
         self.assertIsNone(self.p.selected())
+
+
+class ConstraintsPanelMoveTest(unittest.TestCase):
+    """The window is dragged by its title (the user: it could not be moved), kept inside the view, and the next one
+    opens where it was left."""
+
+    def test_drag_by_the_title_and_open_there_next_time(self):
+        from incad.qt import QtCore, QtWidgets
+        from PySide6.QtTest import QTest
+        qtapp.app()
+        view = QtWidgets.QWidget()
+        view.resize(900, 700)
+        view.show()
+        ConstraintsPanel.spot = None
+        p = ConstraintsPanel("light", view)
+        p.set_rows("Constraints — Sketch2", "All constraints (4)", ROWS)
+        p.show()
+        p.place()
+        self.assertEqual((p.x(), p.y()), (16, 16))
+        start = p.title.mapTo(p, QtCore.QPoint(5, 5))
+        QTest.mousePress(p, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, start)
+        QTest.mouseMove(p, start + QtCore.QPoint(200, 120))
+        QTest.mouseRelease(p, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, start + QtCore.QPoint(200, 120))
+        self.assertEqual((p.x(), p.y()), (216, 136))
+        q = ConstraintsPanel("light", view)
+        q.show()
+        q.place()
+        self.assertEqual((q.x(), q.y()), (216, 136))
+        for w in (p, q, view):
+            w.close()

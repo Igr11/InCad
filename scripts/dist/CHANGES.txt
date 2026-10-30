@@ -5,6 +5,40 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.16.0
+------
+Much faster on big parts (a jar with a thread, a wrapped label and a lid); Interference in a part; Edit from a
+face or a Solid; Esc stops long work.
+
+Improvements
+- Offset of a sketch shape shows one dimension; the other sides follow it.
+- The sketch's Constraints window can be moved by its title, like the feature dialogs; the next one opens there.
+- Right-click a face or an edge: Edit Feature opens the feature that made it. Right-click a Solid in the tree: Edit
+  works on it with the other Solids see-through (Esc ends).
+- Project Geometry on an edge or face of another Solid (FreeCAD links only the sketch's own Solid) copies its
+  edges into the sketch as plain lines; they don't follow that Solid's changes.
+- Esc stops a long recompute between features (FreeCAD's own stop, now also with a dialog open, no question
+  asked) and InCad's long loops (the Emboss face check); one kernel operation still runs to its end.
+- Interference also in a part with several Solids (Inspect > Analyze > Interference): where a jar's lid goes into the jar, in red.
+
+Bug fixes
+- A Boolean with a solid made of an STL's triangles is refused with a way round: such a Boolean could run for
+  half an hour and more with FreeCAD frozen.
+- A sketch in the middle of a part opened on an empty screen (everything built on it is hidden while it is open):
+  the part as it is before the sketch is shown now, and the finished part comes back when the sketch closes.
+  Another Solid built on this one (a lid cut by its jar) is no longer hidden with it.
+- Space hides or shows what is picked again (in the model tree and in the 3D view), with InCad's own Hide / Show.
+- Sketch tools (Offset and others) no longer recompute the whole part on every click: only the open sketch, the part
+  follows when the sketch is finished (on a part with a thread and wrapped letters each click took 45 s).
+- Boolean Cut with a clearance grows only the tool's part near the base, and again only when that part changed:
+  a jar's lid was recomputed for 8 s on every change to the jar (now 1.5 s), and a jar with a wide wrapped label
+  could not be grown at all. Older files get it when opened.
+- Feature dialogs (Work Plane and others) open and preview without retrying a broken feature after the End of
+  Part each time (8 s a preview on a jar with a failed Emboss); it is computed once, on OK. A new sketch too.
+- Painted faces: every click (a tree row, a pick) worked out every face's centre again for each painted face; now once
+  per shape (a lid cut by a thread hung 20 s a click).
+- A Boolean as a Solid's last step showed nothing in a recovered file (FreeCAD's Group display mode draws the tools): Booleans are always drawn as their result.
+
 0.15.0
 -----
 Boss, Lip / Groove and Snap Fit for printed boxes; holes for heat-set inserts.

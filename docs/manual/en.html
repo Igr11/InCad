@@ -76,12 +76,12 @@ table.mm td:nth-child(2), table.mm td:nth-child(3) { width: 39%; }
     <div class="bar"></div>
     <div class="meta">
       ProstoCAD for FreeCAD (formerly InCad): an Autodesk Inventor / Alibre style workbench<br>
-      Version 0.14.0 — test build<br>
+      Version 0.16.0 — test build<br>
       <!--mac-->FreeCAD 1.1 (tested with 1.1.3) · macOS on Apple Silicon<!--/mac--><!--win FreeCAD 1.1 (tested with 1.1.3) · Windows 10 / 11 (x64), test build win-->
     </div>
   </div>
   <div class="foot">
-    This manual describes ProstoCAD as it is in build 0.14.0. Screen names (ribbon tabs, buttons, dialog fields) are written
+    This manual describes ProstoCAD as it is in build 0.16.0. Screen names (ribbon tabs, buttons, dialog fields) are written
     exactly as they appear on screen. What changed from build to build is in CHANGES.txt; installation in short is in
     README.txt. October 2026.
   </div>
@@ -131,8 +131,8 @@ brings FreeCAD's own interface back at any time; choose <span class="ui">ProstoC
 to come back.</p>
 <p>A file that was not made in ProstoCAD opens as well, with every tool: when it comes to the front it becomes a ProstoCAD part by itself (its largest Solid is the main one; a STEP opened as it is gets a Solid for each of its shapes, where they are). Save keeps that.</p>
 
-<div class="keep"><h2>This build: 0.14.0, a test build</h2>
-<p>0.14.0 is a test build. Assemblies came in 0.2.0, Move Face in 0.3.0, ProstoCAD's own sketch Offset and Concentric in
+<div class="keep"><h2>This build: 0.16.0, a test build</h2>
+<p>0.16.0 is a test build. New in 0.16.0: much faster on big parts (sketch tools, feature dialogs, a Boolean with a clearance, painted faces); Edit Feature on a face and Edit on a Solid; Interference in a part; Project Geometry copies edges of another Solid; <kbd>Esc</kbd> stops long work; <kbd>Space</kbd> hides and shows.  Assemblies came in 0.2.0, Move Face in 0.3.0, ProstoCAD's own sketch Offset and Concentric in
 0.4.0, <b>Text</b> and <b>Emboss</b> in 0.5.0, STEP and STL export in 0.5.1. New in 0.5.2: big parts work much faster
 (recomputing, editing an early feature, clicking a face), and a slot or two arcs can be dimensioned by their
 <b>outer edges</b> (5.3). 0.5.3 makes Text and sketch patterns, deleting, every new or changed value (only the
@@ -502,6 +502,7 @@ Solids or more, the draw style you are not in; the ring keeps its places.</p>
       Zoom Selection</td></tr>
   <tr><td>No file open</td><td class="wrap">N New, S Open, E Light / Dark, W Return to FreeCAD</td><td class="wrap">—</td></tr>
 </table>
+<p><b>Edit Feature.</b> On a face or an edge, the list has <span class="ui">Edit Feature</span>: it opens the dialog of the feature that made that face. <kbd>Space</kbd> hides or shows what is selected, in the browser and in the view.</p>
 <p>The browser rows have their own menus (chapter 3; assembly rows in chapter 9).</p>
 
 <div class="keep"><h2>4.3 View commands</h2>
@@ -657,6 +658,7 @@ which opens the Constraint List for that element.</p></div>
 <p><span class="path">Sketch ▸ Insert ▸ Project Geometry</span> brings edges and points of the part into the sketch.
 As in Inventor, projected edges are <b>normal lines</b>, ready to be part of a profile. They follow the part when it
 changes.</p></div>
+<p>An edge or a face of <b>another Solid</b> (a lid, when you sketch on its jar) can't be linked: FreeCAD links only the sketch's own Solid. Project Geometry then copies it into the sketch as plain lines; they don't follow that Solid when it changes.</p>
 <p><span class="path">Sketch ▸ Format ▸ Construction</span> works two ways:</p>
 <ul>
   <li>with geometry selected (also projected edges), it switches that geometry — only the selected edges — between normal and construction (for
@@ -789,6 +791,7 @@ then each feature with what to pick and what each option means.</p>
       of that feature, and only that feature is recomputed as you change values; the features after it are recomputed
       once, on <span class="ui">OK</span>. If one of them fails then, the status line says which.</li>
 </ul>
+<p><b>Esc stops long work.</b> A long recompute stops between features when you press <kbd>Esc</kbd> (the rest is computed on the next recompute); so does the Emboss check. One kernel operation (a single Boolean, offset or fillet) still runs to its end.</p>
 
 <div class="keep"><h2>6.2 Extrude <kbd>E</kbd></h2>
 <p><span class="path">3D Model ▸ Create ▸ Extrude</span>. Pulls a closed sketch profile into a solid, or cuts with it.</p></div>
@@ -1337,6 +1340,7 @@ follows that face only when it <b>projects edges</b> of the other solid; otherwi
 <span class="ui">Show in Window</span>, <span class="ui">Delete</span>. A hidden solid is dimmed in the browser.
 Delete asks when the solid is used by a Boolean (both go together) or when it is the main solid (the next one becomes
 the main solid). Selecting a piece in the view and pressing <kbd>⌫</kbd> deletes that solid.</p></div>
+<p><b>Edit</b> on a solid's row works on that solid with the other solids see-through, so you see how a lid sits on its jar; <kbd>Esc</kbd> or Edit again ends it. <span class="path">Inspect ▸ Analyze ▸ Interference</span> shows in red where the solids of the part go into each other, with the volume of each overlap.</p>
 
 <div class="keep"><h2>Make Assembly</h2>
 <p>When the pieces are ready, <span class="path">3D Model ▸ Assemble ▸ Make Assembly</span> turns every separate piece

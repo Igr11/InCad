@@ -49,6 +49,49 @@ class CombineTest(unittest.TestCase):
         self.assertIs(kind_for(f), combine)
         self.assertEqual(self.fit(), [])
 
+    def test_only_the_tools_piece_near_the_base_is_grown_and_kept(self):
+        """The user's jar: a Part::Offset of the whole jar ran 8 s on every change, a label far from the lid
+        included. Only the piece near the base is grown, and again only when that piece changed."""
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")
+        grown = f.Group[0]
+        self.assertTrue(combine._is_grown(grown), grown.TypeId)
+        self.assertLess(grown.Proxy.piece_volume, self.tool.Shape.Volume - 1)  # the pin past the block left out
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.2 ** 2 * 10, places=1)
+        runs = grown.Proxy.offsets
+        self.pin.Length = 25  # far from the block: the piece near it is the same
+        self.doc.recompute()
+        self.assertEqual(grown.Proxy.offsets, runs, "grown again for a change far from the base")
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 4.2 ** 2 * 10, places=1)
+        self.doc.getObject("PinSk").Geometry = [Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 5)]
+        self.doc.recompute()
+        self.assertEqual(grown.Proxy.offsets, runs + 1)
+        self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 5.2 ** 2 * 10, places=1)
+        name = grown.Name
+        combine.delete(self.doc, f)
+        self.doc.recompute()
+        self.assertIsNone(self.doc.getObject(name))
+
+    def test_an_older_part_offset_helper_is_upgraded_on_open(self):
+        f = self.make(operation="cut", clearance="0.2 mm", apply_to="cavity")
+        new = f.Group[0]
+        old = self.doc.addObject("Part::Offset", "CombineOffset")  # as 0.15.0 made it: the whole tool grown
+        old.Join = "Intersection"
+        old.Source = self.tool
+        old.setExpression("Value", new.ExpressionEngine[0][1])
+        data = combine._load(f)
+        data["helpers"][self.tool.Name]["grown"] = old.Name
+        combine._store(f, data)
+        f.Group = [old]
+        self.doc.removeObject(new.Name)
+        self.doc.recompute()
+        volume = f.Shape.Volume
+        old_name = old.Name
+        self.assertEqual(combine.upgrade(self.doc), [f.Label])
+        self.assertTrue(combine._is_grown(f.Group[0]))
+        self.assertIsNone(self.doc.getObject(old_name))
+        self.assertAlmostEqual(f.Shape.Volume, volume, places=3)
+        self.assertEqual(combine.upgrade(self.doc), [])
+
     def test_clearance_on_a_fit_copy_of_the_tool(self):
         f = self.make(operation="cut", clearance="0.2 mm", apply_to="tool")
         self.assertAlmostEqual(f.Shape.Volume, BLOCK - math.pi * 16 * 10, places=1)

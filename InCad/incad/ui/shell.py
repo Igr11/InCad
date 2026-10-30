@@ -8,7 +8,7 @@ import time
 import traceback
 
 from incad import host
-from incad.core import commands, log, perf, prefs
+from incad.core import commands, log, perf, prefs, safe
 from incad.qt import dispose, QAction, QtCore, QtGui, QtWidgets
 from incad.ui import fresh_redraw, ribbon_layout
 from incad.ui import theme as themes
@@ -42,7 +42,7 @@ _shell = None
 # FreeCAD commands whose shortcuts InCad's own menus take over while active: FreeCAD's actions sit in its hidden
 # menus, where they no longer answer keys (probed: ⌘Z did nothing), so InCad owns the keys and gives them back.
 TAKEN_SHORTCUTS = ("Std_New", "Std_Open", "Std_Save", "Std_SaveAs", "Std_CloseActiveWindow", "Std_Undo", "Std_Redo",
-                   "Std_Quit", "Std_Export")
+                   "Std_Quit", "Std_Export", "Std_ToggleVisibility")  # Space: InCad's own Hide / Show
 
 
 def _std_actions(name):
@@ -213,6 +213,41 @@ class _PointPick:
         return best
 
 
+class _EscWhileComputing(QtCore.QObject):
+    """Esc while a document recomputes (the user: Escape must cancel any operation): FreeCAD's progress bar stops the
+    recompute between features when it gets the key — InCad's own Esc shortcut (a dialog open) took it first — and its
+    'Abort the operation?' is answered Yes (Esc was the answer)."""
+
+    def eventFilter(self, obj, event):
+        t = event.type()
+        if t in (QtCore.QEvent.ShortcutOverride, QtCore.QEvent.KeyPress) and event.key() == QtCore.Qt.Key_Escape \
+                and _computing():
+            if t == QtCore.QEvent.ShortcutOverride:
+                event.accept()  # no shortcut: the key press goes on to FreeCAD's progress bar
+                QtCore.QTimer.singleShot(0, _answer_abort)  # fires in its question's own loop (it takes the press)
+        return False
+
+
+def _computing():
+    try:
+        import FreeCAD as App
+        return any(getattr(App.getDocument(n), "Recomputing", False) for n in App.listDocuments())
+    except Exception:
+        return False
+
+
+def _answer_abort(tries=0):
+    box = QtWidgets.QApplication.activeModalWidget()
+    if isinstance(box, QtWidgets.QMessageBox) and "Abort" in box.text():
+        yes = box.button(QtWidgets.QMessageBox.Yes)
+        if yes is not None:
+            yes.click()
+            log.report("info", "Stopped (Esc): the features after this point are computed on the next recompute")
+            return
+    if tries < 10:
+        QtCore.QTimer.singleShot(50, lambda: _answer_abort(tries + 1))
+
+
 class _SelectionWatch:
     """Selection observer while InCad is active: the tree follows the model's selection (deferred, once per burst)."""
 
@@ -350,6 +385,9 @@ class Shell(QtCore.QObject):
         self._constraints_seen = {}  # (document, sketch) -> (constraint count, geometry count) at the last change
         self.section_panel = None
         self.constraints_panel = None  # the sketch's Constraint List window
+        self._solid_edit = None  # (document, Solid) edited with the others see-through (Edit on a Solid)
+        self.projecting = False  # Project Geometry started: a pick on another Solid is copied in
+        self._solid_see = []  # [(root node, override material)] put on the other Solids meanwhile
         self.parameters_window = None  # the Parameters button's window (incad.ui.parameters_window)
         self._constraints_owner = None
         self._constraints_subs = []
@@ -1228,6 +1266,112 @@ class Shell(QtCore.QObject):
         finally:
             self._syncing = was
 
+    SOLID_SEE = 0.8  # the other Solids while one is edited
+
+    def edit_solid(self, name):
+        """Edit on a Solid (the user: the lid of a jar in the same part): the other Solids turn see-through, an
+        override on their scene (nothing saved, nothing to undo), until Esc or Edit on it again; this Solid is
+        worked on as usual — a sketch on its face, its features' dialogs."""
+        import FreeCAD as App
+        doc = App.ActiveDocument
+        body = doc.getObject(name) if doc is not None else None
+        if body is None or body.TypeId != "PartDesign::Body":
+            raise ValueError("Right-click a Solid in the Model Browser")
+        if self._solid_edit == (doc.Name, body.Name):
+            self.end_solid_edit()
+            return
+        self.end_solid_edit(quiet=True)
+        from pivy import coin
+        for other in doc.findObjects("PartDesign::Body"):
+            tip = other.Tip
+            if other is body or tip is None or not tip.Visibility:
+                continue
+            try:
+                mat = coin.SoMaterial()
+                vo = tip.ViewObject
+                c = tuple(vo.ShapeAppearance[0].DiffuseColor[:3]) if hasattr(vo, "ShapeAppearance") \
+                    else tuple(vo.ShapeColor[:3])
+                mat.diffuseColor.setValue(*c)
+                mat.transparency.setValue(self.SOLID_SEE)
+                mat.setOverride(True)
+                root = vo.RootNode
+                root.insertChild(mat, 0)
+                self._solid_see.append((root, mat))
+            except Exception:
+                log.logger().exception("see-through %s", other.Name)
+        self._solid_edit = (doc.Name, body.Name)
+        log.report("info", "Editing %s: the other Solids are see-through (Esc, or Edit on it again, ends)"
+                   % body.Label)
+        self.schedule_refresh()
+
+    def end_solid_edit(self, quiet=False):
+        see, self._solid_see = self._solid_see, []
+        for root, mat in see:
+            try:
+                root.removeChild(mat)
+            except Exception:
+                pass
+        was, self._solid_edit = self._solid_edit, None
+        if was is not None and not quiet:
+            log.report("info", "Done editing the Solid: all Solids shown as before")
+            self.schedule_refresh()
+
+    def _projection_running(self):
+        """Project Geometry still runs: its own cursor, or the 'not allowed' one it shows over another Solid."""
+        mdi = self._mdi()
+        views = [w for w in mdi.findChildren(QtWidgets.QGraphicsView) if w.isVisible()] if mdi is not None else []
+        try:
+            return bool(views) and views[0].viewport().cursor().shape() in (QtCore.Qt.BitmapCursor,
+                                                                            QtCore.Qt.ForbiddenCursor)
+        except RuntimeError:
+            return False
+
+    def _project_other_at(self, view, viewport, x, y):
+        """A click while Project Geometry runs: on an edge or face of another Solid it is copied in (True); anything
+        else is FreeCAD's (False)."""
+        from incad.ui.nav import to_coin
+        try:
+            info = view.getObjectInfo(to_coin(viewport, x, y))
+        except Exception:
+            info = None
+        if not info or not str(info.get("Component", "")).startswith(("Edge", "Face")):
+            return False
+        return self.copy_foreign_pick(info.get("Document", ""), info.get("Object", ""), info["Component"])
+
+    def copy_foreign_pick(self, doc_name, obj_name, sub):
+        """Project Geometry clicked an edge or face of another Solid, which FreeCAD will not link into the open
+        sketch: its edges are copied in as the sketch's own lines (they don't follow that Solid). True when it was
+        such a pick (copied, or tried and said why)."""
+        import FreeCAD as App
+        from incad.core import document, safe
+        from incad.core import sketch as sketches
+        sk = self.sketches.editing()
+        if sk is None or not self._projection_running():
+            self.projecting = False  # the tool or the sketch is over
+            return False
+        doc = App.getDocument(doc_name) if doc_name in App.listDocuments() else None
+        obj = doc.getObject(obj_name) if doc is not None else None
+        if obj is None or doc is not sk.Document or obj is sk:
+            return False
+        if "." in sub:  # 'Lid' + 'Chamfer.Edge3'
+            parts = sub.split(".")
+            obj, sub = doc.getObject(parts[-2]) or obj, parts[-1]
+        if not sub.startswith(("Edge", "Face")) or not hasattr(obj, "Shape"):
+            return False
+        mine = document.body_of(sk)
+        theirs = obj if obj.TypeId == "PartDesign::Body" else document.body_of(obj)
+        if theirs is None or theirs is mine or not obj.isDerivedFrom("Part::Feature"):
+            return False  # the sketch's own Solid: FreeCAD projects it, linked
+        try:
+            edges = obj.Shape.getElement(sub).Edges
+        except Exception:
+            return False
+        r = safe.run_safely("Project (copy)", lambda: sketches.copy_edges(sk, edges), doc, only=[sk])
+        if r.ok and r.value:
+            log.report("info", "Copied %d edge%s of %s into the sketch: another Solid can't be linked, so they don't "
+                       "follow its changes" % (len(r.value), "" if len(r.value) == 1 else "s", theirs.Label))
+        return True
+
     def show_in_window(self, name):
         """Inventor's Show in Window: the row's faces light up on the solid and the view zooms to them."""
         import FreeCADGui as Gui
@@ -1436,6 +1580,10 @@ class Shell(QtCore.QObject):
         else the running Sketcher tool (the sketch itself is left with Finish Sketch, never with Esc)."""
         if self._peeked is not None:
             self._unpeek()  # the object shown for its tree row goes back to its rule
+        if self._solid_edit is not None and self.feature_session is None and self.sketches.editing() is None \
+                and self.value_box is None:
+            self.end_solid_edit()
+            return
         if self.value_box is not None:
             self.value_box.closed_by_user = True  # Esc
             self._close_value_box()
@@ -1725,7 +1873,11 @@ class Shell(QtCore.QObject):
             ids = [-int(sub[len("ExternalEdge"):]) - 2 if sub.startswith("ExternalEdge") else int(sub[4:]) - 1
                    for sub in picked]
             was_on, self.construction_mode = self.construction_mode, False  # the same click ends the drawing mode
-            r = safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document)
+            # the sketch and what is built right on it (its Extrude): a profile it breaks is refused, the rest of the
+            # part (a chamfer further on, the user's jar) follows on Finish Sketch
+            users = [o for o in sk.InList if o.isDerivedFrom("PartDesign::Feature")]
+            r = safe.run_safely("Construction", lambda: sketch.toggle_construction(sk, ids), sk.Document,
+                                only=[sk] + users)
             Gui.Selection.clearSelection()
             projected = [i for i in (r.value or []) if i < 0] if r.ok else []
             if projected:  # a projected edge looks the same either way: say what it is now
@@ -1848,7 +2000,7 @@ class Shell(QtCore.QObject):
             for i in new:
                 sk.setConstruction(i, True)
             if new:
-                sk.Document.recompute()
+                safe.recompute(sk.Document)
         except Exception as e:
             log.report("warning", "Could not make the new geometry construction: %s" % e)
 
@@ -1992,7 +2144,7 @@ class Shell(QtCore.QObject):
             if not regions.profiles_of(sk):
                 return
             warnings = regions.follow(sk, self._area_warned)  # each lost area once, naming its features
-            sk.Document.recompute()
+            safe.recompute(sk.Document)
             for text in warnings:
                 log.report("warning", text)
         except Exception as e:
@@ -2242,6 +2394,8 @@ class Shell(QtCore.QObject):
     def _click_hook(self, view, viewport, x, y):
         if self._point_pick is not None:
             return self._point_clicked(viewport, x, y)
+        if self.projecting and self.sketches.editing() is not None and self._project_other_at(view, viewport, x, y):
+            return True  # Project Geometry on another Solid: copied (FreeCAD refuses to link it)
         mods = getattr(self.navigator, "press_modifiers", None)
         if mods is None:
             mods = QtWidgets.QApplication.keyboardModifiers()
@@ -2596,7 +2750,7 @@ class Shell(QtCore.QObject):
         r = safe.run_safely("Delete Pattern", lambda: sp.remove(sk.Document, sk, name), sk.Document)
         if not r.ok:
             raise ValueError(r.error)
-        sk.Document.recompute()
+        safe.recompute(sk.Document)
         self.schedule_refresh()
 
     def selected_sketch_pattern(self):
@@ -2800,6 +2954,9 @@ class Shell(QtCore.QObject):
     # ----- hooks -----
     def _install_hooks(self):
         import FreeCADGui as Gui
+        if getattr(self, "_esc_computing", None) is None:
+            self._esc_computing = _EscWhileComputing(self.mw)
+            QtWidgets.QApplication.instance().installEventFilter(self._esc_computing)
         if self._sel_watch is None:
             self._sel_watch = _SelectionWatch(self)
             Gui.Selection.addObserver(self._sel_watch)
@@ -3044,6 +3201,9 @@ class Shell(QtCore.QObject):
         fs = self.feature_session
         if fs is not None and fs.doc_name not in App.listDocuments():
             self._close_feature_session(cancel=True)  # its document was closed: nothing to roll back, free busy
+        if self._solid_edit is not None and (doc is None or doc.Name != self._solid_edit[0]
+                                             or doc.getObject(self._solid_edit[1]) is None):
+            self.end_solid_edit(quiet=True)  # another file in front, or the Solid deleted: everything as before
         from incad.core import assembly as assemblies
         if doc is not None and fs is None:
             self._purge_stale_areas(doc)
@@ -3093,6 +3253,16 @@ class Shell(QtCore.QObject):
                     model.restore_units(doc)
             except Exception as e:
                 log.logger().warning("Parameter units on open: %s", e)
+            try:  # a Boolean's clearance grew the whole tool on every change (a jar's lid: 8 s): its near piece now
+                from incad.features import combine
+                if not getattr(doc, "Restoring", False):
+                    combine.show_results(doc)
+                    done = combine.upgrade(doc)
+                    if done:
+                        log.report("info", "%s: the clearance is now computed only near the cut (faster)"
+                                   % ", ".join(done))
+            except Exception as e:
+                log.logger().warning("Boolean clearance on open: %s", e)
             try:  # a Split made before Keep all gave each piece its own Solid: its pieces get their Solids now
                 from incad.features import split
                 if not getattr(doc, "Restoring", False) and split.upgrade(doc):
@@ -3210,7 +3380,8 @@ class Shell(QtCore.QObject):
                 act.setEnabled(mode == "sketch" or self.sketches.picking or self._profile_pick is not None or
                                getattr(self, "slot_tool", None) is not None or self.feature_session is not None
                                or self._measure is not None or self._region_pick is not None
-                               or self.section_panel is not None or self._point_pick is not None)
+                               or self.section_panel is not None or self._point_pick is not None
+                               or self._solid_edit is not None)
                 continue
             ctx = self.registry.get(cmd_id).contexts
             act.setEnabled(commands.ANY in ctx or mode in ctx)
@@ -3224,7 +3395,7 @@ class Shell(QtCore.QObject):
             self._close_wait_notice()
         if is_asm and fs is None:
             self._schedule_dof(doc)
-        self._schedule_interference(doc if is_asm else None)
+        self._schedule_interference(doc)  # off where it was not turned on
         self.dof_display_changed()  # a tab switch, an undo or a finished drag: glyphs at the parts' new places
 
     # ----- assemblies -----
@@ -3611,12 +3782,13 @@ class Shell(QtCore.QObject):
 
     def toggle_interference(self):
         """Interference on / off for the assembly in front (the user: parts going into each other in a bright
-        colour): on, every overlap is drawn red over the parts, the pairs listed, and redrawn as parts move."""
+        colour): on, every overlap is drawn red over the parts, the pairs listed, and redrawn as parts move. In a
+        part, between its shown Solids (the user: a jar and its lid in one part)."""
         import FreeCAD as App
-        from incad.core import assembly
+        from incad.core import assembly, document
         doc = App.ActiveDocument
-        if not assembly.is_assembly(doc):
-            raise ValueError("Open an assembly first")
+        if not (assembly.is_assembly(doc) or document.is_incad_part(doc)):
+            raise ValueError("Open an assembly, or a part with more than one Solid")
         self._interference_on ^= {doc.Name}
         if doc.Name not in self._interference_on:
             self._clear_interference(close_panel=True)
@@ -4246,8 +4418,8 @@ class Shell(QtCore.QObject):
             p.highlight.connect(self._highlight_constraint)
             p.show_all.connect(self._constraints_filter_clear)
             p.closed.connect(self.close_constraints_window)
-            p.move(16, 16)
             p.show()
+            p.place()
             self.constraints_panel = p
         self._constraints_owner = (sk.Document.Name, sk.Name)
         self.refresh_constraints_window()

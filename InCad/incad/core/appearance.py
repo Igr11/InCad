@@ -79,20 +79,35 @@ def face_entry(face, color, finish):
             "t": face.Surface.TypeId}
 
 
+_PROPS = {}  # the faces' hashes -> [(surface type, centre, area, normal)]: worked out once per shape
+
+
+def _face_props(faces):
+    """Each face's surface type, centre of mass, area and normal, kept for these faces (the user: every click hung
+    for 20 s on a lid cut by a thread — each painted face had every face's centre of mass worked out again)."""
+    key = tuple(f.hashCode() for f in faces)
+    props = _PROPS.get(key)
+    if props is None:
+        if len(_PROPS) > 32:
+            _PROPS.clear()
+        props = _PROPS[key] = [(f.Surface.TypeId, f.CenterOfMass, f.Area, _normal(f)) for f in faces]
+    return props
+
+
 def find_face(faces, entry, tol):
     """The index of the face of `faces` the entry stands for, or None: the same area at the same place; else the same
     area facing the same way (a face moved by a longer Extrude); else facing the same way, nearest, not far."""
     c, a = App.Vector(*entry["c"]), entry["a"]
     n = App.Vector(*entry["n"]) if entry.get("n") else None
     same_area, same_way = [], []
-    for i, f in enumerate(faces):
-        if entry.get("t") and f.Surface.TypeId != entry["t"]:
+    for i, (kind, centre, area, normal) in enumerate(_face_props(faces)):
+        if entry.get("t") and kind != entry["t"]:
             continue
-        d = (f.CenterOfMass - c).Length
-        area_ok = abs(f.Area - a) <= max(1e-6, 0.01 * a)
+        d = (centre - c).Length
+        area_ok = abs(area - a) <= max(1e-6, 0.01 * a)
         if area_ok and d <= tol:
             return i
-        way = n is not None and _normal(f) is not None and App.Vector(*_normal(f)).dot(n) > 1 - 1e-6
+        way = n is not None and normal is not None and App.Vector(*normal).dot(n) > 1 - 1e-6
         if area_ok and (n is None or way):
             same_area.append((d, i))
         elif way:

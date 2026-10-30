@@ -148,7 +148,8 @@ class SketchSession:
         import FreeCAD as App
         doc = App.ActiveDocument
         body = document.body_of(support) or document.primary_body(doc)  # a face of a second Solid: its sketch
-        r = safe.run_safely("New Sketch", lambda: sketch.make_sketch(body, support, face), doc)
+        r = safe.run_safely("New Sketch", lambda: sketch.make_sketch(body, support, face), doc,
+                            only=lambda sk: [sk])
         if r.ok:
             self.edit(r.value)
             return r.value
@@ -170,9 +171,78 @@ class SketchSession:
             vo.Autoconstraints = True
         if self._on_edit is not None:
             self._on_edit(sk)
+        body = document.body_of(sk)
+        shown = bool(body is not None and body.Tip is not None and body.Tip.Visibility)
+        visible = [o for o in sk.Document.Objects if o is not sk and o.isDerivedFrom("Part::Feature") and o.Visibility]
         Gui.getDocument(sk.Document.Name).setEdit(sk.Name)
+        self._show_unrelated(sk, visible)
+        if shown:
+            self._show_part_before(sk, body)
         self._last_edited = key
         self._changed()
+
+    @staticmethod
+    def _uses(obj, sk):
+        """Is `obj` built on the sketch? Through a Solid it uses only that Solid's result (its Tip), never every
+        object in it — FreeCAD's own rule counts a jar's lid, cut by the jar, as built on any sketch of the jar."""
+        seen, todo = set(), [obj]
+        while todo:
+            o = todo.pop()
+            if o is sk:
+                return True
+            if o.Name in seen:
+                continue
+            seen.add(o.Name)
+            if o.TypeId == "PartDesign::Body":
+                if o.Tip is not None:
+                    todo.append(o.Tip)
+                continue
+            todo.extend(o.OutList)
+        return False
+
+    def _show_unrelated(self, sk, visible):
+        """What FreeCAD hid on opening the sketch though it is not built on it (the user: the lid went with the
+        jar on every new sketch) is shown again, through the sketch's TempoVis: as it was once the sketch closes."""
+        try:
+            back = [o for o in visible if not o.Visibility and not self._uses(o, sk)]
+            tv = getattr(sk.ViewObject, "TempoVis", None) if back else None
+            if tv is not None:
+                tv.show(back)
+        except Exception:
+            log.logger().exception("show what %s does not use", sk.Name)
+
+    @staticmethod
+    def _part_before(sk):
+        """The Solid's last solid feature before `sk` in its tree: the part as it is where the sketch sits."""
+        body = document.body_of(sk)
+        group = list(body.Group) if body is not None else []
+        if sk not in group:
+            return None
+        for o in reversed(group[:group.index(sk)]):
+            try:
+                if o.isDerivedFrom("PartDesign::Feature") and not o.Shape.isNull() and o.Shape.Solids:
+                    return o
+            except Exception:
+                pass
+        return None
+
+    def _show_part_before(self, sk, body):
+        """FreeCAD hides everything built on the open sketch, the finished part with it, so a sketch in the middle
+        of a part opened on an empty screen (the user: "I need to know what I'm doing and where I am"). The part as
+        it is before the sketch is shown instead, through the sketch's own TempoVis: hidden again when it closes,
+        like FreeCAD's own hiding, nothing to undo. Only when the part was shown before the sketch opened."""
+        try:
+            if body.Tip.Visibility:
+                return  # still shown: nothing in the part uses the sketch
+            before = self._part_before(sk)
+            if before is None or before.Visibility:
+                return
+            tv = getattr(sk.ViewObject, "TempoVis", None)
+            if tv is None:
+                return
+            tv.show(before)
+        except Exception:
+            log.logger().exception("show the part before %s", sk.Name)
 
     def restore(self, key):
         """Put back the view-provider settings of a sketch InCad edited (they are saved in the user's file)."""

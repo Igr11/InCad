@@ -19,10 +19,14 @@ KIND_ICONS = {"part": "part", "origin": "origin", "feature": "feature", "sketch"
 
 
 class _TypingFirst(QtCore.QObject):
-    """Plain typed keys belong to the widget (table cell, tree search), never to InCad's single-key shortcuts."""
+    """Plain typed keys belong to the widget (table cell, tree search), never to InCad's single-key shortcuts —
+    except Space on the tree: Hide / Show, as in FreeCAD (the user: Space did nothing there)."""
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.ShortcutOverride:
+            if event.key() == QtCore.Qt.Key_Space and isinstance(obj, QtWidgets.QTreeWidget) \
+                    and obj.state() != QtWidgets.QAbstractItemView.EditingState:
+                return False
             mods = event.modifiers() & ~QtCore.Qt.ShiftModifier & ~QtCore.Qt.KeypadModifier
             if mods == QtCore.Qt.NoModifier and event.text() and event.text().isprintable():
                 event.accept()

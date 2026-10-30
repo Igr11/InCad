@@ -5,7 +5,7 @@ import re
 
 import FreeCAD as App
 
-from incad.core import document
+from incad.core import document, safe
 
 DIMENSIONAL = ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter", "Angle")
 _DNAME = re.compile(r"^d(\d+)$")
@@ -95,6 +95,45 @@ def _next_label(doc, stem):
     return "%s%d" % (stem, n)
 
 
+def _as_geometry(edge):
+    """A flat edge in sketch coordinates as sketch geometry (a line, circle, arc, ellipse or B-spline); None for a
+    point (an edge seen end on)."""
+    import Part
+    if edge.Length < 1e-7:
+        return None
+    c = edge.Curve
+    if isinstance(c, (Part.Line, Part.LineSegment)):
+        return Part.LineSegment(edge.Vertexes[0].Point, edge.Vertexes[-1].Point)
+    if isinstance(c, Part.Circle):
+        return c.copy() if edge.isClosed() else Part.ArcOfCircle(c, edge.FirstParameter, edge.LastParameter)
+    if isinstance(c, Part.Ellipse):
+        return c.copy() if edge.isClosed() else Part.ArcOfEllipse(c, edge.FirstParameter, edge.LastParameter)
+    return c.toBSpline(edge.FirstParameter, edge.LastParameter)
+
+
+def copy_edges(sk, edges):
+    """Edges of another Solid drawn into the sketch as its own geometry (FreeCAD links projected edges only from
+    the sketch's own Solid; the user: nothing of the lid could be projected into a sketch of the jar): each edge
+    projected along the sketch's normal onto its plane. They don't follow the other Solid's changes. Returns the
+    new geometry ids."""
+    import Part
+    to_sketch = sk.getGlobalPlacement().inverse().toMatrix()
+    plane = Part.makePlane(2e4, 2e4, App.Vector(-1e4, -1e4, 0))
+    ids = []
+    for e in edges:
+        local = e.copy()
+        local.transformShape(to_sketch)
+        try:
+            flat = plane.makeParallelProjection(local, App.Vector(0, 0, 1))
+        except Exception:
+            continue
+        for f in flat.Edges:
+            g = _as_geometry(f)
+            if g is not None:
+                ids.append(sk.addGeometry(g, False))
+    return ids
+
+
 def make_sketch(body, support, sub=""):
     """A sketch in `body`, attached to `support` (+ face name), placed after End of Part."""
     if not valid_support(support, sub):
@@ -103,7 +142,7 @@ def make_sketch(body, support, sub=""):
     sk.AttachmentSupport = [(support, sub)]
     sk.MapMode = "FlatFace"
     sk.Label = _next_label(body.Document, "Sketch")
-    body.Document.recompute()
+    body.Document.recompute([sk])  # it alone: nothing uses it yet (a full recompute retried every broken feature)
     return sk
 
 
@@ -370,7 +409,7 @@ def toggle_construction(sk, geo_ids):
         if sk.getConstruction(i) != make:
             sk.setConstruction(i, make)
     changed = set_projected_construction(sk, external, make)
-    sk.Document.recompute()
+    safe.recompute(sk.Document)  # the open sketch only: the part follows on Finish
     return ids + changed
 
 
@@ -530,7 +569,7 @@ def adopt_projections(sk, notes=None):
             notes.append("%s: %s on the old copies of projected edges could not move to the projected edges" % (
                 sk.Label, ", ".join(lost)))
     set_defining(sk, todo, True)
-    doc.recompute()
+    safe.recompute(doc)
     return True
 
 
@@ -933,5 +972,5 @@ def reconcile_replaced(sk, known):
         sk.setExpression("Constraints." + name, was["expr"])
     elif sk.Constraints[index].Type == was["type"] and abs(sk.Constraints[index].Value - was["value"]) > 1e-9:
         sk.setDatum(name, App.Units.Quantity(was["value"], "deg" if was["type"] == "Angle" else "mm"))
-    doc.recompute()
+    safe.recompute(doc)
     return name

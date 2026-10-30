@@ -6,6 +6,8 @@ import FreeCAD as App
 import Part
 import Sketcher
 
+from incad.core import safe
+
 PICK_MSG = "Click a line, arc, circle, ellipse or spline of the sketch"
 TOO_LARGE_MSG = "The offset is too large for this shape"
 NEAR_MSG = "Move the pointer away from the shape to set the distance"
@@ -346,5 +348,6 @@ def add(sk, chain, closed, pointer, distance=None):
         for t in distances[1:]:
             if dim:
                 sk.setExpression("Constraints[%d]" % t, "Constraints.%s" % dim)
-    sk.Document.recompute()
+                sk.setVirtualSpace(t, True)  # one dimension on view (the user): the others follow it, hidden
+    safe.recompute(sk.Document)
     return list(range(first, first + len(curves))), dim

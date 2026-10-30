@@ -82,7 +82,10 @@ class PlaneTurn(FaceArrow):
         from incad.ui.move_face_arrow import _screen_size
         self._remove_node()
         f, view = self.session.feature, self._active_view()
-        if f is None or view is None or not self._usable() or f.TypeId != "PartDesign::Plane":
+        try:
+            if f is None or view is None or not self._usable() or f.TypeId != "PartDesign::Plane":
+                return
+        except ReferenceError:  # the plane was deleted while its dialog closed
             return
         try:
             centre, axes = self._turn_frame(f)

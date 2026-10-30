@@ -72,6 +72,19 @@ def _lifted(face, pts, d):
     return out
 
 
+def _recompute_sound(doc):
+    """doc.recompute(), but a feature that failed is left for OK: every full recompute retries it (the user's jar: an
+    Emboss off its face after the End of Part, 8 s each time a Work Plane dialog opened or previewed)."""
+    from incad.core import safe
+    sk = safe.open_sketch(doc)
+    if sk is not None:  # Text, sketch patterns: the sketch only, the part follows on Finish Sketch
+        doc.recompute([sk])
+        return
+    todo = [o for o in doc.Objects if "Touched" in o.State and "Invalid" not in o.State]
+    if todo:
+        doc.recompute(todo)
+
+
 def _feature_alive(obj):
     try:
         obj.TypeId
@@ -167,7 +180,7 @@ class FeatureSession(QtCore.QObject):
                     self._created_values = dict(values)
             else:
                 values = self.kind.read(doc, self.feature)
-            doc.recompute()
+            _recompute_sound(doc)
         except Exception as e:
             log.report("error", "%s could not start: %s" % (self.kind.TITLE, e))
             self._finish(commit=False)
@@ -1379,6 +1392,7 @@ class FeatureSession(QtCore.QObject):
             getattr(self, after)()
 
     def _preview_now(self):
+        safe.watch_esc()  # Esc from now on stops a long preview (the user: Escape must cancel any operation)
         values, self._pending = self._pending, None
         self._applied = values
         try:
@@ -1388,7 +1402,7 @@ class FeatureSession(QtCore.QObject):
                 self._abort_step()
                 self.feature = None  # the abort removed it (before anything below can raise)
                 self._abort_extras(reopen=False)
-                self.doc.recompute()
+                _recompute_sound(self.doc)
                 model.relink(self.doc)
                 self._join_documents(values)
                 self.doc.openTransaction(self.kind.TITLE)
@@ -1497,6 +1511,10 @@ class FeatureSession(QtCore.QObject):
                 return
         later = self._later()
         own = self._own()
+        if not later and own and not self._extra and self._rolled is None:
+            # a new feature (or the last one): it alone, the rest once on OK — a full recompute per preview also redid
+            # every broken feature after the End of Part (the user's jar: 8 s a Work Plane preview)
+            self._rolled = []
         if later and self._rolled is None:
             self._rolled = [(o, bool(o.Visibility)) for o in own + later]
             for o in later:
@@ -1507,7 +1525,7 @@ class FeatureSession(QtCore.QObject):
         import FreeCAD as App
         App.addDocumentObserver(watch)
         try:
-            self.doc.recompute(own) if later else self.doc.recompute()
+            self.doc.recompute(own) if own and not self._extra else self.doc.recompute()
         finally:
             App.removeDocumentObserver(watch)
         if self._extra:

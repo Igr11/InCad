@@ -177,6 +177,8 @@ class Tie(Base):
         orig = lambda: xs([self.sk.Geometry[g] for g in ids])
         copy = lambda: xs(self.new_geo(before))
         self.assertEqual(copy(), [-5, 25])
+        shown = [i for i, c in enumerate(self.sk.Constraints) if c.Type == "Distance" and not self.sk.getVirtualSpace(i)]
+        self.assertEqual(len(shown), 1, "one offset dimension on view, the others hidden")
         self.sk.setDatum(width, App.Units.Quantity("30 mm"))  # the original gets wider: the copy follows
         self.doc.recompute()
         o = orig()  # (the original is not fixed in place: the solver may move it as a whole)

@@ -16,7 +16,8 @@ LAYOUT = {
                       ["Assemble", ["file.make_assembly"]]]],
         ["Sketch", []],
         ["Inspect", [["Measure", [["inspect.measure", "inspect.distance", "inspect.angle", "inspect.length",
-                                   "inspect.area"], "inspect.mass"]]]],
+                                   "inspect.area"], "inspect.mass"]],
+                     ["Analyze", ["assembly.interference"]]]],  # between a part's Solids (a jar and its lid)
         ["Image", [["Insert", ["picture.insert"]], ["Scale", ["picture.scale"]],
                      ["Place", [["picture.on_xy", "picture.on_xz", "picture.on_yz"], "picture.turn", "picture.mirror"]],
                      ["Look", ["picture.show_hide"]]]],
