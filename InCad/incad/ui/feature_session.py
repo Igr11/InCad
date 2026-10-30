@@ -54,8 +54,14 @@ def _is_seam(edge, face):
         return False
 
 
+_LIFTABLE = ("Part::GeomPlane", "Part::GeomCylinder", "Part::GeomCone", "Part::GeomSphere", "Part::GeomToroid")
+
+
 def _lifted(face, pts, d):
-    """The points moved `d` out of `face` (along its normal there): lines drawn on a surface flicker into it."""
+    """The points moved `d` out of `face` (along its normal there): lines drawn on a surface flicker into it. Not on
+    a swept (spline) face: finding a point on it took 6 ms, 11 s for a grown thread's outline at every value."""
+    if face.Surface.TypeId not in _LIFTABLE:
+        return pts
     out = []
     for p in pts:
         try:
@@ -137,6 +143,12 @@ class FeatureSession(QtCore.QObject):
         if doc.HasPendingTransaction:
             doc.commitTransaction()
         self._broken = safe.snapshot_broken(doc)
+        self._computed = _Recomputed()  # every object a recompute computed while the dialog is open (_abort_step)
+        try:
+            import FreeCAD as App
+            App.addDocumentObserver(self._computed)
+        except Exception:
+            self._computed = None
         self._undo_mark = doc.UndoCount  # Cancel undoes back to here: a Sketcher command run meanwhile (Delete
         if not self.creating:  # every document's undo step opens before anything changes   on a copy) makes
             self._join_documents(self.kind.read(doc, self.feature))  # FreeCAD commit the dialog's own pending step
@@ -185,7 +197,7 @@ class FeatureSession(QtCore.QObject):
         self._applied = self.dialog.values()
         self._seen = self.dialog.values()  # what kind.follow compares a change with
         self._label_params()
-        self.dialog.move(16, 16)
+        self.dialog.place()  # where the user left the last one
         self.dialog.show()
         self.dialog.raise_()
         if self.feature is None:
@@ -798,7 +810,12 @@ class FeatureSession(QtCore.QObject):
             if seed and key:
                 self._seed_selection(key)
             return
-        if key and self.dialog.field_def(key).pick in self._ON_BASE and self.feature is not None:
+        keep = getattr(self.kind, "keep_preview", None)  # a kind whose result stays on screen while picking
+        if keep is not None and keep(self.dialog.values()):
+            key_on_base = False
+        else:
+            key_on_base = bool(key) and self.dialog.field_def(key).pick in self._ON_BASE
+        if key_on_base and self.feature is not None:
             tip = self.body.Tip if self.body is not None else None
             # the part as it is: every edge can be picked and the picked ones show selected (on the preview they were
             # hidden, cut away); Fillet / Chamfer / Shell draw their result over it as outlines (_sync_ghost)
@@ -1368,7 +1385,7 @@ class FeatureSession(QtCore.QObject):
             if self.creating and (self.feature is None or self._needs_recreate(values)):
                 # roll back every document, then open all the undo steps again before changing anything
                 # (opening a step in one more document commits what is pending in the others)
-                self.doc.abortTransaction()
+                self._abort_step()
                 self.feature = None  # the abort removed it (before anything below can raise)
                 self._abort_extras(reopen=False)
                 self.doc.recompute()
@@ -1596,6 +1613,30 @@ class FeatureSession(QtCore.QObject):
             self.dialog.set_values(fill)
             self._auto_picks = getattr(self, "_auto_picks", set()) | {k for k in fill
                                                                        if self.dialog.field_def(k).kind == "picks"}
+
+    def _abort_step(self):
+        """Roll the dialog's step back. The abort takes the dialog's new value out of the model's values, and FreeCAD
+        then touches every object that uses ANY value: a part with a modeled thread was recomputed whole, 6 s, at
+        a change of Join to Cut and at Cancel (the user: "Extrude Cut lags"). An object the dialog neither changed
+        nor computed has its shape of before the dialog, which the abort's inputs are again: it is left untouched, and
+        the values are recomputed by themselves (touched, they took every object using one with them).
+        A feature put before a thread moved the thread: then everything is computed as before."""
+        before = {o.Name for o in self.doc.Objects if "Touched" in o.State}
+        values = model._model_obj(self.doc)
+        if values is not None and not getattr(self, "_moved_before_thread", False):
+            with model.changing_values(self.doc, values):  # the values recomputed alone, their users left as they are
+                self.doc.abortTransaction()
+        else:
+            self.doc.abortTransaction()
+        computed = getattr(self, "_computed", None)
+        if computed is None or getattr(self, "_moved_before_thread", False):
+            return
+        for o in self.doc.Objects:
+            if "Touched" in o.State and o.Name not in before and o.Name not in computed.names:
+                try:
+                    o.purgeTouched()
+                except Exception:
+                    pass
 
     def _recover_deleted_feature(self):
         """An update() that swaps a feature's type (Join<->Cut) deletes the old one, then may fail before it
@@ -1853,6 +1894,13 @@ class FeatureSession(QtCore.QObject):
             log.report("warning", "%s: closing the dialog: %s" % (self.kind.TITLE, e), traceback.format_exc())
         finally:
             safe.set_busy(None)
+            if getattr(self, "_computed", None) is not None:
+                try:
+                    import FreeCAD as App
+                    App.removeDocumentObserver(self._computed)
+                except Exception:
+                    pass
+                self._computed = None
             if self.dialog is not None:
                 try:
                     self.dialog.close()
@@ -1900,7 +1948,7 @@ class FeatureSession(QtCore.QObject):
                     d.commitTransaction()
                 self._extra = []
             else:
-                self.doc.abortTransaction()
+                self._abort_step()
                 mark = getattr(self, "_undo_mark", None)
                 while mark is not None and self.doc.UndoCount > mark:  # steps committed under the dialog
                     self.doc.undo()

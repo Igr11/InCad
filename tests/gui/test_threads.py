@@ -250,9 +250,45 @@ def test_5_a_vanished_dialog_never_blocks_the_next_command():
     assert s().feature_session is None and body().Tip.Name == tip
 
 
+def test_6_grow_onto_a_new_shaft():
+    """The user: a grown round thread rises out of the surface and runs back into it (canister caps); its dialog
+    offers the chamfer too. Grow onto in the dialog makes a grown thread, a feature of its own."""
+    commands.REGISTRY.run("file.new")
+    harness.pump(800)
+    pad = shaft(doc(), body(), radius=10.0, length=16, name="Neck")
+    harness.pump(300)
+    obj_sub = cyl_face(pad, 10).split(":")
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc().Name, obj_sub[0], obj_sub[1])
+    commands.REGISTRY.run("feature.thread")
+    harness.pump(1500)
+    dialog().field("build").button("grow").click()
+    harness.pump(1500)
+    combo = dialog().field("standard")
+    combo.setCurrentIndex(combo.findData("custom"))
+    harness.pump(600)
+    dialog().set_values({"custom_profile": "semicircle", "custom_pitch": "2 mm", "custom_depth": "0.8 mm"})
+    dialog()._emit()
+    harness.pump(2500)
+    assert not dialog().error_text(), dialog().error_text()
+    f = s().feature_session.feature
+    assert f.TypeId == "PartDesign::FeaturePython", f.TypeId
+    assert "Invalid" not in f.State and f.Shape.isValid(), f.getStatusString()
+    assert dialog().field("chamfer").isVisible(), "the chamfer is offered for grown threads too"
+    ok()
+    assert s().feature_session is None
+    tip = body().Tip
+    assert tip.TypeId == "PartDesign::FeaturePython" and len(body().Shape.Solids) == 1, tip.TypeId
+    assert body().Shape.optimalBoundingBox().XMax > 10.5, "the bead stands on the neck"
+    shell.edit_feature(tip)
+    harness.pump(1200)
+    assert dialog().values()["build"] == "grow" and dialog().values()["custom_profile"] == "semicircle"
+    s().feature_session.cancel()
+    harness.pump(800)
+
 harness.run([test_0_setup, test_1_thread_on_a_selected_shaft_face, test_2_edit_the_thread_size,
              test_2b_print_friendly_takes_0_3_mm_clearance,
              test_3_threaded_hole, test_4_threads_button_turns_every_thread_off_and_on,
              test_edit_changes_the_start_face_and_offset,
              test_delete_from_a_3d_face_selection_removes_only_the_thread,
-             test_5_a_vanished_dialog_never_blocks_the_next_command])
+             test_5_a_vanished_dialog_never_blocks_the_next_command, test_6_grow_onto_a_new_shaft])

@@ -626,6 +626,11 @@ class Shell(QtCore.QObject):
             self.apply_theme()
             self.active = True
             self.refresh()
+            try:
+                from incad.ui import update_check
+                update_check.at_start(self.mw, busy=lambda: self.feature_session is not None)
+            except Exception:
+                log.logger().info("Update check at start not set up", exc_info=True)
         except Exception as e:
             log.report("error", "InCad could not start its interface: %s" % e, traceback.format_exc())
             self.active = False
@@ -900,8 +905,18 @@ class Shell(QtCore.QObject):
             act.setCheckable(True)
             act.setChecked(prefs.display_quality() == value)
             act.triggered.connect(lambda _=False, v=value: self.set_display_quality(v))
+        diag_act = menu.addAction("Rectangle Diagonals")
+        diag_act.setCheckable(True)
+        diag_act.setChecked(prefs.rectangle_diagonals())
+        diag_act.setToolTip("New rectangles keep their two diagonals as construction lines")
+        diag_act.triggered.connect(lambda checked: prefs.set_rectangle_diagonals(checked))
         menu.addAction("Show Log File").triggered.connect(lambda _=False: self._show_log())
         menu.addAction("Report a Bug…").triggered.connect(lambda _=False: self.report_bug())
+        menu.addAction("Check for Updates…").triggered.connect(lambda _=False: self.check_updates())
+        upd_act = menu.addAction("Check for Updates at Start")
+        upd_act.setCheckable(True)
+        upd_act.setChecked(prefs.update_check_at_start())
+        upd_act.triggered.connect(lambda checked: prefs.set_update_check_at_start(checked))
         nav_act = menu.addAction("Mouse Navigation (LMB+RMB orbit, right-click menu)")
         nav_act.setCheckable(True)
         nav_act.setChecked(prefs.navigation_enabled())
@@ -929,6 +944,11 @@ class Shell(QtCore.QObject):
             log.report("warning", "Could not show the log (%s): %s" % (path, e))
 
     REPORT_PAUSE = 60  # s between two reports sent from here (a stuck button never floods the Issues)
+
+    def check_updates(self):
+        """⚙ ▸ Check for Updates… (incad.ui.update_check): the answer even when there is nothing new."""
+        from incad.ui import update_check
+        return update_check.check(self.mw, busy=lambda: self.feature_session is not None)
 
     def report_bug(self, exec_dialog=True):
         """⚙ ▸ Report a Bug: the report straight into the Issues on GitHub (incad.core.bugreport); a build without the
@@ -1086,6 +1106,13 @@ class Shell(QtCore.QObject):
             except Exception:
                 log.logger().exception("Right-click menu rules")
         items = [c for c in items if c.id not in drop]
+        if kind in ("part", "face", "edge", "vertex") and self.registry.has("assembly.return"):
+            try:  # a part opened with Edit from its assembly: Return first in every right-click menu (the user went
+                # back to the 3D Model tab for it every time)
+                if self._active_context() is not None:
+                    items = [self.registry.get("assembly.return")] + [c for c in items if c.id != "assembly.return"]
+            except Exception:
+                log.logger().exception("Return in the right-click menu")
         if top and self.registry.has(top):
             slots = [("N", self.registry.get(top))] + [(d, c) for d, c in slots if d != "N"]
         if not slots and not items and not extras:

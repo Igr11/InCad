@@ -4,6 +4,7 @@ import FreeCAD as App
 import Part
 
 from incad.features.common import Field, parse_picks, resolve, value_param, value_text
+from incad.threads import inserts
 
 TITLE = "Hole"
 ICON = "hole"
@@ -18,8 +19,9 @@ FIELDS = (
     Field("sketch", "Sketch", "pick", show_if=("placement", ("sketch",)), pick="sketch"),
     Field("edge", "Round", "picks", show_if=("placement", ("concentric",)), pick="round"),
     Field("face", "Face", "pick", show_if=("placement", ("concentric",)), pick="hole_face", optional=True),
-    Field("hole_type", "Hole", "choice", (("simple", "Simple"), ("clearance", "Clearance"), ("tapped", "Tapped")),
-          "simple"),
+    Field("hole_type", "Hole", "choice", (("simple", "Simple"), ("clearance", "Clearance"), ("tapped", "Tapped"),
+                                          ("insert", "Insert")), "simple"),
+    Field("insert_size", "Insert", "combo", inserts.choices(), inserts.DEFAULT, show_if=("hole_type", ("insert",))),
     Field("thread_standard", "Standard", "combo", (("iso", "ISO metric"), ("iso_fine", "ISO metric fine"),
                                                    ("unc", "UNC"), ("unf", "UNF"), ("unef", "UNEF"), ("npt", "NPT"),
                                                    ("g", "G / BSP"), ("bsw", "BSW"), ("bsf", "BSF")), "iso",
@@ -38,12 +40,14 @@ FIELDS = (
     Field("spot_depth", "Spotface depth", "value_length", default="0.5 mm", show_if=("seat", ("spotface",))),
     Field("depth_type", "Termination", "choice", (("distance", "Distance"), ("through_all", "Through All"),
                                                  ("to", "To")), "through_all"),
-    Field("depth", "Depth", "value_length", default="10 mm", show_if=("depth_type", ("distance",))),
+    Field("depth", "Depth", "value_length", default="10 mm",
+          show_if=(("depth_type", ("distance",)), ("hole_type", ("simple", "clearance", "tapped")))),
     Field("to_face", "To face", "pick", pick="plane", show_if=("depth_type", ("to",))),
     Field("tip", "Drill point", "choice", (("flat", "Flat"), ("angled", "Angle")), "angled",
-          show_if=("depth_type", ("distance", "to"))),
+          show_if=(("depth_type", ("distance", "to")), ("hole_type", ("simple", "clearance", "tapped")))),
     Field("tip_angle", "Point angle", "value_angle", default="118 °",
-          show_if=(("depth_type", ("distance", "to")), ("tip", ("angled",)))),
+          show_if=(("depth_type", ("distance", "to")), ("tip", ("angled",)),
+                   ("hole_type", ("simple", "clearance", "tapped")))),
     Field("thread_depth", "Thread", "choice", (("hole", "Whole hole"), ("distance", "Depth")), "hole",
           show_if=("hole_type", ("tapped",))),
     Field("thread_length", "Thread depth", "value_length", default="8 mm",
@@ -239,15 +243,17 @@ def _apply_hole(doc, f, values):
     f.Reversed = bool(values.get("flip"))
     term = values.get("depth_type") or "through_all"
     f.DepthType = "ThroughAll" if term == "through_all" else "Dimension"
-    f.DrillPoint = "Angled" if values.get("tip") == "angled" else "Flat"
+    insert = inserts.named(values.get("insert_size")) if values.get("hole_type") == "insert" else None
+    f.DrillPoint = "Angled" if values.get("tip") == "angled" and insert is None else "Flat"
     if f.DrillPoint == "Angled":
         try:
             f.DrillPointAngle = App.Units.Quantity((values.get("tip_angle") or "118 °").replace("°", " deg")).Value
         except Exception:
             raise ValueError("Point angle: enter an angle such as 118°")
     _apply_thread(doc, f, values)
-    if term == "distance":
-        value_param(doc, f, "Depth", values.get("depth") or "10 mm", "length")
+    if term == "distance":  # an insert's hole: a little deeper than the insert
+        value_param(doc, f, "Depth", "%g mm" % inserts.depth(insert) if insert else values.get("depth") or "10 mm",
+                    "length")
     elif term == "to":
         for path in ("Depth", ".Depth"):
             if model.bound_parameter(f, path) is not None:
@@ -264,6 +270,7 @@ def _apply_hole(doc, f, values):
         value_param(doc, f, "HoleCutDiameter", values.get("spot_diameter") or "10 mm", "length")
         value_param(doc, f, "HoleCutDepth", values.get("spot_depth") or "0.5 mm", "length")
     _store(f, {"hole_type": values.get("hole_type") or "simple", "seat": seat, "fit": values.get("fit") or "normal",
+               "insert_size": insert.name if insert else "",
                "depth_type": term, "to_face": values.get("to_face") or "", "flip": bool(values.get("flip")),
                "tip_angle": values.get("tip_angle") or "118 °"})
 
@@ -313,9 +320,13 @@ def _apply_thread(doc, f, values):
         f.Threaded = False
         f.ModelThread = False
         f.ThreadType = "None"
-        plain = getattr(f, _PLAIN, "")
-        if plain and model.bound_parameter(f, "Diameter") is None:
-            model.bind(f, "Diameter", plain)
+    if kind_of_hole == "insert":  # the insert's hole; the Simple diameter is kept for switching back
+        _release_diameter(f)
+        f.Diameter = inserts.named(values.get("insert_size")).hole
+        return
+    plain = getattr(f, _PLAIN, "")
+    if plain and model.bound_parameter(f, "Diameter") is None:
+        model.bind(f, "Diameter", plain)
     value_param(doc, f, "Diameter", values.get("diameter") or "5 mm", "length")
 
 
@@ -337,7 +348,7 @@ def read(doc, f):
     elif f.ThreadType != "None":
         hole_type = "clearance"
     else:
-        hole_type = "simple"
+        hole_type = "insert" if data.get("hole_type") == "insert" else "simple"
     values = defaults(f.Document, None, None)
     values.update(placement="concentric" if concentric else "sketch", sketch="" if concentric else prof.Name,
                   hole_type=hole_type, seat=seat,
@@ -345,6 +356,12 @@ def read(doc, f):
                   to_face=data.get("to_face", ""), flip=bool(f.Reversed),
                   tip="angled" if f.DrillPoint == "Angled" else "flat", tip_angle=data.get("tip_angle", "118 °"),
                   diameter=value_text(doc, f, "Diameter") or "5 mm", depth=value_text(doc, f, "Depth") or "10 mm")
+    if hole_type == "insert":
+        values["insert_size"] = data.get("insert_size") or inserts.DEFAULT
+        plain = getattr(f, _PLAIN, "")
+        if plain:
+            from incad.core import model
+            values["diameter"] = model.parameter_text(doc, plain)
     if hole_type in _THREADED:
         std = {v: k for k, v in _THREAD_TYPES.items()}.get(f.ThreadType, "iso")
         values.update(thread_standard=std, thread_size=f.ThreadSize)

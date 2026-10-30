@@ -91,6 +91,33 @@ def _gui():
     return FreeCADGui
 
 
+def tangent_circle():
+    """Sketch ▸ Tangent Circle: a circle tangent to the two or three lines, arcs or circles selected (one undo step;
+    incad.core.tangent_circle)."""
+    from incad.core import log, tangent_circle as tc
+    from incad.ui import shell
+    sk = shell.instance().sketches.editing()
+    if sk is None:
+        raise ValueError("Open a sketch first")
+    picks = [int(sub[4:]) - 1 for sel in _gui().Selection.getSelectionEx(sk.Document.Name) if sel.Object is sk
+             for sub in sel.SubElementNames if sub.startswith("Edge") and sub[4:].isdigit()]
+    if len(picks) not in (2, 3):
+        raise ValueError("Tangent Circle: select two or three lines, arcs or circles first (Ctrl-click), then click "
+                         "Tangent Circle")
+    doc = sk.Document
+    doc.openTransaction("Tangent Circle")
+    try:
+        tc.add(sk, picks)
+    except Exception:
+        doc.abortTransaction()
+        raise
+    doc.commitTransaction()
+    sk.recompute()
+    _gui().Selection.clearSelection()
+    log.report("info", "Tangent Circle: %s" % ("fixed by the three it touches" if len(picks) == 3 else
+                                               "its radius is free: give it a dimension"))
+
+
 def run_std(name, index=0):
     if name.startswith("Sketcher_"):
         from incad.ui import rectangle_preview
@@ -841,8 +868,8 @@ def _floating_over(mw, vp):
     out = []
     for holder in holders:
         for child in holder.findChildren(QtWidgets.QWidget, options=QtCore.Qt.FindDirectChildrenOnly):
-            if child in holders or not child.isVisible() or child.isWindow():
-                continue
+            if child in holders or not child.isVisible() or child.isWindow() or isinstance(child, QtWidgets.QMdiSubWindow):
+                continue  # (another file's window over this one: its 3D view grabs black — the user's crank shot)
             box = child.rect().translated(child.mapTo(mw, child.rect().topLeft()))
             if box.intersects(area) and not any(o.isAncestorOf(child) for o in out):
                 out.append(child)
@@ -1756,6 +1783,9 @@ def commands():
                 handler=lambda: start_feature("move_face"), contexts=frozenset({"part"}),
                 tooltip="Move flat faces by a distance or up to a face; the neighbours follow (Inventor), stay "
                         "(Step) or move with them (Together)"),
+        Command(id="sketch.circle_tangent", label="Tangent Circle", icon="circle_tangent",
+                handler=lambda: tangent_circle(), contexts=frozenset({"sketch"}),
+                tooltip="A circle tangent to the two or three lines, arcs or circles selected (three fix it)"),
         Command(id="sketch.construction", label="Construction", icon="construction",
                 handler=lambda: _construction(), contexts=frozenset({"sketch"}), checkable=True,
                 is_checked=lambda: _construction_on(),
@@ -1831,6 +1861,17 @@ def commands():
                         "teeth; Make Assembly puts each in a part file"),
         Command(id="feature.worm", label="Worm Gear", icon="worm", handler=lambda: start_feature("worm"),
                 contexts=frozenset({"part"}), tooltip="A worm and its wheel in mesh (or the worm alone)"),
+        Command(id="feature.boss", label="Boss", icon="boss", handler=lambda: start_feature("boss"),
+                contexts=frozenset({"part"}),
+                tooltip="A post for a screw or a heat-set insert at each point or circle of a sketch: height, hole, "
+                        "a fillet at its foot, ribs"),
+        Command(id="feature.lip", label="Lip / Groove", icon="lip", handler=lambda: start_feature("lip"),
+                contexts=frozenset({"part"}),
+                tooltip="On the rim of a shelled box: a raised band along its inner or outer edge (Lip), or the "
+                        "groove the other half's lip goes into"),
+        Command(id="feature.snap_fit", label="Snap Fit", icon="snap_fit", handler=lambda: start_feature("snap_fit"),
+                contexts=frozenset({"part"}),
+                tooltip="A cantilever hook on each line of a sketch: length, thickness, the catch's depth and length"),
         Command(id="feature.draft", label="Draft", icon="draft", handler=lambda: start_feature("draft"),
                 contexts=frozenset({"part"}), tooltip="Tilt faces by an angle (for moulding)"),
         Command(id="tools.appearance", label="Appearance", icon="appearance", handler=lambda: appearance(),

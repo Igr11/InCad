@@ -198,6 +198,14 @@ def test_4b_return_to_assembly():
     assert button is not None and button.isVisible(), "no Return to Assembly on the part's view"
     bar = button.parentWidget()
     assert "Editing Block in" in bar.findChild(QtWidgets.QLabel).text(), bar.findChild(QtWidgets.QLabel).text()
+    from incad.qt import QtCore
+    menu = s()._show_marking_menu("part", QtCore.QPoint(300, 300))  # the right-click menu has Return first too
+    try:
+        first = menu._list[0]
+        assert first.text() == "Return", [b.text() for b in menu._list]
+    finally:
+        menu.close()
+        harness.pump(200)
     box = [o for o in part.Objects if o.TypeId == "PartDesign::Pad"][0]
     box.Length = 14  # the part changed in its tab
     part.recompute()

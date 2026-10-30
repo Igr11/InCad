@@ -110,10 +110,12 @@ def _broken(obj, check_shape, deep=True):
         if obj.TypeId in _TRANSFORMED and _changes_nothing(obj, shape):
             return ("%s: the pattern changes nothing — its copies fall where the part has no material, or the "
                     "picked feature (a thread, for example) can't be repeated. Pick another feature" % obj.Label)
+        # a volume only where there is next to nothing: the volume of a part with a modeled thread took 0.2 s,
+        # twice at every preview (the user: "Extrude Cut lags")
         if obj.TypeId in _SUBTRACTIVE and shape is not None and (shape.isNull() or not shape.Solids
-                                                                   or shape.Volume < 1e-9):
+                                                                   or (len(shape.Faces) < 4 and shape.Volume < 1e-9)):
             base = getattr(obj, "BaseFeature", None)
-            if base is not None and not base.Shape.isNull() and base.Shape.Volume > 1e-9:
+            if base is not None and not base.Shape.isNull() and bool(base.Shape.Solids):
                 if _has_modeled_thread(base):
                     return ("%s: the cut failed in the kernel and left nothing — a modeled (helical) thread earlier "
                             "in the part is the usual cause. Put this cut BEFORE the thread, or make the thread "

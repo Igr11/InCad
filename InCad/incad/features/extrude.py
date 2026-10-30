@@ -41,7 +41,7 @@ def _normal(sk):
 def default_operation(body, sk):
     """Cut when the profile lies inside the material (Inventor pre-selects Cut there), otherwise Join."""
     shape = body.Shape
-    if shape.isNull() or shape.Volume <= 0:
+    if shape.isNull() or not shape.Solids:  # (not its volume: 0.5 s on a part with a modeled thread)
         return "join"
     try:
         centre = sk.Shape.BoundBox.Center

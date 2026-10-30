@@ -5,6 +5,42 @@ This build: VERSION
 Newest build first. The build name is the name of the zip file.
 
 
+0.15.0
+-----
+Boss, Lip / Groove and Snap Fit for printed boxes; holes for heat-set inserts.
+
+Improvements
+- Boss (3D Model > Create, the arrow beside Emboss): a post for a screw or an insert at every point or circle of a
+  sketch - outer diameter, height, a plain hole or an insert's hole, a fillet at its foot, 3, 4 or 6 ribs (they stop
+  at the part's outside), turned by Rib angle, any of them left out.
+- Lip / Groove: on the rim of a shelled box, a raised band along the inner or outer edge, or on the other half the
+  groove it goes into (wider and deeper by the clearance). It follows the rim when the part before it changes.
+- Snap Fit: a flexible strip grown onto the face of a box's wall at every line of a sketch, joined
+  to the wall down below the rim (its lower edge chamfered 45°) and standing up over it with a catch at its top -
+  height over the rim, how far down the wall, thickness, the catch's depth and length, a fillet at the rim.
+- Hole > Insert: a hole for a heat-set threaded insert, M2 to M5 - the size the insert needs, a flat bottom, 1 mm
+  deeper than the insert.
+- Settings > Rectangle Diagonals: a new rectangle keeps its two diagonals as construction lines (off by default:
+  only the centre point).
+- Settings > Check for Updates: finds a newer release on GitHub and downloads it for your system into
+  Downloads; Check for Updates at Start looks once a day by itself.
+- A part opened with Edit from its assembly: Return is the first entry of every right-click menu too.
+
+- Sketch > Tangent Circle: a circle tangent to the two or three lines, arcs or circles selected (three fix it).
+Bug fixes
+- A part with a modeled thread: Extrude no longer stalls for seconds - switching Join to Cut or pressing Cancel
+  no longer rebuilds the whole part, and a preview no longer measures the thread's volume.
+- Thread: the profile's sketch is a few lines and arcs again, not a row of short segments - threads build in a
+  second or two instead of hanging the program. Custom: the shape picked is what is cut in (Cut into) or grown on
+  (Grow onto) - a Triangle a sharp V, a Trapezoid that V with its end cut off, a Semicircle a round groove or a
+  round bead. Grown teeth rise out of the surface from nothing over a quarter turn and run back into it at
+  their end, inside the face (as on moulded canister caps); the chamfer is offered for them too.
+- Thread on a hole that runs out into a curved wall: no error, and no long wait while it checks the hole's wall.
+- Report a Bug could fail on other computers with "certificate verify failed": FreeCAD's Python looked for the
+  certificate list where it was built.
+- Screenshot (Window) of a part edited from its assembly showed the assembly's small window as a black box.
+
+
 0.14.0
 -----
 Thread profiles and DIN threads, grown threads, a start page with recent files, Return to Assembly.

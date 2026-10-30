@@ -64,6 +64,30 @@ def freecadcmd(home):
     return None
 
 
+
+def ssl_context():
+    """An SSL context that trusts the usual certificate authorities. The Python inside FreeCAD and ProstoCAD looks for
+    them where its build machine had them (a path that is not there on the user's computer: every HTTPS call failed
+    with CERTIFICATE_VERIFY_FAILED), so the bundled lists are named: certifi's, else the runtime's own ssl folder;
+    Windows also has its own store."""
+    import ssl
+    found = []
+    try:
+        import certifi
+        found.append(certifi.where())
+    except Exception:
+        pass
+    for rel in (("ssl", "cert.pem"), ("ssl", "cacert.pem"), ("Library", "ssl", "cacert.pem"),
+                ("Library", "ssl", "cert.pem")):
+        found.append(os.path.join(sys.prefix, *rel))
+    for path in found:
+        if path and os.path.isfile(path):
+            try:
+                return ssl.create_default_context(cafile=path)
+            except Exception:
+                continue
+    return ssl.create_default_context()
+
 def reveal(path):
     """Show the file in Explorer / Finder, selected."""
     if WINDOWS:

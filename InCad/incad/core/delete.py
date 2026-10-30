@@ -134,7 +134,8 @@ def _delete(obj):
             sk.Visibility = True  # the knife is a plain sketch again
         return
     if kind is thread:
-        profile = obj.Profile[0] if isinstance(obj.Profile, (tuple, list)) and obj.Profile else None
+        prof = getattr(obj, "Profile", None)  # (a grown thread has no profile sketch)
+        profile = prof[0] if isinstance(prof, (tuple, list)) and prof else None
         body = obj.getParentGeoFeatureGroup()
         if body is not None:
             thread._remove_helpers(doc, body, obj)

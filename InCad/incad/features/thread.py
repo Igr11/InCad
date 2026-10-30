@@ -4,6 +4,7 @@ through the axis, x radial, y along the axis) + one PartDesign SubtractiveHelix.
 Standard, size, clearance, hand, start end and offset live on the helix (InCadThread, JSON) and regenerate the
 profile on edit; the length (Distance mode) is a model parameter bound to Height."""
 import dataclasses
+import math
 import json
 
 import FreeCAD as App
@@ -15,8 +16,9 @@ from incad.core import safe
 
 TITLE = "Thread"
 ICON = "thread"
-TYPES = ("PartDesign::SubtractiveHelix", "PartDesign::AdditiveHelix")  # cut into the surface, or grown onto it
-RECREATE_ON = ("build",)  # cut <-> grow is another kind of helix
+# cut into the surface; grown onto it (GrownThread; 0.14 grew an AdditiveHelix)
+TYPES = ("PartDesign::SubtractiveHelix", "PartDesign::FeaturePython", "PartDesign::AdditiveHelix")
+RECREATE_ON = ("build",)  # cut <-> grow is another kind of feature
 NEEDS_PROFILE = False
 PROPS = {"length": "Height"}
 PRESELECT = {"face": "cylinder"}
@@ -42,10 +44,8 @@ FIELDS = (
     Field("custom_depth", "Depth", "value_length", default="0.9 mm", show_if=("standard", ("custom",))),
     Field("hand", "Hand", "choice", (("right", "Right hand"), ("left", "Left hand")), "right"),
     Field("build", "Thread", "choice", (("cut", "Cut into"), ("grow", "Grow onto")), "cut"),
-    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none",
-          show_if=("build", ("cut",))),
-    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm",
-          show_if=(("build", ("cut",)), ("chamfer", ("start", "both")))),
+    Field("chamfer", "Chamfer", "choice", (("none", "None"), ("start", "Start"), ("both", "Both ends")), "none"),
+    Field("chamfer_size", "Chamfer size", "value_length", default="1 mm", show_if=("chamfer", ("start", "both"))),
     Field("clearance", "Print clearance (on diameter)", "value_length", default="0.2 mm"),
     Field("remember", "Save for the next part", "bool", default=False),  # the user: not choosing it all again
 )
@@ -73,9 +73,16 @@ def defaults(doc, body, profile_=None):
     return values
 
 
+def keep_preview(values):
+    """Grown teeth stay on screen while faces are picked: shown as the part's outline over it, a helix's edges came
+    out as a scatter of dots (the user: "where did the picture go?"); a click on them means the part's face."""
+    return values.get("build") == "grow"
+
+
 def after_ok(doc, f, values):
     """Save for the next part ticked: this thread's settings are where the next one starts (in this file or the
-    next); the box itself starts unticked again."""
+    next); the box itself starts unticked again. Grown threads previewed in the dialog are joined to the part."""
+    finish_previews(doc)
     if values.get("remember"):
         from incad.core import log, prefs
         prefs.set_thread_preset({k: values.get(k) for k in PRESET if values.get(k) not in (None, "")})
@@ -125,6 +132,8 @@ def _face(doc, values):
 
 def _lead_in_faces(solid, edge):
     """The chamfer, countersink or round that meets the face at this end: the entrance a bolt or a nut goes in from."""
+    if isinstance(edge, _CutEnd):  # the end that runs out into another face has none
+        return []
     return [f for f in solid.Faces
             if f.Surface.TypeId in ("Part::GeomCone", "Part::GeomToroid") and any(e.isSame(edge) for e in f.Edges)]
 
@@ -174,7 +183,9 @@ def _geometry(obj, face, flip, start_plane=None):
         raise ValueError("The face needs a round end to start the thread")
     circles.sort(key=lambda e: (e.Curve.Center - centre).dot(axis))
     ends = [circles[0], circles[-1]]
-    if len(circles) < 2:  # the other end runs out into another face (a hole breaking into a curved wall)
+    if len(circles) < 2 or abs((circles[-1].Curve.Center - circles[0].Curve.Center).dot(axis)) < 1e-6:
+        # the other end runs out into another face (a hole breaking into a curved wall); round edges all at one
+        # end (a seam split it in two) are that one end
         ends = _with_cut_end(face, circles[0], centre, axis)
     free = []
     for e, other in ((ends[0], ends[1]), (ends[1], ends[0])):
@@ -402,7 +413,7 @@ def repair(doc):
     fixed = []
     for t in [o for o in doc.Objects if claims(o) and not getattr(o, HELPER, None)]:
         sketches = [x.Profile[0] for x in [t] + helpers_of(t)
-                    if isinstance(x.Profile, (tuple, list)) and x.Profile]
+                    if isinstance(getattr(x, "Profile", None), (tuple, list)) and x.Profile]
         if any(_is_piece(doc, a) and a is not t for sk in sketches for a, _ in sk.AttachmentSupport):
             update(doc, t, read(doc, t))
             fixed.append(t.Name)
@@ -419,19 +430,17 @@ def _build(doc, body, f, values):
     clearance = _mm(values.get("clearance"), 0.2)
     grow = values.get("build") == "grow"
     spec = _spec(values, 2 * radius, internal, clearance, grow)
-    if grow:  # teeth on the surface (a jar's bead): they stay on it, half a tooth short of each end
-        groove = profile.tooth(spec, internal, clearance, base=radius)
-        half = profile.max_width(groove) / 2.0
-        hole = radius
-    else:
-        runout, hole = _fit(spec, internal, radius, clearance)
-        groove = profile.groove(spec, internal, clearance, runout)
-        half = profile.max_width(groove) / 2.0
+    if grow:
+        return _build_grown(doc, body, f, values, obj, edge, internal, radius, face_len, to_other, start_free,
+                            end_free and end_round, spec)
+    runout, hole = _fit(spec, internal, radius, clearance)
+    outline = profile.outline(spec, internal, clearance, runout)
+    half = profile.outline_width(outline) / 2.0
     offset = _mm(values.get("offset"), 0.0)
     # free end: the helix starts/ends a full pitch outside the part, so the thread runs out cleanly (as a die
     # cuts it); closed end (shoulder, floor): stop half a groove short, never cutting into it
-    lead = (-spec.pitch if offset == 0 else half) if start_free and not grow else half
-    tail = spec.pitch if end_free and not grow else -half
+    lead = (-spec.pitch if offset == 0 else half) if start_free else half
+    tail = spec.pitch if end_free else -half
     sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else (f.Profile or None)
     fresh = sk is None
     if fresh:
@@ -442,8 +451,7 @@ def _build(doc, body, f, values):
     sk.recompute()  # the sketch alone: the helix is never recomputed with an empty profile ("Linked shape is empty")
     ly = sk.getGlobalPlacement().Rotation.multVec(App.Vector(0, 1, 0))
     sign = 1.0 if to_other.dot(ly) > 0 else -1.0
-    pts = [App.Vector(r, sign * (offset + lead + z), 0) for r, z in groove]
-    sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))])
+    sk.addGeometry(_outline_geometry(outline, sign, offset + lead))
     sk.Visibility = False
     if fresh:
         f.Profile = sk
@@ -461,16 +469,13 @@ def _build(doc, body, f, values):
         f.Height = max(face_len - offset - lead + tail, spec.pitch)
     expr = dict(f.ExpressionEngine).get("Height")
     height = f.evalExpression(expr).Value if expr else f.Height.Value
-    if grow:  # nothing is filled, bored or chamfered under grown teeth
-        _remove_helpers(doc, body, f)
-        chamfer = None
-    else:
-        _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
-                           face_len, start_free, end_free, internal, spec.pitch)
-        radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
-        chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free,
-                           end_free and end_round, values.get("chamfer") or "none",
-                           _mm(values.get("chamfer_size"), 1.0))
+    _remove_helpers(doc, body, f, "ends")  # (0.14 trimmed grown teeth at the ends)
+    _, reaches = _prep(doc, body, f, obj, edge, radius, hole, sign, offset + lead, offset + lead + height,
+                       face_len, start_free, end_free, internal, spec.pitch)
+    radii = tuple(hole if r else radius for r in reaches)  # the part's radius at each end
+    chamfer = _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free,
+                       end_free and end_round, values.get("chamfer") or "none",
+                       _mm(values.get("chamfer_size"), 1.0))
     _store(f, {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std, "size": spec.size, "flip": bool(values.get("flip")),
                "chamfer": values.get("chamfer") or "none", "chamfer_size": values.get("chamfer_size") or "1 mm",
                "chamfer_feature": chamfer.Name if chamfer is not None else "",
@@ -478,12 +483,290 @@ def _build(doc, body, f, values):
                "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
                "internal": internal, "custom_pitch": values.get("custom_pitch"),
                "custom_angle": values.get("custom_angle"), "custom_depth": values.get("custom_depth"),
-               "custom_profile": values.get("custom_profile") or "triangle", "build": "grow" if grow else "cut"})
+               "custom_profile": values.get("custom_profile") or "triangle", "build": "cut"})
     doc.recompute()
     if f.Shape.isNull() or not f.Shape.isValid():
         raise ValueError("The thread can't be built with these values (check the size and the clearance)")
     return f
 
+
+
+def _outline_geometry(outline, sign, at):
+    """The thread's outline (profile.outline) as sketch lines and arcs, its middle `at` along the axis."""
+    v = lambda p: App.Vector(p[0], sign * (at + p[1]), 0)
+    return [Part.LineSegment(v(s[1]), v(s[2])) if s[0] == "line" else Part.Arc(v(s[1]), v(s[2]), v(s[3]))
+            for s in outline]
+
+
+GROWN = "PartDesign::FeaturePython"
+_PREVIEW = set()  # (document, thread) grown threads shown in their open dialog without the fuse
+FADE = 0.25  # turns over which a grown tooth rises out of the surface, and sinks back into it at its end
+_MARGIN = 0.1  # mm between a grown tooth's sunk end and the end of the face
+
+
+def _build_grown(doc, body, f, values, obj, edge, internal, radius, face_len, to_other, start_free, end_free, spec):
+    """Grown teeth (the user: "a grown round thread starts from nothing inside the face, grows, and runs back into
+    the wall at its end — canister caps are made so"): GrownThread computes them at every recompute from the face;
+    here the settings, the length and the lead-in chamfer."""
+    for role in ("prep", "ends"):
+        _remove_helpers(doc, body, f, role)
+    if values.get("length_mode") == "distance":
+        value_param(doc, f, "Height", values.get("length") or "10 mm", "length")
+    else:
+        f.setExpression("Height", None)
+    def settings(chamfer):
+        return {"face": values.get("face"), "start_face": values.get("start_face") or "", "standard": spec.std,
+               "size": spec.size, "flip": bool(values.get("flip")), "chamfer": values.get("chamfer") or "none",
+               "chamfer_size": values.get("chamfer_size") or "1 mm",
+               "chamfer_feature": chamfer.Name if chamfer is not None else "",
+               "clearance": values.get("clearance") or "0.2 mm", "hand": values.get("hand") or "right",
+               "offset": values.get("offset") or "0 mm", "length_mode": values.get("length_mode") or "full",
+               "internal": internal, "custom_pitch": values.get("custom_pitch"),
+               "custom_angle": values.get("custom_angle"), "custom_depth": values.get("custom_depth"),
+               "custom_profile": values.get("custom_profile") or "triangle", "build": "grow"}
+    _store(f, settings(None))  # first: the chamfer's recompute computes the thread too
+    tall = spec.depth + spec.pitch  # past the teeth's tips: what they leave past the end goes with the corner
+    chamfer = _chamfer(doc, body, f, obj, edge, internal, (radius, radius), None, face_len, start_free, end_free,
+                       values.get("chamfer") or "none", _mm(values.get("chamfer_size"), 1.0), to_other,
+                       grown=tall)
+    _store(f, settings(chamfer))
+    key = (doc.Name, f.Name)
+    if safe.busy():  # in its dialog: shown standing on the part, joined to it on OK (finish_previews)
+        _PREVIEW.add(key)
+    else:
+        _PREVIEW.discard(key)
+    f.touch()
+    doc.recompute()
+    if "Invalid" in f.State:
+        raise ValueError(f.getStatusString() or "The thread can't be grown with these values")
+    if f.Shape.isNull() or not f.Shape.isValid():
+        raise ValueError("The thread can't be built with these values (check the size and the clearance)")
+    return f
+
+
+def _section(outline, theta, h, shift, scale=1.0, base=0.0):
+    """The tooth's outline (r, z) on the half plane at angle theta round the axis, h along it, moved out by shift,
+    shrunk by scale towards its root on the surface (radius base)."""
+    u = App.Vector(math.cos(theta), math.sin(theta), 0)
+    p = lambda q: u * (base + (q[0] - base) * scale + shift) + App.Vector(0, 0, h + q[1] * scale)
+    return Part.Wire([Part.LineSegment(p(s[1]), p(s[2])).toShape() if s[0] == "line"
+                      else Part.Arc(p(s[1]), p(s[2]), p(s[3])).toShape() for s in outline])
+
+
+def grown_teeth(f):
+    """The teeth of a grown thread (a compound of its pieces), in the part's coordinates: the tooth swept along a
+    helix on the face, at a plain end growing out of the surface over a quarter turn, lower and narrower to nothing
+    (smoothly), so it starts and ends inside the face; at a chamfered end running out past it, for the chamfer to
+    cut."""
+    doc = f.Document
+    values = _load(f)
+    obj, _sub, face = _face(doc, values)
+    internal, radius, edge, face_len, to_other, start_free, end_free, end_round = _geometry(
+        obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
+    clearance = _mm(values.get("clearance"), 0.2)
+    spec = _spec(values, 2 * radius, internal, clearance, True)
+    outline = profile.outline(spec, internal, clearance, grow=True, base=radius)
+    rs = [pt[0] for s in outline for pt in s[1:]]
+    tall = (radius - min(rs)) if internal else (max(rs) - radius)  # how far the tooth stands off the surface
+    margin = profile.outline_width(outline) / 2.0 + _MARGIN
+    offset = _mm(values.get("offset"), 0.0)
+    # a chamfered free end: the teeth run full height out past it, and the chamfer (made after the thread) cuts
+    # them with the part's corner, as on a bolt (the user: "the thread reaches the end of the chamfer"); a plain
+    # end: they rise out of the surface and sink back into it inside the face
+    chamfer = values.get("chamfer") or "none"
+    out0 = chamfer in ("start", "both") and start_free and offset == 0
+    out1 = chamfer == "both" and end_free and end_round and values.get("length_mode") != "distance"
+    beyond = margin + 0.5 * spec.pitch
+    a0 = -beyond if out0 else offset + margin
+    a1 = face_len + beyond if out1 else face_len - margin
+    if values.get("length_mode") == "distance":
+        a1 = min(a1, max(a0, offset) + max(f.Height.Value - margin, 0.0))
+    height = a1 - a0
+    if height < 0.5 * spec.pitch:
+        raise ValueError("The face is too short for a grown thread of this pitch")
+    total = 2 * math.pi * height / spec.pitch
+    fade = min(2 * math.pi * FADE, total / 3.0)
+    fade0, fade1 = (0.0 if out0 else fade), (0.0 if out1 else fade)
+    left = values.get("hand") == "left"
+    into = 1.0 if internal else -1.0  # the surface's material: out from a bore, in towards a rod's axis
+
+    def risen(a):
+        near = [a / fade0] if fade0 else []
+        near += [(total - a) / fade1] if fade1 else []
+        k = min(max(min(near), 0.0), 1.0) if near else 1.0
+        # 0 at a plain end, 1 at full height, along a quarter circle: the end is a round nose (an S-curve was slow
+        # to the end and drew a long thin spike)
+        return math.sqrt(max(k * (2.0 - k), 0.0))
+
+    # a plain end: the tooth grows lower and narrower together, down to a crumb sunk into the surface (the user:
+    # "it ends in a pointed tongue: lower and narrower smoothly, like on a moulded cap")
+    smallest = 0.05
+
+    def scale(a):
+        return smallest + (1.0 - smallest) * risen(a)
+
+    def shift(a):
+        return into * (smallest * tall + 0.05) * (1.0 - risen(a))
+
+    def sweep(a_from, a_to, sections):
+        """The tooth swept along the helix from angle a_from to a_to, through sections at those angles."""
+        rise = spec.pitch / (2 * math.pi)
+        spine = Part.makeHelix(spec.pitch, (a_to - a_from) * rise, radius, 0.0, left)
+        spine.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(-a_from if left else a_from))
+        spine.translate(App.Vector(0, 0, a_from * rise))
+        ps = Part.BRepOffsetAPI.MakePipeShell(Part.Wire(spine))
+        ps.setBiNormalMode(App.Vector(0, 0, 1))
+        for a in sections:
+            ps.add(_section(outline, -a if left else a, a * rise, shift(a), scale(a), radius), False, False)
+        ps.build()
+        ps.makeSolid()
+        piece = ps.shape()
+        piece = piece.Solids[0] if piece.Solids else piece
+        if piece.Volume < 0:
+            piece.reverse()
+        return piece
+
+    # rising, full height, sinking: one sweep with many sections bulged far out, or would not close
+    steps = 6
+    pieces = [sweep(0.0, fade0, [fade0 * k / steps for k in range(steps + 1)])] if fade0 else []
+    run = total - fade0 - fade1
+    if run > 1e-6:  # a turn a piece: one sweep of 46 turns came out with half the teeth missing (the user's rod)
+        n = max(1, int(math.ceil(run / (2 * math.pi) - 1e-9)))
+        for k in range(n):
+            a = fade0 + run * k / n
+            pieces.append(sweep(a, fade0 + run * (k + 1) / n, [a]))
+    if fade1:
+        pieces.append(sweep(total - fade1, total, [total - fade1 + fade1 * k / steps for k in range(steps + 1)]))
+    teeth = Part.makeCompound(pieces)  # joined to the part in one fuse: piece by piece took 13 s on a long bore
+    start = obj.Shape.getElement(edge)
+    along = App.Vector(to_other)
+    along.normalize()
+    place = App.Placement(start.Curve.Center + along * a0, App.Rotation(App.Vector(0, 0, 1), along))
+    teeth.transformShape(place.toMatrix())
+    return _inside_the_mouth(teeth, obj.Shape, face, along, face_len)
+
+
+def _swept(face, way):
+    """A face swept along `way` as a solid, or None."""
+    try:
+        prism = face.extrude(way)
+        if prism.Volume < 0:
+            prism.reverse()
+        return prism if prism.isValid() and prism.Volume > 1e-9 else None
+    except Exception:
+        return None
+
+
+def _inside_the_mouth(teeth, base, face, axis, face_len):
+    """The teeth cut where they run out of the round face past an end that is no circle square to its axis (the
+    user's hole with its mouth in a curved face: the teeth ran on into the air): each face of the part met at such an
+    end, swept along the axis away from the hole, is air the teeth may not reach."""
+    ragged = []
+    for e in face.Edges:
+        c = e.Curve
+        if c.TypeId == "Part::GeomLine" and abs(abs(c.Direction.dot(axis)) - 1.0) < 1e-6:
+            continue  # the seam
+        if c.TypeId == "Part::GeomCircle" and abs(abs(c.Axis.dot(axis)) - 1.0) < 1e-6:
+            continue
+        ragged.append(e)
+    if not ragged:
+        return teeth
+    middle = face.CenterOfMass
+    radius = face.Surface.Radius
+    span = face_len + 4 * radius + 10.0
+    air = []
+    for e in ragged:
+        out = axis if (e.CenterOfMass - middle).dot(axis) > 0 else axis * -1
+        # the part's face round the mouth only, up to just past the edge: a whole round face swept went invalid,
+        # and its far side (across a bore the hole breaks into) is no mouth
+        ends = [(p - middle).dot(out) for p in e.discretize(24)]
+        column = Part.makeCylinder(radius + 2.0, max(ends) + 1.0, middle, out)
+        for other in base.Faces:
+            if other.isSame(face) or not any(e.isSame(x) for x in other.Edges):
+                continue
+            try:  # its whole surface: the mouth itself is a hole in the face, and swept with it the air had a hole
+                whole = other.Surface.toShape(*other.ParameterRange)  # just where the teeth stuck out
+            except Exception:
+                whole = other
+            try:
+                for piece in whole.common(column).Faces:
+                    prism = _swept(piece, out * span)
+                    if prism is not None:
+                        air.append(prism)
+            except Exception:
+                pass
+    if not air:
+        return teeth
+    tool = air[0] if len(air) == 1 else air[0].fuse(air[1:])
+    pieces = []
+    for piece in teeth.Solids:  # each by itself: the turns overlap where they meet, and a cut of them all at once
+        try:                     # took only part of what lies out
+            left = piece.cut(tool) if piece.BoundBox.intersect(tool.BoundBox) else piece
+        except Exception:
+            left = piece
+        pieces += [s for s in left.Solids if s.Volume > 1e-6]
+    return Part.makeCompound(pieces) if pieces else teeth
+
+
+def _joined(a, b):
+    """a fused with b (a compound's solids: all in one fuse), one solid: a plain fuse of a flat-flanked tooth into a
+    rod came back invalid, in two pieces; a fuse with a tenth of a micron's tolerance joins them."""
+    tools = b.Solids if isinstance(b, Part.Compound) else b
+
+    def wrong(shape):  # (it even came back valid, one solid: the teeth alone, the rod lost)
+        box = App.BoundBox(a.BoundBox)
+        box.enlarge(-1e-4)
+        return not shape.isValid() or len(shape.Solids) != 1 or not shape.BoundBox.isInside(box)
+    shape = a.fuse(tools)
+    if wrong(shape):
+        shape = a.fuse(tools, 1e-4)
+    return shape.Solids[0] if len(shape.Solids) == 1 else shape
+
+
+def finish_previews(doc):
+    """Grown threads shown in their dialog standing on the part (no fuse: 13 s at every value on a long bore — the
+    fuse of FreeCAD's own helix takes as long) are joined to it now, once."""
+    names = [n for d, n in list(_PREVIEW) if d == doc.Name]
+    for n in names:
+        _PREVIEW.discard((doc.Name, n))
+        o = doc.getObject(n)
+        if o is not None:
+            o.touch()
+    if names:
+        doc.recompute()
+
+
+class GrownThread:
+    """The proxy of a grown thread. FreeCAD saves its module path (incad.features.thread) and class name in the
+    file."""
+
+    def __init__(self, obj):
+        if "Height" not in obj.PropertiesList:
+            obj.addProperty("App::PropertyLength", "Height", "Thread", "The thread's length (Distance)")
+        obj.Proxy = self
+
+    def execute(self, obj):
+        teeth = grown_teeth(obj)
+        base = obj.BaseFeature
+        has_base = base is not None and not base.Shape.isNull() and base.Shape.Solids
+        if has_base and (obj.Document.Name, obj.Name) in _PREVIEW and safe.busy():
+            shape = Part.makeCompound([base.Shape] + teeth.Solids)  # the dialog's preview: the fuse comes on OK
+        elif has_base:
+            shape = _joined(base.Shape, teeth)
+        else:
+            shape = _joined(teeth.Solids[0], teeth.Solids[1:]) if len(teeth.Solids) > 1 else teeth
+        if hasattr(obj, "AddSubShape"):
+            try:
+                obj.AddSubShape = teeth
+            except Exception:
+                pass
+        obj.Shape = shape
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
 
 HELPER = "InCadHelperOf"  # on objects InCad makes for a feature (the thread's chamfer): shown under it, deleted with it
 ROLE = "InCadHelperRole"  # "prep" (fill / bore before the thread); none = the chamfer after it
@@ -511,10 +794,12 @@ def _remove_helpers(doc, body, f, role=None):
                 doc.removeObject(o.Name)
 
 
-def _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free, mode, size):
+def _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_free, end_free, mode, size,
+             to_other=None, before=False, grown=None):
     """A 45° lead-in chamfer at the free end(s) of the threaded face: a revolve cut (Groove) of a triangle on the
     thread's own section plane, so it needs no face names and the thread cuts through it. None when there is
-    nothing to chamfer (no free end asked for)."""
+    nothing to chamfer (no free end asked for). before: right before the thread instead. grown (the teeth's height
+    and a pitch): the cone goes on out past the teeth's tips and takes all a grown thread leaves past the end too."""
     ends = []
     if mode in ("start", "both") and start_free:
         ends.append((0.0, 1.0, radii[0]))
@@ -524,23 +809,50 @@ def _chamfer(doc, body, f, obj, edge, internal, radii, sign, face_len, start_fre
         _remove_helpers(doc, body, f, "chamfer")
         return None
     existing = [h for h in helpers_of(f) if _role(h) == "chamfer"]
+    if existing and before != (f.BaseFeature is existing[0]):  # on the other side of its thread: made again
+        _remove_helpers(doc, body, f, "chamfer")
+        existing = []
     g = existing[0] if existing else None
     sk = g.Profile[0] if g is not None and isinstance(g.Profile, (tuple, list)) and g.Profile else None
     old_tip = body.Tip
     if g is None:
-        body.Tip = f  # the chamfer goes right after its thread
+        if not before:
+            body.Tip = f  # the chamfer goes right after its thread
         sk = body.newObject("Sketcher::SketchObject", "ThreadChamferProfile")
     sk.AttachmentSupport = [(obj, edge)]
     sk.MapMode = "SectionOfRevolution"
     sk.deleteAllGeometry()
     sk.recompute()  # the sketch alone: no feature is recomputed with an empty profile
+    if sign is None:  # (a grown thread has no profile sketch of its own to tell the way along the face)
+        ly = sk.getGlobalPlacement().Rotation.multVec(App.Vector(0, 1, 0))
+        sign = 1.0 if to_other.dot(ly) > 0 else -1.0
     inward = size if internal else -size  # the end face is inside the shaft, outside the hole
     for at, into, radius in ends:
         y0 = sign * at
-        pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0), App.Vector(radius, y0 + sign * into * size, 0)]
-        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % 3]) for i in range(3)])
+        if grown:  # the 45° cone from the corner on out past the teeth, and everything past the end face
+            out = -(grown + 1.0) if internal else grown + 1.0
+            far = sign * into * (2 * grown + size + 2.0)
+            pts = [App.Vector(radius + inward, y0 - far, 0), App.Vector(radius + out, y0 - far, 0),
+                   App.Vector(radius + out, y0 + sign * into * (size + abs(out)), 0), App.Vector(radius + inward, y0, 0)]
+        else:
+            pts = [App.Vector(radius, y0, 0), App.Vector(radius + inward, y0, 0),
+                   App.Vector(radius, y0 + sign * into * size, 0)]
+        sk.addGeometry([Part.LineSegment(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))])
     sk.Visibility = False
-    if g is None:
+    if g is None and before:
+        g = doc.addObject("PartDesign::Groove", "ThreadChamfer")
+        base = f.BaseFeature
+        body.insertObject(g, f, False)  # right before the thread, which grows its teeth on the chamfered part
+        g.BaseFeature = base
+        f.BaseFeature = g
+        g.addProperty("App::PropertyString", HELPER, "InCad", "The thread this chamfer belongs to")
+        g.setPropertyStatus(HELPER, "Hidden")
+        setattr(g, HELPER, f.Name)
+        g.Profile = sk
+        g.Angle = 360.0
+        g.Visibility = False
+        body.Tip = old_tip
+    elif g is None:
         g = body.newObject("PartDesign::Groove", "ThreadChamfer")
         g.addProperty("App::PropertyString", HELPER, "InCad", "The thread this chamfer belongs to")
         g.setPropertyStatus(HELPER, "Hidden")
@@ -576,7 +888,9 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
     sk.deleteAllGeometry()
     sk.recompute()  # placed (the walls are sampled in its frame); no feature is recomputed with an empty profile
     lo, hi = (hole, radius + 0.02) if hole < radius else (radius - 0.02, hole)
-    if want == "PartDesign::Revolution":  # new material only where the hole has a wall all round, joined to it
+    if want == "PartDesign::Revolution" and not internal:  # a rod built up: along it
+        spans = [(max(a0, 0.0), min(a1, face_len))]
+    elif want == "PartDesign::Revolution":  # new material only where the hole has a wall all round, joined to it
         spans = _walled(obj.Shape, sk.getGlobalPlacement(), sign, radius, max(a0, 0.0), min(a1, face_len))
     else:  # a cut may run past a free end, so the mouth opens cleanly; at a closed end (a shoulder) the thread's
         # last turn reaches it, so the cut does too (never into it)
@@ -615,30 +929,33 @@ def _prep(doc, body, f, obj, edge, radius, hole, sign, a0, a1, face_len, start_f
     return g, (any(b0 <= 1e-6 for b0, _ in spans), any(b1 >= face_len - 1e-6 for _, b1 in spans))
 
 
-def _walled(solid, placement, sign, radius, a0, a1, angles=12):
+def _walled(solid, placement, sign, radius, a0, a1):
     """The stretches of [a0, a1] along the hole where it has material all round just outside its wall (a crossing
     bore or a slot opens a window: no fill there, it would grow into that space). In the section sketch's frame
-    the hole's axis is the local y axis."""
-    import math
+    the hole's axis is the local y axis. One boolean of a thin tube round the wall: the points one by one took
+    40 ms each on a part with a modeled thread, minutes on a long hole (the user: the program hung)."""
+    if a1 - a0 < 0.3:
+        return []
     step = 0.1
-    n = max(2, int(math.ceil((a1 - a0) / step)) + 1)
-    rr = radius + 0.1
-    ring = [(rr * math.cos(2 * math.pi * k / angles), rr * math.sin(2 * math.pi * k / angles)) for k in range(angles)]
-
-    def walled(a):
-        return all(solid.isInside(placement.multVec(App.Vector(x, sign * a, z)), 1e-6, True) for x, z in ring)
-
-    spans, begin = [], None
-    for i in range(n):
-        a = a0 + (a1 - a0) * i / (n - 1)
-        if walled(a):
-            if begin is None:
-                begin = a
-        elif begin is not None:
-            spans.append((begin, a - step))
-            begin = None
-    if begin is not None:
-        spans.append((begin, a1))
+    tube = Part.makeCylinder(radius + 0.15, a1 - a0, App.Vector(0, sign * a0, 0), App.Vector(0, sign, 0)).cut(
+        Part.makeCylinder(radius + 0.05, a1 - a0, App.Vector(0, sign * a0, 0), App.Vector(0, sign, 0)))
+    tube.transformShape(placement.toMatrix())
+    back = placement.inverse().toMatrix()
+    windows = []
+    for piece in tube.cut(solid).Solids:
+        if piece.Volume < 1e-5:
+            continue
+        piece = piece.copy()
+        piece.transformShape(back)
+        bb = piece.BoundBox
+        windows.append((min(sign * bb.YMin, sign * bb.YMax) - step, max(sign * bb.YMin, sign * bb.YMax) + step))
+    spans, at = [], a0
+    for w0, w1 in sorted(windows):
+        if w0 > at:
+            spans.append((at, min(w0, a1)))
+        at = max(at, w1)
+    if at < a1:
+        spans.append((at, a1))
     return [(b0, b1) for b0, b1 in spans if b1 - b0 >= 0.3]
 
 
@@ -675,7 +992,8 @@ def companions(doc, f):
 
 def _discard(doc, body, t):
     _remove_helpers(doc, body, t)
-    sk = t.Profile[0] if isinstance(t.Profile, (tuple, list)) and t.Profile else None
+    prof = getattr(t, "Profile", None)
+    sk = prof[0] if isinstance(prof, (tuple, list)) and prof else None
     if body.Tip is t:
         body.Tip = t.BaseFeature
     for obj in (t, sk):
@@ -706,12 +1024,19 @@ def _create_one(doc, body, values):
     obj, _, face = _face(doc, values)  # refuse a wrong face or start face before anything is made
     _geometry(obj, face, bool(values.get("flip")), _plane_of(doc, values.get("start_face")))
     tip = body.Tip
-    f = body.newObject("PartDesign::AdditiveHelix" if values.get("build") == "grow" else "PartDesign::SubtractiveHelix",
-                       "Thread")
+    if values.get("build") == "grow":  # teeth that grow out of the surface and back into it: a feature of its own
+        f = body.newObject(GROWN, "Thread")
+        GrownThread(f)
+        f.BaseFeature = tip
+        from incad.core import document
+        document.show_like(f, tip)  # (a new feature of its own shows nothing until it is given the part's look)
+    else:
+        f = body.newObject("PartDesign::SubtractiveHelix", "Thread")
     try:
         _build(doc, body, f, values)
     except Exception:
-        sk = f.Profile[0] if isinstance(f.Profile, (tuple, list)) and f.Profile else None
+        prof = getattr(f, "Profile", None)
+        sk = prof[0] if isinstance(prof, (tuple, list)) and prof else None
         _remove_helpers(doc, body, f)
         for obj in (f, sk):  # a refused thread leaves nothing behind
             if obj is not None and doc.getObject(obj.Name) is not None:
@@ -737,6 +1062,11 @@ def read(doc, f):
 def update(doc, f, values):
     body = f.getParentGeoFeatureGroup()
     items = _items(values, doc) or [""]
+    want = GROWN if values.get("build") == "grow" else "PartDesign::SubtractiveHelix"
+    if f.TypeId != want:  # cut <-> grown, or grown by 0.14 (an AdditiveHelix trimmed at the ends): made again
+        _discard(doc, body, f)
+        doc.recompute()
+        return create(doc, body, None, values)
     mates = companions(doc, f)
     first = _build(doc, body, f, _one(values, items[0]))
     kept = []

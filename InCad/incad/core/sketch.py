@@ -760,17 +760,26 @@ def add_rectangle_centres(sk, first=0, done=None, ours=None):
     Returns the points added."""
     import Part
     import Sketcher
+    from incad.core import prefs
     done = set() if done is None else done
     geo = sk.Geometry  # once: each read copies every element
     points = [(i, App.Vector(g.X, g.Y, g.Z)) for i, g in enumerate(geo) if g.TypeId == "Part::GeomPoint"]
     base = len(geo)
     new, ties, theirs = [], [], []
+    diagonals = prefs.rectangle_diagonals()
+    lines, ends = [], []  # ⚙ ▸ Rectangle Diagonals: (corner, corner) of each diagonal, added after the points
     for loop in _rectangles(sk, first) + _rounded_rectangles(sk, first):
         ident = frozenset(sk.getGeometryId(g) for g, _p in loop)
         if ident in done:
             continue
         done.add(ident)
         a, b = sk.getPoint(*loop[0]), sk.getPoint(*loop[2])
+        if diagonals:
+            for c1, c2 in ((loop[0], loop[2]), (loop[1], loop[3])):
+                p1, p2 = sk.getPoint(*c1), sk.getPoint(*c2)
+                if (p1 - p2).Length > 1e-9:
+                    lines.append(Part.LineSegment(p1, p2))
+                    ends.append((c1, c2))
         centre = (a + b) * 0.5
         there = next((i for i, p in points if _same(p, centre)), None)
         if there is not None:
@@ -780,9 +789,14 @@ def add_rectangle_centres(sk, first=0, done=None, ours=None):
         points.append((base + len(new), centre))
         ties.append((loop[0], loop[2], base + len(new)))
         new.append(Part.Point(centre))
-    if new:
-        sk.addGeometry(new, True)
-        sk.addConstraint([Sketcher.Constraint("Symmetric", g1, p1, g2, p2, c, 1) for (g1, p1), (g2, p2), c in ties])
+    if new or lines:
+        sk.addGeometry(new + lines, True)
+        first_line = base + len(new)
+        cons = [Sketcher.Constraint("Symmetric", g1, p1, g2, p2, c, 1) for (g1, p1), (g2, p2), c in ties]
+        for k, ((g1, p1), (g2, p2)) in enumerate(ends):
+            cons += [Sketcher.Constraint("Coincident", first_line + k, 1, g1, p1),
+                     Sketcher.Constraint("Coincident", first_line + k, 2, g2, p2)]
+        sk.addConstraint(cons)
         sk.solve()  # a list added is not solved: the solver kept the sketch from before, and a drag lost the points
         if ours is not None:
             ours.update(sk.getGeometryId(base + k) for k in range(len(new)))

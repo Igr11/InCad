@@ -133,9 +133,53 @@ def test_3_join_to_a_face_of_the_part_joins_it():
     assert abs(body.Shape.Volume - ST["volume"] - peg) < 0.05, (ST["volume"], body.Shape.Volume)
 
 
+class _Computed:
+    def __init__(self):
+        self.names = set()
+
+    def slotRecomputedObject(self, obj):
+        self.names.add(obj.Name)
+
+
+def test_4_join_to_cut_and_cancel_leave_the_part_alone():
+    """The user: "Extrude Cut lags, even the simplest". A change of Join to Cut and Cancel roll the dialog's step
+    back; the abort took its value out of the model's values, and FreeCAD then recomputed every feature using any
+    value: on a part with a modeled thread 6 s. The part's features that use a value are not computed again."""
+    from incad.core import model
+    pad = [o for o in ST["body"].Group if o.TypeId == "PartDesign::Pad"][0]
+    name = model.new_feature_parameter(doc(), "5 mm")
+    pad.setExpression("Length", "InCadModel.%s" % name)
+    doc().recompute()
+    harness.pump(500)
+    volume = ST["body"].Shape.Volume
+    watch = _Computed()
+    App.addDocumentObserver(watch)
+    try:
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(doc().Name, ST["sk"].Name)
+        commands.REGISTRY.run("feature.extrude")
+        harness.pump(1000)
+        watch.names.clear()
+        dialog().field("operation").button("join").click()
+        harness.pump(800)
+        dialog().field("operation").button("cut").click()
+        harness.pump(1000)
+        assert pad.Name not in watch.names, ("Join to Cut computed the part again", sorted(watch.names))
+        QTest.mouseClick(dialog().cancel_button, QtCore.Qt.LeftButton)
+        harness.pump(1000)
+        assert pad.Name not in watch.names, ("Cancel computed the part again", sorted(watch.names))
+    finally:
+        App.removeDocumentObserver(watch)
+    assert s().feature_session is None
+    assert "Touched" not in pad.State and "Invalid" not in ST["body"].Tip.State
+    assert abs(ST["body"].Shape.Volume - volume) < 1e-6
+    pad.setExpression("Length", None)
+
+
 def test_9_cleanup():
     App.closeDocument(doc().Name)
 
 
 harness.run([test_0_part_and_a_profile_above_it, test_1_join_then_cut_cuts_the_part,
-             test_2_back_to_join_is_its_own_solid_again, test_3_join_to_a_face_of_the_part_joins_it, test_9_cleanup])
+             test_2_back_to_join_is_its_own_solid_again, test_3_join_to_a_face_of_the_part_joins_it,
+             test_4_join_to_cut_and_cancel_leave_the_part_alone, test_9_cleanup])

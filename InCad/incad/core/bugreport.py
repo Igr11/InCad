@@ -126,7 +126,11 @@ def send(title, body, opener=None, token=None):
                                           "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "InCad-bug-report",
                                           "Content-Type": "application/json"})
     try:
-        with (opener or urllib.request.urlopen)(req, timeout=20) as resp:
+        if opener is None:
+            from incad import host
+            ctx = host.ssl_context()
+            opener = lambda r, timeout: urllib.request.urlopen(r, timeout=timeout, context=ctx)  # noqa: E731
+        with opener(req, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
         if e.code in (401, 403, 404):

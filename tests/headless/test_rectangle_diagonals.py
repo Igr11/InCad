@@ -54,6 +54,31 @@ class RectangleCentresTest(unittest.TestCase):
     def construction(self, kind):
         return [i for i in range(self.k.GeometryCount) if self.k.getConstruction(i) and self.k.Geometry[i].TypeId == kind]
 
+    def test_diagonals_when_asked(self):
+        """⚙ ▸ Rectangle Diagonals: the two diagonals as construction lines, tied to the corners (they follow)."""
+        from incad.core import prefs
+        k = self.k
+        prefs.set_rectangle_diagonals(True)
+        try:
+            ids = rect(k, 0, 0, 40, 20)
+            sketches.add_rectangle_centres(k, 0, set())
+        finally:
+            prefs.set_rectangle_diagonals(False)
+        lines = self.construction("Part::GeomLineSegment")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(self.construction("Part::GeomPoint")), 1)
+        lengths = sorted(round(k.Geometry[i].length(), 6) for i in lines)
+        self.assertEqual(lengths, [round(math.hypot(40, 20), 6)] * 2)
+        k.addConstraint(Sketcher.Constraint("DistanceX", ids[0], 1, ids[0], 2, 60))
+        k.solve()
+        self.assertEqual(sorted(round(k.Geometry[i].length(), 6) for i in lines), [round(math.hypot(60, 20), 6)] * 2,
+                         "the diagonals follow the rectangle")
+
+    def test_no_diagonals_by_default(self):
+        rect(self.k, 0, 0, 40, 20)
+        sketches.add_rectangle_centres(self.k, 0, set())
+        self.assertEqual(self.construction("Part::GeomLineSegment"), [])
+
     def test_plain_rectangle(self):
         k = self.k
         ids = rect(k, -30, 5, 10, 25)

@@ -968,9 +968,10 @@ class ThreadProfilesTest(unittest.TestCase):
         f = self.make(cyl_face(pad, 15.0), standard="custom", custom_profile="semicircle", custom_pitch="4 mm",
                       custom_depth="1.2 mm", build="grow", clearance="0 mm")
         self.check(f, v, more=True)
-        self.assertEqual(f.TypeId, "PartDesign::AdditiveHelix")
-        self.assertLess(self.body.Shape.BoundBox.XMax, 15.0 + 1.2 + 1e-3)  # no higher than the bead
-        self.assertGreater(self.body.Shape.BoundBox.XMax, 15.0 + 1.0)
+        self.assertEqual(f.TypeId, "PartDesign::FeaturePython", "grown teeth: a feature of their own")
+        top = self.body.Shape.optimalBoundingBox().XMax  # (a sweep's BoundBox is its spline's loose box)
+        self.assertLess(top, 15.0 + 1.2 + 1e-3)  # no higher than the bead
+        self.assertGreater(top, 15.0 + 1.0)
         self.assertEqual(thread.read(self.doc, f)["build"], "grow")
         # the lid: a bore with the semicircle cut into its wall
         lid = util.new_doc("Lid")
@@ -998,10 +999,194 @@ class ThreadProfilesTest(unittest.TestCase):
         finally:
             App.closeDocument(lid.Name)
 
+    def test_grown_teeth_rise_out_of_the_rod_and_sink_back_into_it(self):
+        """The user: "a grown round thread starts from nothing inside the face, grows, and runs back smoothly into
+        the wall at its end — canister caps are made so". The teeth stand full height in the middle, are sunk into
+        the rod at both ends, never reach the end faces; a triangle grows as a triangle."""
+        import math
+        for kind in ("triangle", "semicircle"):
+            with self.subTest(kind):
+                pad = shaft(self.doc, self.body, radius=10.0, length=20.0, name="Rod" + kind)
+                v = self.body.Shape.Volume
+                f = self.make(cyl_face(pad, 10.0), standard="custom", custom_profile=kind, custom_pitch="1.5 mm",
+                              custom_angle="60 °", custom_depth="0.7 mm", build="grow", clearance="0.2 mm")
+                self.check(f, v, more=True)
+                shape = self.body.Shape
+                for z in (0.0, 20.0):
+                    ends = [fc for fc in shape.Faces if fc.Surface.TypeId == "Part::GeomPlane"
+                            and abs(fc.CenterOfMass.z - z) < 1e-6]
+                    self.assertEqual(len(ends), 1, "the end faces as they were")
+                    self.assertAlmostEqual(ends[0].Area, math.pi * 100, places=3)
+
+                def tallest(z0, z1):
+                    """The highest point of the teeth between z0 and z1, from the axis."""
+                    slab = shape.common(Part.makeCylinder(12, z1 - z0, App.Vector(0, 0, z0)))
+                    return max(math.hypot(p.x, p.y) for p in [vx.Point for vx in slab.Vertexes] +
+                               [e.valueAt(e.FirstParameter + (e.LastParameter - e.FirstParameter) * k / 8)
+                                for e in slab.Edges for k in range(9)])
+                self.assertGreater(tallest(8.0, 12.0), 10.0 + 0.5, "full height in the middle")
+                self.assertLess(tallest(0.0, 0.3), 10.0 + 1e-3, "nothing at the very ends: sunk into the rod")
+                self.assertLess(tallest(19.7, 20.0), 10.0 + 1e-3)
+                thread._discard(self.doc, self.body, f)
+                self.body.removeObject(pad)
+                self.doc.removeObject(pad.Name)
+                self.doc.recompute()
+
+    def test_grown_teeth_on_a_long_rod_stand_all_along_it(self):
+        """The user's rod, 46 turns: one sweep of the middle came out with the first half of the teeth missing ("a
+        complete mess"). Every turn of a long thread stands on the rod."""
+        import math
+        sk = self.body.newObject("Sketcher::SketchObject", "LongSk")  # the user's: along X, off the origin
+        sk.AttachmentSupport = [([o for o in self.body.Origin.OriginFeatures if o.Role == "YZ_Plane"][0], "")]
+        sk.MapMode = "FlatFace"
+        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, 88.0), App.Rotation())
+        sk.addGeometry(Part.Circle(App.Vector(-40.5, 52.3, 0), App.Vector(0, 0, 1), 32.32))
+        pad = util.add_pad(self.body, sk, 256.0, name="Long")
+        self.body.Tip = pad
+        self.doc.recompute()
+        c = [fc for fc in pad.Shape.Faces if fc.Surface.TypeId == "Part::GeomCylinder"][0].Surface
+        v = self.body.Shape.Volume
+        f = self.make(cyl_face(pad, 32.32), standard="custom", custom_profile="semicircle", custom_pitch="5.5 mm",
+                      custom_depth="1.9 mm", build="grow", clearance="0.2 mm")
+        self.check(f, v, more=True)
+        shape = self.body.Shape
+        ax, at = App.Vector(c.Axis), c.Center
+        u = ax.cross(App.Vector(0, 0, 1) if abs(ax.z) < 0.9 else App.Vector(1, 0, 0))
+        u.normalize()
+        w = ax.cross(u)
+        lo = min((vx.Point - at).dot(ax) for vx in pad.Shape.Vertexes)
+        r = 32.32 + 1.0
+        for k in range(1, 12):
+            a = lo + 256.0 * k / 12
+            hits = sum(1 for j in range(24) if shape.isInside(
+                at + ax * a + u * (r * math.cos(j * math.pi / 12)) + w * (r * math.sin(j * math.pi / 12)), 1e-6, True))
+            self.assertGreater(hits, 6, ("teeth at", round(a, 1), hits))
+
+    def test_a_grown_thread_made_with_its_chamfer_ends_with_it(self):
+        """Made with the chamfer at once (not edited to it): the chamfer is the part's last step, so the teeth run
+        out past the end face are cut — End of Part stayed on the thread, and they stuck out of the hole."""
+        import math
+        shaft(self.doc, self.body, radius=15.0, length=12.0, name="Cap")
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 8.0))
+        bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        self.body.Tip = bore
+        self.doc.recompute()
+        f = self.make(cyl_face(bore, 8.0), standard="custom", custom_profile="semicircle", custom_pitch="1.5 mm",
+                      custom_depth="0.7 mm", build="grow", chamfer="start", chamfer_size="0.8 mm")
+        ch = [h for h in thread.helpers_of(f) if getattr(h, thread.ROLE, "") in ("", "chamfer")]
+        self.assertEqual(len(ch), 1)
+        self.assertIs(self.body.Tip, ch[0], "the chamfer is the last step")
+        shape = self.body.Shape
+        self.assertEqual(len(shape.Solids), 1)
+        for z0 in (12.0, -10.0):
+            self.assertLess(shape.common(Part.makeBox(60, 60, 10, App.Vector(-30, -30, z0))).Volume, 1e-6, z0)
+
+    def test_a_grown_thread_can_be_deleted(self):
+        """The user: "why can't I delete this?" — Delete looked for the thread's profile sketch, which a grown
+        thread has none of."""
+        from incad.core import delete
+        pad = shaft(self.doc, self.body, radius=10.0, length=20.0, name="Del")
+        f = self.make(cyl_face(pad, 10.0), standard="custom", custom_profile="semicircle", custom_pitch="2 mm",
+                      custom_depth="0.8 mm", build="grow")
+        name = f.Name
+        delete.delete(f)
+        self.doc.recompute()
+        self.assertIsNone(self.doc.getObject(name))
+        self.assertIs(self.body.Tip, pad)
+
+    def test_grown_teeth_stay_on_the_wall_of_a_hole_into_a_curved_face(self):
+        """The user's hole with its mouth in a curved face: the grown teeth ran on out of it into the air. Now they
+        stand only where the wall is behind them."""
+        box = self.body.newObject("PartDesign::AdditiveBox", "Block")
+        box.Length, box.Width, box.Height = 30.0, 20.0, 10.0
+        box.Placement = App.Placement(App.Vector(-15, -10, 0), App.Rotation())
+        saddle = self.body.newObject("PartDesign::SubtractiveCylinder", "Saddle")
+        saddle.Radius, saddle.Height = 8.0, 10.0
+        hole = self.body.newObject("PartDesign::SubtractiveCylinder", "Hole")
+        hole.Radius, hole.Height = 2.5, 15.0  # its far end in the saddle's curved wall
+        hole.Placement = App.Placement(App.Vector(15, 5, 5), App.Rotation(App.Vector(0, 1, 0), -90))
+        self.body.Tip = hole
+        self.doc.recompute()
+        v = self.body.Shape.Volume
+        f = self.make(cyl_face(hole, 2.5), standard="custom", custom_profile="semicircle", custom_pitch="1.5 mm",
+                      custom_depth="0.6 mm", build="grow", clearance="0.2 mm")
+        self.check(f, v, more=True)
+        out = self.body.Shape.cut(saddle.Shape)
+        self.assertLess(out.Volume, 1e-3, "nothing out in the saddle's air: %g" % out.Volume)
+        added = self.body.Shape.Volume - v
+        self.assertGreater(added, 5.0, "the teeth are there")
+
+    def test_grown_teeth_in_a_through_hole_leave_clean_end_faces(self):
+        """The user's p2_test: a bead grown in a through hole, Start face picked: the end faces showed a seam ring
+        round the hole ("when a thread is cut there is no such thing") — teeth grown past the faces and trimmed.
+        Now they rise out of the wall inside the hole and sink back into it: each end face stays one face."""
+        import math
+        shaft(self.doc, self.body, radius=15.0, length=12.0, name="Cap")
+        sk = self.body.newObject("Sketcher::SketchObject", "BoreSk")
+        sk.AttachmentSupport = [(util.xy_plane(self.body), "")]
+        sk.MapMode = "FlatFace"
+        sk.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 8.0))
+        bore = self.body.newObject("PartDesign::Pocket", "Bore")
+        bore.Profile = sk
+        bore.Type = "ThroughAll"
+        bore.Reversed = True
+        self.body.Tip = bore
+        self.doc.recompute()
+        v = self.body.Shape.Volume
+        bottom = [i + 1 for i, fc in enumerate(bore.Shape.Faces)
+                  if fc.Surface.TypeId == "Part::GeomPlane" and abs(fc.CenterOfMass.z) < 1e-6][0]
+        f = self.make(cyl_face(bore, 8.0), start_face="%s:Face%d" % (bore.Name, bottom), standard="custom",
+                      custom_profile="semicircle", custom_pitch="1.5 mm", custom_depth="0.7 mm", build="grow",
+                      clearance="0.2 mm")
+        self.check(f, v, more=True)
+        shape = self.body.Shape
+        for z in (0.0, 12.0):
+            ends = [fc for fc in shape.Faces if fc.Surface.TypeId == "Part::GeomPlane"
+                    and abs(fc.CenterOfMass.z - z) < 1e-6 and abs(fc.normalAt(0, 0).z) > 0.99]
+            self.assertEqual(len(ends), 1, ("one end face, no seam ring", z, len(ends)))
+        r = 8.0 - 0.35  # in the bead (it rises out of the wall a little way in from each end)
+        for z in (3.0, 6.0, 9.0):
+            hits = sum(1 for k in range(48)
+                       if shape.isInside(App.Vector(r * math.cos(k * math.pi / 24), r * math.sin(k * math.pi / 24), z),
+                                         1e-6, True))
+            self.assertGreater(hits, 10, ("teeth there", z))
+        for z0 in (12.0, -10.0):
+            beyond = shape.common(Part.makeBox(60, 60, 10, App.Vector(-30, -30, z0))).Volume
+            self.assertLess(beyond, 1e-6, "nothing past the end faces")
+        # the user: "and there is no chamfer option either"; "past a certain size the chamfer leaves this crap";
+        # "the thread reaches the end of the chamfer": the teeth run full height into the chamfer, which cuts them
+        # with the corner (as on a bolt), one solid, no blades
+        v2 = shape.Volume
+        f = thread.update(self.doc, f, dict(thread.read(self.doc, f), chamfer="both", chamfer_size="2.5 mm"))
+        self.doc.recompute()
+        ch = [h for h in thread.helpers_of(f) if getattr(h, thread.ROLE, "") in ("", "chamfer")]
+        self.assertEqual(len(ch), 1)
+        self.assertIs(ch[0].BaseFeature, f, "the chamfer is made after the thread")
+        self.assertIs(self.body.Tip, ch[0])
+        shape = self.body.Shape
+        self.assertTrue(shape.isValid())
+        self.assertEqual(len(shape.Solids), 1, "no blades cut off the teeth")
+        for z0 in (12.0, -10.0):
+            self.assertLess(shape.common(Part.makeBox(60, 60, 10, App.Vector(-30, -30, z0))).Volume, 1e-6)
+        for z in (0.1, 11.9):  # in the chamfered corner, at the teeth's radius: air all round
+            self.assertFalse(any(shape.isInside(App.Vector(7.85 * math.cos(k * math.pi / 12),
+                                                           7.85 * math.sin(k * math.pi / 12), z), 1e-6, True)
+                                 for k in range(24)), z)
+        r = 8.0 - 0.35  # and the teeth right up to it, full height
+        for z in (3.0, 6.0, 9.0):
+            self.assertGreater(sum(1 for k in range(48) if shape.isInside(App.Vector(
+                r * math.cos(k * math.pi / 24), r * math.sin(k * math.pi / 24), z), 1e-6, True)), 10, z)
+
     def test_grown_iso_thread_on_a_rod_is_the_bolt(self):
         pad = shaft(self.doc, self.body, radius=4.0, length=20.0)  # about M10's minor diameter
         v = self.body.Shape.Volume
         f = self.make(cyl_face(pad, 4.0), standard="iso", size="M10", build="grow", clearance="0 mm")
         self.check(f, v, more=True)
-        R = self.body.Shape.BoundBox.XMax
+        R = self.body.Shape.optimalBoundingBox().XMax
         self.assertLess(R, 4.0 + st.spec("iso", "M10").depth + 1e-3)

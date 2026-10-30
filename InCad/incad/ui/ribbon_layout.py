@@ -7,7 +7,7 @@ LAYOUT = {
         ["3D Model", [["Sketch", ["sketch.start", "feature.line3d"]],
                       ["Create", ["feature.extrude", "feature.revolve", "feature.hole",
                                   ["feature.sweep", "feature.loft", "feature.coil"], ["feature.gear", "feature.worm"],
-                                  "feature.emboss"]],
+                                  "feature.emboss", ["feature.boss", "feature.lip", "feature.snap_fit"]]],
                       ["Modify", [["feature.fillet", "feature.full_round", "feature.chamfer"], ["feature.shell", "feature.draft"],
                                   "feature.thread", "feature.threads_toggle", "feature.combine", "feature.split",
                                   "feature.move_face"]],
@@ -32,7 +32,7 @@ LAYOUT = {
     ],
     "sketch": [
         ["Sketch", [["Create", [["sketch.line", "sketch.line_single"], ["sketch.spline", "sketch.spline_cv"],
-                                ["sketch.circle", "sketch.circle_3pt", "sketch.ellipse", "sketch.ellipse_3pt"],
+                                ["sketch.circle", "sketch.circle_3pt", "sketch.circle_tangent", "sketch.ellipse", "sketch.ellipse_3pt"],
                                 ["sketch.arc", "sketch.arc_center", "sketch.arc_ellipse"],
                                 ["sketch.rectangle", "sketch.rectangle_center", "sketch.rectangle_3pt",
                                  "sketch.rectangle_center_3pt", "sketch.rectangle_rounded"],

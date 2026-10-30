@@ -47,7 +47,9 @@ class _StepButton(QtWidgets.QToolButton):
         self.big = False
 
     def mousePressEvent(self, event):
+        import time
         self.big = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+        self._last_step = time.monotonic()  # the first auto-repeat comes 0.3 s after the press (FeatureDialog._arrow)
         super().mousePressEvent(event)
 
 
@@ -154,17 +156,20 @@ class PointsField(QtWidgets.QWidget):
 
 
 class ChoiceField(QtWidgets.QWidget):
-    """Segment buttons, at most PER_ROW in a row, so a long list of choices does not make the dialog too wide."""
+    """Segment buttons, at most PER_ROW in a row, so a long list of choices does not make the dialog too wide.
+    `multi` (a "toggles" field): each one on or off by itself, the value the "on" ones joined by commas."""
     changed = Signal()
     PER_ROW = 4
 
-    def __init__(self, choices, parent=None):
+    def __init__(self, choices, parent=None, multi=False):
         super().__init__(parent)
         grid = QtWidgets.QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
         self._group = QtWidgets.QButtonGroup(self)
-        self._group.setExclusive(True)
+        self._group.setExclusive(not multi)
+        self._multi = multi
+        self.PER_ROW = 6 if multi else self.PER_ROW
         self._buttons = {}
         for i, (value, label) in enumerate(choices):
             b = QtWidgets.QToolButton(self)
@@ -181,13 +186,19 @@ class ChoiceField(QtWidgets.QWidget):
         return self._buttons[value]
 
     def value(self):
+        if self._multi:
+            return ",".join(v for v, b in self._buttons.items() if b.isChecked())
         for v, b in self._buttons.items():
             if b.isChecked():
                 return v
         return None
 
     def set_value(self, value):
-        if value in self._buttons:
+        if self._multi:
+            on = set(str(value or "").split(","))
+            for v, b in self._buttons.items():
+                b.setChecked(v in on)
+        elif value in self._buttons:
             self._buttons[value].setChecked(True)
 
 
@@ -235,6 +246,10 @@ class _FieldsArea(QtWidgets.QScrollArea):
 
 
 class FeatureDialog(QtWidgets.QFrame):
+    """A feature's settings over the 3D view. Its title row drags it (the user: "these windows sometimes take up more
+    than half the screen ... the ability to move them"); the next dialog opens where the last one was left."""
+    LONG_INFO = 110  # characters: a longer info line shows its first sentence and "more"
+    spot = None  # QPoint where the user last left a dialog, kept for the next one
     changed = Signal(dict)
     accepted = Signal()
     applied = Signal()
@@ -263,10 +278,14 @@ class FeatureDialog(QtWidgets.QFrame):
         head.addWidget(icon_label)
         title_label = QtWidgets.QLabel(title)
         title_label.setObjectName("InCadDialogTitle")
+        title_label.setCursor(QtCore.Qt.OpenHandCursor)
+        title_label.setToolTip("Drag to move")
         head.addWidget(title_label, 1)
+        self._drag = None
         col.addLayout(head)
         form = QtWidgets.QGridLayout()
         form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(4)
         self._steppers, self._lists = {}, {}
         self._toggles = {}  # key -> (button, the value field it greys out)
         r = -1
@@ -325,6 +344,9 @@ class FeatureDialog(QtWidgets.QFrame):
         self._info = QtWidgets.QLabel("")  # what the values make (a gear's diameters): never blocks OK
         self._info.setObjectName("InCadDialogInfo")
         self._info.setWordWrap(True)
+        self._info.setTextFormat(QtCore.Qt.RichText)
+        self._info.linkActivated.connect(self._toggle_info)
+        self._info_full, self._info_open = "", False
         self._info.hide()
         col.addWidget(self._info)
         self._error = QtWidgets.QLabel("")
@@ -390,8 +412,8 @@ class FeatureDialog(QtWidgets.QFrame):
             w.setFixedHeight(int(line * 2.6 + 14))
             w.textChanged.connect(self._typed)
             return w
-        if f.kind == "choice":
-            w = ChoiceField(f.choices, self)
+        if f.kind in ("choice", "toggles"):
+            w = ChoiceField(f.choices, self, multi=f.kind == "toggles")
             w.changed.connect(self._emit)
             return w
         if f.kind == "combo":
@@ -438,7 +460,7 @@ class FeatureDialog(QtWidgets.QFrame):
             b.setFixedSize(18, 11)
             b.setFocusPolicy(QtCore.Qt.NoFocus)
             b.setAutoRepeat(True)
-            b.clicked.connect(lambda _=False, k=f.key, d=delta, b=b: self._step(k, d * (10 if b.big else 1)))
+            b.clicked.connect(lambda _=False, k=f.key, d=delta, b=b: self._arrow(b, k, d))
             col.addWidget(b)
             arrows.append(b)
         row.addLayout(col)
@@ -571,6 +593,19 @@ class FeatureDialog(QtWidgets.QFrame):
         for b in self._steppers.get(key, ()):
             b.setEnabled(can)
 
+    def _arrow(self, button, key, delta):
+        """An arrow click, or its auto-repeat while held. A repeat that comes after a slow preview held up the
+        window means the release may have been lost then: the button lets go (the user: the pitch climbed by itself
+        to 1243 mm, one millimetre a repeat, the button stuck down)."""
+        import time
+        now = time.monotonic()
+        last, button._last_step = getattr(button, "_last_step", 0.0), now
+        if button.isDown() and now - last > 0.6:
+            button.setDown(False)
+            return
+        self._step(key, delta * (10 if button.big else 1))
+        button._last_step = time.monotonic()  # the gap to the next repeat counts from the end of this one
+
     def _step(self, key, delta):
         w = self._widgets[key]
         f = self._fields[key]
@@ -618,7 +653,7 @@ class FeatureDialog(QtWidgets.QFrame):
                 out[key] = w.text().strip()
             elif f.kind == "text":
                 out[key] = w.toPlainText()
-            elif f.kind == "choice":
+            elif f.kind in ("choice", "toggles"):
                 out[key] = w.value()
             elif f.kind == "combo":
                 out[key] = w.currentData() if w.currentIndex() >= 0 else ""
@@ -650,7 +685,7 @@ class FeatureDialog(QtWidgets.QFrame):
                 elif f.kind == "text":
                     if w.toPlainText() != str(value or ""):  # (setting it again would move the cursor home)
                         w.setPlainText(str(value or ""))
-                elif f.kind == "choice":
+                elif f.kind in ("choice", "toggles"):
                     w.set_value(value)
                 elif f.kind == "combo":
                     i = w.findData(value)
@@ -847,6 +882,9 @@ class FeatureDialog(QtWidgets.QFrame):
             hint = area.sizeHint()
             area.setMinimumWidth(hint.width())  # the layout keeps a stale hint otherwise: the ▲▼ went out of sight
             area.setFixedHeight(hint.height())
+            width = max(260, hint.width())  # the lines under the fields wrap at the fields' width: a long
+            for label in (self._info, self._error):  # hint made the dialog half the screen wide
+                label.setMaximumWidth(width)
         self.adjustSize()
 
     def showEvent(self, event):
@@ -865,14 +903,75 @@ class FeatureDialog(QtWidgets.QFrame):
             pass
 
     def set_info(self, text):
-        """A line on what the values make (a kind's info hook): grey, OK stays as it is."""
-        if text != self._info.text():
-            self._info.setText(text)
-            self._info.setVisible(bool(text))
-            self._fit()
+        """A line on what the values make (a kind's info hook): grey, OK stays as it is. A long one shows its first
+        sentence and "more" (the dialog stays small); "less" folds it again."""
+        if text != self._info_full:
+            self._info_full = text
+            self._show_info_text()
+
+    def _show_info_text(self):
+        import html
+        text = self._info_full
+        first = text.split(". ")[0]
+        if len(text) <= self.LONG_INFO or len(first) >= len(text) - 2:
+            shown = html.escape(text)
+        elif self._info_open:
+            shown = '%s <a href="less">less</a>' % html.escape(text)
+        else:
+            shown = '%s… <a href="more">more</a>' % html.escape(first.rstrip(".:"))
+        self._info.setText(shown)
+        self._info.setVisible(bool(text))
+        self._fit()
+
+    def _toggle_info(self, _link=""):
+        self._info_open = not self._info_open
+        self._show_info_text()
 
     def info_text(self):
-        return self._info.text()
+        return self._info_full
+
+    # ----- moving: the title row drags the dialog inside the view -----
+    def mousePressEvent(self, event):
+        child = self.childAt(event.position().toPoint() if hasattr(event, "position") else event.pos())
+        if event.button() == QtCore.Qt.LeftButton and (child is None or isinstance(child, QtWidgets.QLabel)
+                                                        and child.objectName() in ("InCadDialogTitle", "")
+                                                        and child.parentWidget() is self):
+            self._drag = event.globalPosition().toPoint() - self.pos() if hasattr(event, "globalPosition") \
+                else event.globalPos() - self.pos()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag is not None:
+            at = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+            self.move(self.kept_inside(at - self._drag))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._drag is not None:
+            self._drag = None
+            self.unsetCursor()
+            FeatureDialog.spot = self.pos()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def kept_inside(self, point):
+        """point moved so the dialog's title row stays in the view (never dragged out of reach)."""
+        parent = self.parentWidget()
+        if parent is None:
+            return point
+        x = min(max(point.x(), 40 - self.width()), parent.width() - 40)
+        y = min(max(point.y(), 0), parent.height() - 30)
+        return QtCore.QPoint(x, y)
+
+    def place(self):
+        """Where the last dialog was left (kept inside this view), else the view's top left corner."""
+        self.move(self.kept_inside(FeatureDialog.spot) if FeatureDialog.spot is not None else QtCore.QPoint(16, 16))
 
     def error_text(self):
         return self._error.text()

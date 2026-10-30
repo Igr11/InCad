@@ -183,9 +183,10 @@ def spec(std, size, custom=None):
         slack = p - 2 * depth * math.tan(math.radians(angle / 2))
         if slack < 0:
             raise ValueError("That depth is too large for this pitch and flank angle")
-        # triangle: what is left of the pitch shared by the crest and the root; trapezoid: the tooth's tip cut off
-        # by all of it, the root a sharp V (the user: "a triangle with its end cut off")
-        crest = slack if kind == "trapezoid" else slack / 2
+        # the shape picked is the groove cut (and the tooth grown, profile.outline): a triangle is a V, sharp at the
+        # bottom, the rest of the pitch left flat; a trapezoid is that V with its end cut off (the user: "a triangle
+        # with its end cut off"), the flats at its bottom and between grooves equal
+        crest = slack if kind == "triangle" else slack / 2
         return ThreadSpec(std, size or "Custom", major, p, angle, depth, depth, crest, crest,
                           shape="trapezoid" if kind == "trapezoid" else "v")
     raise ValueError("Unknown thread standard %r" % std)

@@ -141,6 +141,70 @@ class FeatureDialogTest(unittest.TestCase):
         self.assertEqual(picks, ["to_face"])
 
 
+class SmallMovableTest(unittest.TestCase):
+    """The user: "these windows sometimes take up more space than half the screen ... move them, or make them smaller"."""
+    def setUp(self):
+        qtapp.app()
+        from incad.qt import QtWidgets
+        self.view = QtWidgets.QWidget()
+        self.view.resize(1000, 700)
+        self.view.show()
+        FeatureDialog.spot = None
+        self.d = FeatureDialog("Snap Fit", "incad", FIELDS, {"operation": "join", "extent": "distance",
+                                                            "to_face": "", "distance": "10 mm", "flip": False},
+                               parent=self.view)
+        self.d.place()
+        self.d.show()
+        qtapp.app().processEvents()
+
+    def tearDown(self):
+        self.d.close()
+        self.view.close()
+        FeatureDialog.spot = None
+
+    def test_a_long_hint_keeps_the_dialog_narrow_and_folds(self):
+        narrow = self.d.width()
+        hint = ("A hook stands on every line of the sketch: draw the line on top of the wall. " + "More words. " * 20)
+        self.d.set_info(hint)
+        qtapp.app().processEvents()
+        self.assertLessEqual(self.d.width(), narrow + 2, "the hint wraps at the fields' width")
+        self.assertEqual(self.d.info_text(), hint)
+        self.assertNotIn("More words", self.d._info.text(), "folded: the first sentence only")
+        self.d._toggle_info()
+        self.assertIn("More words", self.d._info.text())
+
+    def test_the_title_drags_it_and_the_next_one_opens_there(self):
+        from PySide6 import QtTest
+        title = self.d.findChild(QtCore.QObject, "InCadDialogTitle")
+        start = self.d.pos()
+        at = title.mapTo(self.d, title.rect().center())
+        QtTest.QTest.mousePress(self.d, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, at)
+        QtTest.QTest.mouseMove(self.d, at + QtCore.QPoint(300, 200))
+        QtTest.QTest.mouseRelease(self.d, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, at + QtCore.QPoint(300, 200))
+        self.assertEqual(self.d.pos(), start + QtCore.QPoint(300, 200))
+        other = FeatureDialog("Boss", "incad", FIELDS, {}, parent=self.view)
+        other.place()
+        self.assertEqual(other.pos(), self.d.pos())
+        self.d.move(self.d.kept_inside(QtCore.QPoint(5000, 5000)))
+        self.assertLess(self.d.y(), self.view.height(), "never dragged out of reach")
+        other.close()
+
+
+class TogglesTest(unittest.TestCase):
+    def test_each_button_on_or_off_by_itself(self):
+        qtapp.app()
+        fields = (Field("skip", "Leave out", "toggles", (("1", "1"), ("2", "2"), ("3", "3")), ""),)
+        d = FeatureDialog("Boss", "incad", fields, {"skip": "2"})
+        seen = []
+        d.changed.connect(lambda v: seen.append(v["skip"]))
+        self.assertEqual(d.values()["skip"], "2")
+        d.field("skip").button("3").click()
+        self.assertEqual(d.values()["skip"], "2,3")
+        d.field("skip").button("2").click()
+        self.assertEqual(seen[-1], "3")
+        d.close()
+
+
 class DialogLooksTest(unittest.TestCase):
     def setUp(self):
         qtapp.app()
@@ -346,6 +410,22 @@ class StepButtonsTest(unittest.TestCase):
         self.assertEqual(self.d.field("distance").text(), "d0 / 1.5")
         self.d.field("distance").setText("12 mm")
         self.assertTrue(up.isEnabled() and down.isEnabled())
+
+    def test_a_held_arrow_lets_go_after_a_slow_preview(self):
+        """The user: the pitch climbed by itself to 1243 mm — the arrow's auto-repeat went on, one millimetre a
+        repeat, its release lost while a slow preview held the window. A repeat after such a pause lets the button
+        go; a held arrow with quick previews keeps stepping."""
+        import time
+        up, _down = self.d.step_buttons("distance")
+        up.setDown(True)
+        up._last_step = time.monotonic()
+        up.clicked.emit()  # an auto-repeat (the button still down) right away: steps
+        self.assertEqual(self.d.field("distance").text(), "11 mm")
+        up.setDown(True)
+        up._last_step = time.monotonic() - 2.0  # the next repeat 2 s later: the preview held the window
+        up.clicked.emit()
+        self.assertEqual(self.d.field("distance").text(), "11 mm", "no step")
+        self.assertFalse(up.isDown(), "the button let go")
 
     def test_the_arrows_hide_with_their_row(self):
         up, down = self.d.step_buttons("distance")

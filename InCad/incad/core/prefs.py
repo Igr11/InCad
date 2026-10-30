@@ -101,6 +101,42 @@ def set_display_quality(value):
     _set_choice("DisplayQuality", QUALITIES, value)
 
 
+def update_check_at_start():
+    """⚙ ▸ Check for Updates at Start (on by default): once a day ask GitHub for a newer release."""
+    return bool(_s().get("bool", "UpdateCheckAtStart", True))
+
+
+def set_update_check_at_start(value):
+    _s().set("bool", "UpdateCheckAtStart", bool(value))
+
+
+def update_last_check():
+    return _s().get("str", "UpdateLastCheck", "")
+
+
+def set_update_last_check(day):
+    _s().set("str", "UpdateLastCheck", day)
+
+
+def update_skipped():
+    """The version the user chose to skip (Skip This Version): the check at start says nothing about it."""
+    return _s().get("str", "UpdateSkipped", "")
+
+
+def set_update_skipped(version):
+    _s().set("str", "UpdateSkipped", version)
+
+
+def rectangle_diagonals():
+    """⚙ ▸ Rectangle Diagonals: a new rectangle keeps its two diagonals as construction lines (off by default: the
+    user chose the centre point only, the diagonals as an option)."""
+    return bool(_s().get("bool", "RectangleDiagonals", False))
+
+
+def set_rectangle_diagonals(value):
+    _s().set("bool", "RectangleDiagonals", bool(value))
+
+
 def remember_new_choice():
     return bool(_s().get("bool", "RememberNewChoice", False))
 

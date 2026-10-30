@@ -401,6 +401,8 @@ marking menu) switches the theme in one click. The <span class="ui">⚙</span> m
   <tr><td>Ribbon Size</td><td class="wrap">Compact, Small, Large</td></tr>
   <tr><td>Units for New Files</td><td class="wrap">Ask every time, Always millimeters, Always inches</td></tr>
   <tr><td>Dimension Display</td><td class="wrap">How sketch dimensions are labelled: Value (40), Name (d3), Expression (d3 = 40)</td></tr>
+  <tr><td>Rectangle Diagonals</td><td class="wrap">On: a new rectangle keeps its two diagonals as construction
+      lines (off: only the centre point).</td></tr>
   <tr><td>Display Quality</td><td class="wrap"><b>Normal</b> (faster) or <b>Fine</b> (smoother curves): how finely
       round faces are drawn. Fine keeps a highlight on a ball or a fillet free of facets; it changes only the drawing,
       never the part, and does not mark a file as changed. <!--mac-->Fine by default on a Mac.<!--/mac--><!--win Normal
@@ -410,6 +412,11 @@ marking menu) switches the theme in one click. The <span class="ui">⚙</span> m
   <tr><td>Report a Bug…</td><td class="wrap">Sends a problem report straight to the public issue list of ProstoCAD on
       GitHub — no GitHub account needed: what happened, the steps, a contact if you want an answer, and the end of the
       log (your name is taken out of the file paths). The answer comes there (chapter 11)</td></tr>
+  <tr><td>Check for Updates…</td><td class="wrap">Asks GitHub for the newest release. When there is one, <b>Download</b>
+      puts the file for your system into Downloads (a Mac disk image opens by itself; a ZIP is shown in its folder);
+      install it when you are ready. <b>What's New</b> opens the release page. <b>Check for Updates at Start</b> (on) looks
+      once a day by itself and says something only when a newer release is out (Skip This Version stops it for that
+      one).</td></tr>
   <tr><td>Mouse Navigation</td><td class="wrap">On: ProstoCAD's mouse (LMB+RMB orbit, right-click menu). Off: FreeCAD's own
       navigation style applies.</td></tr>
 </table>
@@ -552,7 +559,7 @@ variants.</p></div>
   <tr><td>Line</td><td class="wrap">Line (a chain of lines; <kbd>M</kbd> while drawing switches between line and arc),
       Single Line</td><td><kbd>L</kbd></td></tr>
   <tr><td>Spline</td><td class="wrap">Spline (through points), Control-Vertex Spline</td><td></td></tr>
-  <tr><td>Circle</td><td class="wrap">Circle (centre, radius), 3-Point Circle, Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
+  <tr><td>Circle</td><td class="wrap">Circle (centre, radius), 3-Point Circle, Tangent Circle (select two or three lines, arcs or circles first: three fix it, with two give it a radius), Ellipse, 3-Point Ellipse</td><td><kbd>C</kbd></td></tr>
   <tr><td>Arc</td><td class="wrap">3-Point Arc, Center Arc, Elliptical Arc</td><td><kbd>A</kbd></td></tr>
   <tr><td>Rectangle</td><td class="wrap">Rectangle (corner, width, height), Center Rectangle, 3-Point Rectangle, 3-Point
       Center Rect., Rounded Rectangle. While a rectangle is drawn, its two diagonals show dashed, for orientation; the
@@ -834,7 +841,9 @@ the feature.</p>
       <b>Sketch</b>. <b>Concentric</b>: click round edges or round faces (<b>Round</b>; several at once — a hole at the centre of
       each); the holes start on the flat face beside them, or on the <b>Face</b> you pick.</td></tr>
   <tr><td>Hole</td><td class="wrap"><b>Simple</b> (a <b>Diameter</b>, 5 mm), <b>Clearance</b> (for a screw: Standard,
-      Size and <b>Fit</b> — Close, Normal, Loose), <b>Tapped</b> (a modeled thread).</td></tr>
+      Size and <b>Fit</b> — Close, Normal, Loose), <b>Tapped</b> (a modeled thread), <b>Insert</b> (for a heat-set
+      threaded insert: pick its size, M2–M5; the hole has the size the insert needs, a flat bottom and is 1 mm deeper
+      than the insert).</td></tr>
   <tr><td>Standard</td><td class="wrap">Clearance and Tapped: ISO metric, ISO metric fine, UNC, UNF, UNEF, NPT, G / BSP,
       BSW, BSF.</td></tr>
   <tr><td>Size</td><td class="wrap">The thread size, or <b>Auto (from Diameter)</b>.</td></tr>
@@ -1191,6 +1200,119 @@ line as its <b>Path</b> (6.9); Edit on it opens the dialog again.</p>
 </table>
 <p>A picture is only something to look at: sketches drawn over it do not depend on it. Its row's menu has Hide / Show,
 Rename and Delete.</p>
+
+<div class="keep"><h2 id="plastic">6.20 Boss, Lip / Groove, Snap Fit and holes for inserts</h2>
+<p class="lead">Tools for printed boxes and covers: <b>Boss</b> — posts for screws or threaded inserts; <b>Lip / Groove</b> —
+a raised band on the rim of a box and the groove for it in the lid, so the two halves line up and close tightly;
+<b>Snap Fit</b> — flexible hooks that click the lid on without screws; <b>Hole ▸ Insert</b> — a hole for a heat-set
+brass insert anywhere. They are in <span class="path">3D Model ▸ Create ▸ Boss</span> (the arrow beside it: Lip / Groove,
+Snap Fit). Each is a step of the part: it follows its sketch or face when they change, and a double click on it opens
+its dialog again.</p></div>
+<figure>
+  <img src="img/16_plastic_box.jpg" alt="A printed box with four bosses, a lip on its rim and two snap fits">
+  <figcaption>Figure 16. A box with four bosses (M3 inserts, four ribs each), a lip along the inner edge of the rim and two snap
+  fits on the long walls.</figcaption>
+</figure>
+
+<div class="keep"><h3>First: the box</h3>
+<ol>
+  <li>Sketch a rectangle (with rounded corners if you like) and <b>Extrude</b> it to the box's outside height.</li>
+  <li><b>Shell</b>, click the top face, Thickness 2 mm (for printing: 1.6–2.4 mm). The box is open at the top; the top
+      of its walls is the <b>rim</b>.</li>
+  <li>The lid is made the same way in its own part: a shallow box, its rim facing the box's rim.</li>
+</ol></div>
+
+<div class="keep"><h3>Boss — a post for a screw or an insert</h3>
+<ol>
+  <li>Click the inside face of the floor (or of the lid), <b>Start 2D Sketch</b>. Put a <b>Point</b> where each boss goes
+      — or a <b>Circle</b>: its centre is used. Give them sizes from the walls, then <b>Finish Sketch</b>.</li>
+  <li><span class="path">Create ▸ Boss</span> and click the sketch (or select it first). A boss stands on every point.</li>
+  <li>Set the fields (below) and press <b>OK</b>.</li>
+</ol></div>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">What it does</th></tr>
+  <tr><td>Outer Ø</td><td class="wrap">The boss's diameter. It starts at what an M3 insert needs (8 mm). The boss must be the
+      insert's own diameter plus a wall on each side: a thinner one is refused, with a message.</td></tr>
+  <tr><td>Height</td><td class="wrap">From the sketch up. For a lid screwed on from above: up to the lid's underside.</td></tr>
+  <tr><td>Hole</td><td class="wrap"><b>None</b>; <b>Plain</b> — a hole of <b>Hole Ø</b> through the whole boss or to a
+      <b>Depth</b> (for a self-tapping screw take about 0.8 of the screw: 2.5 mm for M3); <b>Insert</b> — the hole for a
+      heat-set insert of the size picked (table below).</td></tr>
+  <tr><td>Fillet at foot</td><td class="wrap">Rounds the joint with the floor (1 mm): bosses break there.</td></tr>
+  <tr><td>Ribs</td><td class="wrap">None, 3, 4 or 6 triangular ribs round the boss, <b>Rib thickness</b> and <b>Rib
+      length</b>; a rib never runs out through a wall.</td></tr>
+  <tr><td>Rib angle</td><td class="wrap">Turns the ribs round the boss. At 0° rib 1 points along the sketch's X axis and
+      four ribs stand square to the walls of a box; 45° sets them diagonally.</td></tr>
+  <tr><td>Leave out</td><td class="wrap">The ribs pressed (1–6) are not made — for a rib with no room for it. Rib 1 is the
+      one along the X axis (turned by Rib angle), the others follow anticlockwise; the preview shows which went.</td></tr>
+  <tr><td>Flip direction</td><td class="wrap">The boss grows to the other side of the sketch — the points stay where they
+      are.</td></tr>
+</table>
+
+<div class="keep"><h3>Holes for heat-set inserts</h3>
+<p>A heat-set insert is a small knurled brass sleeve with a thread inside. Pressed in with a soldering iron (at the
+plastic's printing temperature) it melts its way into the hole and gives a metal thread that does not wear out. The
+hole is drilled 1 mm deeper than the insert, for the plastic it pushes down. Use <b>Boss ▸ Hole: Insert</b> for a post,
+or <b>Hole ▸ Insert</b> for a hole straight in any face (a flat bottom, the size picked).</p></div>
+<table class="long">
+  <tr><th>Insert</th><th>Hole Ø</th><th>Hole depth</th><th class="wrap">Boss at least</th></tr>
+  <tr><td>M2</td><td>3.2 mm</td><td>5.0 mm</td><td class="wrap">Ø6.2 mm</td></tr>
+  <tr><td>M2.5</td><td>4.0 mm</td><td>6.7 mm</td><td class="wrap">Ø7.6 mm</td></tr>
+  <tr><td>M3</td><td>4.0 mm</td><td>6.7 mm</td><td class="wrap">Ø7.8 mm</td></tr>
+  <tr><td>M4</td><td>5.6 mm</td><td>9.1 mm</td><td class="wrap">Ø10.3 mm</td></tr>
+  <tr><td>M5</td><td>6.4 mm</td><td>10.5 mm</td><td class="wrap">Ø11.5 mm</td></tr>
+</table>
+
+<div class="keep"><h3>Lip / Groove — the two halves fit into each other</h3>
+<ol>
+  <li>On the box: <span class="path">Create ▸ Boss ▸ arrow ▸ Lip / Groove</span>, click the rim (the flat top face of the
+      walls). <b>Type: Lip</b> raises a band above the rim, along its <b>Inside</b> or <b>Outside</b> edge.</li>
+  <li><b>Width</b> (1 mm — at most half the wall) and <b>Height</b> (2 mm). OK.</li>
+  <li>On the lid: the same tool on the lid's rim, <b>Type: Groove</b>, the <b>same Edge, Width and Height</b>. The groove is
+      wider and deeper by the <b>Clearance</b> (0.2 mm; 0.3 mm for a loose fit), so the lip goes in.</li>
+</ol>
+<p>The band follows the rim all round, rounded corners too, and the rim is found again when the box changes (another wall
+thickness, another size).</p></div>
+<figure>
+  <img src="img/18_lid_groove.jpg" alt="The lid with the groove in its rim">
+  <figcaption>Figure 18. The lid (a shallow box) with the groove along the inner edge of its rim, where the box's lip goes.</figcaption>
+</figure>
+
+<div class="keep"><h3>Snap Fit — a hook that clicks the lid on</h3>
+<p>A snap fit is a flexible strip with a catch at its top: the strip bends while the lid goes on, then springs back and
+the catch holds behind an edge of the lid. ProstoCAD grows the strip onto the face of the box's wall: it is joined to
+the wall over a long stretch below the rim (a joint at the rim alone breaks along one printed layer), and only the
+part above the rim bends.</p>
+<ol>
+  <li><b>Where it goes:</b> click the rim, <b>Start 2D Sketch</b>, and draw a <b>Line</b> along the edge of the wall the snap
+      fit goes on — the inner edge for a strip inside the box. The line's length is the snap fit's width. One line per
+      snap fit. Finish Sketch.</li>
+  <li><span class="path">Create ▸ Boss ▸ arrow ▸ Snap Fit</span>, click the sketch. A snap fit stands at every line.</li>
+  <li>The strip grows onto the face of the wall at that edge, down the wall and up over the rim; its catch reaches back
+      over the rim. <b>Catch on the other side</b> turns it away from the rim. <b>Flip direction</b>: everything downwards
+      (a lid's skirt). The preview shows it at once.</li>
+</ol></div>
+<figure>
+  <img src="img/17_snap_fit_line.jpg" alt="A snap fit grown onto the inside of the wall">
+  <figcaption>Figure 17. A snap fit (orange) on the inside of a wall: joined to it from below the rim, its lower edge chamfered
+  45°, its catch reaching out over the rim. Left as it stands, right cut through its middle.</figcaption>
+</figure>
+<table class="long">
+  <tr><th>Field</th><th class="wrap">What it does</th></tr>
+  <tr><td>Above the rim</td><td class="wrap">How far the strip stands up over the rim (10 mm) — the part that bends. Longer
+      bends more easily.</td></tr>
+  <tr><td>Down the wall</td><td class="wrap">How far it is joined to the wall below the rim (8 mm). Its lower edge is
+      chamfered 45° over the whole thickness: the joint is spread out and it prints without supports.</td></tr>
+  <tr><td>Thickness</td><td class="wrap">The strip's thickness (1.5 mm): thinner bends more easily, thicker holds harder.
+      Keep the part above the rim at least five times as long as the strip is thick.</td></tr>
+  <tr><td>Catch depth</td><td class="wrap">How far the catch sticks out over the rim (1 mm).</td></tr>
+  <tr><td>Catch length</td><td class="wrap">Its ramp (2.5 mm): the longer, the more gently the lid slides on.</td></tr>
+  <tr><td>Fillet at the rim</td><td class="wrap">Rounds the corner where the strip leaves the rim (0.5 mm) — where the bend
+      is greatest.</td></tr>
+</table>
+<p>In the lid cut the window or the edge the catch holds behind (Extrude ▸ Cut). A line drawn off the wall is refused
+with a message; the strip never goes below the bottom of the part.</p>
+<div class="tip"><b>For printing:</b> PETG and ABS spring better than PLA. Print a test pair first and adjust Thickness
+and Catch depth.</div>
 
 <h1 class="chapter" id="solids"><span class="num">7</span>Several solids in one part</h1>
 <p class="lead">A part can hold several separate solids — for a tool and the part it cuts, or a part you will print in
@@ -1666,7 +1788,7 @@ win-->
 <h2>Sketch</h2>
 <table class="long">
   <tr><th>Tab</th><th>Group</th><th class="wrap">Commands</th></tr>
-  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Spline | Control-Vertex Spline · Circle | 3-Point Circle | Ellipse | 3-Point
+  <tr><td>Sketch</td><td>Create</td><td class="wrap">Line | Single Line · Spline | Control-Vertex Spline · Circle | 3-Point Circle | Tangent Circle | Ellipse | 3-Point
       Ellipse · 3-Point Arc | Center Arc | Elliptical Arc · Rectangle | Center Rectangle | 3-Point Rectangle | 3-Point
       Center Rect. | Rounded Rectangle · Center-to-Center Slot | Overall Slot | Center Point Slot | Arc Slot | Flat-End Arc
       Slot · Hexagon | Triangle | Square | Pentagon | Octagon | Polygon (N sides) ·
